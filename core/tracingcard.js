@@ -3017,9 +3017,8 @@ async function pad3DGhostMeshes(){
   }
   /* Only where the dataset HAS a nucleus volume. On βJump the box holds a Hoechst blob number,
      and a reader configured with no volume fetches the host's own 404 page as "/info". */
-  if (ids.nuc && UJ.nucmesh && tracingSources().nuc){
+  if (ids.nuc && tracingNucMeshReady()){
     try {
-      if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: tracingSources().nuc });
       pad3DNote("fetching the nucleus’ mesh…");
       const n = await UJ.nucmesh.fetchNucleus(ids.nuc);
       if (n && n.positions.length) out.push({ what: "nucleus", mesh: n });
@@ -5238,12 +5237,42 @@ function tracingObjOf(name, rings, res){
    before the click, and in the line after it. ONE string, so the two cannot drift. */
 var TRACING_PLACE_HELP = "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
+/* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
+   Søren, on the µJump download: *"The transparency of the root ID is too much, it is hard to see
+   the structure... [the nucleus] can also be a bit transparent, so that you can see if there are
+   things traced inside the nucleus, but it should not be as transparent as the root ID."*
+
+   One order, stated once: the CELL is the most see-through, because everything else is inside it;
+   the NUCLEUS less so, because its own shape is worth seeing and only a few things are inside it;
+   everything else solid, because nothing is inside it to look through it at.
+
+   AND ONE FUNCTION. Until today the published root-ID and nucleus meshes carried their own
+   literals — 0.15 and 0.35 — a thousand lines from these. Nobody decided they should differ; they
+   differ because the second pair was typed. 0.15 is the one he could barely see. */
 function tracingGlbAlpha(kind, alone){
   var k = String(kind || "").toLowerCase();
   if (alone) return 1;
-  if (k === "cell") return 0.22;
-  if (k === "nucleus") return 0.4;
+  if (k === "cell") return 0.3;
+  if (k === "nucleus") return 0.55;
   return 1;
+}
+/* ── IS THERE A NUCLEUS VOLUME HERE, AND IS THE READER POINTED AT IT ──  2026-10-11
+   core/nucmesh.js is configured lazily, and until today the only place that configured it was the
+   pad's 3D preview. The export merely ASKED `configured()` — false on a page where nobody had
+   opened the preview — and left the nucleus out without a word, because the branch that would
+   have recorded it was the branch being skipped. Søren: *"it should also include the Nucleus ID."*
+
+   One helper for both callers. A dataset that genuinely has no nuclei volume (βJump, where the
+   box holds a Hoechst blob number) returns false here and is NAMED in the line, rather than
+   fetching the host's own 404 page as "/info". */
+function tracingNucMeshReady(){
+  if (!(window.UJ && UJ.nucmesh && typeof UJ.nucmesh.fetchNucleus === "function")) return false;
+  if (typeof UJ.nucmesh.configured === "function" && UJ.nucmesh.configured()) return true;
+  var src = "";
+  try { src = String((tracingSources() || {}).nuc || ""); } catch (_e){ src = ""; }
+  if (!src) return false;
+  try { UJ.nucmesh.configure({ nuc: src }); } catch (_e2){ return false; }
+  return typeof UJ.nucmesh.configured !== "function" || UJ.nucmesh.configured();
 }
 /* The parts list a GLB is written from, in the order they should be read: the cell, then its
    nucleus, then everything else as it is listed. One place, so the lone and the combined export
@@ -5334,12 +5363,14 @@ async function tracingSegParts(g, missed, have){
       var m = await UJ.mesh.fetchCombinedMesh(root, null, false, extra);
       if (m && m.positions && m.positions.length)
         /* MICROMETRES — core/mesh.js's own frame, stated at its nm -> µm line. */
-        out.push({ name: "Cell (segmentation)", kind: "cell", color: "#ff3b3b", alpha: 0.15,
+        out.push({ name: "Cell (segmentation)", kind: "cell", color: "#ff3b3b",
+                   alpha: tracingGlbAlpha("cell", false),
                    scaleToNm: 1000, positions: m.positions, indices: m.indices });
     } catch (e){ missed.push("the cell mesh (" + String(e && e.message || e) + ")"); }
   }
-  if (nuc && window.UJ && UJ.nucmesh && typeof UJ.nucmesh.fetchNucleus === "function"
-      && (typeof UJ.nucmesh.configured !== "function" || UJ.nucmesh.configured())){
+  if (nuc && !tracingNucMeshReady())
+    missed.push("the nucleus mesh (this dataset has no nuclei volume)");
+  if (nuc && tracingNucMeshReady()){
     var ids = [nuc];
     try { ((await tracingProposedNucsFor(nuc)) || []).forEach(function(x){ ids.push(x); }); }
     catch (_en){}
@@ -5357,7 +5388,8 @@ async function tracingSegParts(g, missed, have){
        second object. Exactly what fetchCombinedMesh already does for proposed root ids. */
     if (pos.length)
       /* NANOMETRES — core/nucmesh.js returns the legacy fragment vertices unscaled. */
-      out.push({ name: "Nucleus (segmentation)", kind: "nucleus", color: "#3a72d8", alpha: 0.35,
+      out.push({ name: "Nucleus (segmentation)", kind: "nucleus", color: "#3a72d8",
+                 alpha: tracingGlbAlpha("nucleus", false),
                  scaleToNm: 1, positions: new Float32Array(pos), indices: new Uint32Array(idx) });
   }
   return out;

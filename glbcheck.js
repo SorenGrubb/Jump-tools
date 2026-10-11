@@ -305,7 +305,7 @@ const ok = (c, what, d) => {
        names.join(" | "));
     const cellSeg = (seg.combined || []).filter(q => q.name === "Cell (segmentation)")[0] || {};
     const nucSeg = (seg.combined || []).filter(q => q.name === "Nucleus (segmentation)")[0] || {};
-    ok(cellSeg.alpha < 0.2 && nucSeg.alpha > cellSeg.alpha && nucSeg.alpha < 1,
+    ok(cellSeg.alpha < nucSeg.alpha && nucSeg.alpha < 1,
        "...the root ID most see-through of all, because everything else is inside it, and the "
        + "nucleus less so because its shape is worth seeing",
        "cell " + cellSeg.alpha + ", nucleus " + nucSeg.alpha);
@@ -549,6 +549,117 @@ const ok = (c, what, d) => {
        "...and the file says in its own asset extras that it is placed rather than centred, "
        + "because the next person to read one will believe the note",
        JSON.stringify(far.extras && far.extras.placedUm));
+  }
+
+  /* \u2500\u2500 ONE RULE FOR HOW SEE-THROUGH, AND A NUCLEUS THAT ARRIVES \u2500\u2500  2026-10-11
+     S\u00f8ren, on the \u00b5Jump download: *"The transparency of the root ID is too much, it is
+     hard to see the structure. But it should also include the Nucleus ID. That can also be a bit
+     transparent, so that you can see if there are things traced inside the nucleus, but it should
+     not be as transparent as the root ID."*
+
+     TWO FAULTS OF THE SAME SHAPE. The alphas were written twice \u2014 0.22/0.4 for the traced
+     parts, 0.15/0.35 for the published ones a thousand lines away \u2014 and 0.15 is the one he
+     could not see. And core/nucmesh.js is configured lazily by the PAD, so an export on a page
+     where nobody had opened the pad asked `configured()`, got false, and left the nucleus out in
+     silence, because the branch that would have recorded it was the branch being skipped.
+
+     WHAT IS ASSERTED:
+       - the cell is more see-through than the nucleus, and the nucleus than an organelle
+       - a published mesh and a hand-traced one of the SAME KIND get the SAME alpha, which is what
+         "one rule" means and what a second literal would break
+       - the nucleus arrives on a page where nucmesh was never configured \u2014 the export points
+         the reader at the dataset's own volume rather than waiting for the pad
+       - ...and where the dataset genuinely has none, the line SAYS so rather than omitting it */
+  console.log("\nand one rule says how see-through each thing is");
+  const see = await p.evaluate(async () => {
+    if (typeof tracingGlbAlpha !== "function") return { noCard: true };
+    const a = { cell: tracingGlbAlpha("cell", false), nuc: tracingGlbAlpha("nucleus", false),
+                org: tracingGlbAlpha("lysosome", false), alone: tracingGlbAlpha("cell", true) };
+    /* The published parts, read off a real tracingSegParts() run rather than off the source. */
+    const missed = [];
+    window.UJ.mesh = window.UJ.mesh || {};
+    UJ.mesh.fetchCombinedMesh = async () => ({
+      positions: new Float32Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),
+      indices: new Uint32Array([0,1,2, 0,1,3, 0,2,3, 1,2,3]) });
+    window.tracingExtraRootsFor = tracingExtraRootsFor = async () => [];
+    window.tracingProposedNucsFor = tracingProposedNucsFor = async () => [];
+    /* A nucmesh that is NOT configured until somebody configures it \u2014 which is the state a
+       freshly loaded page is in, and the state the export used to give up in. */
+    let configuredWith = "";
+    window.UJ.nucmesh = {
+      configured: () => !!configuredWith,
+      configure: (c) => { configuredWith = String((c || {}).nuc || ""); },
+      fetchNucleus: async () => ({
+        positions: new Float32Array([0,0,0, 100,0,0, 0,100,0, 0,0,100]),
+        indices: new Uint32Array([0,1,2, 0,1,3, 0,2,3, 1,2,3]) })
+    };
+    const g = { root: "864691136051278323", nuc: "405191" };
+    const parts = await tracingSegParts(g, missed, {});
+    /* READ IT NOW. The second scenario below resets this, and reading it at the end made the
+       assertion report the second run's state while claiming to describe the first. */
+    const cfgAfter = configuredWith;
+    const by = {};
+    parts.forEach(q => { by[q.name] = q.alpha; });
+    /* ...and again on a dataset with no nuclei volume at all. */
+    const realSrc = UJ.cfg && UJ.cfg.tracing ? UJ.cfg.tracing.sources : null;
+    configuredWith = "";
+    UJ.nucmesh.configure = () => {};                       /* refuses to become configured */
+    const missed2 = [];
+    const parts2 = await tracingSegParts(g, missed2, {});
+    let src = "";
+    try { src = String((tracingSources() || {}).nuc || ""); } catch (_e){ src = ""; }
+    return { a: a, by: by, names: parts.map(q => q.name), configuredWith: cfgAfter,
+             missed: missed, names2: parts2.map(q => q.name), missed2: missed2,
+             src: src };
+  });
+  if (see.noCard) console.log("  (no tracing card on this page)");
+  else {
+    ok(see.a.cell < see.a.nuc && see.a.nuc < see.a.org && see.a.org === 1,
+       "the cell is the most see-through, the nucleus less so, an organelle solid \u2014 one order, "
+       + "because everything is inside the cell and only a few things are inside the nucleus",
+       "cell " + see.a.cell + " < nucleus " + see.a.nuc + " < organelle " + see.a.org);
+    ok(see.a.cell >= 0.25,
+       "...and the cell is opaque enough to SEE \u2014 0.15 was the number he could not make out, "
+       + "and it was a second literal nobody had decided on", String(see.a.cell));
+    ok(see.a.alone === 1,
+       "...while a tracing downloaded on its own is solid, since nothing encloses it",
+       String(see.a.alone));
+    ok(see.by["Cell (segmentation)"] === see.a.cell
+       && (see.by["Nucleus (segmentation)"] === undefined
+           || see.by["Nucleus (segmentation)"] === see.a.nuc),
+       "a PUBLISHED mesh and a hand-traced one of the same kind get the same alpha, which is what "
+       + "one rule means \u2014 a second literal here is exactly the drift that caused this",
+       JSON.stringify(see.by));
+    /* FIVE OF THE EIGHT PAGES HAVE NO NUCLEI VOLUME, and that is not a fault: \u03b2Jump's nuc box
+       holds a Hoechst blob number, not a segment id, and \u03b7/\u03bb/\u03c9/\u03c7 have none at
+       all. Asserting the nucleus arrives everywhere asserted the wrong thing \u2014 so each page
+       is held to the promise it can actually make, and BOTH halves are real assertions. */
+    if (see.src){
+      ok((see.names || []).indexOf("Nucleus (segmentation)") >= 0,
+         "...and the nucleus ARRIVES on a page where nucmesh was never configured, because the "
+         + "export points the reader at the dataset's own volume instead of waiting for the pad",
+         (see.names || []).join(" | "));
+      ok(see.configuredWith === see.src,
+         "...which it does by configuring it from this dataset's own nuclei source",
+         see.configuredWith || "nothing was configured");
+      ok((see.missed || []).length === 0,
+         "...with nothing reported missing when nothing was",
+         (see.missed || []).join(", ") || "none");
+    } else {
+      ok((see.names || []).indexOf("Nucleus (segmentation)") < 0
+         && (see.missed || []).join(" ").indexOf("no nuclei volume") >= 0,
+         "this page has no nuclei volume, so the download says so instead of inventing one \u2014 "
+         + "and says it rather than omitting the nucleus in silence",
+         (see.missed || []).join(", ") || "said nothing");
+      ok(!see.configuredWith,
+         "...and nothing was pointed at a volume that does not exist, which is what used to fetch "
+         + "the host's own 404 page as \"/info\"", see.configuredWith || "nothing configured");
+    }
+    ok((see.names2 || []).indexOf("Nucleus (segmentation)") < 0
+       && (see.missed2 || []).join(" ").indexOf("no nuclei volume") >= 0,
+       "and a dataset with no nuclei volume SAYS so in the line \u2014 silence is how this went "
+       + "unnoticed, and a download missing its nucleus looks the same as a cell that has none",
+       (see.missed2 || []).join(", ") || "said nothing");
   }
 
   /* \u2500\u2500 AND A FORM THAT NEEDS NO IMPORTER AT ALL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-10
