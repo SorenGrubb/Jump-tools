@@ -1275,6 +1275,84 @@ UJ.traceloft = (function(){
      glTF-y = -y. So an imported GLB lands at Blender (x, -z, -y) in this data's terms, and this
      writes exactly that — two downloads of one cell must not disagree about which way is up.
      See src/a_tracing_you_can_open_in_blender.py. */
+  /* ── ONE VERTEX PER PLACE ───────────────────────────────────────────  2026-10-11
+     band() gives every pair of contours its own copy of both rings, so the loft has two vertices
+     at each section's ring for every band that touches it. Nothing downstream minded until
+     smooth shading did: an average taken per INDEX leaves a crease at every section, which is
+     the "segmented" look Søren saw. 1e-4 µm is 0.1 nm — far below any feature in this data, far
+     above float32's noise at these magnitudes. */
+  function weld(pos, idx){
+    var map = {}, remap = new Int32Array(pos.length / 3), out = [], i;
+    for (i = 0; i < pos.length; i += 3){
+      var k = Math.round(pos[i] * 1e4) + "," + Math.round(pos[i + 1] * 1e4)
+            + "," + Math.round(pos[i + 2] * 1e4);
+      if (map[k] === undefined){
+        map[k] = out.length / 3;
+        out.push(pos[i], pos[i + 1], pos[i + 2]);
+      }
+      remap[i / 3] = map[k];
+    }
+    var ni = new Uint32Array(idx.length);
+    for (i = 0; i < idx.length; i++) ni[i] = remap[idx[i]];
+    return { pos: new Float32Array(out), idx: ni };
+  }
+  /* ── AND A NORMAL AT EACH OF THEM ───────────────────────────────────  2026-10-11
+     Søren: *"the vasculature looks a bit segmented and not very smooth."* Partly the published
+     mesh's LOD, and partly this: a glTF primitive with no NORMAL attribute MUST be shaded flat
+     by the client, per the specification. Every file written before today was a stack of plates
+     in every viewer.
+
+     Area-weighted, because the cross product's length is twice the triangle's area and a big
+     face should count for more than a sliver. Then the SPLIT: a corner whose own face normal is
+     more than HARD_DEG from its vertex's average gets a vertex of its own carrying the face
+     normal. A lofted end cap meets its wall at about ninety degrees and splits; two adjacent
+     bands differ by a degree or two and do not. Smoothing everything would round off the one
+     part of the shape the tracer drew flat. */
+  var HARD_DEG = 35;
+  function smoothNormals(pos, idx){
+    var n = pos.length / 3, i, t, e;
+    var acc = new Float64Array(n * 3), fn = new Float64Array(idx.length);
+    for (t = 0; t + 2 < idx.length; t += 3){
+      var a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      var ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      var vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      fn[t] = nx; fn[t + 1] = ny; fn[t + 2] = nz;
+      for (e = 0; e < 3; e++){
+        var r = idx[t + e] * 3;
+        acc[r] += nx; acc[r + 1] += ny; acc[r + 2] += nz;
+      }
+    }
+    var unit = function(x, y, z){
+      var L = Math.sqrt(x * x + y * y + z * z);
+      return L > 0 ? [x / L, y / L, z / L] : [0, 0, 1];
+    };
+    var sm = new Float32Array(n * 3);
+    for (i = 0; i < n; i++){
+      var u = unit(acc[i * 3], acc[i * 3 + 1], acc[i * 3 + 2]);
+      sm[i * 3] = u[0]; sm[i * 3 + 1] = u[1]; sm[i * 3 + 2] = u[2];
+    }
+    var lim = Math.cos(HARD_DEG * Math.PI / 180);
+    var oP = [], oN = [], oI = new Uint32Array(idx.length), extra = {};
+    for (i = 0; i < n * 3; i++){ oP.push(pos[i]); oN.push(sm[i]); }
+    for (t = 0; t + 2 < idx.length; t += 3){
+      var f = unit(fn[t], fn[t + 1], fn[t + 2]);
+      for (e = 0; e < 3; e++){
+        var vi = idx[t + e];
+        var d = f[0] * sm[vi * 3] + f[1] * sm[vi * 3 + 1] + f[2] * sm[vi * 3 + 2];
+        if (d >= lim){ oI[t + e] = vi; continue; }
+        var ek = vi + "|" + Math.round(f[0] * 64) + "," + Math.round(f[1] * 64)
+               + "," + Math.round(f[2] * 64);
+        if (extra[ek] === undefined){
+          extra[ek] = oP.length / 3;
+          oP.push(pos[vi * 3], pos[vi * 3 + 1], pos[vi * 3 + 2]);
+          oN.push(f[0], f[1], f[2]);
+        }
+        oI[t + e] = extra[ek];
+      }
+    }
+    return { pos: new Float32Array(oP), nrm: new Float32Array(oN), idx: oI };
+  }
   function blenderPy(parts, resNm, meta){
     var b = glbParts(parts, resNm);
     if (!b) return "";
@@ -1297,6 +1375,9 @@ UJ.traceloft = (function(){
     }
     L.push("# Axes are Blender's: X = x, Y = -z, Z = -y, which is where the .glb of the same cell");
     L.push("# lands after import — cortical depth runs down Z with the pia at the top.");
+    L.push("# Vertices are welded, so Shade Smooth has no crease at every section. For crisper");
+    L.push("# end caps: select all, Object > Shade Auto Smooth (Blender 4.1+ \u2014 the old Normals");
+    L.push("# > Auto Smooth panel in Object Data Properties is gone).");
     L.push("# This file fetches nothing and runs nothing: it is vertices, faces and materials.");
     L.push("import bpy");
     L.push("");
@@ -1346,12 +1427,17 @@ UJ.traceloft = (function(){
     var at = (m.place === false) ? "(0,0,0)"
            : "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
     b.parts.forEach(function(q){
+      /* WELDED, for the reason the GLB is: from_pydata() keeps the vertices it is given, and
+         use_smooth over a loft whose bands do not share vertices leaves a crease at every
+         section. Same function, same tolerance, so the two downloads agree about the surface as
+         well as about where it is. */
+      var wq = weld(q.xyz, q.indices);
       var v = [];
-      for (var i = 0; i < q.xyz.length; i += 3)
-        v.push("(" + n3(q.xyz[i]) + "," + n3(-q.xyz[i + 2]) + "," + n3(-q.xyz[i + 1]) + ")");
+      for (var i = 0; i < wq.pos.length; i += 3)
+        v.push("(" + n3(wq.pos[i]) + "," + n3(-wq.pos[i + 2]) + "," + n3(-wq.pos[i + 1]) + ")");
       var f = [];
-      for (var t = 0; t + 2 < q.indices.length; t += 3)
-        f.push("(" + q.indices[t] + "," + q.indices[t + 1] + "," + q.indices[t + 2] + ")");
+      for (var t = 0; t + 2 < wq.idx.length; t += 3)
+        f.push("(" + wq.idx[t] + "," + wq.idx[t + 1] + "," + wq.idx[t + 2] + ")");
       var rgb = q.rgb;
       L.push("_add(" + pyStr(q.name) + ", " + pyStr(q.group) + ", ("
              + n3(rgb[0]) + "," + n3(rgb[1]) + "," + n3(rgb[2]) + "," + q.alpha + "), "
@@ -1362,6 +1448,39 @@ UJ.traceloft = (function(){
       L.push("])");
       L.push("");
     });
+    /* ── A WHITE BACKGROUND, AND WHY IT TAKES THREE SETTINGS ────────────────────  2026-10-11
+       Søren: *"the background is grey rather than white"* — and setting the world to white left
+       it grey, because AgX, Blender's default view transform since 4.0, maps a scene-linear 1.0
+       to about three-quarters grey. So: the world, the view transform, AND the viewport, which in
+       Solid shading does not use the world at all. Material Preview as well, because SOLID fakes
+       transparency with a screen-door dither — the speckle in his screenshot.
+       Each in its own try, and the viewport loop guarded: bpy.context.screen is None under
+       `blender --python`, and a script that dies there leaves half a scene. */
+    L.push("try:");
+    L.push("    _w = bpy.data.worlds.get('World') or bpy.data.worlds.new('World')");
+    L.push("    bpy.context.scene.world = _w");
+    L.push("    _w.use_nodes = True");
+    L.push("    _bg = _w.node_tree.nodes.get('Background')");
+    L.push("    if _bg is not None:");
+    L.push("        _bg.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)");
+    L.push("        _bg.inputs[1].default_value = 1.0");
+    L.push("except Exception: pass");
+    L.push("# AgX would render that white as light grey. Standard is the one that does not lie");
+    L.push("# about the colours you drew. Change it back in Render > Color Management.");
+    L.push("try: bpy.context.scene.view_settings.view_transform = 'Standard'");
+    L.push("except Exception: pass");
+    L.push("for _a in getattr(getattr(bpy.context, 'screen', None), 'areas', []) or []:");
+    L.push("    if _a.type != 'VIEW_3D': continue");
+    L.push("    for _s in _a.spaces:");
+    L.push("        if _s.type != 'VIEW_3D': continue");
+    L.push("        try: _s.shading.type = 'MATERIAL'   # SOLID dithers transparency");
+    L.push("        except Exception: pass");
+    L.push("        try:");
+    L.push("            _s.shading.background_type = 'VIEWPORT'");
+    L.push("            _s.shading.background_color = (1.0, 1.0, 1.0)");
+    L.push("        except Exception: pass");
+    L.push("        try: _s.shading.use_scene_world = True");
+    L.push("        except Exception: pass");
     L.push("print('" + b.parts.length + " structure(s) added — micrometres, placed at voxel "
            + b.centreVoxel.join(", ") + "')");
     return L.join("\n") + "\n";
@@ -1471,18 +1590,35 @@ UJ.traceloft = (function(){
       for (var t = 0; t + 2 < q.indices.length; t += 3){
         idx[t] = q.indices[t]; idx[t + 1] = q.indices[t + 2]; idx[t + 2] = q.indices[t + 1];
       }
-      var ivRef = push(idx, 34963), pvRef = push(pos, 34962);
-      accessors.push({ bufferView: ivRef, componentType: 5125, count: idx.length, type: "SCALAR" });
-      accessors.push({ bufferView: pvRef, componentType: 5126, count: n, type: "VEC3",
-                       min: mn, max: mx });
+      /* AFTER the flip and the rewind, so the face normals come out pointing outward. */
+      var w = weld(pos, idx);
+      var sh = smoothNormals(w.pos, w.idx);
+      pos = sh.pos; idx = sh.idx; n = pos.length / 3;
+      mn = [Infinity, Infinity, Infinity]; mx = [-Infinity, -Infinity, -Infinity];
+      for (var bi = 0; bi < pos.length; bi += 3)
+        for (var bk = 0; bk < 3; bk++){
+          if (pos[bi + bk] < mn[bk]) mn[bk] = pos[bi + bk];
+          if (pos[bi + bk] > mx[bk]) mx[bk] = pos[bi + bk];
+        }
+      var ivRef = push(idx, 34963), pvRef = push(pos, 34962), nvRef = push(sh.nrm, 34962);
+      /* THE INDEX IS WHAT push() RETURNED, not qi*2 and qi*2+1. That arithmetic was a stride
+         hidden in two expressions, and adding a third accessor per part is exactly the change it
+         would have broken silently. */
+      var iAcc = accessors.push({ bufferView: ivRef, componentType: 5125, count: idx.length,
+                                  type: "SCALAR" }) - 1;
+      var pAcc = accessors.push({ bufferView: pvRef, componentType: 5126, count: n, type: "VEC3",
+                                  min: mn, max: mx }) - 1;
+      var nAcc = accessors.push({ bufferView: nvRef, componentType: 5126, count: n,
+                                  type: "VEC3" }) - 1;
       var a = q.alpha;
       materials.push({ name: q.name,
         doubleSided: true,
         alphaMode: a < 1 ? "BLEND" : "OPAQUE",
         pbrMetallicRoughness: { baseColorFactor: [q.rgb[0], q.rgb[1], q.rgb[2], a],
                                 metallicFactor: 0, roughnessFactor: 0.75 } });
-      meshes.push({ name: q.name, primitives: [{ attributes: { POSITION: qi * 2 + 1 },
-                                                 indices: qi * 2, material: qi, mode: 4 }] });
+      meshes.push({ name: q.name,
+        primitives: [{ attributes: { POSITION: pAcc, NORMAL: nAcc },
+                       indices: iAcc, material: qi, mode: 4 }] });
       nodes.push({ mesh: qi, name: q.name, translation: place });
     });
     var binLength = off;
@@ -1492,6 +1628,8 @@ UJ.traceloft = (function(){
                          centreVoxel: prep.centreVoxel,
                          centreNm: prep.centreNm,
                          placedUm: place,
+                         shaded: "welded, area-weighted vertex normals, hard edges above "
+                                 + HARD_DEG + " degrees",
                          note: "Scaled to micrometres; y is negated for glTF's Y-up. The vertices "
                              + "are local to the file's own middle and every node is TRANSLATED "
                              + "to the dataset place, so several of these downloaded separately "

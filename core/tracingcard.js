@@ -4829,6 +4829,7 @@ function tracingRenderShared(){
   });
   const sidsOf = function(b){ const g = groups[Number(b.dataset.g)];
     return g ? g.items.map(function(x){ return x.t.structureId; }) : []; };
+  tracingPlaceWire(host);
   [].slice.call(host.querySelectorAll(".tracingcellpad")).forEach(function(b){
     b.addEventListener("click", function(){ tracingOpenCellShared(sidsOf(b), b); });
   });
@@ -5248,25 +5249,50 @@ function tracingObjOf(name, rings, res){
    So: one tick, default ON, read at the save and handed to BOTH writers. A tick that moved the
    GLB and not the script would make the two downloads of one cell disagree about where it is,
    which is what yesterday's check exists to catch. */
-function tracingPlaceWanted(){
-  var el = document.getElementById("tracingPlaceAt");
-  return el ? !!el.checked : true;
-}
+/* ── AND THE ANSWER LIVES OUTSIDE THE DOM ───────────────────────────  2026-10-11
+   Søren: *"Even though I have ticked the dataset coordinates off, it is still not centered."*
+
+   My bug. The tick was written into the dataset list's innerHTML with `checked` in the markup, so
+   its state lived in a block that is REBUILT — tracingOpenShared() renders what is in hand, then
+   awaits the index and renders again. Untick, let the refresh land, press 3D model, and the tick
+   is back on with nobody told. The mechanism was right; the state was in the wrong place.
+
+   One module variable, read when the tick is drawn and written when it changes. A re-render
+   cannot lose it. NOT localStorage: ωJump refuses any key but the theme, and its reason is the
+   right one here too — "a half-remembered state that disagrees with what you think you did is
+   a debugging trap". Tick it on Monday, and on Friday your downloads are placed and you have
+   forgotten why. It resets to centred on reload, which is the safe answer.
+
+   CENTRED IS THE DEFAULT, as he asked: most downloads are looked at on their own, in whatever
+   opens a .glb. The dataset coordinates are for the day you assemble several cells in Blender. */
+var TRACING_PLACE_AT = false;
+function tracingPlaceWanted(){ return !!TRACING_PLACE_AT; }
+function tracingPlaceSet(on){ TRACING_PLACE_AT = !!on; }
 function tracingPlaceTickHtml(){
   return '<label style="font-size:11px;color:var(--mut);margin-left:6px" title="Ticked, a 3D '
     + 'model download carries its dataset coordinates, so several cells opened in one Blender '
-    + 'scene land in their true relative positions. Unticked, it is centred on itself, which is '
-    + 'what a viewer that frames the origin rather than the scene — Windows 3D Viewer, Paint '
-    + '3D — needs in order to show it at all.">'
-    + '<input type="checkbox" id="tracingPlaceAt" checked style="width:auto;vertical-align:-1px"> '
-    + 'Dataset coordinates</label>';
+    + 'scene land in their true relative positions. Unticked \u2014 the default \u2014 it is '
+    + 'centred on itself, which is what a viewer that frames the origin rather than the scene '
+    + '\u2014 Windows 3D Viewer, Paint 3D \u2014 needs in order to show it at all. Remembered.">'
+    + '<input type="checkbox" id="tracingPlaceAt"' + (tracingPlaceWanted() ? " checked" : "")
+    + ' style="width:auto;vertical-align:-1px"> Dataset coordinates</label>';
+}
+/* Re-attached on every render, because the list it sits in is replaced wholesale. */
+function tracingPlaceWire(host){
+  var el = (host || document).querySelector("#tracingPlaceAt");
+  if (!el || el.getAttribute("data-wired")) return;
+  el.setAttribute("data-wired", "1");
+  el.checked = tracingPlaceWanted();
+  el.addEventListener("change", function(){ tracingPlaceSet(el.checked); });
 }
 function tracingPlaceSay(){
   return tracingPlaceWanted()
     ? "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin."
     : "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates above if you want several of these to line up in one scene.";
 }
-var TRACING_PLACE_HELP = "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin.";
+/* What the BUTTON says before anything is clicked: the default, which is now centred. The line
+   after the click says what actually happened \u2014 see tracingPlaceSay(). */
+var TRACING_PLACE_HELP = "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates by the list if you want several of these to line up in one Blender scene.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
 /* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
    Søren, on the µJump download: *"The transparency of the root ID is too much, it is hard to see
@@ -5395,7 +5421,12 @@ async function tracingSegParts(g, missed, have){
       var m = await UJ.mesh.fetchCombinedMesh(root, null, false, extra);
       if (m && m.positions && m.positions.length)
         /* MICROMETRES — core/mesh.js's own frame, stated at its nm -> µm line. */
-        out.push({ name: "Cell (segmentation)", kind: "cell", color: "#ff3b3b",
+        /* ITS OWN COLLECTION, so one tick in Blender's outliner hides the published pair
+           and leaves what he drew. Søren: *"the primary cilium is not very clear"* — it was a
+           thin thing inside a root-ID mesh that fills the frame, and `kind` put that mesh in the
+           same collection as his own traced Whole cell. */
+        out.push({ name: "Cell (segmentation)", kind: "cell", group: "Segmentation",
+                   color: "#ff3b3b",
                    alpha: tracingGlbAlpha("cell", false),
                    scaleToNm: 1000, positions: m.positions, indices: m.indices });
     } catch (e){ missed.push("the cell mesh (" + String(e && e.message || e) + ")"); }
@@ -5420,7 +5451,8 @@ async function tracingSegParts(g, missed, have){
        second object. Exactly what fetchCombinedMesh already does for proposed root ids. */
     if (pos.length)
       /* NANOMETRES — core/nucmesh.js returns the legacy fragment vertices unscaled. */
-      out.push({ name: "Nucleus (segmentation)", kind: "nucleus", color: "#3a72d8",
+      out.push({ name: "Nucleus (segmentation)", kind: "nucleus", group: "Segmentation",
+                 color: "#3a72d8",
                  alpha: tracingGlbAlpha("nucleus", false),
                  scaleToNm: 1, positions: new Float32Array(pos), indices: new Uint32Array(idx) });
   }

@@ -89,7 +89,11 @@ const ok = (c, what, d) => {
           (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055))),
         both: m.doubleSided === true })),
       /* The POSITION accessor's min/max say where the geometry sits and how big it is. */
-      bounds: (json.accessors || []).filter(a => a.type === "VEC3").map(a => ({
+      /* POSITION, not just VEC3: since 2026-10-11 every primitive also has a NORMAL, which
+         is VEC3 and carries no min/max. The bounds are the POSITION accessor's, and glTF
+         requires min/max exactly there \u2014 so "VEC3 with min" names the right one without
+         walking the primitives. */
+      bounds: (json.accessors || []).filter(a => a.type === "VEC3" && a.min).map(a => ({
         min: a.min.map(v => Math.round(v * 100) / 100), max: a.max.map(v => Math.round(v * 100) / 100) })),
       extras: json.asset && json.asset.extras,
       single: (j1.meshes || []).map(m => m.name),
@@ -236,7 +240,8 @@ const ok = (c, what, d) => {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const json = JSON.parse(new TextDecoder().decode(
       bytes.subarray(20, 20 + dv.getUint32(12, true))));
-    const box = json.accessors.filter(a => a.type === "VEC3").map(a => ({ min: a.min, max: a.max }));
+    const box = json.accessors.filter(a => a.type === "VEC3" && a.min)
+      .map(a => ({ min: a.min, max: a.max }));
     return { names: json.meshes.map(m => m.name), box: box };
   });
   {
@@ -478,7 +483,7 @@ const ok = (c, what, d) => {
     ], res));
     const vec = (j) => (j.nodes[0] || {}).translation || null;
     const mid = (j, i) => {
-      const acc = (j.accessors || []).filter(x => x.type === "VEC3")[i];
+      const acc = (j.accessors || []).filter(x => x.type === "VEC3" && x.min)[i];
       return acc ? [0, 1, 2].map(k => (acc.min[k] + acc.max[k]) / 2) : null;
     };
     /* The script of cell A, for the one place both writers must agree about. */
@@ -686,7 +691,8 @@ const ok = (c, what, d) => {
        excuses its own subject. The card is what some pages lack; the tick is what must be there
        when it does. */
     if (typeof tracingGlbSave !== "function") return { noCard: true };
-    if (typeof tracingPlaceTickHtml !== "function") return { missing: true };
+    if (typeof tracingPlaceTickHtml !== "function"
+        || typeof tracingPlaceWire !== "function") return { missing: true };
     const sq = (z, cx, cy, h) => ({ z: z,
       points: [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]] });
     const rings = [];
@@ -703,16 +709,23 @@ const ok = (c, what, d) => {
     const d = document.createElement("div");
     d.innerHTML = tracingPlaceTickHtml();
     document.body.appendChild(d);
+    /* WIRED, as the list wires it. A tick with no listener is a tick nobody is told about —
+       which was the whole of his bug, in miniature. */
+    tracingPlaceWire(d);
     const el = document.getElementById("tracingPlaceAt");
     const was = el ? el.checked : null;
     const run = () => ({ glb: tx(UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() })),
                          py: loc(UJ.traceloft.blenderPy(parts, res,
                                { title: "t", place: tracingPlaceWanted() })),
                          say: tracingPlaceSay() });
-    const on = run();
-    el.checked = false;
+    /* THROUGH THE EVENT A CLICK FIRES, not by assigning .checked. The answer now lives in
+       storage, and setting the box without telling anybody is exactly the state that used to
+       look fine here and fail for him \u2014 see the re-render section below. */
+    const set = (v) => { el.checked = v; el.dispatchEvent(new Event("change", { bubbles: true })); };
     const off = run();
-    el.checked = true;
+    set(true);
+    const on = run();
+    set(false);
     const back = run();
     d.remove();
     return { was: was, on: on, off: off, back: back };
@@ -721,9 +734,11 @@ const ok = (c, what, d) => {
   else if (pick.missing)
     ok(false, "the card offers the Dataset coordinates tick", "tracingPlaceTickHtml is not here");
   else {
-    ok(pick.was === true,
-       "the tick is there and ticked, so the placement he asked for yesterday is still the default",
-       String(pick.was));
+    ok(pick.was === false,
+       "the tick is there and NOT ticked \u2014 S\u00f8ren: *\u201cthe default should be centered "
+       + "and you can tick it if you need to download and open in Blender\u201d*. Most downloads "
+       + "are looked at on their own; the dataset coordinates are for the day you assemble "
+       + "several cells", String(pick.was));
     ok(Math.max.apply(null, (pick.off.glb || []).map(Math.abs)) === 0,
        "unticked, the GLB sits at the origin — which is the whole of what a viewer that frames "
        + "the origin rather than the scene needs in order to show it",
@@ -732,14 +747,255 @@ const ok = (c, what, d) => {
        "...and the Blender script centres WITH it, because two downloads of one cell that disagree "
        + "about where it is are worse than either position", String(pick.off.py));
     ok(Math.max.apply(null, (pick.on.glb || []).map(Math.abs)) > 100
-       && pick.on.py !== "0,0,0" && pick.back.py === pick.on.py,
-       "ticked, both are placed again — a choice, not a retreat",
-       JSON.stringify(pick.on.glb) + " / " + String(pick.on.py));
+       && pick.on.py !== "0,0,0" && pick.back.py === pick.off.py,
+       "ticked, both are placed — a choice, not a retreat; and unticking again puts them back "
+       + "where they were", JSON.stringify(pick.on.glb) + " / " + String(pick.on.py));
     ok(/dataset coordinates/i.test(pick.on.say) && /[Cc]entred on itself/.test(pick.off.say)
        && pick.on.say !== pick.off.say,
        "...and the line says which it did, because a file whose position you cannot predict is "
        + "worse than either position", pick.off.say.slice(0, 70));
   }
+
+  /* ── AND THE TICK OUTLIVES THE LIST IT SITS IN ────────────────────────────────  2026-10-11
+     Søren: *"Even though I have ticked the dataset coordinates off, it is still not centered."*
+
+     My bug, and the check above could not have caught it: it set the tick and read it back in the
+     same breath, which is the one sequence that works. The tick's state lived in the dataset
+     list's innerHTML — and that list is REBUILT, by tracingOpenShared(), which renders what is in
+     hand and then renders again once the index lands. Untick, let the refresh arrive, press 3D
+     model, and the file is placed, because the tick had been recreated ticked and nobody was told.
+
+     SO THE ASSERTION IS THE SEQUENCE HE LIVED: untick, re-render the real list, then ask. The
+     answer now lives in localStorage, so it survives both that and a reload. */
+  console.log("\nand the tick outlives the list it sits in");
+  const kept = await p.evaluate(async () => {
+    if (typeof tracingGlbSave !== "function") return { noCard: true };
+    if (typeof tracingRenderShared !== "function") return { noList: true };
+    /* A FAILURE, NOT AN EXCUSE: on a page with the card and the list, the tick's answer must
+       live somewhere a re-render cannot reach. */
+    if (typeof tracingPlaceWire !== "function"
+        || typeof tracingPlaceWanted !== "function") return { noTick: true };
+    const sq = (z, cx, cy, h) => ({ z: z,
+      points: [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]] });
+    const rings = [];
+    for (let z = 400; z <= 406; z++) rings.push(sq(z, 400000, 230000, 250));
+    window.TRACING_SHARED = TRACING_SHARED = [{ structureId: "s1", name: "Whole cell",
+      kind: "cell", instanceOf: "cell", color: "#cddc39", nucleusId: "", rootId: "",
+      cellCoord: "234624,228032,17512", contours: 7, sections: 7, versions: 1,
+      tracedBy: "me", timestamp: "2026-10-11" }];
+    tracingRenderShared();
+    const el0 = document.getElementById("tracingPlaceAt");
+    if (!el0) return { noTick: true };
+    /* TICK IT ON, through the event a person's click fires. */
+    el0.checked = true;
+    el0.dispatchEvent(new Event("change", { bubbles: true }));
+    const onBefore = tracingPlaceWanted();
+    tracingRenderShared();                      /* the refresh he waited through */
+    const onAfter = tracingPlaceWanted();
+    const onBox = !!document.getElementById("tracingPlaceAt").checked;
+    /* ...and off again, which is the direction that failed him. */
+    const el1 = document.getElementById("tracingPlaceAt");
+    el1.checked = false;
+    el1.dispatchEvent(new Event("change", { bubbles: true }));
+    tracingRenderShared();
+    const offAfter = tracingPlaceWanted();
+    const offBox = !!document.getElementById("tracingPlaceAt").checked;
+    /* And what the download actually does, after that re-render — the only thing he can see. */
+    let saved = null;
+    window.tracingSaveBlob = tracingSaveBlob = function(blob){ saved = blob; };
+    window.tracingFetchCell = tracingFetchCell = async function(sids){
+      return sids.map(s => ({ sid: s, t: { color: "#cddc39", kind: "cell" },
+        st: { name: "Whole cell", kind: "cell", rings: rings } }));
+    };
+    const btn = document.querySelector(".tracingcellglb");
+    if (btn) btn.click();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 8000 && !saved) await new Promise(r => setTimeout(r, 100));
+    let tx = null;
+    if (saved){
+      const u8 = new Uint8Array(await saved.arrayBuffer());
+      const dv = new DataView(u8.buffer);
+      const j = JSON.parse(new TextDecoder().decode(u8.subarray(20, 20 + dv.getUint32(12, true))));
+      tx = (j.nodes[0] || {}).translation || null;
+    }
+    return { onBefore, onAfter, onBox, offAfter, offBox, tx, pressed: !!btn };
+  });
+  if (kept.noCard) console.log("  (no tracing card on this page)");
+  else if (kept.noList) console.log("  (no dataset list on this page)");
+  else if (kept.noTick)
+    ok(false, "the tick's answer lives outside the list it sits in",
+       "tracingPlaceWire is not here \u2014 the answer is still in the DOM");
+  else {
+    ok(kept.onBefore === true && kept.onAfter === true && kept.onBox === true,
+       "ticked ON, the choice survives a re-render of the list — both the answer and the box, "
+       + "because a box that disagrees with the answer is the next bug",
+       "answer " + kept.onAfter + ", box " + kept.onBox);
+    ok(kept.offAfter === false && kept.offBox === false,
+       "...and ticked OFF it survives too, which is the direction that failed him: untick, the "
+       + "index lands, the list is rebuilt, and the old tick came back ticked",
+       "answer " + kept.offAfter + ", box " + kept.offBox);
+    ok(kept.pressed && kept.tx && Math.max.apply(null, kept.tx.map(Math.abs)) === 0,
+       "...so the download made AFTER that re-render is centred, which is the only part of this "
+       + "he can see", kept.pressed ? JSON.stringify(kept.tx) : "no cell button to press");
+  }
+
+  /* ── A SURFACE RATHER THAN A STACK OF PLATES ──────────────────────────────────  2026-10-11
+     Søren, of a cell in Blender: *"I think the vasculature looks a bit segmented and not very
+     smooth. Also, the primary cilium is not very clear and the background is grey rather than
+     white."*
+
+     The first of those was ours and invisible: this writer emitted POSITION and nothing else,
+     and the glTF specification says a client MUST then compute FLAT normals. Every file we have
+     ever written was a stack of plates in every viewer.
+
+     AND WELDING IS THE OTHER HALF. band() gives each pair of contours its own copy of both
+     rings, so an index-wise average leaves a crease at every section — "segmented", his word.
+
+     WHAT IS ASSERTED:
+       - every primitive has a NORMAL, and every normal is a unit vector
+       - a vertex on the WALL of a lofted tube, where two bands meet, is smooth: its normal is
+         the radial one, not either face's. This is the fix; the rest is scaffolding
+       - a vertex on the end CAP is not smoothed into the wall — a cap is flat because the tracer
+         drew it flat, and rounding it off would be inventing geometry
+       - the published meshes are filed in their own collection, so one tick hides them
+       - and the Blender script sets the world, the view transform AND the viewport, because a
+         white world alone renders grey under AgX and Solid shading ignores the world entirely */
+  console.log("\nand it is a surface rather than a stack of plates");
+  const surf = await p.evaluate(() => {
+    /* A tube: six sections of the same circle, so every wall vertex has an unambiguous radial
+       normal and every band seam is a place an unwelded average would crease. */
+    const ring = (z, r) => {
+      const pts = [];
+      for (let k = 0; k < 24; k++){
+        const a = 2 * Math.PI * k / 24;
+        pts.push([400000 + Math.round(r * Math.cos(a)), 230000 + Math.round(r * Math.sin(a))]);
+      }
+      return { z: z, points: pts };
+    };
+    const rings = [];
+    for (let z = 400; z <= 405; z++) rings.push(ring(z, 500));
+    const u8 = UJ.traceloft.glb([{ name: "Tube", rings: rings, color: "#cddc39" }], [4, 4, 40]);
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const jLen = dv.getUint32(12, true);
+    const j = JSON.parse(new TextDecoder().decode(u8.subarray(20, 20 + jLen)));
+    const binAt = 20 + jLen + ((4 - (jLen % 4)) % 4 ? 0 : 0) + 8;
+    const read = (ai) => {
+      const a = j.accessors[ai], bv = j.bufferViews[a.bufferView];
+      const o = binAt + bv.byteOffset;
+      const n = a.count * (a.type === "VEC3" ? 3 : 1);
+      return a.componentType === 5126
+        ? new Float32Array(u8.buffer.slice(u8.byteOffset + o, u8.byteOffset + o + n * 4))
+        : new Uint32Array(u8.buffer.slice(u8.byteOffset + o, u8.byteOffset + o + n * 4));
+    };
+    const prim = j.meshes[0].primitives[0];
+    /* NAMED, NOT THROWN. Without this the red run died on `read(undefined)` and reported a stack
+       trace instead of the one sentence that says what is missing. */
+    if (prim.attributes.NORMAL === undefined)
+      return { has: false, worst: 9, wall: null, cap: null, shaded: "" };
+    const P = read(prim.attributes.POSITION), N = read(prim.attributes.NORMAL);
+    /* Every normal a unit vector. */
+    let worst = 0;
+    for (let i = 0; i < N.length; i += 3){
+      const L = Math.hypot(N[i], N[i + 1], N[i + 2]);
+      worst = Math.max(worst, Math.abs(L - 1));
+    }
+    /* THE WALL. A vertex at mid-height, away from both caps: its normal should be radial, which
+       in glTF's frame is (x, -y, 0) of its own offset from the axis, and FLAT shading would give
+       it the normal of one triangle instead — tilted along z by the band. z is the tube's long
+       axis in data, which glTF keeps as z. */
+    let wall = null, cap = null;
+    const zs = [];
+    for (let i = 0; i < P.length; i += 3) zs.push(P[i + 2]);
+    const zMin = Math.min.apply(null, zs), zMax = Math.max.apply(null, zs);
+    for (let i = 0; i < P.length; i += 3){
+      const z = P[i + 2], r = Math.hypot(P[i], P[i + 1]);
+      /* ANY INTERIOR SECTION. Six sections have no vertex at the exact mid-height, and asking
+         for one found nothing \u2014 the assertion reported "no wall vertex" rather than passing,
+         which is the right way round for a check to be wrong. */
+      if (r > 1.5 && z > zMin + 1e-3 && z < zMax - 1e-3 && wall === null)
+        wall = { nz: Math.abs(N[i + 2]), radial: (P[i] * N[i] + P[i + 1] * N[i + 1]) / (r || 1) };
+      if (r > 1.5 && Math.abs(z - zMax) < 1e-3 && Math.abs(N[i + 2]) > 0.9 && cap === null)
+        cap = { nz: Math.abs(N[i + 2]) };
+    }
+    return { has: !!prim.attributes.NORMAL, worst: worst, wall: wall, cap: cap,
+             verts: P.length / 3, tris: prim.indices !== undefined,
+             shaded: (j.asset.extras || {}).shaded || "" };
+  });
+  ok(surf.has, "every primitive carries a NORMAL — without one the glTF spec REQUIRES a viewer "
+     + "to shade it flat, which is every file this tool has written until today",
+     String(surf.has));
+  ok(surf.worst < 1e-3, "...and every normal is a unit vector",
+     "worst length error " + surf.worst.toExponential(1));
+  ok(!!surf.wall && surf.wall.nz < 0.05 && surf.wall.radial > 0.99,
+     "a vertex where two bands meet on the wall of a tube has the RADIAL normal, not either "
+     + "face's — this is the fix; unwelded, its normal would tilt along the tube and leave the "
+     + "crease at every section that he called segmented",
+     surf.wall ? ("z-component " + surf.wall.nz.toFixed(3) + ", radial "
+                  + surf.wall.radial.toFixed(3)) : "no wall vertex found");
+  ok(!!surf.cap,
+     "...while the end cap keeps a normal along the axis: a cap is flat because the tracer drew "
+     + "it flat, and smoothing it into the wall would be inventing the one part of the shape "
+     + "nobody outlined", surf.cap ? ("cap z-component " + surf.cap.nz.toFixed(3)) : "none found");
+  ok(/hard edges/.test(surf.shaded),
+     "...and the file says so in its own asset extras", surf.shaded || "said nothing");
+
+  console.log("\nand the published meshes have a collection of their own");
+  const grp = await p.evaluate(async () => {
+    if (typeof tracingSegParts !== "function") return { noCard: true };
+    window.UJ.mesh = window.UJ.mesh || {};
+    UJ.mesh.fetchCombinedMesh = async () => ({
+      positions: new Float32Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),
+      indices: new Uint32Array([0,1,2, 0,1,3, 0,2,3, 1,2,3]) });
+    window.UJ.nucmesh = { configured: () => true, configure: () => {},
+      fetchNucleus: async () => ({
+        positions: new Float32Array([0,0,0, 100,0,0, 0,100,0, 0,0,100]),
+        indices: new Uint32Array([0,1,2, 0,1,3, 0,2,3, 1,2,3]) }) };
+    window.tracingExtraRootsFor = tracingExtraRootsFor = async () => [];
+    window.tracingProposedNucsFor = tracingProposedNucsFor = async () => [];
+    const parts = await tracingSegParts({ root: "1", nuc: "2" }, [], {});
+    /* ...and what the Blender script makes of it: _coll(group). */
+    const py = UJ.traceloft.blenderPy(parts.concat([{ name: "Lysosome 1", kind: "lysosome",
+      color: "#9c27b0", rings: [{ z: 400, points: [[400000,230000],[400100,230000],
+        [400100,230100],[400000,230100]] }, { z: 401, points: [[400000,230000],[400100,230000],
+        [400100,230100],[400000,230100]] }] }]), [4, 4, 40], { title: "t" });
+    return { groups: parts.map(q => q.group || q.kind),
+             colls: (py.match(/_add\('[^']*', '([^']*)'/g) || []) };
+  });
+  if (grp.noCard) console.log("  (no tracing card on this page)");
+  else {
+    ok((grp.groups || []).join(",") === "Segmentation,Segmentation",
+       "the published cell and nucleus are filed under Segmentation, not under the same kind as "
+       + "the outlines he drew — so one tick in Blender's outliner hides the pair and leaves "
+       + "his own", (grp.groups || []).join(", ") || "none");
+    ok((grp.colls || []).join(" ").indexOf("Segmentation") >= 0,
+       "...and the Blender script makes that collection", (grp.colls || []).join("  ") || "none");
+  }
+
+  console.log("\nand the script opens in a white room");
+  const room = await p.evaluate(() => {
+    const py = UJ.traceloft.blenderPy([{ name: "Whole cell", color: "#cddc39",
+      rings: [{ z: 400, points: [[400000,230000],[400100,230000],[400100,230100],[400000,230100]] },
+              { z: 401, points: [[400000,230000],[400100,230000],[400100,230100],[400000,230100]] }]
+    }], [4, 4, 40], { title: "t" });
+    return { world: /_bg\.inputs\[0\]\.default_value = \(1\.0, 1\.0, 1\.0, 1\.0\)/.test(py),
+             std: /view_transform = 'Standard'/.test(py),
+             vp: /background_color = \(1\.0, 1\.0, 1\.0\)/.test(py),
+             mat: /shading\.type = 'MATERIAL'/.test(py),
+             guarded: /getattr\(getattr\(bpy\.context, 'screen', None\), 'areas', \[\]\)/.test(py),
+             tries: (py.match(/except Exception: pass/g) || []).length };
+  });
+  ok(room.world && room.std,
+     "the script sets a white world AND the Standard view transform — a white world alone "
+     + "renders light grey, because AgX maps a scene-linear 1.0 to about three-quarters",
+     "world " + room.world + ", Standard " + room.std);
+  ok(room.vp && room.mat,
+     "...and the viewport too, because Solid shading does not use the world at all — and in "
+     + "Material Preview, since Solid fakes transparency with a screen-door dither, which is the "
+     + "speckle in his screenshot", "background " + room.vp + ", Material Preview " + room.mat);
+  ok(room.guarded && room.tries >= 6,
+     "...each in its own try, and the viewport loop guarded, because bpy.context.screen is None "
+     + "under `blender --python` and a script that dies there leaves half a scene",
+     "guarded " + room.guarded + ", " + room.tries + " tries");
 
   /* \u2500\u2500 AND A FORM THAT NEEDS NO IMPORTER AT ALL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-10
      S\u00f8ren: *"I see now that .glb does not open naturally in Blender"* \u2014 and, asked which of
@@ -802,7 +1058,7 @@ const ok = (c, what, d) => {
       const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
       const json = JSON.parse(new TextDecoder().decode(
         u8.subarray(20, 20 + dv.getUint32(12, true))));
-      const g = json.accessors.filter(x => x.type === "VEC3")[0];
+      const g = json.accessors.filter(x => x.type === "VEC3" && x.min)[0];
       /* The VERTEX line only: the line after each `_add(` call. The face list below it is
          tuples of integers and would otherwise be measured as geometry. */
       const rows = txt.split("\n");
