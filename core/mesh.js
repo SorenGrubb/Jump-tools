@@ -1484,7 +1484,11 @@ UJ.mesh=(()=>{
     return out;
   }
 
-  return {downloadRoot,downloadRootPptx,computeVolume,clearMeshNotFoundCache,forgetRootNotFound,currentFragmentCount,
+  /* Nanometres per unit of the positions fetchCombinedMesh hands back -- `const scale=1000;
+     // micrometres` above. Exported for the same reason core/nucmesh.js exports its own: a
+     caller that restates a unit is a caller that can be wrong about it alone. 2026-10-11. */
+  return {unitNm:1000,
+          downloadRoot,downloadRootPptx,computeVolume,clearMeshNotFoundCache,forgetRootNotFound,currentFragmentCount,
           fetchCombinedMesh,buildContactGrid,nearestInContactGrid,allContactPointsWithinThreshold,
           nearestApproach,
           /* The export half, for a tool that fetches its own geometry -- see its comment above. */

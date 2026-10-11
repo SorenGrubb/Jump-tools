@@ -113,7 +113,15 @@ UJ.nucmesh = (function(){
     return { positions: pos, indices: new Uint32Array(idx), fragments: parts.length };
   }
 
-  return { configure: configure, configured: configured, fetchNucleus: fetchNucleus,
+  /* ── THE UNIT, SAID HERE AND NOWHERE ELSE ──────────────────────────  2026-10-11
+     fetchNucleus divides by 1000 twenty lines up. A caller that restates that as a literal is the
+     same fact in a second place, and the second place is the one that goes wrong: the 3D export
+     declared nanometres, so a nucleus at 517,000 µm was read as 517,000 nm — a tenth of its size,
+     a millimetre from the cell, and the cell pushed into the corner of a mostly empty file.
+     Søren found it: *"even though the dataset coordinates are unticked now, the cell is not
+     centered!"* Nanometres per unit of what this module returns. */
+  return { unitNm: 1000,
+           configure: configure, configured: configured, fetchNucleus: fetchNucleus,
            _decodeFragment: decodeFragment, _httpBase: httpBase, _meshDir: meshDir };
 })();
 if (typeof module !== "undefined" && module.exports)

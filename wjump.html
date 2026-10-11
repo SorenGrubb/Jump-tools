@@ -120,7 +120,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-11 13:06</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-11 19:01</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -13022,8 +13022,12 @@ UJ.mesh3d = (function(){
                           saveName: "cell_" + root,
                           emptyMessage: "This cell has no mesh geometry to draw." };
             if (nm && nm.positions && nm.positions.length){
+              /* This one was right all along, which is why the pane has drawn the nucleus
+                 correctly for a month while the download did not. It asks anyway: a correct
+                 literal and a wrong literal look identical until somebody measures. */
               var ng = prepare(nm.positions, nm.indices,
-                               { unitNm: 1000, frame: { mid: geo.mid, span: geo.span } });
+                               { unitNm: ((UJ.nucmesh && UJ.nucmesh.unitNm) || 1000),
+                                 frame: { mid: geo.mid, span: geo.span } });
               if (!ng.empty){
                 /* `what` IS THE CONTRACT the panel's buttons read — see hasBoth() and
                    nucleusGeo(). Without it this panel showed two buttons where it should show
@@ -13952,7 +13956,15 @@ UJ.nucmesh = (function(){
     return { positions: pos, indices: new Uint32Array(idx), fragments: parts.length };
   }
 
-  return { configure: configure, configured: configured, fetchNucleus: fetchNucleus,
+  /* ── THE UNIT, SAID HERE AND NOWHERE ELSE ──────────────────────────  2026-10-11
+     fetchNucleus divides by 1000 twenty lines up. A caller that restates that as a literal is the
+     same fact in a second place, and the second place is the one that goes wrong: the 3D export
+     declared nanometres, so a nucleus at 517,000 µm was read as 517,000 nm — a tenth of its size,
+     a millimetre from the cell, and the cell pushed into the corner of a mostly empty file.
+     Søren found it: *"even though the dataset coordinates are unticked now, the cell is not
+     centered!"* Nanometres per unit of what this module returns. */
+  return { unitNm: 1000,
+           configure: configure, configured: configured, fetchNucleus: fetchNucleus,
            _decodeFragment: decodeFragment, _httpBase: httpBase, _meshDir: meshDir };
 })();
 if (typeof module !== "undefined" && module.exports)
@@ -21843,7 +21855,8 @@ async function tracingSegParts(g, missed, have){
       try { extra = (await tracingExtraRootsFor(nuc, root)) || []; } catch (_ex){ extra = []; }
       var m = await UJ.mesh.fetchCombinedMesh(root, null, false, extra);
       if (m && m.positions && m.positions.length)
-        /* MICROMETRES — core/mesh.js's own frame, stated at its nm -> µm line. */
+        /* THE MODULE'S OWN ANSWER, not a literal here. core/mesh.js returns micrometres and
+           says so with unitNm; restating it was how the nucleus below came to be wrong. */
         /* ITS OWN COLLECTION, so one tick in Blender's outliner hides the published pair
            and leaves what he drew. Søren: *"the primary cilium is not very clear"* — it was a
            thin thing inside a root-ID mesh that fills the frame, and `kind` put that mesh in the
@@ -21851,7 +21864,8 @@ async function tracingSegParts(g, missed, have){
         out.push({ name: "Cell (segmentation)", kind: "cell", group: "Segmentation",
                    color: "#ff3b3b",
                    alpha: tracingGlbAlpha("cell", false),
-                   scaleToNm: 1000, positions: m.positions, indices: m.indices });
+                   scaleToNm: (UJ.mesh.unitNm || 1000),
+                   positions: m.positions, indices: m.indices });
     } catch (e){ missed.push("the cell mesh (" + String(e && e.message || e) + ")"); }
   }
   if (nuc && !tracingNucMeshReady())
@@ -21873,11 +21887,16 @@ async function tracingSegParts(g, missed, have){
     /* ONE STRUCTURE, as he asked: a proposed nucleus id is another piece of THIS nucleus, not a
        second object. Exactly what fetchCombinedMesh already does for proposed root ids. */
     if (pos.length)
-      /* NANOMETRES — core/nucmesh.js returns the legacy fragment vertices unscaled. */
+      /* NOT NANOMETRES. This said 1, on the belief that core/nucmesh.js returned the legacy
+         fragment vertices unscaled; it divides them by 1000 and says so in a comment. A nucleus
+         at 517,000 µm was therefore read as 517,000 nm — a tenth of a millimetre from the dataset
+         origin and a thousandth of its true size — which put a 930 µm bounding box around a
+         200 µm cell and pushed it into the corner. Ask the module. 2026-10-11. */
       out.push({ name: "Nucleus (segmentation)", kind: "nucleus", group: "Segmentation",
                  color: "#3a72d8",
                  alpha: tracingGlbAlpha("nucleus", false),
-                 scaleToNm: 1, positions: new Float32Array(pos), indices: new Uint32Array(idx) });
+                 scaleToNm: (UJ.nucmesh.unitNm || 1000),
+                 positions: new Float32Array(pos), indices: new Uint32Array(idx) });
   }
   return out;
 }

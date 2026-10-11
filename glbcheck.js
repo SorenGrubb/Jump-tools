@@ -314,9 +314,14 @@ const ok = (c, what, d) => {
        "...the root ID most see-through of all, because everything else is inside it, and the "
        + "nucleus less so because its shape is worth seeing",
        "cell " + cellSeg.alpha + ", nucleus " + nucSeg.alpha);
-    ok(cellSeg.scale === 1000 && nucSeg.scale === 1,
-       "...each declaring its own unit \u2014 core/mesh.js is micrometres, core/nucmesh.js is "
-       + "nanometres, and the lofter is nanometres",
+    /* THIS SAID core/nucmesh.js WAS NANOMETRES, and it is not: it divides by 1000 and says so
+       in a comment at that line. The assertion agreed with the code because both were wrong, and
+       it took Søren measuring a download \u2014 a nucleus printed as 0.0 \u00d7 0.0 \u00d7 0.0 a
+       millimetre from its cell \u2014 to find it. Corrected, not loosened: both are micrometres,
+       the lofter is nanometres, and each is now ASKED rather than restated. 2026-10-11. */
+    ok(cellSeg.scale === 1000 && nucSeg.scale === 1000,
+       "...each declaring its own unit \u2014 core/mesh.js and core/nucmesh.js both hand back "
+       + "micrometres, and the lofter nanometres",
        "cell \u00d7" + cellSeg.scale + ", nucleus \u00d7" + nucSeg.scale);
     ok((seg.asked.roots || []).join(",") === "864691136051278323,777,888",
        "...and the community's proposed root IDs are folded into the SAME structure, which is "
@@ -996,6 +1001,91 @@ const ok = (c, what, d) => {
      "...each in its own try, and the viewport loop guarded, because bpy.context.screen is None "
      + "under `blender --python` and a script that dies there leaves half a scene",
      "guarded " + room.guarded + ", " + room.tries + " tries");
+
+  /* ── AND THE PUBLISHED PARTS LAND ON THE CELL ─────────────────────────────────  2026-10-11
+     Søren: *"Even though the dataset coordinates are unticked now, the cell is not centered!"*
+     His file, measured:
+
+       Cell (segmentation)     span 202 x 235 x 143 µm   centre  418, -438,  334
+       Nucleus (segmentation)  span   0 x   0 x   0 µm   centre -517,  474, -368
+       every node's translation [0, 0, 0]
+
+     The translations were zero, so the tick was innocent and "centred" did what it says — on a
+     bounding box 930 µm across, because the nucleus had collapsed to a dot a millimetre away.
+     core/nucmesh.js divides by 1000 and SAYS so; tracingSegParts declared `scaleToNm: 1`.
+
+     THE OLD UNIT ASSERTION COULD NOT HAVE CAUGHT THIS. It built its own part with
+     `scaleToNm: 1000` and checked that the lofter and a 1000-scaled mesh agree — the mechanism,
+     not the declaration. This drives the REAL tracingSegParts, with stubs that return what the
+     real modules return, in the unit they really return it in.
+
+     WHAT IS ASSERTED:
+       - the published cell and nucleus declare the unit their own module declares, not a literal
+       - and, end to end, a nucleus inside a cell comes out INSIDE it rather than a millimetre away
+       - ...and keeps its size, which is the other half of a wrong unit */
+  console.log("\nand the published parts land on the cell, in the cell's own unit");
+  const unit = await p.evaluate(async () => {
+    if (typeof tracingSegParts !== "function") return { noCard: true };
+    /* A cell 20 µm across at a REAL dataset place, and a nucleus 10 µm across inside it. Both in
+       MICROMETRES, because that is what core/mesh.js and core/nucmesh.js both hand back — the
+       stubs lie about nothing. */
+    const box = (cx, cy, cz, h) => {
+      const v = [], f = [];
+      for (let i = 0; i < 8; i++)
+        v.push(cx + ((i & 1) ? h : -h), cy + ((i & 2) ? h : -h), cz + ((i & 4) ? h : -h));
+      const q = [[0,1,3,2],[4,6,7,5],[0,4,5,1],[2,3,7,6],[0,2,6,4],[1,5,7,3]];
+      q.forEach(c => f.push(c[0], c[1], c[2], c[0], c[2], c[3]));
+      return { positions: new Float32Array(v), indices: new Uint32Array(f) };
+    };
+    window.UJ.mesh = window.UJ.mesh || {};
+    const realUnit = UJ.mesh.unitNm;
+    UJ.mesh.fetchCombinedMesh = async () => box(418, 438, 334, 10);
+    window.UJ.nucmesh = { unitNm: 1000, configured: () => true, configure: () => {},
+      fetchNucleus: async () => box(418, 438, 334, 5) };
+    window.tracingExtraRootsFor = tracingExtraRootsFor = async () => [];
+    window.tracingProposedNucsFor = tracingProposedNucsFor = async () => [];
+    const parts = await tracingSegParts({ root: "1", nuc: "2" }, [], {});
+    const byName = {};
+    parts.forEach(q => { byName[q.name] = q; });
+    /* End to end: through glbParts, which is where a part's declared unit is actually applied. */
+    const prep = UJ.traceloft.glbParts(parts, [4, 4, 40]);
+    const bb = (q) => {
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < q.xyz.length; i += 3)
+        for (let k = 0; k < 3; k++){
+          if (q.xyz[i + k] < lo[k]) lo[k] = q.xyz[i + k];
+          if (q.xyz[i + k] > hi[k]) hi[k] = q.xyz[i + k];
+        }
+      return { mid: [0,1,2].map(k => (lo[k] + hi[k]) / 2),
+               span: Math.max.apply(null, [0,1,2].map(k => hi[k] - lo[k])) };
+    };
+    const cell = bb(prep.parts.filter(q => /Cell/.test(q.name))[0]);
+    const nuc = bb(prep.parts.filter(q => /Nucleus/.test(q.name))[0]);
+    return { declaredCell: (byName["Cell (segmentation)"] || {}).scaleToNm,
+             declaredNuc: (byName["Nucleus (segmentation)"] || {}).scaleToNm,
+             moduleUnit: realUnit,
+             apart: Math.max.apply(null, [0,1,2].map(k => Math.abs(cell.mid[k] - nuc.mid[k]))),
+             cellSpan: cell.span, nucSpan: nuc.span };
+  });
+  if (unit.noCard) console.log("  (no tracing card on this page)");
+  else {
+    ok(unit.declaredNuc === 1000,
+       "the published nucleus declares the unit core/nucmesh.js declares — it divides by 1000 "
+       + "and says so, and `scaleToNm: 1` here is what put a dot a millimetre from the cell",
+       "declared " + unit.declaredNuc);
+    ok(unit.declaredCell === 1000 && (unit.moduleUnit === undefined || unit.moduleUnit === 1000),
+       "...and the published cell likewise, from core/mesh.js's own unitNm rather than a literal "
+       + "— a correct literal and a wrong one look identical until somebody measures",
+       "declared " + unit.declaredCell + ", module says " + unit.moduleUnit);
+    ok(unit.apart < 0.1,
+       "and end to end, a nucleus drawn INSIDE a cell comes out inside it: the two centres are "
+       + "on top of each other, not a millimetre apart",
+       unit.apart.toFixed(3) + " µm apart");
+    ok(unit.nucSpan > 9 && unit.nucSpan < 11 && unit.cellSpan > 19 && unit.cellSpan < 21,
+       "...and each keeps its size, which is the other half of a wrong unit — his nucleus came "
+       + "out a thousandth of itself and printed as 0.0 × 0.0 × 0.0",
+       "cell " + unit.cellSpan.toFixed(1) + " µm, nucleus " + unit.nucSpan.toFixed(1) + " µm");
+  }
 
   /* \u2500\u2500 AND A FORM THAT NEEDS NO IMPORTER AT ALL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-10
      S\u00f8ren: *"I see now that .glb does not open naturally in Blender"* \u2014 and, asked which of

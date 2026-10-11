@@ -5420,7 +5420,8 @@ async function tracingSegParts(g, missed, have){
       try { extra = (await tracingExtraRootsFor(nuc, root)) || []; } catch (_ex){ extra = []; }
       var m = await UJ.mesh.fetchCombinedMesh(root, null, false, extra);
       if (m && m.positions && m.positions.length)
-        /* MICROMETRES — core/mesh.js's own frame, stated at its nm -> µm line. */
+        /* THE MODULE'S OWN ANSWER, not a literal here. core/mesh.js returns micrometres and
+           says so with unitNm; restating it was how the nucleus below came to be wrong. */
         /* ITS OWN COLLECTION, so one tick in Blender's outliner hides the published pair
            and leaves what he drew. Søren: *"the primary cilium is not very clear"* — it was a
            thin thing inside a root-ID mesh that fills the frame, and `kind` put that mesh in the
@@ -5428,7 +5429,8 @@ async function tracingSegParts(g, missed, have){
         out.push({ name: "Cell (segmentation)", kind: "cell", group: "Segmentation",
                    color: "#ff3b3b",
                    alpha: tracingGlbAlpha("cell", false),
-                   scaleToNm: 1000, positions: m.positions, indices: m.indices });
+                   scaleToNm: (UJ.mesh.unitNm || 1000),
+                   positions: m.positions, indices: m.indices });
     } catch (e){ missed.push("the cell mesh (" + String(e && e.message || e) + ")"); }
   }
   if (nuc && !tracingNucMeshReady())
@@ -5450,11 +5452,16 @@ async function tracingSegParts(g, missed, have){
     /* ONE STRUCTURE, as he asked: a proposed nucleus id is another piece of THIS nucleus, not a
        second object. Exactly what fetchCombinedMesh already does for proposed root ids. */
     if (pos.length)
-      /* NANOMETRES — core/nucmesh.js returns the legacy fragment vertices unscaled. */
+      /* NOT NANOMETRES. This said 1, on the belief that core/nucmesh.js returned the legacy
+         fragment vertices unscaled; it divides them by 1000 and says so in a comment. A nucleus
+         at 517,000 µm was therefore read as 517,000 nm — a tenth of a millimetre from the dataset
+         origin and a thousandth of its true size — which put a 930 µm bounding box around a
+         200 µm cell and pushed it into the corner. Ask the module. 2026-10-11. */
       out.push({ name: "Nucleus (segmentation)", kind: "nucleus", group: "Segmentation",
                  color: "#3a72d8",
                  alpha: tracingGlbAlpha("nucleus", false),
-                 scaleToNm: 1, positions: new Float32Array(pos), indices: new Uint32Array(idx) });
+                 scaleToNm: (UJ.nucmesh.unitNm || 1000),
+                 positions: new Float32Array(pos), indices: new Uint32Array(idx) });
   }
   return out;
 }

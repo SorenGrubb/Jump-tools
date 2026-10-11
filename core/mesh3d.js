@@ -1731,8 +1731,12 @@ UJ.mesh3d = (function(){
                           saveName: "cell_" + root,
                           emptyMessage: "This cell has no mesh geometry to draw." };
             if (nm && nm.positions && nm.positions.length){
+              /* This one was right all along, which is why the pane has drawn the nucleus
+                 correctly for a month while the download did not. It asks anyway: a correct
+                 literal and a wrong literal look identical until somebody measures. */
               var ng = prepare(nm.positions, nm.indices,
-                               { unitNm: 1000, frame: { mid: geo.mid, span: geo.span } });
+                               { unitNm: ((UJ.nucmesh && UJ.nucmesh.unitNm) || 1000),
+                                 frame: { mid: geo.mid, span: geo.span } });
               if (!ng.empty){
                 /* `what` IS THE CONTRACT the panel's buttons read — see hasBoth() and
                    nucleusGeo(). Without it this panel showed two buttons where it should show
