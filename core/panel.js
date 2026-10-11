@@ -816,17 +816,29 @@ if (typeof document !== "undefined" && !window.__organJumpArmed){
    Drive files, on a press, for the cell being looked at. Cached by structureId for the session,
    because contours do not change: a new version of a tracing is a new groupId and the index says so.
    Søren asked for an expandable section; this is the half of that which is not decoration. */
+/* AND IT HANDS BACK A PROMISE.  2026-10-11. Its job was to re-render when the contours landed,
+   so it was fire-and-forget and returned nothing. The "Show in 3D with organelles" button has to
+   WAIT for the same contours, and a second copy of this request is the duplication this project
+   keeps paying for — so the one request now also tells whoever asks when it is done. The pending
+   promise is kept, so a caller arriving mid-flight waits for the flight rather than being told
+   there is nothing to wait for. */
+var PANEL_ORGAN_WAIT = null;
 function organFetchRings(nid, root, trs){
-  if (PANEL_ORGAN_BUSY || typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return Promise.resolve();
+  if (PANEL_ORGAN_BUSY) return PANEL_ORGAN_WAIT || Promise.resolve();
   var want = trs.filter(function(t){
     return t && t.structureId && !t.rings && !PANEL_ORGAN_RINGS[t.structureId];
   });
-  if (!want.length) return;
+  if (!want.length) return Promise.resolve();
   PANEL_ORGAN_BUSY = true;
+  var settle = null;
+  PANEL_ORGAN_WAIT = new Promise(function(r){ settle = r; });
   var left = want.length;
   var done = function(){
     if (--left > 0) return;
     PANEL_ORGAN_BUSY = false;
+    PANEL_ORGAN_WAIT = null;
+    if (settle) settle();
     try { renderOrganelleSection(nid, root); } catch (_e){}
     /* The whole cell and the nucleus are fetched with the organelles since this morning, so the
        list above can carry the same warning as the rows below. Its own 60-second cache makes this
@@ -844,7 +856,7 @@ function organFetchRings(nid, root, trs){
       })
       .catch(function(){ want.forEach(function(t){ PANEL_ORGAN_RINGS[t.structureId] = []; }); })
       .then(function(){ left = 1; done(); });
-    return;
+    return PANEL_ORGAN_WAIT;
   }
   want.forEach(function(t){
     fetch(REPORT_ENDPOINT + "?tracings=1&structureId=" + encodeURIComponent(t.structureId)
@@ -1036,6 +1048,26 @@ function renderOrganelleSection(nid, root){
   var noRings = trs.filter(function(t){ return !(t.rings && t.rings.length); });
   var bodyWith = body.filter(function(t){ return t.rings && t.rings.length; });
   var bodyNo = body.filter(function(t){ return !(t.rings && t.rings.length); });
+  /* ── AND THE SAME PICTURE WITHOUT LEAVING THE PAGE ──────────────────────────  2026-10-11
+     Søren, pointing at the ROOT ID row: *"If organelles are traced, here should also be a show in
+     3D with organelles button."* The button below this list opens Neuroglancer; that row draws
+     the cell in the page. This section is the one place that knows what is traced on this cell,
+     so it OFFERS and core/mesh3d.js decides where the button goes and what it looks like.
+
+     The COUNT comes from the index, which carries no contours and is therefore free; the contours
+     are fetched on the click by the same organFetchRings() the list uses, which now hands back a
+     promise so the click can wait for it. */
+  if (window.UJ && UJ.mesh3d && typeof UJ.mesh3d.offerTraced === "function")
+    UJ.mesh3d.offerTraced(root, trs.length ? { n: trs.length, get: function(){
+      return Promise.resolve(organFetchRings(nid, root, trs.concat(body))).then(function(){
+        trs.forEach(fromCache); body.forEach(fromCache);
+        /* The cell and its nucleus first, so the outermost outlines are read first, exactly as
+           the Blender export orders them. */
+        return body.filter(function(t){ return t.rings && t.rings.length; })
+          .concat(trs.filter(function(t){ return t.rings && t.rings.length; }));
+      });
+    } } : null);
+
   var r = UJ.organellelink.pair(anns, withRings);
 
   var rows = [];

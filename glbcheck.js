@@ -662,6 +662,85 @@ const ok = (c, what, d) => {
        (see.missed2 || []).join(", ") || "said nothing");
   }
 
+  /* ── PLACED OR CENTRED IS HIS TO CHOOSE ───────────────────────────────────────  2026-10-11
+     Søren, of a cell opened in Windows 3D Viewer: *"the 3D model in the tracing dataset looks
+     empty because it is not centered. Can we do something so that it is centered when opening
+     alone but has the correct coordinate when opening in Blender?"*
+
+     Not in one file, and saying so was the answer: the geometry is in ONE place, and what differs
+     between viewers is only whether they frame the scene they were given. Blender frames on Home;
+     Windows 3D Viewer frames the origin, so a cell 1.6 mm away is an empty grey room.
+
+     So it is a tick, default ON. WHAT IS ASSERTED:
+       - the tick is there, and ticked, so today's behaviour is the default
+       - unticked, the GLB sits at the origin — which is the whole of what Windows 3D Viewer needs
+       - ...and the Blender script centres WITH it, because two downloads of one cell that
+         disagree about where it is are worse than either position
+       - ticked, both are placed again, so this is a choice and not a retreat
+       - and the line says which it did, because a file whose position you cannot predict is
+         worse than either position */
+  console.log("\nand placed or centred is his to choose");
+  const pick = await p.evaluate(() => {
+    /* GUARDED ON THE CARD, NOT ON THE FEATURE. Guarding on tracingPlaceTickHtml meant a build
+       without the tick reported "no tracing card on this page" and passed \u2014 a check that
+       excuses its own subject. The card is what some pages lack; the tick is what must be there
+       when it does. */
+    if (typeof tracingGlbSave !== "function") return { noCard: true };
+    if (typeof tracingPlaceTickHtml !== "function") return { missing: true };
+    const sq = (z, cx, cy, h) => ({ z: z,
+      points: [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]] });
+    const rings = [];
+    for (let z = 400; z <= 406; z++) rings.push(sq(z, 400000, 230000, 250));
+    const parts = [{ name: "Whole cell", rings: rings, color: "#cddc39", alpha: 0.3 }];
+    const res = [4, 4, 40];
+    const tx = (u8) => {
+      const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      const j = JSON.parse(new TextDecoder().decode(u8.subarray(20, 20 + dv.getUint32(12, true))));
+      return (j.nodes[0] || {}).translation || [0, 0, 0];
+    };
+    const loc = (py) => (py.match(/_add\('Whole cell',[^[]*?,\s*\(([-0-9.,]+)\),\s*\[/) || [])[1];
+    /* The tick, through the real list, so what is read is what he would click. */
+    const d = document.createElement("div");
+    d.innerHTML = tracingPlaceTickHtml();
+    document.body.appendChild(d);
+    const el = document.getElementById("tracingPlaceAt");
+    const was = el ? el.checked : null;
+    const run = () => ({ glb: tx(UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() })),
+                         py: loc(UJ.traceloft.blenderPy(parts, res,
+                               { title: "t", place: tracingPlaceWanted() })),
+                         say: tracingPlaceSay() });
+    const on = run();
+    el.checked = false;
+    const off = run();
+    el.checked = true;
+    const back = run();
+    d.remove();
+    return { was: was, on: on, off: off, back: back };
+  });
+  if (pick.noCard) console.log("  (no tracing card on this page)");
+  else if (pick.missing)
+    ok(false, "the card offers the Dataset coordinates tick", "tracingPlaceTickHtml is not here");
+  else {
+    ok(pick.was === true,
+       "the tick is there and ticked, so the placement he asked for yesterday is still the default",
+       String(pick.was));
+    ok(Math.max.apply(null, (pick.off.glb || []).map(Math.abs)) === 0,
+       "unticked, the GLB sits at the origin — which is the whole of what a viewer that frames "
+       + "the origin rather than the scene needs in order to show it",
+       JSON.stringify(pick.off.glb));
+    ok(pick.off.py === "0,0,0",
+       "...and the Blender script centres WITH it, because two downloads of one cell that disagree "
+       + "about where it is are worse than either position", String(pick.off.py));
+    ok(Math.max.apply(null, (pick.on.glb || []).map(Math.abs)) > 100
+       && pick.on.py !== "0,0,0" && pick.back.py === pick.on.py,
+       "ticked, both are placed again — a choice, not a retreat",
+       JSON.stringify(pick.on.glb) + " / " + String(pick.on.py));
+    ok(/dataset coordinates/i.test(pick.on.say) && /[Cc]entred on itself/.test(pick.off.say)
+       && pick.on.say !== pick.off.say,
+       "...and the line says which it did, because a file whose position you cannot predict is "
+       + "worse than either position", pick.off.say.slice(0, 70));
+  }
+
   /* \u2500\u2500 AND A FORM THAT NEEDS NO IMPORTER AT ALL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-10
      S\u00f8ren: *"I see now that .glb does not open naturally in Blender"* \u2014 and, asked which of
      the three it was: *"dragging did not work and no option in the import"*. That is his glTF

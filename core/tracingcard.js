@@ -4749,7 +4749,8 @@ function tracingRenderShared(){
     + '<div class="hint" id="tracingSplitSayEl" style="margin-top:5px"></div>'
     + '<div id="tracingSplitOut"></div></div>';
   host.innerHTML = splitBox
-    + '<label>In the dataset, by cell — open one to add to it or correct it</label>'
+    + '<label>In the dataset, by cell — open one to add to it or correct it'
+    + tracingPlaceTickHtml() + '</label>'
     + groups.map(function(g, gi){
         const type = (g.items.filter(function(x){ return x.t.cellType; })[0] || { t: {} }).t.cellType || "";
         return '<div ' + TRACING_CELL_BOX + ' data-g="' + gi + '">'
@@ -5235,6 +5236,36 @@ function tracingObjOf(name, rings, res){
    .blend opens Blender by double-click — but it can stop being a puzzle. The remedy is one
    tick, so the page says it rather than leaving each person to work it out: on the button
    before the click, and in the line after it. ONE string, so the two cannot drift. */
+/* ── PLACED OR CENTRED, AND HE CHOOSES ─────────────────────────────  2026-10-11
+   Søren, of a cell opened in Windows 3D Viewer: *"the 3D model in the tracing dataset looks empty
+   because it is not centered. Can we do something so that it is centered when opening alone but
+   has the correct coordinate when opening in Blender?"*
+
+   Not in one file: the geometry is in one place, and what differs between viewers is only whether
+   they frame the scene they were given. Blender frames on Home; Windows 3D Viewer frames the
+   origin, so a cell 1.6 mm away is an empty grey room.
+
+   So: one tick, default ON, read at the save and handed to BOTH writers. A tick that moved the
+   GLB and not the script would make the two downloads of one cell disagree about where it is,
+   which is what yesterday's check exists to catch. */
+function tracingPlaceWanted(){
+  var el = document.getElementById("tracingPlaceAt");
+  return el ? !!el.checked : true;
+}
+function tracingPlaceTickHtml(){
+  return '<label style="font-size:11px;color:var(--mut);margin-left:6px" title="Ticked, a 3D '
+    + 'model download carries its dataset coordinates, so several cells opened in one Blender '
+    + 'scene land in their true relative positions. Unticked, it is centred on itself, which is '
+    + 'what a viewer that frames the origin rather than the scene — Windows 3D Viewer, Paint '
+    + '3D — needs in order to show it at all.">'
+    + '<input type="checkbox" id="tracingPlaceAt" checked style="width:auto;vertical-align:-1px"> '
+    + 'Dataset coordinates</label>';
+}
+function tracingPlaceSay(){
+  return tracingPlaceWanted()
+    ? "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin."
+    : "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates above if you want several of these to line up in one scene.";
+}
 var TRACING_PLACE_HELP = "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
 /* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
@@ -5296,14 +5327,15 @@ function tracingGlbParts(got, alone){
 }
 function tracingPySave(parts, filename, title){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-  var txt = UJ.traceloft.blenderPy(parts, res, { title: title || "", file: filename });
+  var txt = UJ.traceloft.blenderPy(parts, res, { title: title || "", file: filename,
+                                                 place: tracingPlaceWanted() });
   if (!txt) return 0;
   tracingSaveBlob(new Blob([txt], { type: "text/x-python" }), filename);
   return parts.length;
 }
 function tracingGlbSave(parts, filename){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-  var bytes = UJ.traceloft.glb(parts, res);
+  var bytes = UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() });
   if (!bytes) return 0;
   tracingSaveBlob(new Blob([bytes], { type: "model/gltf-binary" }), filename);
   return parts.length;
@@ -5420,7 +5452,7 @@ async function tracingOneGlb(sid, btn, fmt){
                     ? "Saved " + parts[0].name + " as a Blender script \u2014 open it in "
                       + "Blender\u2019s Scripting tab and press Run. Micrometres."
                     : "Saved " + parts[0].name + " as a 3D model (GLB, micrometres). "
-                      + "Blender: File \u203a Import \u203a glTF 2.0. " + TRACING_PLACE_HELP
+                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay()
                       + " " + TRACING_GLTF_HELP)
                  : "Nothing could be meshed from that tracing.", !n);
   } catch (e){
@@ -5460,7 +5492,7 @@ async function tracingCellGlb(g, btn, fmt){
       + (see ? ", with the " + parts.filter(function(q){ return q.alpha < 1; })
                  .map(function(q){ return q.name.toLowerCase(); }).join(" and ")
              + " see-through so what is inside shows." : ".")
-      + " Micrometres. " + TRACING_PLACE_HELP
+      + " Micrometres. " + tracingPlaceSay()
       + ((fmt === "py") ? "" : " " + TRACING_GLTF_HELP)
       + tracingSegSkipSay(g, have)
       + (missed.length ? " Could not fetch " + missed.join(", ") + "." : "")

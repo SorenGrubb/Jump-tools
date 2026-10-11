@@ -1534,6 +1534,25 @@ UJ.mesh3d = (function(){
     } catch (e){ return Promise.resolve(null); }
   }
 
+  /* ── THE CELL WITH THE ORGANELLES SOMEBODY DREW ─────────────────────────────  2026-10-11
+     Søren, pointing at the ROOT ID row: *"If organelles are traced, here should also be a show in
+     3D with organelles button."*
+
+     This module knows where that row is and how to draw a cell with things inside it. It has no
+     idea what anybody has traced, and should not: core/panel.js builds the Organelles list and
+     knows exactly that. So the page OFFERS — a count, and a way to get the contours — and this
+     decides where the button goes, what it says and what the click does.
+
+     KEYED BY ROOT ID, because the card is rebuilt for every cell and an offer left over from the
+     last one would promise organelles belonging to somebody else. Offering null withdraws it. */
+  var TRACED = {}, TRACED_SYNC = [];
+  function offerTraced(root, offer){
+    root = String(root || "");
+    if (!root) return;
+    if (offer && offer.n > 0) TRACED[root] = offer; else delete TRACED[root];
+    TRACED_SYNC.forEach(function(f){ try { f(); } catch (_e){} });
+  }
+
   function install(opts){
     var o = opts || {};
     var fetcher = o.fetch || function(id, onProgress){
@@ -1595,6 +1614,13 @@ UJ.mesh3d = (function(){
       if (!root || root === "0") return;
       dl.setAttribute("data-m3d", "1");
       var btn = buttonFor(root, dl);
+      /* Its own button rather than a tick on the first: looking at the cell alone is the cheap
+         thing, and the organelles cost a second round of fetches. Hidden until panel.js offers,
+         so it is never a button for a cell that has nothing to put in it. */
+      var btn2 = buttonFor(root, dl);
+      btn2.style.display = "none";
+      btn2.title = "Draw this cell in the page with every outline traced on it, each in the "
+                 + "colour it was drawn in, inside the see-through cell.";
       var host = document.createElement("div");
       host.className = "m3d-host";
       /* After the ROW the button sits in, not after the button: these panels are flex rows, and a
@@ -1606,6 +1632,7 @@ UJ.mesh3d = (function(){
          before the download 3D model". Looking at a cell in the page is the cheap thing you do
          first; downloading a .glb is what you do once you know you want it. */
       dl.parentNode.insertBefore(btn, dl);
+      dl.parentNode.insertBefore(btn2, dl);
 
       /* MIRROR THE TOOL'S OWN JUDGEMENT, on two counts.
 
@@ -1619,18 +1646,33 @@ UJ.mesh3d = (function(){
          an invisible sibling would be a button for a cell that has nothing to draw.
 
          Watched rather than read once, because the tools set both as their panels render. */
+      function syncTraced(){
+        var t = TRACED[root];
+        var d = dl.style ? dl.style.display : "";
+        btn2.disabled = !!dl.disabled;
+        btn2.style.display = (t && d !== "none") ? d : "none";
+        if (t) btn2.textContent = "Show in 3D with " + t.n + " organelle"
+                                + (t.n === 1 ? "" : "s");
+      }
       function mirror(){
         btn.disabled = !!dl.disabled;
         var d = dl.style ? dl.style.display : "";
         if (btn.style.display !== d) btn.style.display = d;
         if (host.style.display !== d) host.style.display = d;
+        syncTraced();
       }
+      TRACED_SYNC.push(syncTraced);
       mirror();
       if (window.MutationObserver)
         new MutationObserver(mirror).observe(dl, { attributes:true,
                                                    attributeFilter:["disabled","style"] });
 
-      btn.addEventListener("click", function(){
+      /* ONE HANDLER, ONE ARGUMENT. The whole of the difference between the two buttons is
+         whether the traced outlines go in, and everything else — the mesh, the nucleus, the
+         simplified and skipped notes, the verdict, the file name — is the same work. Two
+         handlers would be two chances for the plain view and the organelle view to disagree
+         about what cell they are showing. */
+      var runShow = function(btn, withTraced){
         if (btn.disabled) return;
         btn.disabled = true;
         var label = btn.textContent;
@@ -1709,13 +1751,48 @@ UJ.mesh3d = (function(){
                   + "Blender export.</span>";
               }
             }
-            show(host, geo, opts2);
+            if (!withTraced){ show(host, geo, opts2); return; }
+            /* IN THE CELL'S FRAME, like the nucleus above and for the same reason: a loft
+               centred on itself lands in the middle of the picture rather than where it is in
+               the cell, which looks right and is a lie. */
+            var offer = TRACED[root];
+            btn.textContent = "reading outlines…";
+            return Promise.resolve(offer && offer.get ? offer.get() : []).then(function(list){
+              var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
+              var gh = (opts2.ghosts || []).slice(), drawn = 0, lost = 0;
+              (list || []).forEach(function(s){
+                var lg = null;
+                try {
+                  if (s && (s.rings || []).length && window.UJ && UJ.traceloft)
+                    lg = UJ.traceloft.loft(s.rings, res);
+                } catch (_e){ lg = null; }
+                if (!lg || !lg.positions || !lg.positions.length){ lost++; return; }
+                var tg = prepare(lg.positions, lg.indices,
+                                 { unitNm: 1, frame: { mid: geo.mid, span: geo.span } });
+                if (tg.empty){ lost++; return; }
+                gh.push({ geo: tg, what: "tracing", alpha: 1,
+                          tint: hexToRgb(s.color, [0.25, 0.89, 0.55]) });
+                drawn++;
+              });
+              opts2.ghosts = gh;
+              /* See-through only now that there is something inside to see \u2014 the same rule
+                 the nucleus branch above follows, and for its reason. */
+              if (drawn) opts2.alpha = CELL_ALPHA_WITH_NUCLEUS;
+              opts2.lead = (opts2.lead ? opts2.lead + "<br>" : "")
+                + "<span class='hint'>" + (drawn ? drawn + " traced outline"
+                    + (drawn === 1 ? " is" : "s are") + " drawn inside it, each in the colour it "
+                    + "was drawn in" : "No traced outline could be drawn")
+                + (lost ? "; " + lost + " could not be read" : "") + ".</span>";
+              show(host, geo, opts2);
+            });
           });
         }).catch(function(e){
           host.innerHTML = "<div class='m3d'><div class='m3d-err'>Could not load the mesh: "
             + esc(e && e.message ? e.message : e) + "</div></div>";
         }).then(function(){ btn.disabled = false; btn.textContent = label; });
-      });
+      };
+      btn.addEventListener("click", function(){ runShow(btn, false); });
+      btn2.addEventListener("click", function(){ runShow(btn2, true); });
     }
 
     function sweep(){
@@ -1746,6 +1823,7 @@ UJ.mesh3d = (function(){
   }
 
   return { prepare: prepare, draw: draw, show: show, install: install, probe: probe,
+           offerTraced: offerTraced,
            sweep: sweepAgain,
            probePixels: probePixels, frame: frame, turn: turn, canSave: canSave,
            legend: legend,

@@ -120,7 +120,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-11 07:30</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-11 08:27</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -10898,9 +10898,15 @@ UJ.traceloft = (function(){
     L.push("# Blender: Scripting tab → Open → Run. No add-on, no File › Import.");
     L.push("#          or from a terminal:  blender --python " + (m.file || "this_file.py"));
     L.push("# One Blender unit is one MICROMETRE. Each object's MESH is local to its own middle");
-    L.push("# and the object is PLACED at voxel " + b.centreVoxel.join(", ") + " of this tool's");
-    L.push("# frame, so several of these run into one scene land in their true relative positions.");
-    L.push("# Home frames everything; Alt+G on an object clears its location to the world origin.");
+    if (m.place === false){
+      L.push("# and the scene is CENTRED ON ITSELF, so it opens framed. It came from voxel "
+             + b.centreVoxel.join(", ") + " of this tool's frame; tick Dataset coordinates on the");
+      L.push("# card if you want several of these to line up in one scene.");
+    } else {
+      L.push("# and the object is PLACED at voxel " + b.centreVoxel.join(", ") + " of this tool's");
+      L.push("# frame, so several of these run into one scene land in their true relative positions.");
+      L.push("# Home frames everything; Alt+G on an object clears its location to the world origin.");
+    }
     L.push("# Axes are Blender's: X = x, Y = -z, Z = -y, which is where the .glb of the same cell");
     L.push("# lands after import — cortical depth runs down Z with the pia at the top.");
     L.push("# This file fetches nothing and runs nothing: it is vertices, faces and materials.");
@@ -10949,7 +10955,8 @@ UJ.traceloft = (function(){
     /* BLENDER'S AXES, the same permutation the vertices get three lines down: X = x,
        Y = -z, Z = -y. This is where the .glb of the same cell lands after import, so the two
        downloads of one cell cannot contradict each other about where it is. */
-    var at = "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
+    var at = (m.place === false) ? "(0,0,0)"
+           : "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
     b.parts.forEach(function(q){
       var v = [];
       for (var i = 0; i < q.xyz.length; i += 3)
@@ -11034,7 +11041,12 @@ UJ.traceloft = (function(){
              centreVoxel: [0, 1, 2].map(function(k){
                return Math.round(mid[k] / (Number(res[k]) || 1)); }) };
   }
-  function glb(parts, resNm){
+  /* `opts.place === false` centres the scene on itself instead of putting it at its dataset
+     coordinates. Søren, 2026-10-11, of a cell opened in Windows 3D Viewer: *"the 3D model ... looks
+     empty because it is not centered"* — that viewer frames the origin rather than the scene, so a
+     cell 1.6 mm away is an empty grey room. One file cannot be in two places; the tick on the card
+     decides which, and hands the same answer to blenderPy() below. */
+  function glb(parts, resNm, opts){
     var prep = glbParts(parts, resNm);
     if (!prep) return null;
     var chunks = [], accessors = [], bufferViews = [], meshes = [], nodes = [], materials = [];
@@ -11051,7 +11063,8 @@ UJ.traceloft = (function(){
     };
     /* THE SAME FLIP THE VERTICES GET. Below, a vertex's y is negated for glTF's Y-up; the
        place has to be negated with it or the model is mirrored about the wrong plane. */
-    var place = [prep.offsetUm[0], -prep.offsetUm[1], prep.offsetUm[2]];
+    var place = (opts && opts.place === false) ? [0, 0, 0]
+              : [prep.offsetUm[0], -prep.offsetUm[1], prep.offsetUm[2]];
     prep.parts.forEach(function(q, qi){
       var n = q.xyz.length / 3;
       var pos = new Float32Array(q.xyz.length);
@@ -12674,6 +12687,25 @@ UJ.mesh3d = (function(){
     } catch (e){ return Promise.resolve(null); }
   }
 
+  /* ── THE CELL WITH THE ORGANELLES SOMEBODY DREW ─────────────────────────────  2026-10-11
+     Søren, pointing at the ROOT ID row: *"If organelles are traced, here should also be a show in
+     3D with organelles button."*
+
+     This module knows where that row is and how to draw a cell with things inside it. It has no
+     idea what anybody has traced, and should not: core/panel.js builds the Organelles list and
+     knows exactly that. So the page OFFERS — a count, and a way to get the contours — and this
+     decides where the button goes, what it says and what the click does.
+
+     KEYED BY ROOT ID, because the card is rebuilt for every cell and an offer left over from the
+     last one would promise organelles belonging to somebody else. Offering null withdraws it. */
+  var TRACED = {}, TRACED_SYNC = [];
+  function offerTraced(root, offer){
+    root = String(root || "");
+    if (!root) return;
+    if (offer && offer.n > 0) TRACED[root] = offer; else delete TRACED[root];
+    TRACED_SYNC.forEach(function(f){ try { f(); } catch (_e){} });
+  }
+
   function install(opts){
     var o = opts || {};
     var fetcher = o.fetch || function(id, onProgress){
@@ -12735,6 +12767,13 @@ UJ.mesh3d = (function(){
       if (!root || root === "0") return;
       dl.setAttribute("data-m3d", "1");
       var btn = buttonFor(root, dl);
+      /* Its own button rather than a tick on the first: looking at the cell alone is the cheap
+         thing, and the organelles cost a second round of fetches. Hidden until panel.js offers,
+         so it is never a button for a cell that has nothing to put in it. */
+      var btn2 = buttonFor(root, dl);
+      btn2.style.display = "none";
+      btn2.title = "Draw this cell in the page with every outline traced on it, each in the "
+                 + "colour it was drawn in, inside the see-through cell.";
       var host = document.createElement("div");
       host.className = "m3d-host";
       /* After the ROW the button sits in, not after the button: these panels are flex rows, and a
@@ -12746,6 +12785,7 @@ UJ.mesh3d = (function(){
          before the download 3D model". Looking at a cell in the page is the cheap thing you do
          first; downloading a .glb is what you do once you know you want it. */
       dl.parentNode.insertBefore(btn, dl);
+      dl.parentNode.insertBefore(btn2, dl);
 
       /* MIRROR THE TOOL'S OWN JUDGEMENT, on two counts.
 
@@ -12759,18 +12799,33 @@ UJ.mesh3d = (function(){
          an invisible sibling would be a button for a cell that has nothing to draw.
 
          Watched rather than read once, because the tools set both as their panels render. */
+      function syncTraced(){
+        var t = TRACED[root];
+        var d = dl.style ? dl.style.display : "";
+        btn2.disabled = !!dl.disabled;
+        btn2.style.display = (t && d !== "none") ? d : "none";
+        if (t) btn2.textContent = "Show in 3D with " + t.n + " organelle"
+                                + (t.n === 1 ? "" : "s");
+      }
       function mirror(){
         btn.disabled = !!dl.disabled;
         var d = dl.style ? dl.style.display : "";
         if (btn.style.display !== d) btn.style.display = d;
         if (host.style.display !== d) host.style.display = d;
+        syncTraced();
       }
+      TRACED_SYNC.push(syncTraced);
       mirror();
       if (window.MutationObserver)
         new MutationObserver(mirror).observe(dl, { attributes:true,
                                                    attributeFilter:["disabled","style"] });
 
-      btn.addEventListener("click", function(){
+      /* ONE HANDLER, ONE ARGUMENT. The whole of the difference between the two buttons is
+         whether the traced outlines go in, and everything else — the mesh, the nucleus, the
+         simplified and skipped notes, the verdict, the file name — is the same work. Two
+         handlers would be two chances for the plain view and the organelle view to disagree
+         about what cell they are showing. */
+      var runShow = function(btn, withTraced){
         if (btn.disabled) return;
         btn.disabled = true;
         var label = btn.textContent;
@@ -12849,13 +12904,48 @@ UJ.mesh3d = (function(){
                   + "Blender export.</span>";
               }
             }
-            show(host, geo, opts2);
+            if (!withTraced){ show(host, geo, opts2); return; }
+            /* IN THE CELL'S FRAME, like the nucleus above and for the same reason: a loft
+               centred on itself lands in the middle of the picture rather than where it is in
+               the cell, which looks right and is a lie. */
+            var offer = TRACED[root];
+            btn.textContent = "reading outlines…";
+            return Promise.resolve(offer && offer.get ? offer.get() : []).then(function(list){
+              var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
+              var gh = (opts2.ghosts || []).slice(), drawn = 0, lost = 0;
+              (list || []).forEach(function(s){
+                var lg = null;
+                try {
+                  if (s && (s.rings || []).length && window.UJ && UJ.traceloft)
+                    lg = UJ.traceloft.loft(s.rings, res);
+                } catch (_e){ lg = null; }
+                if (!lg || !lg.positions || !lg.positions.length){ lost++; return; }
+                var tg = prepare(lg.positions, lg.indices,
+                                 { unitNm: 1, frame: { mid: geo.mid, span: geo.span } });
+                if (tg.empty){ lost++; return; }
+                gh.push({ geo: tg, what: "tracing", alpha: 1,
+                          tint: hexToRgb(s.color, [0.25, 0.89, 0.55]) });
+                drawn++;
+              });
+              opts2.ghosts = gh;
+              /* See-through only now that there is something inside to see \u2014 the same rule
+                 the nucleus branch above follows, and for its reason. */
+              if (drawn) opts2.alpha = CELL_ALPHA_WITH_NUCLEUS;
+              opts2.lead = (opts2.lead ? opts2.lead + "<br>" : "")
+                + "<span class='hint'>" + (drawn ? drawn + " traced outline"
+                    + (drawn === 1 ? " is" : "s are") + " drawn inside it, each in the colour it "
+                    + "was drawn in" : "No traced outline could be drawn")
+                + (lost ? "; " + lost + " could not be read" : "") + ".</span>";
+              show(host, geo, opts2);
+            });
           });
         }).catch(function(e){
           host.innerHTML = "<div class='m3d'><div class='m3d-err'>Could not load the mesh: "
             + esc(e && e.message ? e.message : e) + "</div></div>";
         }).then(function(){ btn.disabled = false; btn.textContent = label; });
-      });
+      };
+      btn.addEventListener("click", function(){ runShow(btn, false); });
+      btn2.addEventListener("click", function(){ runShow(btn2, true); });
     }
 
     function sweep(){
@@ -12886,6 +12976,7 @@ UJ.mesh3d = (function(){
   }
 
   return { prepare: prepare, draw: draw, show: show, install: install, probe: probe,
+           offerTraced: offerTraced,
            sweep: sweepAgain,
            probePixels: probePixels, frame: frame, turn: turn, canSave: canSave,
            legend: legend,
@@ -20943,7 +21034,8 @@ function tracingRenderShared(){
     + '<div class="hint" id="tracingSplitSayEl" style="margin-top:5px"></div>'
     + '<div id="tracingSplitOut"></div></div>';
   host.innerHTML = splitBox
-    + '<label>In the dataset, by cell — open one to add to it or correct it</label>'
+    + '<label>In the dataset, by cell — open one to add to it or correct it'
+    + tracingPlaceTickHtml() + '</label>'
     + groups.map(function(g, gi){
         const type = (g.items.filter(function(x){ return x.t.cellType; })[0] || { t: {} }).t.cellType || "";
         return '<div ' + TRACING_CELL_BOX + ' data-g="' + gi + '">'
@@ -21429,6 +21521,36 @@ function tracingObjOf(name, rings, res){
    .blend opens Blender by double-click — but it can stop being a puzzle. The remedy is one
    tick, so the page says it rather than leaving each person to work it out: on the button
    before the click, and in the line after it. ONE string, so the two cannot drift. */
+/* ── PLACED OR CENTRED, AND HE CHOOSES ─────────────────────────────  2026-10-11
+   Søren, of a cell opened in Windows 3D Viewer: *"the 3D model in the tracing dataset looks empty
+   because it is not centered. Can we do something so that it is centered when opening alone but
+   has the correct coordinate when opening in Blender?"*
+
+   Not in one file: the geometry is in one place, and what differs between viewers is only whether
+   they frame the scene they were given. Blender frames on Home; Windows 3D Viewer frames the
+   origin, so a cell 1.6 mm away is an empty grey room.
+
+   So: one tick, default ON, read at the save and handed to BOTH writers. A tick that moved the
+   GLB and not the script would make the two downloads of one cell disagree about where it is,
+   which is what yesterday's check exists to catch. */
+function tracingPlaceWanted(){
+  var el = document.getElementById("tracingPlaceAt");
+  return el ? !!el.checked : true;
+}
+function tracingPlaceTickHtml(){
+  return '<label style="font-size:11px;color:var(--mut);margin-left:6px" title="Ticked, a 3D '
+    + 'model download carries its dataset coordinates, so several cells opened in one Blender '
+    + 'scene land in their true relative positions. Unticked, it is centred on itself, which is '
+    + 'what a viewer that frames the origin rather than the scene — Windows 3D Viewer, Paint '
+    + '3D — needs in order to show it at all.">'
+    + '<input type="checkbox" id="tracingPlaceAt" checked style="width:auto;vertical-align:-1px"> '
+    + 'Dataset coordinates</label>';
+}
+function tracingPlaceSay(){
+  return tracingPlaceWanted()
+    ? "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin."
+    : "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates above if you want several of these to line up in one scene.";
+}
 var TRACING_PLACE_HELP = "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
 /* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
@@ -21490,14 +21612,15 @@ function tracingGlbParts(got, alone){
 }
 function tracingPySave(parts, filename, title){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-  var txt = UJ.traceloft.blenderPy(parts, res, { title: title || "", file: filename });
+  var txt = UJ.traceloft.blenderPy(parts, res, { title: title || "", file: filename,
+                                                 place: tracingPlaceWanted() });
   if (!txt) return 0;
   tracingSaveBlob(new Blob([txt], { type: "text/x-python" }), filename);
   return parts.length;
 }
 function tracingGlbSave(parts, filename){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-  var bytes = UJ.traceloft.glb(parts, res);
+  var bytes = UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() });
   if (!bytes) return 0;
   tracingSaveBlob(new Blob([bytes], { type: "model/gltf-binary" }), filename);
   return parts.length;
@@ -21614,7 +21737,7 @@ async function tracingOneGlb(sid, btn, fmt){
                     ? "Saved " + parts[0].name + " as a Blender script \u2014 open it in "
                       + "Blender\u2019s Scripting tab and press Run. Micrometres."
                     : "Saved " + parts[0].name + " as a 3D model (GLB, micrometres). "
-                      + "Blender: File \u203a Import \u203a glTF 2.0. " + TRACING_PLACE_HELP
+                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay()
                       + " " + TRACING_GLTF_HELP)
                  : "Nothing could be meshed from that tracing.", !n);
   } catch (e){
@@ -21654,7 +21777,7 @@ async function tracingCellGlb(g, btn, fmt){
       + (see ? ", with the " + parts.filter(function(q){ return q.alpha < 1; })
                  .map(function(q){ return q.name.toLowerCase(); }).join(" and ")
              + " see-through so what is inside shows." : ".")
-      + " Micrometres. " + TRACING_PLACE_HELP
+      + " Micrometres. " + tracingPlaceSay()
       + ((fmt === "py") ? "" : " " + TRACING_GLTF_HELP)
       + tracingSegSkipSay(g, have)
       + (missed.length ? " Could not fetch " + missed.join(", ") + "." : "")

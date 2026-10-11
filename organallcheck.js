@@ -185,6 +185,123 @@ const press = `(async function(){
     ok(got.present === false, "nor on a page that cannot open one", got.present);
   }
 
+  /* ── AND THE SAME PICTURE WITHOUT LEAVING THE PAGE ────────────────────────────  2026-10-11
+     Søren, pointing at the ROOT ID row: *"If organelles are traced, here should also be a show in
+     3D with organelles button."* The button above opens Neuroglancer; that row draws the cell in
+     the page. core/panel.js knows WHAT is traced, core/mesh3d.js knows where that row is and how
+     to draw a cell with things inside it, and the offer is the join between them.
+
+     WHAT IS ASSERTED:
+       - the button appears beside "Show in 3D", labelled with the count
+       - ...and does NOT when the cell has no traced organelles, because an offer is withdrawn
+         as well as made — the card is rebuilt per cell and a stale button would promise
+         organelles belonging to the last one
+       - pressing it LOFTS every traced outline, which is the difference between drawing them and
+         saying it did
+       - ...and the panel says how many went in, under the size line where the rest of the
+         caveats are
+       - organFetchRings() hands back a promise that resolves, which is what lets the click wait
+         for the contours instead of racing them */
+  console.log("\nand the ROOT ID row offers the same picture in the page");
+  {
+    const row = await p.evaluate(async () => {
+      /* A row shaped like µJump's own: the observer in core/mesh3d.js decorates any
+         .meshdl[data-root] that appears. */
+      var old = document.getElementById("m3drow"); if (old) old.remove();
+      document.body.insertAdjacentHTML("beforeend",
+        '<div id="m3drow"><button class="idbtn meshdl" data-root="864691136741958236" '
+        + 'data-nucid="521491">3D model</button></div>');
+      await new Promise(r => setTimeout(r, 300));
+      var r0 = document.getElementById("m3drow");
+      return { decorated: !!r0.querySelector(".m3d-btn"),
+               buttons: [].slice.call(r0.querySelectorAll("button"))
+                 .map(b => b.textContent.trim() + (b.style.display === "none" ? " [hidden]" : "")) };
+    });
+    ok(row.decorated, "core/mesh3d.js decorated the row, as it always has",
+       row.buttons.join(" | "));
+
+    await setup(3);
+    const off = await p.evaluate(() => {
+      var b2 = [].slice.call(document.querySelectorAll("#m3drow .m3d-btn"))
+        .filter(b => /organelle/.test(b.textContent))[0];
+      return { there: !!b2, label: b2 ? b2.textContent.trim() : "",
+               shown: !!(b2 && b2.style.display !== "none") };
+    });
+    ok(off.there && off.shown, "a second button appears once the cell has traced organelles",
+       off.label || "no button");
+    ok(/^Show in 3D with 3 organelles$/.test(off.label),
+       "...labelled with how many, so it promises a number before the fetch rather than after",
+       off.label);
+
+    /* WITHDRAWN AS WELL AS MADE. A card rebuilt for a cell with nothing traced must not keep the
+       last cell's button — the offer is keyed by root id for exactly this. */
+    const gone = await p.evaluate(() => {
+      PANEL_TRACINGS = [];
+      PANEL_ORGAN_ANNS = [{ kind: "lysosome", point: [1000, 1000, 100] }];
+      PANEL_ORGAN_NID = "521491";
+      renderOrganelleSection("521491", "864691136741958236");
+      var b2 = [].slice.call(document.querySelectorAll("#m3drow .m3d-btn"))
+        .filter(b => /organelle/.test(b.textContent))[0];
+      return !!(b2 && b2.style.display !== "none");
+    });
+    /* BOTH HALVES, or this passes vacuously on a build with no button at all — which it did,
+       on the first red run. "It is not there now" is only news if it was there before. */
+    ok(off.there && !gone,
+       "...and goes away again for a cell with none, because the offer is withdrawn too",
+       off.there ? (gone ? "still there" : "was there, now hidden") : "never appeared");
+
+    await setup(3);
+    const drew = await p.evaluate(async () => {
+      /* Nothing leaves the harness: the cell mesh and the nucleus are stubs, and the LOFT is the
+         real one, counted — a button that drew nothing would still have said "3 outlines". */
+      var lofted = [];
+      window.UJ.mesh = window.UJ.mesh || {};
+      UJ.mesh.fetchCombinedMesh = async function(){
+        return { positions: new Float32Array([0,0,0, 4000,0,0, 0,4000,0, 0,0,4000]),
+                 indices: new Uint32Array([0,1,2, 0,1,3, 0,2,3, 1,2,3]) };
+      };
+      window.UJ.nucmesh = { configured: () => true, configure: () => {},
+        fetchNucleus: async () => null };
+      var realLoft = UJ.traceloft.loft;
+      UJ.traceloft.loft = function(rings, res){
+        lofted.push((rings || []).length);
+        return realLoft.call(UJ.traceloft, rings, res);
+      };
+      var b2 = [].slice.call(document.querySelectorAll("#m3drow .m3d-btn"))
+        .filter(b => /organelle/.test(b.textContent))[0];
+      if (!b2) return { none: true };
+      b2.click();
+      var t0 = Date.now(), note = "";
+      while (Date.now() - t0 < 9000){
+        var n = document.querySelector("#m3drow ~ .m3d-host .m3d-note, .m3d-host .m3d-note");
+        note = n ? n.textContent : "";
+        if (/traced outline/.test(note)) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      UJ.traceloft.loft = realLoft;
+      return { lofted: lofted, note: note,
+               canvas: !!document.querySelector(".m3d-host .m3d-canvas") };
+    });
+    if (drew.none) ok(false, "the organelle button was there to press", "it was not");
+    else {
+      ok((drew.lofted || []).length === 3,
+         "pressing it LOFTS every traced outline — the difference between drawing them and "
+         + "saying it did", (drew.lofted || []).length + " lofts");
+      ok(/3 traced outlines are drawn inside it/.test(drew.note),
+         "...and the panel says how many went in, under the size line with the rest of the "
+         + "caveats", (drew.note || "").slice(-110) || "nothing said");
+      ok(drew.canvas, "...with something actually drawn", String(drew.canvas));
+    }
+
+    const waited = await p.evaluate(async () => {
+      /* The click can only wait for the contours if the fetch says when it is done. */
+      var r = organFetchRings("521491", "864691136741958236", []);
+      return !!(r && typeof r.then === "function") && (await r, true);
+    });
+    ok(waited, "organFetchRings hands back a promise that resolves, which is what lets the click "
+       + "wait for the contours instead of racing them", String(waited));
+  }
+
   ok(errors.length === 0, "the page still loads with no new errors",
      errors.length ? errors[0] : "none");
 

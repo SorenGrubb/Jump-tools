@@ -1286,9 +1286,15 @@ UJ.traceloft = (function(){
     L.push("# Blender: Scripting tab → Open → Run. No add-on, no File › Import.");
     L.push("#          or from a terminal:  blender --python " + (m.file || "this_file.py"));
     L.push("# One Blender unit is one MICROMETRE. Each object's MESH is local to its own middle");
-    L.push("# and the object is PLACED at voxel " + b.centreVoxel.join(", ") + " of this tool's");
-    L.push("# frame, so several of these run into one scene land in their true relative positions.");
-    L.push("# Home frames everything; Alt+G on an object clears its location to the world origin.");
+    if (m.place === false){
+      L.push("# and the scene is CENTRED ON ITSELF, so it opens framed. It came from voxel "
+             + b.centreVoxel.join(", ") + " of this tool's frame; tick Dataset coordinates on the");
+      L.push("# card if you want several of these to line up in one scene.");
+    } else {
+      L.push("# and the object is PLACED at voxel " + b.centreVoxel.join(", ") + " of this tool's");
+      L.push("# frame, so several of these run into one scene land in their true relative positions.");
+      L.push("# Home frames everything; Alt+G on an object clears its location to the world origin.");
+    }
     L.push("# Axes are Blender's: X = x, Y = -z, Z = -y, which is where the .glb of the same cell");
     L.push("# lands after import — cortical depth runs down Z with the pia at the top.");
     L.push("# This file fetches nothing and runs nothing: it is vertices, faces and materials.");
@@ -1337,7 +1343,8 @@ UJ.traceloft = (function(){
     /* BLENDER'S AXES, the same permutation the vertices get three lines down: X = x,
        Y = -z, Z = -y. This is where the .glb of the same cell lands after import, so the two
        downloads of one cell cannot contradict each other about where it is. */
-    var at = "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
+    var at = (m.place === false) ? "(0,0,0)"
+           : "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
     b.parts.forEach(function(q){
       var v = [];
       for (var i = 0; i < q.xyz.length; i += 3)
@@ -1422,7 +1429,12 @@ UJ.traceloft = (function(){
              centreVoxel: [0, 1, 2].map(function(k){
                return Math.round(mid[k] / (Number(res[k]) || 1)); }) };
   }
-  function glb(parts, resNm){
+  /* `opts.place === false` centres the scene on itself instead of putting it at its dataset
+     coordinates. Søren, 2026-10-11, of a cell opened in Windows 3D Viewer: *"the 3D model ... looks
+     empty because it is not centered"* — that viewer frames the origin rather than the scene, so a
+     cell 1.6 mm away is an empty grey room. One file cannot be in two places; the tick on the card
+     decides which, and hands the same answer to blenderPy() below. */
+  function glb(parts, resNm, opts){
     var prep = glbParts(parts, resNm);
     if (!prep) return null;
     var chunks = [], accessors = [], bufferViews = [], meshes = [], nodes = [], materials = [];
@@ -1439,7 +1451,8 @@ UJ.traceloft = (function(){
     };
     /* THE SAME FLIP THE VERTICES GET. Below, a vertex's y is negated for glTF's Y-up; the
        place has to be negated with it or the model is mirrored about the wrong plane. */
-    var place = [prep.offsetUm[0], -prep.offsetUm[1], prep.offsetUm[2]];
+    var place = (opts && opts.place === false) ? [0, 0, 0]
+              : [prep.offsetUm[0], -prep.offsetUm[1], prep.offsetUm[2]];
     prep.parts.forEach(function(q, qi){
       var n = q.xyz.length / 3;
       var pos = new Float32Array(q.xyz.length);
