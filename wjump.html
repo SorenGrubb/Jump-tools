@@ -120,7 +120,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-11 19:01</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-11 19:39</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -16837,12 +16837,59 @@ function tracingArm(b, ask, go){
   }
   go();
 }
+/* ── THE GLYPHS, ONE DEFINITION EACH ────────────────────────────────  2026-10-11
+   Søren: *"We need to simplify the buttons also to make it more compact."* He chose these from a
+   sheet: a pen for the pad, Neuroglancer's own four panes, a cube for the 3D model, the Blender
+   mark, the Drive triangle for the file, a bin for Remove.
+
+   ONE PLACE, because the kept list and the dataset list offer the same actions and a second
+   drawing of the same action is a second thing to keep in step. Inline SVG rather than a font or
+   a sprite sheet: this card is served as one file and has to work with nothing fetched.
+
+   THE WORDS DO NOT GO AWAY. They move to title= and aria-label= — core/mesh3d.js says it about
+   its own corner buttons, and it is just as true here: an icon is a rebus, and a rebus is not a
+   label.
+
+   THE BLENDER MARK is Blender's own artwork, used to refer to Blender, which is what their
+   trademark guidelines are for. It is a PNG data URI rather than an SVG because it is a logo:
+   it must not take currentColor, and it must not be my redrawing of somebody's trademark. */
+var TRACING_ICON = {
+  pad:   '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><path d="M3 17l1.2-4L13 4.2a1.8 1.8 0 0 1 2.6 2.6L6.9 15.8 3 17Z"/><path d="M11.4 5.8 14.2 8.6"/></svg>',
+  ngl:   '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><rect x="2.5" y="2.5" width="15" height="15" rx="2"/><path d="M10 2.5v15M2.5 10h15"/></svg>',
+  glb:   '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6l7-3.8Z"/><path d="M3.4 6.2 10 9.8l6.6-3.6M10 9.8v7.8"/></svg>',
+  py:    '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADsAAAAwCAMAAACYPPJCAAAASFBMVEX1dQAmV4fqcQDrdgDqdgDyhhn/AAAVSn33zqW3cADs5t/xplycs8j/pwD//wBJcpq2xtb1u4F/fwBxkbGGorwAAADsdwD9/fwuzwOIAAAAGHRSTlMN/+qWYP8B//8E////AwH///8C//8A/f9f2r4YAAACT0lEQVR42pVW2bbDIAgkbtm33mr//0+vS1TQ2IWXNolzGGAAQTcNNHBjmP1RrQMt2xQYb6J1qo0dtZABzEf78BMWot/A+yes/SQi2PIG+AVriQKLYK71+gvWgXkC17zfYt1XjnlvLew2wo2RoKkr+MwABU15A1KR4A0zqFijqrCYW2ESPwjirhTCB0Mii1iUzw+WRZZ+hPwW7IqFsWqDtmMWjIAVypX9DwIZAsr5HIbhnKWJcMl9zClp6r6kbB5e0YbZZDAQRQQdjVhKTGakR0uGYob7SROhETTFP3MEw1Z2pVoRXxOg03Pvum5/Bnz0zMuOthnA8vKnl67vnPXd4sHxI5SNgSvFfKzPgPToPx9zdoz4AuZ7MT4y1IK95ygixNmWm7QDm93BvSPmXp2XAwE51LFQlqM8UWh3uHe5m1OorJCiy9TSE2ggnZsiyOKmfV8tbArYQVd914I+VZRyf9AqlaURDFe3iHdC8VrsRvkKTcpLSNMCGzdyBR0KDNfotSNt7ETSjPL1Q5QTSb7++gT1L6Z8GFgeNtxnnBddtFh99H23L0UnCZIlDQ88bC/W1tWxHLELzyQDgHIKKYWGBu18kijDdL2fcdqT56r1vSuWsjQW94x66OSR43wBCL8z8KpYSb3tmBy8IoZZMqKD1a8wQe9BxZKwCCmlMaS3uXUBUC9QeFQ9VY371TqDMFqrWfnNTmrduuCLdQbv7oOtNXrVBJpXnIdorkENH24Z6t41zzV5c0ey0wQ4TThzs3H95n7l0m/Fc+EZ90N1zXesf6GmwWUE5t3qAAAAAElFTkSuQmCC" alt="" aria-hidden="true" width="20" height="16" '
+       + 'style="display:block;pointer-events:none;object-fit:contain">',
+  file:  '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><path d="M7.6 2.6h4.8l5 8.4-2.4 4.2H5l-2.4-4.2 5-8.4Z"/><path d="m7.6 2.6 5 8.4M17.4 11h-9.8M5 15.2l4.9-8.4" opacity=".55"/></svg>',
+  zip:   '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><path d="M10 2.6v9.2M6.4 8.6 10 12.2l3.6-3.6"/><path d="M3 13.4v2.2a1.8 1.8 0 0 0 1.8 1.8h10.4a1.8 1.8 0 0 0 1.8-1.8v-2.2"/></svg>',
+  ruler: '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><rect x="1.6" y="6.4" width="16.8" height="7.2" rx="1.4" transform="rotate(-20 10 10)"/><path d="M6.2 7.4v2.1M9 6.4v3M11.8 5.4v2.1M14.6 4.4v3"/></svg>',
+  bin:   '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;pointer-events:none"><path d="M3.6 5.6h12.8M8 5.6V3.9h4v1.7"/><path d="M5.2 5.6l.8 10.2a1.5 1.5 0 0 0 1.5 1.4h5a1.5 1.5 0 0 0 1.5-1.4l.8-10.2"/><path d="M8.6 8.8v5M11.4 8.8v5"/></svg>'
+};
+/* An icon button is square-ish; a text one is not. Kept beside TRACING_BTN rather than replacing
+   it, because the card still has buttons that say words and should. */
+/* ── A DESTRUCTIVE BUTTON SHOULD NOT BE GREEN ───────────────────────  2026-10-11
+   Remove and Remove all are the only buttons on this card that take work away, and as icons they
+   would otherwise be the same green pill as Neuroglancer, one place along. Muted by default, red
+   only under the pointer. Injected once, guarded on its own id, because this module is loaded by
+   eight pages it cannot edit. */
+function tracingIconStyle(){
+  if (document.getElementById("tracingIconStyle")) return;
+  var el = document.createElement("style");
+  el.id = "tracingIconStyle";
+  el.textContent = ".idbtn.tracingdanger{background:transparent;color:var(--mut,#8b96a8);"
+    + "border-color:var(--line,#2a3550)}"
+    + ".idbtn.tracingdanger:hover,.idbtn.tracingdanger:focus-visible{color:#ff8d85;"
+    + "border-color:#7a3a38;background:rgba(255,120,110,.10)}";
+  document.head.appendChild(el);
+}
+const TRACING_ICOBTN = 'style="padding:3px 7px;font-size:12px;flex:0 0 auto;display:inline-flex;'
+  + 'align-items:center;gap:5px;line-height:1"';
 const TRACING_BTN = 'style="padding:2px 9px;font-size:12px;flex:0 0 auto"';
 const TRACING_CELL_BOX = 'class="tracingcell" style="border-top:1px solid var(--line);padding:6px 0 2px"';
 const TRACING_CELL_ROW = 'style="display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap"';
 
 function tracingRenderList(){
   const host=document.getElementById("tracingList");
+  tracingIconStyle();
   if(!host)return;
   if(!TRACINGS_KEPT.length){
     host.innerHTML='<p class="hint">Nothing traced yet. A kept tracing is included in every '
@@ -16856,11 +16903,11 @@ function tracingRenderList(){
       const type=(g.items.filter(function(x){return x.t.type&&x.t.type!=="traced";})[0]||{t:{}}).t.type||"";
       return '<div '+TRACING_CELL_BOX+' data-g="'+gi+'">'
         +'<div '+TRACING_CELL_ROW+'>'+tracingCellHead(g.nuc,g.root,type,g.items.length,g.coord)
-        +'<button class="idbtn tracingcellngl" data-g="'+gi+'" '+TRACING_BTN+' title="All of this '
-        +'cell&rsquo;s kept tracings in the viewer, each in its own colour, with the cell.">Neuroglancer</button>'
-        +'<button class="idbtn tracingcelldrop" data-g="'+gi+'" '+TRACING_BTN+' title="Take all of '
+        +'<button class="idbtn tracingcellngl" aria-label="Neuroglancer" data-g="'+gi+'" '+TRACING_ICOBTN+' title="Neuroglancer \u2014 All of this '
+        +'cell&rsquo;s kept tracings in the viewer, each in its own colour, with the cell.">' + TRACING_ICON.ngl + '</button>'
+        +'<button class="idbtn tracingdanger tracingcelldrop" aria-label="Remove all" data-g="'+gi+'" '+TRACING_ICOBTN+' title="Remove all \u2014 Take all of '
         +'this cell&rsquo;s tracings off this page. What is already in the dataset stays there.">'
-        +'Remove all</button></div>'
+        +TRACING_ICON.bin + '<b style="font-weight:600;font-size:12px">all ' + g.items.length + '</b></button></div>'
         +g.items.map(function(x){
           const t=x.t, i=x.i;
           const sections=new Set((t.rings||[]).map(function(r){return r.z;})).size;
@@ -16879,11 +16926,11 @@ function tracingRenderList(){
                  +'dataset yet. Sign in with Google and it goes up on its own.">waiting for sign-in</span>'
                 :'<span style="opacity:.55" title="In the shared dataset — anyone can open it and add '
                  +'to it.">in the dataset</span>')
-            +'<button class="idbtn tracingview" data-n="'+i+'" style="padding:2px 9px;font-size:12px" '
-            +'title="Open this tracing in the viewer — its contours as an annotation layer in its '
-            +'own colour.">Neuroglancer</button>'
-            +'<button class="idbtn tracingdrop" data-n="'+i+'" style="padding:2px 9px;font-size:12px">'
-            +'Remove</button></div>';
+            +'<button class="idbtn tracingview" aria-label="Neuroglancer" data-n="'+i+'" ' + TRACING_ICOBTN + ' '
+            +'title="Neuroglancer \u2014 Open this tracing in the viewer — its contours as an annotation layer in its '
+            +'own colour.">' + TRACING_ICON.ngl + '</button>'
+            +'<button class="idbtn tracingdanger tracingdrop" aria-label="Remove" title="Remove \u2014 takes this tracing off this page. What is already in the dataset stays there." data-n="'+i+'" ' + TRACING_ICOBTN + '>'
+            +TRACING_ICON.bin + '</button></div>';
         }).join("")
         +'</div>';
     }).join("");
@@ -21133,6 +21180,7 @@ function tracingSplitSay(st, resNm){
     + "\u00d7 their own reach.";
 }
 function tracingRenderShared(){
+  tracingIconStyle();
   const host = document.getElementById("tracingShared");
   if (!host) return;
   if (!TRACING_SHARED.length){
@@ -21190,30 +21238,30 @@ function tracingRenderShared(){
         const type = (g.items.filter(function(x){ return x.t.cellType; })[0] || { t: {} }).t.cellType || "";
         return '<div ' + TRACING_CELL_BOX + ' data-g="' + gi + '">'
           + '<div ' + TRACING_CELL_ROW + '>' + tracingCellHead(g.nuc, g.root, type, g.items.length, g.coord)
-          + '<button class="idbtn tracingcellpad" data-g="' + gi + '" ' + TRACING_BTN + ' title="Every '
+          + '<button class="idbtn tracingcellpad" aria-label="Open all in the pad" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="Open all in the pad \u2014 Every '
             + 'tracing of this cell onto the pad, each as its own numbered structure. Adding them back '
-            + 'is the next version of each.">Open all in the pad</button>'
-          + '<button class="idbtn tracingcellngl" data-g="' + gi + '" ' + TRACING_BTN + ' title="Every '
-            + 'tracing of this cell in the viewer, each in its own colour, with the cell.">Neuroglancer</button>'
-          + '<button class="idbtn tracingcellglb" data-g="' + gi + '" ' + TRACING_BTN + ' title="Every '
+            + 'is the next version of each.">' + TRACING_ICON.pad + '</button>'
+          + '<button class="idbtn tracingcellngl" aria-label="Neuroglancer" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="Neuroglancer \u2014 Every '
+            + 'tracing of this cell in the viewer, each in its own colour, with the cell.">' + TRACING_ICON.ngl + '</button>'
+          + '<button class="idbtn tracingcellglb" aria-label="3D model" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="3D model \u2014 Every '
             + 'tracing of this cell as ONE 3D model (GLB) \u2014 the cell and its nucleus see-through so '
             + 'the organelles inside them show, each in the colour it was drawn in. Micrometres. '
             + escHtml(TRACING_PLACE_HELP) + ' ' + escHtml(TRACING_GLTF_HELP) + '">'
-            + '3D model</button>'
-          + '<button class="idbtn tracingcellpy" data-g="' + gi + '" ' + TRACING_BTN + ' title="The '
+            + TRACING_ICON.glb + '</button>'
+          + '<button class="idbtn tracingcellpy" aria-label="Blender script" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="Blender script \u2014 The '
             + 'same scene as a Blender Python script \u2014 Scripting tab, Open, Run. No add-on and no '
             + 'File \u203a Import, so it works even where the glTF importer is switched off, and it '
             + 'carries a collection per kind and viewport transparency, which a .glb cannot.">'
-            + 'Blender script</button>'
-          + '<button class="idbtn tracingcellzip" data-g="' + gi + '" ' + TRACING_BTN + ' title="A zip '
+            + TRACING_ICON.py + '</button>'
+          + '<button class="idbtn tracingcellzip" aria-label="Download zip" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="Download zip \u2014 A zip '
             + 'of this cell: each tracing&rsquo;s contours (JSON), a mesh of each (OBJ, nm), and an '
-            + 'index.">Download zip</button>'
+            + 'index.">' + TRACING_ICON.zip + '</button>'
           + (typeof window.tracedMeasureCells === "function"
-              ? '<button class="idbtn tracedmeasurecell" data-g="' + gi + '" ' + TRACING_BTN
-                + ' title="Measures this cell’s outlines together and saves the numbers to the '
+              ? '<button class="idbtn tracedmeasurecell" aria-label="Measure this cell" data-g="' + gi + '" ' + TRACING_ICOBTN
+                + ' title="Measure this cell \u2014 Measures this cell’s outlines together and saves the numbers to the '
                 + 'sheet. Worth doing after outlining another organelle here: each organelle’s '
                 + 'distance to its nearest neighbour is measured against the others, so a new one '
-                + 'makes the old numbers out of date.">Measure this cell</button>' : "")
+                + 'makes the old numbers out of date.">' + TRACING_ICON.ruler + '</button>' : "")
           + '</div>'
           + g.items.map(function(x){
               const t = x.t;
@@ -21230,22 +21278,24 @@ function tracingRenderShared(){
                 + '<span style="opacity:.7;flex:1 1 120px;min-width:0" title="Everyone who has added a '
                   + 'version of this tracing, in the order they first did.">' + escHtml(who)
                   + ((t.versions > 1) ? " &middot; v" + t.versions : "") + '</span>'
-                + '<button class="idbtn tracingopen" data-sid="' + escHtml(t.structureId) + '" '
-                  + TRACING_BTN + '>Open it in the pad</button>'
+                + '<button class="idbtn tracingopen" aria-label="Open it in the pad" title="Open it in the pad \u2014 opens this tracing on the pad, as the next version of it." data-sid="' + escHtml(t.structureId) + '" '
+                  + TRACING_ICOBTN + '>' + TRACING_ICON.pad + '</button>'
                 /* Looking is not editing: see tracingSharedInViewer. */
-                + '<button class="idbtn tracingngl" data-sid="' + escHtml(t.structureId) + '" '
-                  + TRACING_BTN + ' title="Open this tracing in the viewer, as an annotation layer in '
-                  + 'its own colour — without taking it onto your pad.">Neuroglancer</button>'
-                + '<button class="idbtn tracingglb" data-sid="' + escHtml(t.structureId) + '" '
-                  + TRACING_BTN + ' title="This one tracing as a 3D model (GLB), solid, in its own '
+                + '<button class="idbtn tracingngl" aria-label="Neuroglancer" data-sid="' + escHtml(t.structureId) + '" '
+                  + TRACING_ICOBTN + ' title="Neuroglancer \u2014 Open this tracing in the viewer, as an annotation layer in '
+                  + 'its own colour — without taking it onto your pad.">' + TRACING_ICON.ngl + '</button>'
+                + '<button class="idbtn tracingglb" aria-label="3D model" data-sid="' + escHtml(t.structureId) + '" '
+                  + TRACING_ICOBTN + ' title="3D model \u2014 This one tracing as a 3D model (GLB), solid, in its own '
                   + 'colour. Micrometres. ' + escHtml(TRACING_PLACE_HELP) + ' '
                   + escHtml(TRACING_GLTF_HELP)
-                  + '">3D model</button>'
-                + '<button class="idbtn tracingpy" data-sid="' + escHtml(t.structureId) + '" '
-                  + TRACING_BTN + ' title="The same one tracing as a Blender Python script \u2014 '
-                  + 'Scripting tab, Open, Run. No importer involved.">Blender script</button>'
-                + (t.fileUrl ? ' <a href="' + escHtml(t.fileUrl) + '" target="_blank" rel="noopener" '
-                    + 'style="font-size:12px;opacity:.7" title="The tracing’s own file in Drive">file</a>' : "")
+                  + '">' + TRACING_ICON.glb + '</button>'
+                + '<button class="idbtn tracingpy" aria-label="Blender script" data-sid="' + escHtml(t.structureId) + '" '
+                  + TRACING_ICOBTN + ' title="Blender script \u2014 The same one tracing as a Blender Python script \u2014 '
+                  + 'Scripting tab, Open, Run. No importer involved.">' + TRACING_ICON.py + '</button>'
+                + (t.fileUrl ? ' <a class="idbtn" href="' + escHtml(t.fileUrl) + '" target="_blank" '
+                    + 'rel="noopener" aria-label="The file in Drive" ' + TRACING_ICOBTN
+                    + ' title="The file in Drive \u2014 this tracing’s own file, as it was saved.">'
+                    + TRACING_ICON.file + '</a>' : "")
                 + '</div>';
             }).join("")
           + '</div>';
