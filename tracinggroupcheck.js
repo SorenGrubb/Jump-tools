@@ -11,7 +11,9 @@
      KEPT      one group per cell; each tracing sits inside its cell; the cell's Neuroglancer opens
                all of that cell's tracings with that cell's ids; "Remove all" asks once more before it
                removes, and removes that cell's tracings only.
-     DATASET   one group per cell, and a group for tracings filed with no cell; the cell's
+     DATASET   one group per PERSON (2026-10-11), and under each the cells they have worked in
+               -- cell A under both S and T, because both have added a version of lys_a2, which is
+               why four cell groups hold three cells; the cell's
                Neuroglancer opens all of them; "Open all in the pad" puts every one on the pad as its
                own numbered structure, each keeping its own id, type and number, so adding them back
                is the next version of each and not new tracings; "Download zip" holds every tracing's
@@ -136,26 +138,44 @@ const SHARED = [
     await tracingBrowse();
     const host = document.getElementById("tracingShared");
     const cells = [].slice.call(host.querySelectorAll(".tracingcell"));
-    return { cells: cells.length, rows: cells.map(c => c.querySelectorAll(".tracingopen").length),
+    /* THROUGH THE PERSON, NOT BY INDEX. S has done the most so S sorts first today, but reading
+       "the first fold" would turn a change in the ordering rule into a failure about grouping. */
+    const mine = host.querySelector('details[data-fold="p:S"]');
+    const myCells = mine ? [].slice.call(mine.querySelectorAll(".tracingcell")) : [];
+    return { people: host.querySelectorAll('details[data-foldkind="person"]').length,
+             myCells: myCells.length,
+             myHeads: myCells.map(c => (c.querySelector(".tracingcellhead") || {}).textContent || ""),
+             myRows: myCells.map(c => c.querySelectorAll(".tracingopen").length),
+             cells: cells.length, rows: cells.map(c => c.querySelectorAll(".tracingopen").length),
              heads: cells.map(c => (c.querySelector(".tracingcellhead") || {}).textContent || ""),
              bits: cells.map(c => [!!c.querySelector(".tracingcellpad"), !!c.querySelector(".tracingcellngl"), !!c.querySelector(".tracingcellzip")]) };
   });
   /* A volume-scoped tool (ωJump) lists only tracings filed under this volume, so one with no cell
      is not among them. */
-  ok(ds.cells === (scope ? 2 : 3), "one group per cell" + (scope ? "" : ", and one for tracings with no cell"), ds.cells);
-  const iA = ds.heads.findIndex(h => h.indexOf(nA.split(":").pop()) >= 0);
-  ok(iA >= 0 && ds.rows[iA] === 3, "cell A holds its three tracings", JSON.stringify(ds.rows));
+  ok(ds.people === 2, "one fold per person who has added a version \u2014 S and T, and T only "
+     + "because she worked on one of S's tracings", ds.people);
+  ok(ds.myCells === (scope ? 2 : 3),
+     "under a person, the cells THEY have worked in"
+     + (scope ? "" : ", the no-cell pile among them"), ds.myCells);
+  ok(ds.cells === (scope ? 3 : 4),
+     "...so three cells make " + (scope ? 3 : 4) + " cell folds in all: cell A is under both of "
+     + "them. The counts add to more than the list holds, which is what the list says out loud",
+     ds.cells);
+  const iA = ds.myHeads.findIndex(h => h.indexOf(nA.split(":").pop()) >= 0);
+  ok(iA >= 0 && ds.myRows[iA] === 3, "cell A holds its three tracings", JSON.stringify(ds.myRows));
   ok(ds.bits.every(x => x.every(Boolean)), "each cell offers the pad, Neuroglancer and a zip", JSON.stringify(ds.bits));
 
   const dn = await p.evaluate(async (iA) => { window.__NGL = [];
-    document.querySelectorAll("#tracingShared .tracingcell")[iA].querySelector(".tracingcellngl").click();
+    document.querySelector('#tracingShared details[data-fold="p:S"]')
+      .querySelectorAll(".tracingcell")[iA].querySelector(".tracingcellngl").click();
     const t0 = Date.now(); while (!window.__NGL.length && Date.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
     return window.__NGL; }, iA);
   ok(dn.length === 1 && dn[0].n === 3 && dn[0].rings.every(n => n === 2), "the cell's Neuroglancer opens all three, with their contours", JSON.stringify(dn));
   ok(dn[0] && dn[0].ids.nuc === nA && dn[0].ids.root === RA, "...with that cell's ids", JSON.stringify(dn[0] && dn[0].ids));
 
   const pad = await p.evaluate(async (iA) => {
-    document.querySelectorAll("#tracingShared .tracingcell")[iA].querySelector(".tracingcellpad").click();
+    document.querySelector('#tracingShared details[data-fold="p:S"]')
+      .querySelectorAll(".tracingcell")[iA].querySelector(".tracingcellpad").click();
     const t0 = Date.now();
     while (!(typeof PAD_EDIT_IDS !== "undefined" && Object.keys(PAD_EDIT_IDS).length === 3) && Date.now() - t0 < 6000)
       await new Promise(r => setTimeout(r, 50));
@@ -179,7 +199,8 @@ const SHARED = [
     let got = null;
     window.tracingSaveBlob = function(blob, name){ got = { blob, name }; };
     await tracingBrowse();
-    document.querySelectorAll("#tracingShared .tracingcell")[iA].querySelector(".tracingcellzip").click();
+    document.querySelector('#tracingShared details[data-fold="p:S"]')
+      .querySelectorAll(".tracingcell")[iA].querySelector(".tracingcellzip").click();
     const t0 = Date.now(); while (!got && Date.now() - t0 < 8000) await new Promise(r => setTimeout(r, 50));
     if (!got) return null;
     const z = await JSZip.loadAsync(got.blob);

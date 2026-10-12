@@ -128,7 +128,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-11 20:04</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-11 20:38</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -16945,7 +16945,10 @@ function tracingCellKeyOf(nuc, root, coord){
   return at ? "c:" + at : (nuc ? "n:" + nuc : (root ? "r:" + root : ""));
 }
 /* The cell's own line: its type, its nucleus, its root, how many. */
-function tracingCellHead(nuc, root, type, n, coord){
+/* `total`, when given and larger than `n`, is the cell's FULL count: under a person this header
+   sits over buttons that act on the whole cell, and "3 tracings" above a button that downloads 4
+   would be a lie about the thing you are about to open. */
+function tracingCellHead(nuc, root, type, n, coord, total){
   /* THE PLACE FIRST, since 2026-10-06: it is what the group is keyed on, so it is what tells two
      cells apart in a list. The ids follow as what the segmentation claims. */
   const bits = [];
@@ -16955,7 +16958,10 @@ function tracingCellHead(nuc, root, type, n, coord){
   if (root) bits.push("root " + escHtml(root));
   if (!nuc && !root && !coord) bits.push("<b>Not filed against a cell</b>");
   return '<span class="tracingcellhead" style="flex:1 1 200px;min-width:0">' + bits.join(" &middot; ")
-    + ' <span style="opacity:.6">&middot; ' + n + " tracing" + (n === 1 ? "" : "s") + "</span></span>";
+    + ' <span style="opacity:.6">&middot; '
+    + ((total && total !== n) ? (n + " of " + total + " tracings")
+                             : (n + " tracing" + (n === 1 ? "" : "s")))
+    + "</span></span>";
 }
 /* Groups in the order their first member comes, so the list does not jump when one is added. */
 function tracingGroupByCell(list, nucOf, rootOf, coordOf){
@@ -17027,7 +17033,18 @@ function tracingIconStyle(){
   if (document.getElementById("tracingIconStyle")) return;
   var el = document.createElement("style");
   el.id = "tracingIconStyle";
-  el.textContent = ".idbtn.tracingdanger{background:transparent;color:var(--mut,#8b96a8);"
+  el.textContent = "details.tracingfold>summary{cursor:pointer;list-style:none;display:flex;"
+    + "align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}"
+    + "details.tracingfold>summary::-webkit-details-marker{display:none}"
+    + "details.tracingfold>summary::marker{content:\"\"}"
+    + ".foldmark{display:inline-block;flex:0 0 auto;opacity:.6;font-size:10px;"
+    + "transition:transform .12s ease}"
+    + "details.tracingfold[open]>summary .foldmark{transform:rotate(90deg)}"
+    + "details.tracingperson{border-top:1px solid var(--line);padding:7px 0 3px}"
+    + "details.tracingcell{border-top:1px solid var(--line);padding:6px 0 2px}"
+    + "details.tracingperson>details.tracingcell{border-top:0;border-left:2px solid var(--line);"
+    + "margin:3px 0 3px 5px;padding:4px 0 2px 10px}"
+    + ".idbtn.tracingdanger{background:transparent;color:var(--mut,#8b96a8);"
     + "border-color:var(--line,#2a3550)}"
     + ".idbtn.tracingdanger:hover,.idbtn.tracingdanger:focus-visible{color:#ff8d85;"
     + "border-color:#7a3a38;background:rgba(255,120,110,.10)}";
@@ -17036,9 +17053,146 @@ function tracingIconStyle(){
 const TRACING_ICOBTN = 'style="padding:3px 7px;font-size:12px;flex:0 0 auto;display:inline-flex;'
   + 'align-items:center;gap:5px;line-height:1"';
 const TRACING_BTN = 'style="padding:2px 9px;font-size:12px;flex:0 0 auto"';
-const TRACING_CELL_BOX = 'class="tracingcell" style="border-top:1px solid var(--line);padding:6px 0 2px"';
-const TRACING_CELL_ROW = 'style="display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap"';
+/* TRACING_CELL_BOX and TRACING_CELL_ROW were here until the lists folded. Both are now
+   details.tracingcell and details.tracingfold>summary in tracingIconStyle(): a style that was
+   pasted into two template strings is a style that gets changed in one of them. */
 
+/* ── OPEN AND SHUT, KEPT OUTSIDE THE LIST ───────────────────────────  2026-10-11
+   Søren: *"It is getting too much with all these tracings. Let's collapse them."*
+
+   Keyed by WHAT the group is, never by where it sits. Both lists are rebuilt on nearly every
+   action, so a fold whose open-ness lived in the list's own markup would shut under him -- which is
+   exactly how the "Dataset coordinates" tick became un-untickable, two days ago, in this file.
+
+   A key not in here has never been pressed, and `lone` decides what that means: closed, unless
+   there is only one group at that level, where folding hides and offers no choice. */
+var TRACING_OPEN = {};
+var TRACING_FOLD_KEYS = { kept: [], shared: [] };
+function tracingFoldOpen(key, lone){
+  return (key in TRACING_OPEN) ? !!TRACING_OPEN[key] : !!lone;
+}
+function tracingFoldMark(){ return '<span class="foldmark" aria-hidden="true">▸</span>'; }
+/* `kind` is "cell" or "person" -- what the fold is, not how deep it is drawn. A cell fold is top
+   level in the kept list and nested in the dataset list; one name for the two of them is what lets
+   a check ask for "the cell folds" and get the same answer on either. */
+function tracingFoldAttrs(key, kind, lone){
+  var cell = (kind === "cell");
+  return 'class="tracingfold ' + (cell ? "tracingcell" : "tracingperson") + '" data-fold="'
+    + escHtml(key) + '" data-foldkind="' + (cell ? "cell" : "person") + '"'
+    + (tracingFoldOpen(key, lone) ? " open" : "");
+}
+function tracingFoldAllHtml(which){
+  return '<button type="button" class="idbtn tracingfoldall tracingfoldopen" data-which="'
+    + which + '" style="padding:1px 8px;font-size:11px;flex:0 0 auto" '
+    + 'title="Open every group in this list.">open all</button>'
+    + '<button type="button" class="idbtn tracingfoldall tracingfoldshut" data-which="'
+    + which + '" style="padding:1px 8px;font-size:11px;flex:0 0 auto" '
+    + 'title="Close every group in this list.">close all</button>';
+}
+function tracingFoldWire(host){
+  [].slice.call(host.querySelectorAll("details.tracingfold")).forEach(function(d){
+    d.addEventListener("toggle", function(){ TRACING_OPEN[d.dataset.fold] = !!d.open; });
+    var s = d.querySelector("summary");
+    /* A BUTTON IN A SUMMARY IS STILL A BUTTON. Six per cell header. A press that opened
+       Neuroglancer and collapsed the row on the way out would be a bug nobody reports clearly. */
+    if (s) s.addEventListener("click", function(e){
+      var t = e.target;
+      if (t && t.closest && t.closest("button,a,input,select,textarea")) e.preventDefault();
+    });
+  });
+  [].slice.call(host.querySelectorAll(".tracingfoldall")).forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.preventDefault();
+      var which = b.dataset.which, on = /tracingfoldopen/.test(b.className);
+      (TRACING_FOLD_KEYS[which] || []).forEach(function(k){ TRACING_OPEN[k] = on; });
+      if (which === "kept") tracingRenderList(); else tracingRenderShared();
+    });
+  });
+}
+/* ── WHO DREW IT ────────────────────────────────────────────────────  2026-10-11
+   contributors is the real answer -- everyone who has added a version, in the order they first did.
+   tracedBy is the one-name fallback for rows written before that column existed, and it holds a
+   comma-joined list on some of them, so it is split the same way it was joined. */
+var TRACING_NOBODY = "(not named)";
+function tracingWhoList(t){
+  var a = (t && t.contributors && t.contributors.length)
+          ? t.contributors.slice()
+          : String((t && t.tracedBy) || "").split(/\s*,\s*/);
+  var out = [], seen = {};
+  a.forEach(function(s){
+    s = String(s || "").trim();
+    if (!s || seen[s.toLowerCase()]) return;
+    seen[s.toLowerCase()] = 1; out.push(s);
+  });
+  return out.length ? out : [TRACING_NOBODY];
+}
+/* Everyone on a cell, in the order they first appear. */
+function tracingCellPeople(group){
+  var out = [], seen = {};
+  ((group && group.items) || []).forEach(function(x){
+    tracingWhoList(x.t).forEach(function(w){
+      if (seen[w.toLowerCase()]) return; seen[w.toLowerCase()] = 1; out.push(w);
+    });
+  });
+  return out;
+}
+/* The signed-in handle, if this page carries the gamify chip at all -- eight pages load this module
+   and not all of them do. Only used to float one group to the top and mark it; a handle that
+   matches nobody changes nothing. */
+function tracingMeName(){
+  try {
+    if (typeof MYSTATS === "undefined" || !MYSTATS) return "";
+    return String(MYSTATS.handle || MYSTATS.name || "").trim();
+  } catch (_e){ return ""; }
+}
+/* ── PERSON, THEN CELL ──────────────────────────────────────────────  2026-10-11
+   Takes the cell groups tracingGroupByCell() already made and turns them inside out, so the top
+   level is people and each person carries the cells they have worked in with only their own
+   outlines in them -- plus `total`, the cell's full count, because the cell's buttons act on all
+   of it and the header has to be able to say so.
+
+   A tracing with two contributors is filed under BOTH: that is what grouping by person is for.
+   The per-person counts therefore sum to more than the list holds, which the list says out loud
+   rather than leaving to look like an error. */
+function tracingGroupByPerson(groups){
+  var by = {}, order = [];
+  (groups || []).forEach(function(g){
+    (g.items || []).forEach(function(x){
+      tracingWhoList(x.t).forEach(function(who){
+        var pk = "p:" + who;
+        if (!by[pk]){ by[pk] = { who: who, key: pk, n: 0, cells: {}, order: [] };
+                      order.push(pk); }
+        var p = by[pk];
+        if (!p.cells[g.key]){
+          p.cells[g.key] = { key: g.key, nuc: g.nuc, root: g.root, coord: g.coord,
+                             gi: g.gi, total: (g.items || []).length, group: g, items: [] };
+          p.order.push(g.key);
+        }
+        p.cells[g.key].items.push(x);
+        p.n++;
+      });
+    });
+  });
+  var me = tracingMeName().toLowerCase();
+  var rank = function(w){
+    if (w === TRACING_NOBODY) return 2;            /* nobody's pile goes last */
+    return (me && w.toLowerCase() === me) ? 0 : 1;
+  };
+  var out = order.map(function(pk){
+    var p = by[pk];
+    return { who: p.who, key: pk, n: p.n, me: rank(p.who) === 0,
+             cells: p.order.map(function(ck){ return p.cells[ck]; }) };
+  });
+  /* You first if this page knows who you are, then whoever has done the most: a list ordered by
+     nothing is a list you have to search. */
+  out.sort(function(a, b){
+    var ra = rank(a.who), rb = rank(b.who);
+    if (ra !== rb) return ra - rb;
+    if (a.n !== b.n) return b.n - a.n;
+    return a.who.localeCompare(b.who);
+  });
+  return out;
+}
 function tracingRenderList(){
   const host=document.getElementById("tracingList");
   tracingIconStyle();
@@ -17050,16 +17204,26 @@ function tracingRenderList(){
   }
   const groups=tracingGroupByCell(TRACINGS_KEPT,function(t){return t.nucleus_id;},function(t){return t.root_id;},
                                   function(t){return t.cell_coord;});
-  host.innerHTML='<label>Kept tracings, by cell &mdash; these go into the 3D export</label>'
+  TRACING_FOLD_KEYS.kept = [];
+  const lone = groups.length === 1;
+  host.innerHTML='<label id="tracingListLabel">Kept tracings, by cell &mdash; these go into the 3D '
+    +'export</label>'
+    /* OUTSIDE the label. A <button> inside a <label> activates that label's control, and the
+       dataset list's label carries the "Dataset coordinates" checkbox -- so "open all" there would
+       have silently toggled it. Both lists keep the buttons out, so the two read the same. */
+    +'<div class="row" style="gap:6px;margin:0 0 6px;align-items:center">'
+    +tracingFoldAllHtml("kept")+'</div>'
     +groups.map(function(g,gi){
       const type=(g.items.filter(function(x){return x.t.type&&x.t.type!=="traced";})[0]||{t:{}}).t.type||"";
-      return '<div '+TRACING_CELL_BOX+' data-g="'+gi+'">'
-        +'<div '+TRACING_CELL_ROW+'>'+tracingCellHead(g.nuc,g.root,type,g.items.length,g.coord)
+      const fk='k:'+(g.key||"nocell");
+      TRACING_FOLD_KEYS.kept.push(fk);
+      return '<details '+tracingFoldAttrs(fk,"cell",lone)+' data-g="'+gi+'">'
+        +'<summary>'+tracingFoldMark()+tracingCellHead(g.nuc,g.root,type,g.items.length,g.coord)
         +'<button class="idbtn tracingcellngl" aria-label="Neuroglancer" data-g="'+gi+'" '+TRACING_ICOBTN+' title="Neuroglancer \u2014 All of this '
         +'cell&rsquo;s kept tracings in the viewer, each in its own colour, with the cell.">' + TRACING_ICON.ngl + '</button>'
         +'<button class="idbtn tracingdanger tracingcelldrop" aria-label="Remove all" data-g="'+gi+'" '+TRACING_ICOBTN+' title="Remove all \u2014 Take all of '
         +'this cell&rsquo;s tracings off this page. What is already in the dataset stays there.">'
-        +TRACING_ICON.bin + '<b style="font-weight:600;font-size:12px">all ' + g.items.length + '</b></button></div>'
+        +TRACING_ICON.bin + '<b style="font-weight:600;font-size:12px">all ' + g.items.length + '</b></button></summary>'
         +g.items.map(function(x){
           const t=x.t, i=x.i;
           const sections=new Set((t.rings||[]).map(function(r){return r.z;})).size;
@@ -17084,8 +17248,9 @@ function tracingRenderList(){
             +'<button class="idbtn tracingdanger tracingdrop" aria-label="Remove" title="Remove \u2014 takes this tracing off this page. What is already in the dataset stays there." data-n="'+i+'" ' + TRACING_ICOBTN + '>'
             +TRACING_ICON.bin + '</button></div>';
         }).join("")
-        +'</div>';
+        +'</details>';
     }).join("");
+  tracingFoldWire(host);
   host.querySelectorAll(".tracingview").forEach(function(b){
     b.addEventListener("click",function(){
       const t=TRACINGS_KEPT[Number(b.dataset.n)];
@@ -21383,13 +21548,40 @@ function tracingRenderShared(){
     + 'checked style="width:auto;vertical-align:-1px"> only ones I have drawn on</label>'
     + '<div class="hint" id="tracingSplitSayEl" style="margin-top:5px"></div>'
     + '<div id="tracingSplitOut"></div></div>';
+  groups.forEach(function(g, i){ g.gi = i; });
+  const people = tracingGroupByPerson(groups);
+  const loneP = people.length === 1;
+  TRACING_FOLD_KEYS.shared = [];
   host.innerHTML = splitBox
-    + '<label>In the dataset, by cell — open one to add to it or correct it'
-    + tracingPlaceTickHtml() + '</label>'
-    + groups.map(function(g, gi){
-        const type = (g.items.filter(function(x){ return x.t.cellType; })[0] || { t: {} }).t.cellType || "";
-        return '<div ' + TRACING_CELL_BOX + ' data-g="' + gi + '">'
-          + '<div ' + TRACING_CELL_ROW + '>' + tracingCellHead(g.nuc, g.root, type, g.items.length, g.coord)
+    + '<label id="tracingSharedLabel">In the dataset, by person and cell — open one to add to it '
+    + 'or correct it' + tracingPlaceTickHtml() + '</label>'
+    + '<div class="row" style="gap:6px;margin:0 0 6px;align-items:center;flex-wrap:wrap">'
+    + tracingFoldAllHtml("shared")
+    + '<span class="hint" id="tracingSharedNote" style="margin:0;flex:1 1 220px">A tracing several '
+    + 'people have worked on appears under each of them, so these counts add up to more than the '
+    + 'list holds.</span></div>'
+    + people.map(function(pp){
+        TRACING_FOLD_KEYS.shared.push(pp.key);
+        const loneC = pp.cells.length === 1;
+        return '<details ' + tracingFoldAttrs(pp.key, "person", loneP) + '>'
+          + '<summary>' + tracingFoldMark()
+          + '<span style="flex:1 1 180px;min-width:0"><b>' + escHtml(pp.who) + '</b>'
+          + (pp.me ? ' <span style="opacity:.6">(you)</span>' : "")
+          + '</span><span style="opacity:.6;flex:0 0 auto">' + pp.n + ' tracing'
+          + (pp.n === 1 ? "" : "s") + ' in ' + pp.cells.length + ' cell'
+          + (pp.cells.length === 1 ? "" : "s") + '</span></summary>'
+          + pp.cells.map(function(c){
+        const gi = c.gi;
+        const fk = pp.key + "|" + c.key;
+        TRACING_FOLD_KEYS.shared.push(fk);
+        const type = (c.group.items.filter(function(x){ return x.t.cellType; })[0] || { t: {} }).t.cellType || "";
+        const others = tracingCellPeople(c.group).filter(function(w){ return w !== pp.who; });
+        return '<details ' + tracingFoldAttrs(fk, "cell", loneC) + ' data-g="' + gi + '">'
+          + '<summary>' + tracingFoldMark()
+          + tracingCellHead(c.nuc, c.root, type, c.items.length, c.coord, c.total)
+          + (others.length ? '<span style="opacity:.6;flex:0 0 auto" title="Everyone else who has '
+              + 'worked on this cell. The buttons here act on all of it.">with '
+              + escHtml(others.join(", ")) + '</span>' : "")
           + '<button class="idbtn tracingcellpad" aria-label="Open all in the pad" data-g="' + gi + '" ' + TRACING_ICOBTN + ' title="Open all in the pad \u2014 Every '
             + 'tracing of this cell onto the pad, each as its own numbered structure. Adding them back '
             + 'is the next version of each.">' + TRACING_ICON.pad + '</button>'
@@ -21414,11 +21606,12 @@ function tracingRenderShared(){
                 + 'sheet. Worth doing after outlining another organelle here: each organelle’s '
                 + 'distance to its nearest neighbour is measured against the others, so a new one '
                 + 'makes the old numbers out of date.">' + TRACING_ICON.ruler + '</button>' : "")
-          + '</div>'
-          + g.items.map(function(x){
+          + '</summary>'
+          + c.items.map(function(x){
               const t = x.t;
-              const who = (t.contributors && t.contributors.length) ? t.contributors.join(", ")
-                                                                    : (t.tracedBy || "");
+              /* Under a person's own heading, their own name on every row is noise. What is worth
+                 saying is who ELSE is on this one tracing. */
+              const who = tracingWhoList(t).filter(function(w){ return w !== pp.who; }).join(", ");
               return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 18px;'
                 + 'font-size:12px;flex-wrap:wrap;border-left:2px solid var(--line);margin-left:5px">'
                 + '<span style="width:11px;height:11px;border-radius:2px;flex:0 0 auto;background:'
@@ -21427,8 +21620,8 @@ function tracingRenderShared(){
                 + '<span style="opacity:.7;flex:0 0 auto">' + (t.contours || 0) + " contour"
                   + ((t.contours === 1) ? "" : "s") + " on " + (t.sections || 0) + " section"
                   + ((t.sections === 1) ? "" : "s") + '</span>'
-                + '<span style="opacity:.7;flex:1 1 120px;min-width:0" title="Everyone who has added a '
-                  + 'version of this tracing, in the order they first did.">' + escHtml(who)
+                + '<span style="opacity:.7;flex:1 1 120px;min-width:0" title="Anyone ELSE who has '
+                  + 'added a version of this tracing \u2014 you are the heading it is under.">' + escHtml(who)
                   + ((t.versions > 1) ? " &middot; v" + t.versions : "") + '</span>'
                 + '<button class="idbtn tracingopen" aria-label="Open it in the pad" title="Open it in the pad \u2014 opens this tracing on the pad, as the next version of it." data-sid="' + escHtml(t.structureId) + '" '
                   + TRACING_ICOBTN + '>' + TRACING_ICON.pad + '</button>'
@@ -21450,8 +21643,11 @@ function tracingRenderShared(){
                     + TRACING_ICON.file + '</a>' : "")
                 + '</div>';
             }).join("")
-          + '</div>';
+          + '</details>';
+          }).join("")
+          + '</details>';
       }).join("");
+  tracingFoldWire(host);
   [].slice.call(host.querySelectorAll(".tracingopen")).forEach(function(b){
     b.addEventListener("click", function(){ tracingOpenShared(b.dataset.sid, b); });
   });
