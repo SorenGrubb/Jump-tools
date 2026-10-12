@@ -714,8 +714,10 @@ const ok = (c, what, d) => {
              /* Omitted entirely, which is what every other caller of these two writers does. */
              bare: { glb: tx(UJ.traceloft.glb(parts, res)),
                      py: loc(UJ.traceloft.blenderPy(parts, res, { title: "t" })) },
-             say: (typeof tracingPlaceSay === "function")
-                  ? { on: tracingPlaceSay(true), off: tracingPlaceSay(false) } : null };
+             /* The SENTENCE moved out of this file on 2026-10-12: the card has one placement
+                now, so there is no "which did it do" to assert here. What the line says is
+                tracingplacecheck.js's subject, and it is about the card rather than the file. */
+             say: null };
   });
   ok(Math.max.apply(null, place.off.glb.map(Math.abs)) === 0 && place.off.py === "0,0,0",
      "centred puts BOTH at the origin \u2014 which is the whole of what a viewer that frames the "
@@ -730,11 +732,11 @@ const ok = (c, what, d) => {
      + "Worth pinning down because the card's default is the other one: the card always passes "
      + "an answer, and the day it stops, this says which way it will fall",
      JSON.stringify(place.bare.glb) + " / " + place.bare.py);
-  if (place.say)
-    ok(/dataset coordinates/i.test(place.say.on) && /[Cc]entred on itself/.test(place.say.off)
-       && place.say.on !== place.say.off,
-       "...and the line afterwards says which it did, because a file whose position you cannot "
-       + "predict is worse than either position", place.say.off.slice(0, 70));
+  ok(place.say === null,
+     "...and this file stops asserting what the card SAYS about it. The card has one placement "
+     + "since 2026-10-12, so there is no choice to report; the sentence belongs to the card and "
+     + "to tracingplacecheck.js",
+     "left to the card's own check");
 
   /* ── A SURFACE RATHER THAN A STACK OF PLATES ──────────────────────────────────  2026-10-11
      Søren, of a cell in Blender: *"I think the vasculature looks a bit segmented and not very

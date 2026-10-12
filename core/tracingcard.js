@@ -5504,119 +5504,40 @@ function tracingObjOf(name, rings, res){
 
    CENTRED IS THE DEFAULT, as he asked: most downloads are looked at on their own, in whatever
    opens a .glb. The dataset coordinates are for the day you assemble several cells in Blender. */
-/* ── ASKED AT THE PRESS, NOT SET IN ADVANCE ─────────────────────────  2026-10-12
-   Søren: *"Perhaps it should be a choice you make when you click the 3D model button whether you
-   want it ready for Blender or as a standalone model?"*
+/* ── ONE PLACE FOR THE GEOMETRY ────────────────────  2026-10-12
+   Søren: *"if there is no problem with showing the 3D model centered in the downloaded file
+   viewer, then why do we still have two options? That complicates things."*
 
-   A tick was a setting for what is a decision: it held an answer between presses to a question
-   nobody had asked it today, and its state was invisible at the moment it mattered. Moving that
-   state out of the DOM, yesterday, fixed the bug it caused and left the shape.
+   There was a menu here for an hour. It answered a symptom from 2026-10-11 — *"the 3D model
+   looks empty because it is not centered"* — which we read as "this viewer frames the origin".
+   The real cause was the nucleus unit bug found the same day: a nucleus 1000× too far out put a
+   930 µm bounding box around a 200 µm cell, and a viewer that frames the CONTENT then shows a
+   mostly empty room. His own test today closed it: a cell placed 876 µm out displayed normally.
 
-   NOTHING IS REMEMBERED. One extra click, and the first answer is focused so Enter takes it. The
-   reason is ωJump's, about storage: a half-remembered state that disagrees with what you think you
-   did is a debugging trap, and a .glb in your Downloads folder is exactly that kind of state.
+   So the file is always placed. The geometry goes where the geometry is, several cells line up
+   without anybody choosing anything, and the download is one press.
 
-   ON THE BODY, FIXED. These buttons live in a <summary> in a flex row in a <details>; a popover
-   appended beside one is clipped by the row, wrapped by the flex, and has its clicks read by the
-   fold handler. One element on the body, placed from the button's rectangle, has none of that. */
-var TRACING_PLACE_MENU = null;
-function tracingPlaceMenuClose(answer){
-  var m = TRACING_PLACE_MENU;
-  TRACING_PLACE_MENU = null;
-  if (!m) return;
-  document.removeEventListener("keydown", m.onKey, true);
-  document.removeEventListener("mousedown", m.onOut, true);
-  window.removeEventListener("resize", m.onGone, true);
-  window.removeEventListener("scroll", m.onGone, true);
-  if (m.el && m.el.parentNode) m.el.parentNode.removeChild(m.el);
-  try { if (m.btn && m.btn.isConnected) m.btn.focus(); } catch (_e){}
-  /* NULL IS NOT FALSE. "Centred" and "I changed my mind" are different answers, and a caller that
-     cannot tell them apart downloads a file for somebody who pressed Escape. */
-  m.done(answer === undefined ? null : answer);
-}
-function tracingPlaceAsk(btn){
-  return new Promise(function(done){
-    tracingPlaceMenuClose();
-    var el = document.createElement("div");
-    el.id = "tracingPlaceMenu";
-    el.className = "tracingplacemenu";
-    el.setAttribute("role", "dialog");
-    el.setAttribute("aria-label", "Where should this 3D model sit?");
-    el.style.cssText = "position:fixed;z-index:9999;max-width:360px;padding:8px;border-radius:9px;"
-      + "border:1px solid var(--line,#2a3550);background:var(--bg2,#131a2b);"
-      + "box-shadow:0 10px 28px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:5px";
-    var one = function(v, title, why){
-      return '<button type="button" class="idbtn tracingplacepick" data-place="' + v + '" '
-        + 'style="display:block;width:100%;text-align:left;padding:6px 9px;font-size:12px;'
-        + 'line-height:1.35"><b style="font-weight:600">' + title + '</b>'
-        + '<span style="display:block;opacity:.72;font-size:11px">' + why + '</span></button>';
-    };
-    el.innerHTML = '<div style="font-size:11px;color:var(--mut,#8b96a8);padding:0 3px 1px">'
-        + 'Where should it sit?</div>'
-      + one(0, "Centred on itself",
-            "opens framed in any viewer \u2014 Windows 3D Viewer, Paint 3D")
-      + one(1, "At its dataset coordinates",
-            "so several of these line up in one Blender scene");
-    document.body.appendChild(el);
-    /* Under the button, nudged back inside the window rather than off the edge of it. */
-    var r = btn ? btn.getBoundingClientRect() : { left: 20, bottom: 20, top: 20 };
-    var w = el.offsetWidth || 300, h = el.offsetHeight || 90;
-    var left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
-    var top = (r.bottom + h + 8 <= window.innerHeight) ? (r.bottom + 5)
-                                                       : Math.max(8, r.top - h - 5);
-    el.style.left = left + "px"; el.style.top = top + "px";
-
-    var m = { el: el, btn: btn, done: done };
-    m.onKey = function(e){ if (e.key === "Escape"){ e.preventDefault(); tracingPlaceMenuClose(); } };
-    m.onOut = function(e){ if (!el.contains(e.target)) tracingPlaceMenuClose(); };
-    m.onGone = function(){ tracingPlaceMenuClose(); };
-    TRACING_PLACE_MENU = m;
-    document.addEventListener("keydown", m.onKey, true);
-    document.addEventListener("mousedown", m.onOut, true);
-    window.addEventListener("resize", m.onGone, true);
-    window.addEventListener("scroll", m.onGone, true);
-    [].slice.call(el.querySelectorAll(".tracingplacepick")).forEach(function(bb){
-      bb.addEventListener("click", function(e){
-        e.preventDefault(); e.stopPropagation();
-        tracingPlaceMenuClose(bb.dataset.place === "1");
-      });
-    });
-    try { el.querySelector(".tracingplacepick").focus(); } catch (_e2){}
-  });
-}
-/* ── AND WHERE IT ACTUALLY WENT ─────────────────────────────────────  2026-10-12
-   Søren: *"The centred on itself worked fine, but then when I tried dataset coordinates it looks
-   like it is still centred on itself."* The file was right -- 876 µm out, measured in his own
-   Downloads folder -- and the picture could not have shown it: a viewer frames whatever it is
-   given, so one object alone looks the same at the origin and a millimetre away. The difference
-   is relational, and the line promised it without ever reporting it.
-
-   BLENDER'S AXES, because Blender is where the number can be read: X = x, Y = -z, Z = -y, the
-   same permutation core/traceloft.js applies to the vertices and to ob.location, and the place a
-   .glb lands at after import. Turned here and nowhere else -- a third opinion about the
-   permutation is how the two writers would stop agreeing about it. */
+   THE LINE STILL REPORTS WHERE, which is the part of this morning that earned its place: one
+   object alone looks the same wherever it sits, so a sentence that merely claimed a placement
+   could not be checked. BLENDER'S AXES, because that is where the number can be read: X = x,
+   Y = -z, Z = -y, the permutation core/traceloft.js applies to the vertices and to ob.location,
+   and where a .glb lands after import. Turned here and nowhere else. */
 function tracingPlaceWhereUm(out){
   var o = out && out.offsetUm;
   if (!o || o.length !== 3) return null;
   var n1 = function(v){ return Math.round(Number(v)); };
   return [n1(o[0]), n1(-o[2]), n1(-o[1])];
 }
-function tracingPlaceSay(place, out){
+function tracingPlaceSay(out){
   var at = tracingPlaceWhereUm(out);
-  if (place)
-    return "Placed at its dataset coordinates"
-      + (at ? " \u2014 this object’s Location is " + at.join(", ") + " µm, which you can "
-              + "read in Blender’s N panel" : "")
-      + ". ON ITS OWN IT LOOKS THE SAME AS THE CENTRED ONE: a viewer frames whatever it is given, "
-      + "so the placement only shows against something else \u2014 a second cell in the same scene. "
-      + "Press Home in Blender to frame it, or Alt+G to move it to the world origin.";
-  return "Centred on itself, so it opens framed in any viewer"
-    + (at ? " \u2014 it would have sat at " + at.join(", ") + " µm" : "")
-    + ". Press 3D model again and choose dataset coordinates if you want several of these to line "
-    + "up in one scene.";
+  return "At its dataset coordinates"
+    + (at ? " — this object’s Location is " + at.join(", ") + " µm, which you can read "
+            + "in Blender’s N panel" : "")
+    + ", so several of these open in one scene in their true relative positions. One on its own "
+    + "looks the same wherever it sits, because a viewer frames whatever it is given. Press Home "
+    + "in Blender to frame it, or Alt+G to move it to the world origin.";
 }
-/* What the BUTTON says before it is pressed. It no longer has a default to describe: it asks. */
-var TRACING_PLACE_HELP = "You choose when you press it: centred on itself, so it opens framed in any viewer, or at its dataset coordinates, so several line up in one Blender scene.";
+var TRACING_PLACE_HELP = "At its dataset coordinates, so several of these line up in one Blender scene. The line afterwards says the Location it was given.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
 /* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
    Søren, on the µJump download: *"The transparency of the root ID is too much, it is hard to see
@@ -5804,10 +5725,6 @@ function tracingSegSkipSay(g, have){
 }
 /* One tracing, on its own. Solid: there is nothing inside it to look through it at. */
 async function tracingOneGlb(sid, btn, fmt){
-  /* ASKED BEFORE ANYTHING IS FETCHED, so changing your mind costs nothing at all — not a
-     download, not a read of somebody's Drive. */
-  var place = await tracingPlaceAsk(btn);
-  if (place === null) return;
   var label = btn ? btn.innerHTML : "";
   try {
     if (btn){ btn.disabled = true; btn.textContent = "meshing\u2026"; }
@@ -5817,13 +5734,13 @@ async function tracingOneGlb(sid, btn, fmt){
     var base = tracingSafeName(parts[0].name) + "__" + tracingSafeName(sid) + "_um";
     var where = {};
     var n = (fmt === "py")
-      ? tracingPySave(parts, base + "_blender.py", parts[0].name, place, where)
-      : tracingGlbSave(parts, base + ".glb", place, where);
+      ? tracingPySave(parts, base + "_blender.py", parts[0].name, true, where)
+      : tracingGlbSave(parts, base + ".glb", true, where);
     tracingSay(n ? ((fmt === "py")
                     ? "Saved " + parts[0].name + " as a Blender script \u2014 open it in "
                       + "Blender\u2019s Scripting tab and press Run. Micrometres."
                     : "Saved " + parts[0].name + " as a 3D model (GLB, micrometres). "
-                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay(place, where)
+                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay(where)
                       + " " + TRACING_GLTF_HELP)
                  : "Nothing could be meshed from that tracing.", !n);
   } catch (e){
@@ -5835,8 +5752,6 @@ async function tracingOneGlb(sid, btn, fmt){
 /* Every tracing of one cell in one file, the cell see-through. */
 async function tracingCellGlb(g, btn, fmt){
   if (!g || !g.items.length) return;
-  var place = await tracingPlaceAsk(btn);
-  if (place === null) return;
   var label = btn ? btn.innerHTML : "";
   try {
     var got = await tracingFetchCell(g.items.map(function(x){ return x.t.structureId; }), btn);
@@ -5858,8 +5773,8 @@ async function tracingCellGlb(g, btn, fmt){
                  : (g.root ? ("segment " + g.root) : "traced structures"));
     var where = {};
     var n = (fmt === "py")
-      ? tracingPySave(parts, cell + "_um_blender.py", title, place, where)
-      : tracingGlbSave(parts, cell + "_um.glb", place, where);
+      ? tracingPySave(parts, cell + "_um_blender.py", title, true, where)
+      : tracingGlbSave(parts, cell + "_um.glb", true, where);
     var see = parts.filter(function(q){ return q.alpha < 1; }).length;
     tracingSay("Saved " + cell + (fmt === "py" ? "_um_blender.py" : "_um.glb")
       + " \u2014 " + n + " structure" + (n === 1 ? "" : "s")
@@ -5867,7 +5782,7 @@ async function tracingCellGlb(g, btn, fmt){
       + (see ? ", with the " + parts.filter(function(q){ return q.alpha < 1; })
                  .map(function(q){ return q.name.toLowerCase(); }).join(" and ")
              + " see-through so what is inside shows." : ".")
-      + " Micrometres. " + tracingPlaceSay(place, where)
+      + " Micrometres. " + tracingPlaceSay(where)
       + ((fmt === "py") ? "" : " " + TRACING_GLTF_HELP)
       + tracingSegSkipSay(g, have)
       + (missed.length ? " Could not fetch " + missed.join(", ") + "." : "")
