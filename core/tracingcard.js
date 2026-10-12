@@ -396,13 +396,21 @@ function tracingGroupByCell(list, nucOf, rootOf, coordOf){
   order.sort(function(a, b){ return (a === "" ? 1 : 0) - (b === "" ? 1 : 0); });
   return order.map(function(k){ return by[k]; });
 }
+/* ── A LABEL IS MARKUP, NOT TEXT ────────────────────────────────────  2026-10-12
+   Every button on this card that reports progress saves its label, writes "meshing\u2026" over it
+   and puts the label back. It saved .textContent for a year, which round-tripped exactly while
+   the buttons said words -- and erased them the day they became glyphs, because an <svg> has no
+   text: the saved label was "", so the restore blanked the button for the rest of the session.
+
+   .innerHTML on BOTH ends. Writing text over a glyph while it works is right; what comes back has
+   to be what was there. Asserted in tracingiconbackcheck.js by pressing one of each kind. */
 /* "Remove all" asks in the button itself: a browser dialog would stop the page. */
 function tracingArm(b, ask, go){
   if (!b.dataset.armed){
-    const label = b.textContent;
+    const label = b.innerHTML;
     b.dataset.armed = "1"; b.textContent = ask; b.style.color = "var(--bad)";
     setTimeout(function(){
-      if (b.isConnected && b.dataset.armed){ delete b.dataset.armed; b.textContent = label; b.style.color = ""; }
+      if (b.isConnected && b.dataset.armed){ delete b.dataset.armed; b.innerHTML = label; b.style.color = ""; }
     }, 4000);
     return;
   }
@@ -4860,7 +4868,7 @@ async function tracingBrowse(){
    button can discover that nothing else can: a page and a sheet disagreeing about what exists. */
 async function tracingMeasureRun(btn, go, sayEl){
   if (!btn) return;
-  const was = btn.textContent, wasDis = btn.disabled;
+  const was = btn.innerHTML, wasDis = btn.disabled;
   btn.disabled = true;
   const say = function(m){
     btn.textContent = m;
@@ -4869,7 +4877,7 @@ async function tracingMeasureRun(btn, go, sayEl){
   let r;
   try { r = await go(say); }
   catch (e){ r = { error: String(e && e.message || e) }; }
-  btn.textContent = was; btn.disabled = wasDis;
+  btn.innerHTML = was; btn.disabled = wasDis;
   let msg;
   if (r && r.error){
     msg = "Nothing was saved \u2014 " + r.error + ".";
@@ -4967,7 +4975,7 @@ function tracingRenderShared(){
   TRACING_FOLD_KEYS.shared = [];
   host.innerHTML = splitBox
     + '<label id="tracingSharedLabel">In the dataset, by person and cell — open one to add to it '
-    + 'or correct it' + tracingPlaceTickHtml() + '</label>'
+    + 'or correct it</label>'
     + '<div class="row" style="gap:6px;margin:0 0 6px;align-items:center;flex-wrap:wrap">'
     + tracingFoldAllHtml("shared")
     + '<span class="hint" id="tracingSharedNote" style="margin:0;flex:1 1 220px">A tracing several '
@@ -5075,7 +5083,6 @@ function tracingRenderShared(){
   });
   const sidsOf = function(b){ const g = groups[Number(b.dataset.g)];
     return g ? g.items.map(function(x){ return x.t.structureId; }) : []; };
-  tracingPlaceWire(host);
   [].slice.call(host.querySelectorAll(".tracingcellpad")).forEach(function(b){
     b.addEventListener("click", function(){ tracingOpenCellShared(sidsOf(b), b); });
   });
@@ -5124,13 +5131,13 @@ async function tracingSplitRun(btn){
   const who = (typeof REPORTER_NAME !== "undefined" && REPORTER_NAME) ? String(REPORTER_NAME) : "";
   const only = (mine && mine.checked && who) ? who : "";
   if (mine) mine.disabled = !who;
-  const was = btn ? btn.textContent : "";
+  const was = btn ? btn.innerHTML : "";
   if (btn){ btn.disabled = true; btn.textContent = "Reading\u2026"; }
   if (out) out.innerHTML = "";
   let r;
   try { r = await window.tracedSplitScan(say, { only: only }); }
   catch (e){ r = { error: String(e && e.message || e) }; }
-  if (btn){ btn.disabled = false; btn.textContent = was; }
+  if (btn){ btn.disabled = false; btn.innerHTML = was; }
   if (!r || r.error){ say("Nothing was read \u2014 " + ((r && r.error) || "unknown error") + "."); return; }
   const n = (r.rows || []).length;
   say(n
@@ -5204,13 +5211,13 @@ async function tracingSplitRun(btn){
   const who = (typeof REPORTER_NAME !== "undefined" && REPORTER_NAME) ? String(REPORTER_NAME) : "";
   const only = (mine && mine.checked && who) ? who : "";
   if (mine) mine.disabled = !who;
-  const was = btn ? btn.textContent : "";
+  const was = btn ? btn.innerHTML : "";
   if (btn){ btn.disabled = true; btn.textContent = "Reading\u2026"; }
   if (out) out.innerHTML = "";
   let r;
   try { r = await window.tracedSplitScan(say, { only: only }); }
   catch (e){ r = { error: String(e && e.message || e) }; }
-  if (btn){ btn.disabled = false; btn.textContent = was; }
+  if (btn){ btn.disabled = false; btn.innerHTML = was; }
   if (!r || r.error){ say("Nothing was read \u2014 " + ((r && r.error) || "unknown error") + "."); return; }
   const n = (r.rows || []).length;
   say(n
@@ -5285,7 +5292,7 @@ async function tracingFetchShared(sid){
 async function tracingFetchCell(sids, btn){
   const out = new Array(sids.length);
   let next = 0, done = 0;
-  const label = btn ? btn.textContent : "";
+  const label = btn ? btn.innerHTML : "";
   const one = async function(){
     while (next < sids.length){
       const k = next++;
@@ -5305,10 +5312,10 @@ async function tracingFetchCell(sids, btn){
         const x = res[s] || { error: "not read" };
         return x.error ? { sid: s, error: x.error } : { sid: s, t: x.t, st: x.st };
       });
-    } finally { if (btn){ btn.disabled = false; btn.textContent = label; } }
+    } finally { if (btn){ btn.disabled = false; btn.innerHTML = label; } }
   }
   try { await Promise.all([one(), one(), one(), one()]); }
-  finally { if (btn){ btn.disabled = false; btn.textContent = label; } }
+  finally { if (btn){ btn.disabled = false; btn.innerHTML = label; } }
   return out;
 }
 function tracingFailedSay(got){
@@ -5511,34 +5518,93 @@ function tracingObjOf(name, rings, res){
 
    CENTRED IS THE DEFAULT, as he asked: most downloads are looked at on their own, in whatever
    opens a .glb. The dataset coordinates are for the day you assemble several cells in Blender. */
-var TRACING_PLACE_AT = false;
-function tracingPlaceWanted(){ return !!TRACING_PLACE_AT; }
-function tracingPlaceSet(on){ TRACING_PLACE_AT = !!on; }
-function tracingPlaceTickHtml(){
-  return '<label style="font-size:11px;color:var(--mut);margin-left:6px" title="Ticked, a 3D '
-    + 'model download carries its dataset coordinates, so several cells opened in one Blender '
-    + 'scene land in their true relative positions. Unticked \u2014 the default \u2014 it is '
-    + 'centred on itself, which is what a viewer that frames the origin rather than the scene '
-    + '\u2014 Windows 3D Viewer, Paint 3D \u2014 needs in order to show it at all. Remembered.">'
-    + '<input type="checkbox" id="tracingPlaceAt"' + (tracingPlaceWanted() ? " checked" : "")
-    + ' style="width:auto;vertical-align:-1px"> Dataset coordinates</label>';
+/* ── ASKED AT THE PRESS, NOT SET IN ADVANCE ─────────────────────────  2026-10-12
+   Søren: *"Perhaps it should be a choice you make when you click the 3D model button whether you
+   want it ready for Blender or as a standalone model?"*
+
+   A tick was a setting for what is a decision: it held an answer between presses to a question
+   nobody had asked it today, and its state was invisible at the moment it mattered. Moving that
+   state out of the DOM, yesterday, fixed the bug it caused and left the shape.
+
+   NOTHING IS REMEMBERED. One extra click, and the first answer is focused so Enter takes it. The
+   reason is ωJump's, about storage: a half-remembered state that disagrees with what you think you
+   did is a debugging trap, and a .glb in your Downloads folder is exactly that kind of state.
+
+   ON THE BODY, FIXED. These buttons live in a <summary> in a flex row in a <details>; a popover
+   appended beside one is clipped by the row, wrapped by the flex, and has its clicks read by the
+   fold handler. One element on the body, placed from the button's rectangle, has none of that. */
+var TRACING_PLACE_MENU = null;
+function tracingPlaceMenuClose(answer){
+  var m = TRACING_PLACE_MENU;
+  TRACING_PLACE_MENU = null;
+  if (!m) return;
+  document.removeEventListener("keydown", m.onKey, true);
+  document.removeEventListener("mousedown", m.onOut, true);
+  window.removeEventListener("resize", m.onGone, true);
+  window.removeEventListener("scroll", m.onGone, true);
+  if (m.el && m.el.parentNode) m.el.parentNode.removeChild(m.el);
+  try { if (m.btn && m.btn.isConnected) m.btn.focus(); } catch (_e){}
+  /* NULL IS NOT FALSE. "Centred" and "I changed my mind" are different answers, and a caller that
+     cannot tell them apart downloads a file for somebody who pressed Escape. */
+  m.done(answer === undefined ? null : answer);
 }
-/* Re-attached on every render, because the list it sits in is replaced wholesale. */
-function tracingPlaceWire(host){
-  var el = (host || document).querySelector("#tracingPlaceAt");
-  if (!el || el.getAttribute("data-wired")) return;
-  el.setAttribute("data-wired", "1");
-  el.checked = tracingPlaceWanted();
-  el.addEventListener("change", function(){ tracingPlaceSet(el.checked); });
+function tracingPlaceAsk(btn){
+  return new Promise(function(done){
+    tracingPlaceMenuClose();
+    var el = document.createElement("div");
+    el.id = "tracingPlaceMenu";
+    el.className = "tracingplacemenu";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Where should this 3D model sit?");
+    el.style.cssText = "position:fixed;z-index:9999;max-width:360px;padding:8px;border-radius:9px;"
+      + "border:1px solid var(--line,#2a3550);background:var(--bg2,#131a2b);"
+      + "box-shadow:0 10px 28px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:5px";
+    var one = function(v, title, why){
+      return '<button type="button" class="idbtn tracingplacepick" data-place="' + v + '" '
+        + 'style="display:block;width:100%;text-align:left;padding:6px 9px;font-size:12px;'
+        + 'line-height:1.35"><b style="font-weight:600">' + title + '</b>'
+        + '<span style="display:block;opacity:.72;font-size:11px">' + why + '</span></button>';
+    };
+    el.innerHTML = '<div style="font-size:11px;color:var(--mut,#8b96a8);padding:0 3px 1px">'
+        + 'Where should it sit?</div>'
+      + one(0, "Centred on itself",
+            "opens framed in any viewer \u2014 Windows 3D Viewer, Paint 3D")
+      + one(1, "At its dataset coordinates",
+            "so several of these line up in one Blender scene");
+    document.body.appendChild(el);
+    /* Under the button, nudged back inside the window rather than off the edge of it. */
+    var r = btn ? btn.getBoundingClientRect() : { left: 20, bottom: 20, top: 20 };
+    var w = el.offsetWidth || 300, h = el.offsetHeight || 90;
+    var left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    var top = (r.bottom + h + 8 <= window.innerHeight) ? (r.bottom + 5)
+                                                       : Math.max(8, r.top - h - 5);
+    el.style.left = left + "px"; el.style.top = top + "px";
+
+    var m = { el: el, btn: btn, done: done };
+    m.onKey = function(e){ if (e.key === "Escape"){ e.preventDefault(); tracingPlaceMenuClose(); } };
+    m.onOut = function(e){ if (!el.contains(e.target)) tracingPlaceMenuClose(); };
+    m.onGone = function(){ tracingPlaceMenuClose(); };
+    TRACING_PLACE_MENU = m;
+    document.addEventListener("keydown", m.onKey, true);
+    document.addEventListener("mousedown", m.onOut, true);
+    window.addEventListener("resize", m.onGone, true);
+    window.addEventListener("scroll", m.onGone, true);
+    [].slice.call(el.querySelectorAll(".tracingplacepick")).forEach(function(bb){
+      bb.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        tracingPlaceMenuClose(bb.dataset.place === "1");
+      });
+    });
+    try { el.querySelector(".tracingplacepick").focus(); } catch (_e2){}
+  });
 }
-function tracingPlaceSay(){
-  return tracingPlaceWanted()
+function tracingPlaceSay(place){
+  return place
     ? "Placed at its dataset coordinates, so several of these open in one scene in their true relative positions \u2014 press Home in Blender to frame it, or Alt+G to move it to the world origin."
-    : "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates above if you want several of these to line up in one scene.";
+    : "Centred on itself, so it opens framed in any viewer \u2014 press 3D model again and choose dataset coordinates if you want several of these to line up in one scene.";
 }
-/* What the BUTTON says before anything is clicked: the default, which is now centred. The line
-   after the click says what actually happened \u2014 see tracingPlaceSay(). */
-var TRACING_PLACE_HELP = "Centred on itself, so it opens framed in any viewer \u2014 tick Dataset coordinates by the list if you want several of these to line up in one Blender scene.";
+/* What the BUTTON says before it is pressed. It no longer has a default to describe: it asks. */
+var TRACING_PLACE_HELP = "You choose when you press it: centred on itself, so it opens framed in any viewer, or at its dataset coordinates, so several line up in one Blender scene.";
 var TRACING_GLTF_HELP = "If Blender has no glTF 2.0 under File \u203a Import, tick Import-Export: glTF 2.0 format in Edit \u203a Preferences \u203a Add-ons \u2014 or use Blender script, which needs no add-on.";
 /* ── HOW SEE-THROUGH, AND WHY THESE TWO NUMBERS ─────────────────  2026-10-11
    Søren, on the µJump download: *"The transparency of the root ID is too much, it is hard to see
@@ -5597,17 +5663,17 @@ function tracingGlbParts(got, alone){
   parts.sort(function(a, b){ return rank(a.kind) - rank(b.kind); });
   return parts;
 }
-function tracingPySave(parts, filename, title){
+function tracingPySave(parts, filename, title, place){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
   var txt = UJ.traceloft.blenderPy(parts, res, { title: title || "", file: filename,
-                                                 place: tracingPlaceWanted() });
+                                                 place: !!place });
   if (!txt) return 0;
   tracingSaveBlob(new Blob([txt], { type: "text/x-python" }), filename);
   return parts.length;
 }
-function tracingGlbSave(parts, filename){
+function tracingGlbSave(parts, filename, place){
   var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-  var bytes = UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() });
+  var bytes = UJ.traceloft.glb(parts, res, { place: !!place });
   if (!bytes) return 0;
   tracingSaveBlob(new Blob([bytes], { type: "model/gltf-binary" }), filename);
   return parts.length;
@@ -5724,32 +5790,38 @@ function tracingSegSkipSay(g, have){
 }
 /* One tracing, on its own. Solid: there is nothing inside it to look through it at. */
 async function tracingOneGlb(sid, btn, fmt){
-  var label = btn ? btn.textContent : "";
+  /* ASKED BEFORE ANYTHING IS FETCHED, so changing your mind costs nothing at all — not a
+     download, not a read of somebody's Drive. */
+  var place = await tracingPlaceAsk(btn);
+  if (place === null) return;
+  var label = btn ? btn.innerHTML : "";
   try {
     if (btn){ btn.disabled = true; btn.textContent = "meshing\u2026"; }
     var x = Object.assign({ sid: sid }, await tracingFetchShared(sid));
     var parts = tracingGlbParts([x], true);
     if (!parts.length) throw new Error("that tracing has no contours to mesh");
     var base = tracingSafeName(parts[0].name) + "__" + tracingSafeName(sid) + "_um";
-    var n = (fmt === "py") ? tracingPySave(parts, base + "_blender.py", parts[0].name)
-                           : tracingGlbSave(parts, base + ".glb");
+    var n = (fmt === "py") ? tracingPySave(parts, base + "_blender.py", parts[0].name, place)
+                           : tracingGlbSave(parts, base + ".glb", place);
     tracingSay(n ? ((fmt === "py")
                     ? "Saved " + parts[0].name + " as a Blender script \u2014 open it in "
                       + "Blender\u2019s Scripting tab and press Run. Micrometres."
                     : "Saved " + parts[0].name + " as a 3D model (GLB, micrometres). "
-                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay()
+                      + "Blender: File \u203a Import \u203a glTF 2.0. " + tracingPlaceSay(place)
                       + " " + TRACING_GLTF_HELP)
                  : "Nothing could be meshed from that tracing.", !n);
   } catch (e){
     tracingSay("Could not make the 3D model: " + String(e && e.message || e), true);
   } finally {
-    if (btn){ btn.disabled = false; btn.textContent = label; }
+    if (btn){ btn.disabled = false; btn.innerHTML = label; }
   }
 }
 /* Every tracing of one cell in one file, the cell see-through. */
 async function tracingCellGlb(g, btn, fmt){
   if (!g || !g.items.length) return;
-  var label = btn ? btn.textContent : "";
+  var place = await tracingPlaceAsk(btn);
+  if (place === null) return;
+  var label = btn ? btn.innerHTML : "";
   try {
     var got = await tracingFetchCell(g.items.map(function(x){ return x.t.structureId; }), btn);
     if (btn){ btn.disabled = true; btn.textContent = "meshing\u2026"; }
@@ -5768,8 +5840,8 @@ async function tracingCellGlb(g, btn, fmt){
                  : (g.nuc ? "nucleus_" + g.nuc : (g.root ? "root_" + g.root : "no_cell")));
     var title = g.coord ? ("cell at " + g.coord) : (g.nuc ? ("nucleus " + g.nuc)
                  : (g.root ? ("segment " + g.root) : "traced structures"));
-    var n = (fmt === "py") ? tracingPySave(parts, cell + "_um_blender.py", title)
-                           : tracingGlbSave(parts, cell + "_um.glb");
+    var n = (fmt === "py") ? tracingPySave(parts, cell + "_um_blender.py", title, place)
+                           : tracingGlbSave(parts, cell + "_um.glb", place);
     var see = parts.filter(function(q){ return q.alpha < 1; }).length;
     tracingSay("Saved " + cell + (fmt === "py" ? "_um_blender.py" : "_um.glb")
       + " \u2014 " + n + " structure" + (n === 1 ? "" : "s")
@@ -5777,7 +5849,7 @@ async function tracingCellGlb(g, btn, fmt){
       + (see ? ", with the " + parts.filter(function(q){ return q.alpha < 1; })
                  .map(function(q){ return q.name.toLowerCase(); }).join(" and ")
              + " see-through so what is inside shows." : ".")
-      + " Micrometres. " + tracingPlaceSay()
+      + " Micrometres. " + tracingPlaceSay(place)
       + ((fmt === "py") ? "" : " " + TRACING_GLTF_HELP)
       + tracingSegSkipSay(g, have)
       + (missed.length ? " Could not fetch " + missed.join(", ") + "." : "")
@@ -5785,12 +5857,12 @@ async function tracingCellGlb(g, btn, fmt){
   } catch (e){
     tracingSay("Could not make the 3D model: " + String(e && e.message || e), true);
   } finally {
-    if (btn){ btn.disabled = false; btn.textContent = label; }
+    if (btn){ btn.disabled = false; btn.innerHTML = label; }
   }
 }
 async function tracingCellZip(g, btn){
   if (!g || !g.items.length) return;
-  const label = btn ? btn.textContent : "";
+  const label = btn ? btn.innerHTML : "";
   try {
     const JSZip = await tracingJSZip();
     const got = await tracingFetchCell(g.items.map(function(x){ return x.t.structureId; }), btn);
@@ -5837,7 +5909,7 @@ async function tracingCellZip(g, btn){
   } catch (e){
     tracingSay("Could not make the zip: " + String(e && e.message || e), true);
   } finally {
-    if (btn){ btn.disabled = false; btn.textContent = label; }
+    if (btn){ btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
@@ -5848,7 +5920,7 @@ async function tracingCellZip(g, btn){
 async function tracingSharedInViewer(sid, btn){
   /* BEFORE THE FETCH (2026-09-22): see tracingReserveTab. */
   tracingReserveTab("Reading this tracing from the dataset, then opening the viewer\u2026");
-  const label = btn ? btn.textContent : "";
+  const label = btn ? btn.innerHTML : "";
   if (btn){ btn.disabled = true; btn.textContent = "opening…"; }
   try {
     const r = await fetch(REPORT_ENDPOINT + "?tracings=1&structureId=" + encodeURIComponent(sid)
@@ -5870,12 +5942,12 @@ async function tracingSharedInViewer(sid, btn){
     var held = tracingHeldTab(); if (held) try { held.close(); } catch (_e){}
     tracingSay("Could not open that tracing: " + String(e && e.message || e), true);
   } finally {
-    if (btn){ btn.disabled = false; btn.textContent = label; }
+    if (btn){ btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
 async function tracingOpenShared(sid, btn){
-  const label = btn ? btn.textContent : "";
+  const label = btn ? btn.innerHTML : "";
   if (btn){ btn.disabled = true; btn.textContent = "opening…"; }
   try {
     const r = await fetch(REPORT_ENDPOINT + "?tracings=1&structureId=" + encodeURIComponent(sid)
@@ -5987,7 +6059,7 @@ async function tracingOpenShared(sid, btn){
   } catch (e){
     tracingSay("Could not open that tracing: " + String(e && e.message || e), true);
   }
-  if (btn){ btn.disabled = false; btn.textContent = label; }
+  if (btn){ btn.disabled = false; btn.innerHTML = label; }
 }
 
 /* ── THE PAD ─────────────────────────────────────────────────────────────────────  2026-09-17

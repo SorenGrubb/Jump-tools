@@ -292,6 +292,12 @@ const ok = (c, what, d) => {
     const real = UJ.traceloft.glb;
     UJ.traceloft.glb = function(parts, res){ got = parts.map(q => ({
       name: q.name, alpha: q.alpha, scale: q.scaleToNm || 1 })); return real(parts, res); };
+    /* THE QUESTION IS NOT THIS SECTION'S SUBJECT. tracingCellGlb now asks where to put the
+       model and waits for an answer; with nobody to click, an await here never returns and the
+       whole file hangs rather than failing. Answered "centred", which is what it used to do.
+       The menu itself is pressed in tracingplacecheck.js. */
+    if (typeof tracingPlaceAsk === "function")
+      window.tracingPlaceAsk = tracingPlaceAsk = async function(){ return false; };
     window.tracingSaveBlob = tracingSaveBlob = function(){};
     await tracingCellGlb({ nuc: "405191", root: "864691136051278323",
                            coord: "234624,228032,17512",
@@ -389,6 +395,12 @@ const ok = (c, what, d) => {
     UJ.traceloft.glb = function(parts, res){
       got = parts.map(q => q.name); return realGlb(parts, res);
     };
+    /* THE QUESTION IS NOT THIS SECTION'S SUBJECT. tracingCellGlb now asks where to put the
+       model and waits for an answer; with nobody to click, an await here never returns and the
+       whole file hangs rather than failing. Answered "centred", which is what it used to do.
+       The menu itself is pressed in tracingplacecheck.js. */
+    if (typeof tracingPlaceAsk === "function")
+      window.tracingPlaceAsk = tracingPlaceAsk = async function(){ return false; };
     window.tracingSaveBlob = tracingSaveBlob = function(){};
     window.tracingSay = tracingSay = function(t){ said = String(t || ""); };
     const run = async (sids) => {
@@ -672,32 +684,18 @@ const ok = (c, what, d) => {
        (see.missed2 || []).join(", ") || "said nothing");
   }
 
-  /* ── PLACED OR CENTRED IS HIS TO CHOOSE ───────────────────────────────────────  2026-10-11
-     Søren, of a cell opened in Windows 3D Viewer: *"the 3D model in the tracing dataset looks
-     empty because it is not centered. Can we do something so that it is centered when opening
-     alone but has the correct coordinate when opening in Blender?"*
+  /* \u2500\u2500 PLACED OR CENTRED, IN THE FILE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-12
+     S\u00f8ren, of a cell opened in Windows 3D Viewer: *"it is not centered... can we do something
+     so that it is centered when opening alone but has the correct coordinate when opening in
+     Blender?"* \u2014 and then, of the tick that answered it: *"Perhaps it should be a choice you
+     make when you click the 3D model button?"*
 
-     Not in one file, and saying so was the answer: the geometry is in ONE place, and what differs
-     between viewers is only whether they frame the scene they were given. Blender frames on Home;
-     Windows 3D Viewer frames the origin, so a cell 1.6 mm away is an empty grey room.
-
-     So it is a tick, default ON. WHAT IS ASSERTED:
-       - the tick is there, and ticked, so today's behaviour is the default
-       - unticked, the GLB sits at the origin — which is the whole of what Windows 3D Viewer needs
-       - ...and the Blender script centres WITH it, because two downloads of one cell that
-         disagree about where it is are worse than either position
-       - ticked, both are placed again, so this is a choice and not a retreat
-       - and the line says which it did, because a file whose position you cannot predict is
-         worse than either position */
-  console.log("\nand placed or centred is his to choose");
-  const pick = await p.evaluate(() => {
-    /* GUARDED ON THE CARD, NOT ON THE FEATURE. Guarding on tracingPlaceTickHtml meant a build
-       without the tick reported "no tracing card on this page" and passed \u2014 a check that
-       excuses its own subject. The card is what some pages lack; the tick is what must be there
-       when it does. */
-    if (typeof tracingGlbSave !== "function") return { noCard: true };
-    if (typeof tracingPlaceTickHtml !== "function"
-        || typeof tracingPlaceWire !== "function") return { missing: true };
+     THE QUESTION MOVED TO tracingplacecheck.js, which presses the menu, dismisses it, and checks
+     that nothing is downloaded when you change your mind. What belongs here is the half about the
+     file: one option, honoured the same way by both writers. Two downloads of one cell that
+     disagree about where it is are worse than either position, and only this can see both. */
+  console.log("\nand placed or centred is one option, honoured by both writers");
+  const place = await p.evaluate(() => {
     const sq = (z, cx, cy, h) => ({ z: z,
       points: [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]] });
     const rings = [];
@@ -710,139 +708,33 @@ const ok = (c, what, d) => {
       return (j.nodes[0] || {}).translation || [0, 0, 0];
     };
     const loc = (py) => (py.match(/_add\('Whole cell',[^[]*?,\s*\(([-0-9.,]+)\),\s*\[/) || [])[1];
-    /* The tick, through the real list, so what is read is what he would click. */
-    const d = document.createElement("div");
-    d.innerHTML = tracingPlaceTickHtml();
-    document.body.appendChild(d);
-    /* WIRED, as the list wires it. A tick with no listener is a tick nobody is told about —
-       which was the whole of his bug, in miniature. */
-    tracingPlaceWire(d);
-    const el = document.getElementById("tracingPlaceAt");
-    const was = el ? el.checked : null;
-    const run = () => ({ glb: tx(UJ.traceloft.glb(parts, res, { place: tracingPlaceWanted() })),
-                         py: loc(UJ.traceloft.blenderPy(parts, res,
-                               { title: "t", place: tracingPlaceWanted() })),
-                         say: tracingPlaceSay() });
-    /* THROUGH THE EVENT A CLICK FIRES, not by assigning .checked. The answer now lives in
-       storage, and setting the box without telling anybody is exactly the state that used to
-       look fine here and fail for him \u2014 see the re-render section below. */
-    const set = (v) => { el.checked = v; el.dispatchEvent(new Event("change", { bubbles: true })); };
-    const off = run();
-    set(true);
-    const on = run();
-    set(false);
-    const back = run();
-    d.remove();
-    return { was: was, on: on, off: off, back: back };
+    const run = (p2) => ({ glb: tx(UJ.traceloft.glb(parts, res, { place: p2 })),
+                           py: loc(UJ.traceloft.blenderPy(parts, res, { title: "t", place: p2 })) });
+    return { off: run(false), on: run(true),
+             /* Omitted entirely, which is what every other caller of these two writers does. */
+             bare: { glb: tx(UJ.traceloft.glb(parts, res)),
+                     py: loc(UJ.traceloft.blenderPy(parts, res, { title: "t" })) },
+             say: (typeof tracingPlaceSay === "function")
+                  ? { on: tracingPlaceSay(true), off: tracingPlaceSay(false) } : null };
   });
-  if (pick.noCard) console.log("  (no tracing card on this page)");
-  else if (pick.missing)
-    ok(false, "the card offers the Dataset coordinates tick", "tracingPlaceTickHtml is not here");
-  else {
-    ok(pick.was === false,
-       "the tick is there and NOT ticked \u2014 S\u00f8ren: *\u201cthe default should be centered "
-       + "and you can tick it if you need to download and open in Blender\u201d*. Most downloads "
-       + "are looked at on their own; the dataset coordinates are for the day you assemble "
-       + "several cells", String(pick.was));
-    ok(Math.max.apply(null, (pick.off.glb || []).map(Math.abs)) === 0,
-       "unticked, the GLB sits at the origin — which is the whole of what a viewer that frames "
-       + "the origin rather than the scene needs in order to show it",
-       JSON.stringify(pick.off.glb));
-    ok(pick.off.py === "0,0,0",
-       "...and the Blender script centres WITH it, because two downloads of one cell that disagree "
-       + "about where it is are worse than either position", String(pick.off.py));
-    ok(Math.max.apply(null, (pick.on.glb || []).map(Math.abs)) > 100
-       && pick.on.py !== "0,0,0" && pick.back.py === pick.off.py,
-       "ticked, both are placed — a choice, not a retreat; and unticking again puts them back "
-       + "where they were", JSON.stringify(pick.on.glb) + " / " + String(pick.on.py));
-    ok(/dataset coordinates/i.test(pick.on.say) && /[Cc]entred on itself/.test(pick.off.say)
-       && pick.on.say !== pick.off.say,
-       "...and the line says which it did, because a file whose position you cannot predict is "
-       + "worse than either position", pick.off.say.slice(0, 70));
-  }
-
-  /* ── AND THE TICK OUTLIVES THE LIST IT SITS IN ────────────────────────────────  2026-10-11
-     Søren: *"Even though I have ticked the dataset coordinates off, it is still not centered."*
-
-     My bug, and the check above could not have caught it: it set the tick and read it back in the
-     same breath, which is the one sequence that works. The tick's state lived in the dataset
-     list's innerHTML — and that list is REBUILT, by tracingOpenShared(), which renders what is in
-     hand and then renders again once the index lands. Untick, let the refresh arrive, press 3D
-     model, and the file is placed, because the tick had been recreated ticked and nobody was told.
-
-     SO THE ASSERTION IS THE SEQUENCE HE LIVED: untick, re-render the real list, then ask. The
-     answer now lives in localStorage, so it survives both that and a reload. */
-  console.log("\nand the tick outlives the list it sits in");
-  const kept = await p.evaluate(async () => {
-    if (typeof tracingGlbSave !== "function") return { noCard: true };
-    if (typeof tracingRenderShared !== "function") return { noList: true };
-    /* A FAILURE, NOT AN EXCUSE: on a page with the card and the list, the tick's answer must
-       live somewhere a re-render cannot reach. */
-    if (typeof tracingPlaceWire !== "function"
-        || typeof tracingPlaceWanted !== "function") return { noTick: true };
-    const sq = (z, cx, cy, h) => ({ z: z,
-      points: [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]] });
-    const rings = [];
-    for (let z = 400; z <= 406; z++) rings.push(sq(z, 400000, 230000, 250));
-    window.TRACING_SHARED = TRACING_SHARED = [{ structureId: "s1", name: "Whole cell",
-      kind: "cell", instanceOf: "cell", color: "#cddc39", nucleusId: "", rootId: "",
-      cellCoord: "234624,228032,17512", contours: 7, sections: 7, versions: 1,
-      tracedBy: "me", timestamp: "2026-10-11" }];
-    tracingRenderShared();
-    const el0 = document.getElementById("tracingPlaceAt");
-    if (!el0) return { noTick: true };
-    /* TICK IT ON, through the event a person's click fires. */
-    el0.checked = true;
-    el0.dispatchEvent(new Event("change", { bubbles: true }));
-    const onBefore = tracingPlaceWanted();
-    tracingRenderShared();                      /* the refresh he waited through */
-    const onAfter = tracingPlaceWanted();
-    const onBox = !!document.getElementById("tracingPlaceAt").checked;
-    /* ...and off again, which is the direction that failed him. */
-    const el1 = document.getElementById("tracingPlaceAt");
-    el1.checked = false;
-    el1.dispatchEvent(new Event("change", { bubbles: true }));
-    tracingRenderShared();
-    const offAfter = tracingPlaceWanted();
-    const offBox = !!document.getElementById("tracingPlaceAt").checked;
-    /* And what the download actually does, after that re-render — the only thing he can see. */
-    let saved = null;
-    window.tracingSaveBlob = tracingSaveBlob = function(blob){ saved = blob; };
-    window.tracingFetchCell = tracingFetchCell = async function(sids){
-      return sids.map(s => ({ sid: s, t: { color: "#cddc39", kind: "cell" },
-        st: { name: "Whole cell", kind: "cell", rings: rings } }));
-    };
-    const btn = document.querySelector(".tracingcellglb");
-    if (btn) btn.click();
-    const t0 = Date.now();
-    while (Date.now() - t0 < 8000 && !saved) await new Promise(r => setTimeout(r, 100));
-    let tx = null;
-    if (saved){
-      const u8 = new Uint8Array(await saved.arrayBuffer());
-      const dv = new DataView(u8.buffer);
-      const j = JSON.parse(new TextDecoder().decode(u8.subarray(20, 20 + dv.getUint32(12, true))));
-      tx = (j.nodes[0] || {}).translation || null;
-    }
-    return { onBefore, onAfter, onBox, offAfter, offBox, tx, pressed: !!btn };
-  });
-  if (kept.noCard) console.log("  (no tracing card on this page)");
-  else if (kept.noList) console.log("  (no dataset list on this page)");
-  else if (kept.noTick)
-    ok(false, "the tick's answer lives outside the list it sits in",
-       "tracingPlaceWire is not here \u2014 the answer is still in the DOM");
-  else {
-    ok(kept.onBefore === true && kept.onAfter === true && kept.onBox === true,
-       "ticked ON, the choice survives a re-render of the list — both the answer and the box, "
-       + "because a box that disagrees with the answer is the next bug",
-       "answer " + kept.onAfter + ", box " + kept.onBox);
-    ok(kept.offAfter === false && kept.offBox === false,
-       "...and ticked OFF it survives too, which is the direction that failed him: untick, the "
-       + "index lands, the list is rebuilt, and the old tick came back ticked",
-       "answer " + kept.offAfter + ", box " + kept.offBox);
-    ok(kept.pressed && kept.tx && Math.max.apply(null, kept.tx.map(Math.abs)) === 0,
-       "...so the download made AFTER that re-render is centred, which is the only part of this "
-       + "he can see", kept.pressed ? JSON.stringify(kept.tx) : "no cell button to press");
-  }
+  ok(Math.max.apply(null, place.off.glb.map(Math.abs)) === 0 && place.off.py === "0,0,0",
+     "centred puts BOTH at the origin \u2014 which is the whole of what a viewer that frames the "
+     + "origin rather than the scene needs in order to show it at all",
+     JSON.stringify(place.off.glb) + " / " + place.off.py);
+  ok(Math.max.apply(null, place.on.glb.map(Math.abs)) > 100 && place.on.py !== "0,0,0",
+     "...and placed puts both where the cell is",
+     JSON.stringify(place.on.glb) + " / " + place.on.py);
+  ok(place.bare.glb.join(",") === place.on.glb.join(",") && place.bare.py === place.on.py,
+     "...and the WRITER'S own default, with no option passed, is PLACED \u2014 it writes the "
+     + "geometry where the geometry is, and centring is the simplification a caller asks for. "
+     + "Worth pinning down because the card's default is the other one: the card always passes "
+     + "an answer, and the day it stops, this says which way it will fall",
+     JSON.stringify(place.bare.glb) + " / " + place.bare.py);
+  if (place.say)
+    ok(/dataset coordinates/i.test(place.say.on) && /[Cc]entred on itself/.test(place.say.off)
+       && place.say.on !== place.say.off,
+       "...and the line afterwards says which it did, because a file whose position you cannot "
+       + "predict is worse than either position", place.say.off.slice(0, 70));
 
   /* ── A SURFACE RATHER THAN A STACK OF PLATES ──────────────────────────────────  2026-10-11
      Søren, of a cell in Blender: *"I think the vasculature looks a bit segmented and not very
