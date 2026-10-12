@@ -47,10 +47,14 @@ const ok = (c, what, d) => {
    So Hesham has 5 tracings in 3 cells and Søren 4 in 2, and the two counts differ -- a fixture
    where they matched would let a header that prints the wrong number pass. */
 const A = "402334,232283,479", B = "427087,220193,1940";
+/* Two cell types, because one type is a level with nothing to choose between and would make
+   "the cells are sorted into types" true for an uninteresting reason. */
+const TYPE = { "402334,232283,479": "Endothelial cell", "427087,220193,1940": "Microglia",
+               "38762771": "Endothelial cell" };
 const row = (sid, name, at, nuc, who, extra) => Object.assign({
   structureId: sid, name: name, kind: "organelle", instanceOf: "lysosome", instanceIndex: 1,
-  cellType: "Endothelial cell", nucleusId: nuc || "", rootId: "", cellCoord: at || "",
-  tracedBy: who, startedBy: who, contributors: [who], versions: 1,
+  cellType: TYPE[at || nuc] || "Endothelial cell", nucleusId: nuc || "", rootId: "",
+  cellCoord: at || "", tracedBy: who, startedBy: who, contributors: [who], versions: 1,
   contours: 4, sections: 4, vertices: 900, volumeUm3: 0.2, color: "#3a6b5a",
   fileId: "f_" + sid, fileUrl: "https://drive.google.com/x",
   timestamp: "2026-10-1" + (sid.length % 9) + "T10:00:00Z" }, extra || {});
@@ -117,7 +121,19 @@ const KEPT = [
       cells: folds(d, 1).length
     }));
     out.foldCount = folds(host()).length;
-    out.shutAtFirst = state(host()).filter(s => /:open$/.test(s));
+    /* THE RULE, NOT A COUNT. "nothing is open" stopped being the rule the moment a level could
+       hold one group: a person with one cell type, or a type with one cell, opens because
+       folding it hides and offers no choice. What must never be open unasked is a fold with a
+       SIBLING of its own kind — there the fold is a choice and he said it was too much. */
+    out.openWithSiblings = folds(host()).filter(d => {
+      if (!d.open) return false;
+      const par = (d.parentElement && d.parentElement.closest("details.tracingfold")) || host();
+      const sibs = [].slice.call(par.children).filter(x =>
+        x.matches && x.matches("details.tracingfold")
+        && x.dataset.foldkind === d.dataset.foldkind);
+      return sibs.length > 1;
+    }).map(d => d.dataset.fold);
+    out.openAlone = state(host()).filter(s => /:open$/.test(s));
     out.listSays = String((host().querySelector("#tracingSharedNote") || {}).textContent || "")
       .replace(/\s+/g, " ");
 
@@ -141,6 +157,26 @@ const KEPT = [
     /* NOTHING TO PRESS IS A FAILURE BY NAME, NOT A THROW. A check that dies here reports one line
        of stack instead of the dozen assertions below, and the dozen are the point. */
     if (!folds(host(), "person").length) return out;
+
+    /* ── and under a person, the types ───────────────────────────────────────────── */
+    if (mine){
+      out.myTypes = folds(mine, "type").map(d => ({
+        key: d.dataset.fold,
+        head: String((d.querySelector("summary") || {}).textContent || "")
+                .replace(/\s+/g, " ").trim(),
+        cells: folds(d, "cell").length,
+        open: d.open }));
+      /* Every cell fold must sit INSIDE a type fold: one loose at the person level is the old
+         shape surviving beside the new one, which looks right and lists the cell twice. */
+      out.cellsLoose = folds(mine, "cell")
+        .filter(d => !(d.parentElement && d.parentElement.closest
+                       && d.parentElement.closest('details[data-foldkind="type"]'))).length;
+    }
+    const hesh = people.filter(d => /Hesham/.test(d.dataset.fold))[0];
+    if (hesh) out.hisTypes = folds(hesh, "type").map(d => ({
+      head: String((d.querySelector("summary") || {}).textContent || "")
+              .replace(/\s+/g, " ").trim(),
+      cells: folds(d, "cell").length, open: d.open }));
 
     /* ── pressing one, and then a re-render ──────────────────────────────────────── */
     const first = folds(host(), "person")[0];
@@ -195,7 +231,6 @@ const KEPT = [
     }
 
     /* ── one person, nothing to choose between ───────────────────────────────────── */
-    TRACING_SHARED = SHARED.filter(t => /Hesham/.test(t.tracedBy) && !t.cellCoord.indexOf);
     TRACING_SHARED = [SHARED[4], SHARED[5], SHARED[6]];      // Hesham, one cell
     for (const k in TRACING_OPEN) delete TRACING_OPEN[k];
     tracingRenderShared();
@@ -209,20 +244,25 @@ const KEPT = [
       for (const k in TRACING_OPEN) delete TRACING_OPEN[k];
       tracingRenderList();
       await new Promise(r => setTimeout(r, 50));
-      out.kept = folds(kept()).map(d => ({
+      out.keptTypes = folds(kept(), "type").map(d => ({
+        key: d.dataset.fold,
+        head: String((d.querySelector("summary") || {}).textContent || "")
+                .replace(/\s+/g, " ").trim(),
+        cells: folds(d, "cell").length }));
+      out.kept = folds(kept(), "cell").map(d => ({
         key: d.dataset.fold, open: d.open,
         head: String((d.querySelector("summary") || {}).textContent || "")
                 .replace(/\s+/g, " ").trim(),
         rows: d.querySelectorAll("button.tracingdrop").length,
         buttons: d.querySelectorAll("summary button").length }));
-      const k0 = folds(kept())[0];
+      const k0 = folds(kept(), "cell")[0];
       if (k0){
         k0.querySelector("summary").dispatchEvent(new MouseEvent("click", { bubbles: true }));
         await new Promise(r => setTimeout(r, 60));
         const kk = k0.dataset.fold;
         tracingRenderList();
         await new Promise(r => setTimeout(r, 50));
-        out.keptSurvives = folds(kept()).filter(d => d.dataset.fold === kk).map(d => d.open)[0];
+        out.keptSurvives = folds(kept(), "cell").filter(d => d.dataset.fold === kk).map(d => d.open)[0];
       }
     }
     return out;
@@ -276,11 +316,39 @@ const KEPT = [
   ok(!!both, "and the cell whose one tracing has two contributors is here too, under this one of "
      + "them", both ? both.head.slice(0, 90) : "not found");
 
+  console.log("\nand under a person, the cells are sorted into cell types");
+  const ht = got.hisTypes || [], mt = got.myTypes || [];
+  ok(ht.length === 2,
+     "a person who has worked on two kinds of cell has two type folds",
+     ht.length + ": " + ht.map(x => x.head.slice(0, 40)).join(" | "));
+  ok(ht.length === 2 && ht.map(x => x.cells).join(",") === "2,1",
+     "...each holding its own cells and no others", ht.map(x => x.cells).join(","));
+  ok(ht.some(x => /Endothelial cell/.test(x.head)) && ht.some(x => /Microglia/.test(x.head)),
+     "...named by the type", ht.map(x => x.head.split(" ")[1]).join(" "));
+  ok(ht.some(x => /2 cells/.test(x.head)) && ht.some(x => /1 cell\b/.test(x.head)),
+     "...and counted in cells, which is what a type heading is a heading over",
+     ht.map(x => x.head.slice(-24)).join(" | "));
+  ok(got.cellsLoose === 0,
+     "every cell sits inside a type — one left at the person level would be the old shape "
+     + "surviving beside the new one, which looks right and lists the cell twice",
+     String(got.cellsLoose));
+  ok(mt.length === 1 && mt[0].open === true,
+     "and a person with only one kind of cell has that type open: a fold with nothing beside it "
+     + "hides and offers no choice", mt.length + ", open " + (mt[0] || {}).open);
+  const cellHeads = (got.myCells || []).map(x => x.head).join(" || ");
+  ok(!/Endothelial cell/.test(cellHeads),
+     "...and the cell headings stop repeating the type, now that it is the line above them",
+     cellHeads.slice(0, 110));
+
   console.log("\nand it begins closed");
-  ok(got.foldCount > 0 && (got.shutAtFirst || []).length === 0,
-     "nothing is open to start with — which is what he asked for: “it is getting too much”",
-     (got.foldCount || 0) + " folds, open: "
-     + ((got.shutAtFirst || []).join("  ") || "none"));
+  ok(got.foldCount > 0 && (got.openWithSiblings || []).length === 0,
+     "no fold that is a CHOICE is open to start with — which is what he asked for: “it is "
+     + "getting too much”. A fold with no sibling of its own kind is not a choice, and opens",
+     (got.foldCount || 0) + " folds, open with siblings: "
+     + ((got.openWithSiblings || []).join("  ") || "none"));
+  ok((got.openAlone || []).length > 0,
+     "...and some ARE open, or the line above is true of a list with every level doubled and "
+     + "would stop meaning anything", (got.openAlone || []).join("  ") || "none open at all");
   const lone = got.lone || [];
   ok(lone.length >= 2 && lone.every(x => x.open),
      "...except where there is only one person and one cell: a fold with nothing beside it hides "
@@ -310,6 +378,10 @@ const KEPT = [
      (got.allShutN || 0) + " folds, open: " + ((got.allShut || []).join("  ") || "none"));
 
   console.log("\nand the kept list folds the same way");
+  const kt = got.keptTypes || [];
+  ok(kt.length === 1 && kt[0].cells === 2,
+     "its cells are under their type too — one type here, holding both cells",
+     kt.length + ": " + kt.map(x => x.head.slice(0, 50)).join(" | "));
   const kp = got.kept || [];
   ok(kp.length === 2, "one fold per cell", kp.length + ": " + kp.map(x => x.key).join("  "));
   ok(kp.length > 0 && kp.every(x => !x.open), "closed to begin with",

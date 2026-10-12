@@ -413,7 +413,15 @@ async function tracedStructuresForCells(ids, say, opts){
   const res=await UJ.tracing.fetchMany(REPORT_ENDPOINT,mine,tracedOutlinesDsQS(),function(d,n){
     say&&say("Reading outlines "+d+"/"+n+"\u2026"); });
   const out=[];
+  /* ── AND THE SPLIT GUARDRAIL, FOR FREE ──────────────────────────────  2026-10-12
+     These contours were just read for the measurement. splitOf over them costs one pass and no
+     network, and "Measure this cell" is a button somebody presses on purpose after outlining
+     something \u2014 the moment a stray contour is most worth hearing about. */
+  const splitRes=(window.UJ&&UJ.cfg&&UJ.cfg.res)||null;
   mine.forEach(function(t){
+    const x=res[t.structureId];
+    if(x&&x.st&&(x.st.rings||[]).length&&UJ.tracing&&UJ.tracing.splitNote)
+      UJ.tracing.splitNote(t.structureId,x.st.rings,splitRes);
     const one=tracedOneFrom(t,res[t.structureId]);
     if(one)out.push(one);
   });

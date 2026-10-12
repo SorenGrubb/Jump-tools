@@ -997,6 +997,43 @@ UJ.tracing = (function(){
              x: cx * RX, y: cy * RY, z: Number(r.z) * RZ,
              rad: Math.sqrt(Math.abs(a2) / 2 / Math.PI) * ((RX + RY) / 2) };
   }
+  /* ── WHAT HAS ALREADY BEEN MEASURED ──────────────────────────────  2026-10-12
+     Søren: *"Check outlines for split structures is so specific for one case. Can we avoid that
+     button by building in a guardrail?"*
+
+     splitOf() is cheap once the rings are in hand and impossible without them, so the answer is
+     remembered per structure by whoever happened to read the geometry -- the pad on save, a cell
+     download, a measurement, opening one outline. Nothing here fetches anything.
+
+     BOTH ANSWERS ARE KEPT. An outline measured as ONE piece is stored as one, because "no" and
+     "nobody has looked" have to be different: otherwise every row the tool has already cleared
+     looks like a row it has not seen. splitKnown returns null for the second, never false.
+
+     IT LIVES HERE because core/tracing.js is the module every page loads and the only one that
+     owns splitOf -- the card and core/tracedoutlines.js both feed it, and neither has to know the
+     other does. */
+  var SPLIT_SEEN = {};
+  function splitNote(sid, rings, resNm){
+    sid = String(sid || "");
+    if (!sid || !rings) return null;
+    var s;
+    try { s = splitOf(rings, resNm || null); } catch (_e){ return null; }
+    SPLIT_SEEN[sid] = s;
+    return s;
+  }
+  function splitKnown(sid){
+    var s = SPLIT_SEEN[String(sid || "")];
+    return s === undefined ? null : s;
+  }
+  function splitForget(sid){
+    if (sid === undefined) SPLIT_SEEN = {}; else delete SPLIT_SEEN[String(sid)];
+  }
+  /* The structures measured as split, as one string: what a list uses to tell whether redrawing
+     would show anything new. */
+  function splitMarks(){
+    return Object.keys(SPLIT_SEEN).filter(function(k){
+      return SPLIT_SEEN[k] && SPLIT_SEEN[k].split; }).sort().join(" ");
+  }
   function splitOf(rings, resNm){
     var RX = 1, RY = 1, RZ = 1;
     if (Array.isArray(resNm) && resNm.length === 3){
@@ -1101,6 +1138,8 @@ UJ.tracing = (function(){
   function isVessel(k){ return !!vesselOf(k); }
   return { coordKey: coordKey, cellOf: cellOf, sameCell: sameCell,
            sameCellWhy: sameCellWhy, splitOf: splitOf,
+           splitNote: splitNote, splitKnown: splitKnown, splitForget: splitForget,
+           splitMarks: splitMarks,
            VESSELS: VESSELS, vesselOf: vesselOf, isVessel: isVessel,
            elsewhereByCoord: elsewhereByCoord,
            ringsFromLink: ringsFromLink, _readLayer: readLayer, fetchMany: fetchMany,

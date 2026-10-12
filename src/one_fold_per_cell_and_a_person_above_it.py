@@ -74,9 +74,12 @@ function tracingFoldMark(){ return '<span class="foldmark" aria-hidden="true">â–
    level in the kept list and nested in the dataset list; one name for the two of them is what lets
    a check ask for "the cell folds" and get the same answer on either. */
 function tracingFoldAttrs(key, kind, lone){
-  var cell = (kind === "cell");
-  return 'class="tracingfold ' + (cell ? "tracingcell" : "tracingperson") + '" data-fold="'
-    + escHtml(key) + '" data-foldkind="' + (cell ? "cell" : "person") + '"'
+  /* THE KIND IT WAS GIVEN, not a two-way test. This read `kind === "cell" ? "cell" : "person"`,
+     so the day a third kind arrived \u2014 the cell type, 2026-10-12 \u2014 every type fold came
+     out labelled "person" and every selector that asked for one found nothing. 2026-10-12. */
+  var k = (kind === "cell" || kind === "type") ? kind : "person";
+  return 'class="tracingfold tracing' + k + '" data-fold="'
+    + escHtml(key) + '" data-foldkind="' + k + '"'
     + (tracingFoldOpen(key, lone) ? " open" : "");
 }
 function tracingFoldAllHtml(which){

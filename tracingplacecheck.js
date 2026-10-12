@@ -137,6 +137,13 @@ const SHARED = [{
     out.placed = await where();
     out.placedSaid = String((document.getElementById("tracingStatus") || {}).textContent || "")
       .replace(/\s+/g, " ");
+    /* The writers' own report, read through the same door the card uses. */
+    if (typeof tracingPlaceWhereUm === "function"){
+      const box = {};
+      UJ.traceloft.glb([{ name: "Whole cell", rings: rings, color: "#cddc39" }],
+                       (UJ.cfg && UJ.cfg.res) || [4, 4, 40], { place: true, out: box });
+      out.placedWhere = tracingPlaceWhereUm(box);
+    }
 
     /* ── and the Blender script takes the same answer ─────────────────────────────── */
     saved = [];
@@ -224,6 +231,23 @@ const SHARED = [{
   ok(/centred on itself|framed/i.test(got.centredSaid || "")
      && /dataset coordinates/i.test(got.placedSaid || ""),
      "and the line afterwards says which it did", (got.centredSaid || "").slice(-80));
+  /* \u2500\u2500 AND SAYS WHERE, NOT JUST WHETHER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-12
+     S\u00f8ren, an hour after this went in: *"The centred on itself worked fine, but then when I
+     tried dataset coordinates it looks like it is still centred on itself."* The file was right
+     \u2014 876 \u00b5m out, read from his own Downloads folder \u2014 and the picture could not
+     have shown it: a viewer frames whatever it is given, so one object alone looks the same at
+     the origin and a millimetre away. The promise was unfalsifiable, which reads as a bug. */
+  const num = (s2) => (String(s2 || "").match(/-?\d+(?:,\s*-?\d+){2}\s*\u00b5m/) || [])[0] || "";
+  ok(/\d/.test(num(got.placedSaid)),
+     "placed, the line names the Location the object will have \u2014 a number he can read off "
+     + "Blender\u2019s N panel in four seconds, instead of a promise he has to believe",
+     num(got.placedSaid) || (got.placedSaid || "").slice(0, 90));
+  ok(/looks the same|same as the centred/i.test(got.placedSaid || ""),
+     "...and says out loud that ONE object looks the same either way, because that is the test he "
+     + "will run and it cannot tell them apart", (got.placedSaid || "").slice(0, 130));
+  ok(got.placedWhere && Math.max.apply(null, got.placedWhere.map(Math.abs)) > 100,
+     "...and the writer hands the place back rather than the card recomputing a bounding box "
+     + "that was just computed", JSON.stringify(got.placedWhere));
 
   console.log("\nand changing your mind costs nothing");
   ok(got.upBeforeEsc === true && got.escClosed === true, "Escape closes it",

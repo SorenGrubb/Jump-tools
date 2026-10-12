@@ -118,25 +118,29 @@ const R = [4, 4, 40];
   ok(!r.tiny, "a single contour cannot be split, and says so rather than dividing by zero",
      String(r.tiny));
 
-  console.log("\nand there is somewhere to read it");
+  /* \u2500\u2500 AND SOMEWHERE TO READ IT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  superseded 2026-10-12
+     This used to end "...and the dataset list has the button that runs it". S\u00f8ren: *"Check
+     outlines for split structures is so specific for one case. Can we avoid that button by
+     building in a guardrail?"* \u2014 so the button is gone and the measurement happens wherever
+     the contours are already in hand. What is still this file's business is that the measurement
+     can be remembered and said in one sentence; WHERE it then shows up is
+     tracingguardcheck.js's, because that is the file that can press it. */
+  console.log("\nand somewhere to keep it");
   const ui = await p.evaluate(() => ({
     scan: typeof window.tracedSplitScan === "function",
     say: typeof window.tracingSplitSay === "function",
-    btn: !!document.querySelector("#tracingSplitGo")
-         || !!(typeof tracingRenderShared === "function" && (function(){
-              const h = document.getElementById("tracingShared");
-              if (!h) return false;
-              TRACING_SHARED = [{ structureId: "a", name: "Nucleus", nucleusId: "1",
-                                  contours: 4, sections: 2 }];
-              tracingRenderShared();
-              return !!document.querySelector("#tracingSplitGo");
-            })())
+    memo: ["splitNote", "splitKnown", "splitForget", "splitMarks"]
+            .filter(n => !(window.UJ && UJ.tracing && typeof UJ.tracing[n] === "function")),
+    gone: !document.querySelector("#tracingSplitGo")
   }));
-  ok(ui.scan, "tracedSplitScan() walks every outline in the dataset and reports, nothing else",
-     String(ui.scan));
+  ok(ui.scan, "tracedSplitScan() walks every outline in the dataset and reports, nothing else \u2014 "
+     + "kept for the console, the way tracedMeasureAll is", String(ui.scan));
   ok(ui.say, "tracingSplitSay() turns one structure's answer into one sentence, in one place",
      String(ui.say));
-  ok(ui.btn, "...and the dataset list has the button that runs it", String(ui.btn));
+  ok(ui.memo.length === 0,
+     "...and the answer can be remembered per structure, so the paths that already hold the "
+     + "contours can measure them for nothing", ui.memo.join(" ") || "all four");
+  ok(ui.gone, "...and the button that read the whole dataset to ask is gone", String(ui.gone));
 
   ok(errors.length === 0, "the page still loads with no new errors",
      errors.slice(0, 2).join(" | ") || "none");

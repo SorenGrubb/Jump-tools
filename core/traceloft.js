@@ -1426,6 +1426,11 @@ UJ.traceloft = (function(){
        downloads of one cell cannot contradict each other about where it is. */
     var at = (m.place === false) ? "(0,0,0)"
            : "(" + n3(b.offsetUm[0]) + "," + n3(-b.offsetUm[2]) + "," + n3(-b.offsetUm[1]) + ")";
+    if (m && m.out){
+      m.out.offsetUm = b.offsetUm.slice();
+      m.out.centreVoxel = b.centreVoxel.slice();
+      m.out.placed = !(m.place === false);
+    }
     b.parts.forEach(function(q){
       /* WELDED, for the reason the GLB is: from_pydata() keeps the vertices it is given, and
          use_smooth over a loft whose bands do not share vertices leaves a crease at every
@@ -1572,6 +1577,15 @@ UJ.traceloft = (function(){
        place has to be negated with it or the model is mirrored about the wrong plane. */
     var place = (opts && opts.place === false) ? [0, 0, 0]
               : [prep.offsetUm[0], -prep.offsetUm[1], prep.offsetUm[2]];
+    /* WHERE IT WENT, for whoever has to say so. glbParts() is the one thing that knows, and both
+       writers threw it away -- so the card could promise a placement and not report it, which is
+       how Søren spent an evening deciding the menu was broken when the file was right. An out
+       object rather than a second return type: nothing else about either writer changes. */
+    if (opts && opts.out){
+      opts.out.offsetUm = prep.offsetUm.slice();
+      opts.out.centreVoxel = prep.centreVoxel.slice();
+      opts.out.placed = !(opts.place === false);
+    }
     prep.parts.forEach(function(q, qi){
       var n = q.xyz.length / 3;
       var pos = new Float32Array(q.xyz.length);
