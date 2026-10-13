@@ -58,9 +58,9 @@
   <div class="sub" id="sub">Loading…</div>
   <div id="list"></div>
   <div class="ctl">
-    <select id="detail" title="Mesh detail. Light is the coarsest level of detail, which a standalone Quest 2 handles comfortably.">
+    <select id="detail" title="Mesh detail. Light is the coarsest level of detail (about 50k triangles for a pyramidal cell), which a standalone Quest 2 handles comfortably. Full is the finest level under 8 MB (about 5 M triangles for the same cell).">
       <option value="light">Detail: light</option>
-      <option value="full">Detail: full</option>
+      <option value="full">Detail: full (PC only — millions of triangles per cell)</option>
     </select>
     <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
