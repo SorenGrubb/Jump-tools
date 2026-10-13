@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jump VR viewer</title>
+<!--
+  vr.html — the cells somebody collected with "+ VR" (core/vrbasket.js), drawn together and
+  viewable in a headset through WebXR. 2026-10-13, prototype for µJump.
+
+  WHY THREE.JS HERE, when core/mesh3d.js deliberately has none: a headset needs per-eye cameras,
+  controller poses, rays and the XR session lifecycle, which three.js does correctly and would be a
+  thousand lines to redo by hand. It is VENDORED (core/vendor/three/, MIT, r169) rather than loaded
+  from a CDN, for the same reason mesh3d.js gives: nothing breaks because a CDN moved. Only this
+  page loads it.
+
+  GEOMETRY comes from the tools' own core/mesh.js and core/nucmesh.js, unchanged, so the cells are
+  exactly the meshes "Show in 3D" and the .glb download use, in the same micrometre frame.
+-->
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--accent:#3fb950}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+  #view{position:fixed;inset:0}
+  #panel{position:fixed;left:12px;top:12px;width:min(330px,calc(100vw - 24px));max-height:calc(100vh - 24px);
+    overflow:auto;background:rgba(22,27,34,.94);border:1px solid var(--line);border-radius:10px;padding:12px 14px;z-index:5}
+  #panel h1{font-size:16px;margin:0 0 4px}
+  #panel .sub{color:var(--mut);font-size:12px;margin-bottom:10px}
+  .row{display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line)}
+  .row .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .row div{flex:1;min-width:0}
+  .row b{display:block;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+  .row small{display:block;color:var(--mut);font:11px ui-monospace,monospace}
+  .row .st{font-size:11px;color:var(--mut)}
+  .row .st.err{color:#f0883e}
+  .ctl{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  button,select{font:inherit;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid var(--line);
+    background:transparent;color:inherit;padding:5px 9px}
+  button.on{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+  #tri{font-size:12px;color:var(--mut);margin-top:6px}
+  #tri.warn{color:#f0883e}
+  #vrslot button{position:static!important;width:100%!important;margin:8px 0 0!important;padding:10px!important;
+    font:600 14px system-ui!important;border-radius:8px!important;background:var(--accent)!important;color:#0d1117!important;
+    border:0!important;opacity:1!important}
+  #vrslot a{position:static!important;display:block;width:auto!important;margin:8px 0 0!important;font-size:12px!important;
+    color:var(--mut)!important;background:none!important;border:0!important;padding:4px 0!important;text-align:left!important}
+  .help{font-size:12px;color:var(--mut);line-height:1.45;margin-top:10px}
+  .help b{color:var(--fg)}
+  #hide{position:absolute;right:10px;top:8px;border:0;padding:2px 6px}
+  #show{position:fixed;left:12px;top:12px;z-index:5;display:none}
+</style>
+</head>
+<body>
+<div id="view"></div>
+<button id="show">☰ Cells</button>
+<div id="panel">
+  <button id="hide" title="Hide panel">✕</button>
+  <h1>🥽 VR collection</h1>
+  <div class="sub" id="sub">Loading…</div>
+  <div id="list"></div>
+  <div class="ctl">
+    <select id="detail" title="Mesh detail. Light is the coarsest level of detail, which a standalone Quest 2 handles comfortably.">
+      <option value="light">Detail: light</option>
+      <option value="full">Detail: full</option>
+    </select>
+    <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
+    <button id="glassBtn" title="Make the cells see-through">See-through</button>
+    <button id="resetBtn" title="Put the collection back in front of you">Reset view</button>
+  </div>
+  <div id="tri"></div>
+  <div id="vrslot"></div>
+  <div class="ctl"><button id="copyBtn">Copy headset link</button></div>
+  <div class="help">
+    <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
+    <b>In VR:</b> trigger = pick a cell (again on nothing = all) · grip = grab and move ·
+    both grips = resize · thumbstick = turn / zoom · A or X = see-through · B or Y = reset.
+  </div>
+</div>
+
+<script>
+/* Per-dataset sources, keyed by the dataset id each collected cell carries (UJ.cfg.id of the
+   page it was collected on). Copied from ujump.html's own UJ.cfg.mesh / UJ.cfg.em.nucSource —
+   the prototype knows µJump only; another tool is one more entry here. */
+window.VR_DATASETS = {
+  microns: {
+    label: "MICrONS minnie65",
+    mesh: {
+      notFoundKey: "ujump_mesh_notfound_v1",
+      meshBase:"https://storage.googleapis.com/iarpa_microns/minnie/minnie65/seg_m1300/mesh/",
+      meshBaseAlt:"https://storage.googleapis.com/storage/v1/b/iarpa_microns/o/minnie%2Fminnie65%2Fseg_m1300%2Fmesh%2F",
+      meshBaseAltSuffix:".shard?alt=media",
+      preshiftBits:6,minishardBits:8,shardBits:13,vertexQuantizationBits:16,
+      transform:[16,0,0,0, 0,16,0,0, 0,0,40,0],
+      dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+      dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+    },
+    nucSource: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei"
+  }
+};
+window.UJ = window.UJ || {};
+UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh };
+</script>
+<script src="core/mesh.js"></script>
+<script src="core/nucmesh.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "./core/vendor/three/three.module.min.js",
+    "three/addons/": "./core/vendor/three/addons/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { VRButton } from "three/addons/webxr/VRButton.js";
+
+const BASKET_KEY = "jump_vr_basket_v1";
+/* No red (vessel) and no blue (nucleus) — the same colour policy as the Blender export. */
+const PALETTE = ["#f0a742","#3fb950","#d2a8ff","#f778ba","#e3d24f","#56d4c8","#ff8f5a","#a5e075",
+                 "#c79bf2","#ffb3c7","#9fd8a8","#d9b98c","#b0bec5","#ffd38a"];
+const NUC_COLOR = "#3a72d8";
+const TABLE_SIZE = 0.6;              // metres the whole collection spans when it first appears
+const HOME = new THREE.Vector3(0, 1.15, -0.65);   // in front of a standing user, a bit below the eyes
+
+/* ── which cells ──────────────────────────────────────────────────────────── */
+function parseHash(){
+  const m = location.hash.match(/[#&]c=([^&]*)/);
+  if (!m || !m[1]) return null;
+  return m[1].split(",").filter(Boolean).map(p => {
+    const [ds, root, nuc, label] = p.split("~").map(s => decodeURIComponent(s || ""));
+    return { ds, root, nuc, label };
+  }).filter(e => e.root);
+}
+function readBasket(){
+  try { const a = JSON.parse(localStorage.getItem(BASKET_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+  catch (e){ return []; }
+}
+let FROM_LINK = true;
+let CELLS = parseHash();
+if (!CELLS){ FROM_LINK = false; CELLS = readBasket(); }
+CELLS = CELLS.map((e, i) => Object.assign({ i, ds: e.ds || "microns", label: e.label || "Cell" }, e));
+
+/* Colour by cell type, so two of a kind read as two of a kind. */
+const typeColour = {};
+CELLS.forEach(c => {
+  const t = c.label.replace(/\s*\(.*\)\s*$/, "");
+  if (!typeColour[t]) typeColour[t] = PALETTE[Object.keys(typeColour).length % PALETTE.length];
+  c.colour = typeColour[t];
+});
+
+function headsetLink(){
+  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || ""].map(encodeURIComponent).join("~"));
+  return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",");
+}
+
+/* ── scene ────────────────────────────────────────────────────────────────── */
+const view = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType("local-floor");
+renderer.xr.setFoveation(1);
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.01, 200);
+camera.position.set(0, 1.45, 0.25);
+
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x30281e, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 1.8); key.position.set(1, 3, 2); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-2, 1, -1); scene.add(fill);
+
+/* A floor grid so the headset has a ground to stand on. */
+const grid = new THREE.GridHelper(6, 24, 0x30363d, 0x1c2128); scene.add(grid);
+
+/* stage = what you grab, turn and resize (metres). content = the cells, in micrometres,
+   offset so the collection's centre sits at the stage origin. */
+const stage = new THREE.Group(); scene.add(stage);
+const content = new THREE.Group(); stage.add(content);
+/* Data axes: x lateral, y DOWN towards white matter, z section. Turning 180° about x gives
+   (x,−y,−z): pia up, and still a rotation, so nothing is mirrored. */
+content.rotation.x = Math.PI;
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOME);
+controls.enableDamping = true;
+controls.update();
+
+let FIT_SCALE = 0.001, USER_MOVED = false;
+function resetStage(){
+  stage.position.copy(HOME);
+  stage.quaternion.identity();
+  stage.scale.setScalar(FIT_SCALE);
+  USER_MOVED = false;
+}
+function resetCamera(){ controls.target.copy(HOME); camera.position.set(0, 1.45, 0.25); controls.update(); }
+
+/* ── loading ──────────────────────────────────────────────────────────────── */
+const listEl = document.getElementById("list");
+const subEl = document.getElementById("sub");
+const triEl = document.getElementById("tri");
+let SEE_THROUGH = false, SHOW_NUC = true, SELECTED = -1;
+let LOAD_TOKEN = 0;
+
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+function renderList(){
+  if (!CELLS.length){
+    subEl.innerHTML = "No cells collected yet. In µJump, press <b>+ VR</b> beside a cell's root ID, then open this page again.";
+    listEl.innerHTML = ""; return;
+  }
+  subEl.textContent = CELLS.length + " cell" + (CELLS.length > 1 ? "s" : "") + (FROM_LINK ? " · from link" : " · from this browser's collection");
+  listEl.innerHTML = CELLS.map(c =>
+    `<div class="row"><span class="sw" style="background:${c.colour}"></span><div>
+       <b data-pick="${c.i}" title="${esc(c.label)}">${esc(c.label)}</b>
+       <small>${esc(c.root)}</small><span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
+       <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
+}
+listEl.addEventListener("click", e => {
+  const p = e.target.closest("[data-pick]");
+  if (p){ const i = +p.dataset.pick; select(SELECTED === i ? -1 : i); }
+});
+listEl.addEventListener("change", e => {
+  const v = e.target.closest("[data-vis]"); if (!v) return;
+  const c = CELLS[+v.dataset.vis]; c.hidden = !v.checked; applyLook();
+});
+
+function geometryFrom(positions, indices){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  g.setIndex(new THREE.BufferAttribute(indices, 1));
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  return g;
+}
+function cellMaterial(colour){
+  return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
+}
+
+async function loadAll(){
+  const token = ++LOAD_TOKEN;
+  /* Drop whatever an earlier load put there. */
+  for (const c of CELLS){
+    for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    c.mesh = c.nucMesh = null; c.err = false; c.status = "waiting…"; c.tris = 0;
+  }
+  renderList(); updateTri();
+  const light = document.getElementById("detail").value === "light";
+  const box = new THREE.Box3();
+  for (const c of CELLS){
+    if (token !== LOAD_TOKEN) return;
+    const ds = VR_DATASETS[c.ds];
+    if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); continue; }
+    try {
+      c.status = "fetching mesh…"; renderList();
+      const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
+        const s = (msg || "") + " " + Math.round(f * 100) + "%";
+        if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
+      }, false, [], light);
+      if (token !== LOAD_TOKEN) return;
+      const g = geometryFrom(geo.positions, geo.indices);
+      const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
+      mesh.userData.cell = c.i;
+      content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
+      box.union(g.boundingBox);
+      c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1);
+      if (c.nuc && c.nuc !== "0"){
+        try {
+          if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
+          const n = await UJ.nucmesh.fetchNucleus(c.nuc);
+          if (n && token === LOAD_TOKEN){
+            const nm = new THREE.Mesh(geometryFrom(n.positions, n.indices),
+              new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5 }));
+            nm.userData.cell = c.i; nm.userData.nucleus = true;
+            content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
+          }
+        } catch (e){ /* no nucleus is not an error */ }
+      }
+    } catch (e){
+      c.err = true; c.status = "could not load: " + (e && e.message ? e.message : e);
+    }
+    /* Re-centre and re-fit as each cell arrives, so the first cell is not off in a corner. */
+    if (!box.isEmpty()){
+      const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      content.position.set(-ctr.x, ctr.y, ctr.z);   // centre, expressed after the 180° turn about x
+      FIT_SCALE = TABLE_SIZE / Math.max(size.x, size.y, size.z, 1);
+      if (!USER_MOVED) resetStage();
+    }
+    renderList(); updateTri(); applyLook();
+  }
+}
+function updateTri(){
+  const t = CELLS.reduce((s, c) => s + (c.mesh && !c.hidden ? c.tris : 0), 0);
+  triEl.textContent = "Showing " + (t / 1e6).toFixed(2) + " M triangles" + (t > 1.5e6 ? " — may stutter on a standalone Quest 2; try Detail: light or hide some cells" : "");
+  triEl.className = t > 1.5e6 ? "warn" : "";
+}
+
+/* ── look: selection, see-through, visibility ─────────────────────────────── */
+function applyLook(){
+  for (const c of CELLS){
+    const dim = SELECTED >= 0 && SELECTED !== c.i;
+    if (c.mesh){
+      const m = c.mesh.material;
+      c.mesh.visible = !c.hidden;
+      const glass = SEE_THROUGH || dim;
+      m.transparent = glass;
+      m.opacity = dim ? 0.08 : (SEE_THROUGH ? 0.35 : 1);
+      m.depthWrite = !glass;
+      m.emissive.set(SELECTED === c.i ? c.colour : 0x000000);
+      m.emissiveIntensity = SELECTED === c.i ? 0.25 : 0;
+      m.needsUpdate = true;
+    }
+    if (c.nucMesh){
+      c.nucMesh.visible = !c.hidden && SHOW_NUC;
+      c.nucMesh.material.transparent = dim; c.nucMesh.material.opacity = dim ? 0.12 : 1;
+      c.nucMesh.material.depthWrite = !dim; c.nucMesh.material.needsUpdate = true;
+    }
+  }
+  /* Transparent things draw back to front; the nuclei should draw before the glassy cells. */
+  for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
+  updateTri(); updateLabel();
+}
+function select(i){ SELECTED = i; applyLook(); }
+
+document.getElementById("detail").addEventListener("change", loadAll);
+document.getElementById("nucBtn").addEventListener("click", e => { SHOW_NUC = !SHOW_NUC; e.target.classList.toggle("on", SHOW_NUC); applyLook(); });
+const glassBtn = document.getElementById("glassBtn");
+function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("on", SEE_THROUGH); applyLook(); }
+glassBtn.addEventListener("click", toggleGlass);
+document.getElementById("resetBtn").addEventListener("click", () => { resetStage(); resetCamera(); });
+document.getElementById("copyBtn").addEventListener("click", e => {
+  const l = headsetLink();
+  (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject())
+    .then(() => { e.target.textContent = "Copied ✓"; }, () => window.prompt("Copy this link:", l));
+  setTimeout(() => { e.target.textContent = "Copy headset link"; }, 2000);
+});
+document.getElementById("hide").addEventListener("click", () => { panel.style.display = "none"; show.style.display = "block"; });
+document.getElementById("show").addEventListener("click", () => { panel.style.display = "block"; show.style.display = "none"; });
+
+/* ── labels drawn into the scene (a headset cannot see the HTML panel) ─────── */
+function textSprite(lines, opts = {}){
+  const W = 1024, lh = 64, pad = 28, H = pad * 2 + lh * lines.length;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  g.fillStyle = "rgba(13,17,23,0.88)"; g.strokeStyle = opts.border || "#30363d"; g.lineWidth = 6;
+  g.beginPath(); g.roundRect(3, 3, W - 6, H - 6, 28); g.fill(); g.stroke();
+  lines.forEach((l, k) => {
+    g.font = (k === 0 ? "600 " : "") + (k === 0 ? 50 : 40) + "px system-ui, sans-serif";
+    g.fillStyle = k === 0 ? "#e6edf3" : "#8b949e";
+    g.fillText(l, pad, pad + lh * k + 48, W - pad * 2);
+  });
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  const w = opts.width || 0.32; s.scale.set(w, w * H / W, 1); s.renderOrder = 10;
+  return s;
+}
+let label = null;
+function updateLabel(){
+  if (label){ scene.remove(label); label.material.map.dispose(); label.material.dispose(); label = null; }
+  const c = CELLS[SELECTED];
+  const lines = c ? [c.label, "root " + c.root + (c.nuc ? " · nucleus " + c.nuc : "")]
+                  : [CELLS.length + " cells — " + (VR_DATASETS[(CELLS[0] || {}).ds] || {}).label, "Trigger on a cell to pick it"];
+  label = textSprite(lines, { border: c ? c.colour : "#30363d" });
+  scene.add(label);
+}
+function placeLabel(){
+  if (!label) return;
+  /* Just above the collection, wherever it has been carried to. */
+  const r = TABLE_SIZE * 0.5 * (stage.scale.x / FIT_SCALE);
+  label.position.set(stage.position.x, stage.position.y + r + 0.08, stage.position.z);
+}
+
+/* ── VR controllers ───────────────────────────────────────────────────────── */
+const raycaster = new THREE.Raycaster();
+const tmpM = new THREE.Matrix4();
+const hands = [0, 1].map(k => {
+  const ctl = renderer.xr.getController(k);
+  const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+  const ray = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.7 }));
+  ray.scale.z = 3; ctl.add(ray);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.008), new THREE.MeshBasicMaterial({ color: 0xe6edf3 }));
+  ctl.add(tip);
+  scene.add(ctl);
+  const grip = renderer.xr.getControllerGrip(k);
+  grip.add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.09), new THREE.MeshStandardMaterial({ color: 0x30363d })));
+  scene.add(grip);
+  const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {} };
+  ctl.addEventListener("connected", e => { h.source = e.data; });
+  ctl.addEventListener("disconnected", () => { h.source = null; });
+  ctl.addEventListener("selectstart", () => pickWith(h));
+  ctl.addEventListener("squeezestart", () => { h.squeezing = true; grabStart(); });
+  ctl.addEventListener("squeezeend", () => { h.squeezing = false; grabStart(); });
+  return h;
+});
+
+function pickWith(h){
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  const targets = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh);
+  const hit = raycaster.intersectObjects(targets, false)[0];
+  select(hit ? (SELECTED === hit.object.userData.cell ? -1 : hit.object.userData.cell) : -1);
+}
+
+/* Grabbing. One hand: the collection follows that hand rigidly (position and rotation).
+   Two hands: it also scales with the distance between them, about the first hand. The state is
+   re-anchored whenever a grip is pressed or released, so nothing jumps. */
+let grab = null;
+function grabStart(){
+  const held = hands.filter(h => h.squeezing);
+  if (!held.length){ grab = null; return; }
+  const a = held[0].ctl;
+  a.updateMatrixWorld(); stage.updateMatrixWorld();
+  grab = {
+    a, b: held[1] ? held[1].ctl : null,
+    offset: new THREE.Matrix4().copy(a.matrixWorld).invert().multiply(stage.matrixWorld),
+    d0: held[1] ? a.position.distanceTo(held[1].ctl.position) : 0,
+    s0: stage.scale.x
+  };
+}
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+function grabUpdate(){
+  if (!grab) return;
+  const m = new THREE.Matrix4().multiplyMatrices(grab.a.matrixWorld, grab.offset);
+  m.decompose(_p, _q, _s);
+  let s = grab.s0;
+  if (grab.b && grab.d0 > 0.01){
+    s = THREE.MathUtils.clamp(grab.s0 * grab.a.position.distanceTo(grab.b.position) / grab.d0, FIT_SCALE * 0.05, FIT_SCALE * 400);
+    /* Scale about the grabbing hand, not about the collection's centre. */
+    _p.sub(grab.a.position).multiplyScalar(s / grab.s0).add(grab.a.position);
+  }
+  stage.position.copy(_p); stage.quaternion.copy(_q); stage.scale.setScalar(s);
+  USER_MOVED = true;
+}
+
+/* Thumbstick and face buttons, read every frame from the gamepad. */
+function sticks(dt){
+  for (const h of hands){
+    const gp = h.source && h.source.gamepad; if (!gp) continue;
+    const ax = gp.axes.length >= 4 ? [gp.axes[2], gp.axes[3]] : [gp.axes[0] || 0, gp.axes[1] || 0];
+    if (!grab){
+      if (Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15) USER_MOVED = true;
+      if (Math.abs(ax[0]) > 0.15) stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -ax[0] * 1.6 * dt);
+      if (Math.abs(ax[1]) > 0.15){
+        const s = THREE.MathUtils.clamp(stage.scale.x * Math.exp(-ax[1] * 1.2 * dt), FIT_SCALE * 0.05, FIT_SCALE * 400);
+        stage.scale.setScalar(s);
+      }
+    }
+    /* buttons[4] = A / X, buttons[5] = B / Y on Quest Touch controllers (xr-standard mapping). */
+    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed), b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);
+    if (b4 && !h.prevBtn[4]) toggleGlass();
+    if (b5 && !h.prevBtn[5]) resetStage();
+    h.prevBtn[4] = b4; h.prevBtn[5] = b5;
+  }
+}
+
+/* ── the help card on the left hand, in VR only ───────────────────────────── */
+const helpCard = textSprite(["Controls", "Trigger: pick a cell", "Grip: grab · both grips: resize",
+                             "Stick: turn / zoom", "A/X: see-through · B/Y: reset"], { width: 0.16 });
+helpCard.position.set(0, 0.09, -0.02);
+renderer.xr.addEventListener("sessionstart", () => {
+  const left = hands.find(h => h.source && h.source.handedness === "left") || hands[0];
+  left.grip.add(helpCard);
+  resetStage();
+});
+renderer.xr.addEventListener("sessionend", () => { if (helpCard.parent) helpCard.parent.remove(helpCard); });
+
+/* ── the VR button ────────────────────────────────────────────────────────── */
+const vrBtn = VRButton.createButton(renderer);
+document.getElementById("vrslot").appendChild(vrBtn);
+
+/* ── loop ─────────────────────────────────────────────────────────────────── */
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); }
+  else controls.update();
+  placeLabel();
+  renderer.render(scene, camera);
+});
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+/* A collection changed in µJump (another tab) while this page is open from the browser's own list. */
+addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) location.reload(); });
+
+const panel = document.getElementById("panel"), show = document.getElementById("show");
+resetStage(); resetCamera();
+renderList(); updateLabel();
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera };   // for testing from the console
+if (CELLS.length) loadAll();
+</script>
+</body>
+</html>
