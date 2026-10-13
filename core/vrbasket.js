@@ -58,7 +58,7 @@ UJ.vrbasket = (function(){
      URI-encoded -- so a label with a comma or a tilde in it cannot break the list. */
   function linkFor(list){
     var parts = (list || load()).map(function(e){
-      return [e.ds, e.root, e.nuc || "", e.label || ""].map(encodeURIComponent).join("~");
+      return [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~");
     });
     var base = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
     return base + "vr.html#c=" + parts.join(",");
@@ -71,11 +71,28 @@ UJ.vrbasket = (function(){
     for (var i = 0; n && i < 12; i++, n = n.parentElement){
       var ct = n.querySelector && n.querySelector(".celltype");
       if (ct){
-        var t = (ct.textContent || "").replace(/[★☆]/g, "").replace(/\s+/g, " ").trim();
+        /* Cut at the "\u2197 MICrONS prediction" link the panel appends to the name. */
+        var t = (ct.textContent || "").split("\u2197")[0]
+                  .replace(/[\u2605\u2606]/g, "").replace(/\s+/g, " ").trim();
         if (t) return t.length > 60 ? t.slice(0, 57) + "…" : t;
       }
     }
     return "Cell";
+  }
+
+  /* Community-proposed root IDs for this cell (the "propose or vote on a root ID" panel), as the
+     page has them right now -- the same list "Show in 3D" and the .glb fold in. Only when the
+     collected root is the cell on screen, since CUR_EXTRA_ROOTS belongs to that cell alone.
+     vr.html ALSO asks the backend afresh, so a proposal made after collecting still counts;
+     this copy is what travels in the link when the backend cannot be reached. */
+  function extrasFor(root){
+    try {
+      if (typeof CUR_ROOT === "undefined" || String(CUR_ROOT) !== String(root)) return [];
+      var want = (UJ.cfg && UJ.cfg.mesh && UJ.cfg.mesh.extraRootSegType) || "img65";
+      return (Array.isArray(CUR_EXTRA_ROOTS) ? CUR_EXTRA_ROOTS : [])
+        .filter(function(r){ return r && r.id && String(r.id) !== String(root) && (!r.segType || r.segType === want); })
+        .map(function(r){ return String(r.id); });
+    } catch (e){ return []; }
   }
 
   /* ── styles ─────────────────────────────────────────────────────────────── */
@@ -195,7 +212,7 @@ UJ.vrbasket = (function(){
       if (!root || root === "0") return;
       if (has(root)) remove(root);
       else add({ ds: ds(), root: String(root), nuc: dl.getAttribute("data-nucid") || "",
-                 label: labelNear(b), t: Date.now() });
+                 extra: extrasFor(root), label: labelNear(b), t: Date.now() });
     });
     /* After "Show in 3D" if that is already there, so the row reads download · 3D · VR. */
     var after = dl;

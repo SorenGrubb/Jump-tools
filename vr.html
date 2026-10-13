@@ -66,6 +66,15 @@
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
     <button id="resetBtn" title="Put the collection back in front of you">Reset view</button>
   </div>
+  <div class="ctl">
+    <button id="layerBtn" class="on" title="Cortical layer boundaries from µJump's traced pia and white-matter surfaces, divided in Ledderose's proportions — the same model the Jump tab's layer estimate uses">Layers</button>
+    <select id="vascSel" title="Wan &amp; Wei's TriSAM segmentation of the blood vessels in the whole minnie65 volume (BossDB wei2024; IEEE JBHI 2025, doi:10.1109/JBHI.2025.3576643). One 50 MB download, then cut to the box around your cells.">
+      <option value="off">Vessels: off</option>
+      <option value="box">Vessels: around the cells</option>
+      <option value="whole">Vessels: whole volume (PC only, 2.8 M triangles)</option>
+    </select>
+  </div>
+  <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
   <div class="ctl"><button id="copyBtn">Copy headset link</button></div>
@@ -97,7 +106,15 @@ window.VR_DATASETS = {
     /* Where community-proposed root IDs live (ujump.html's UJ.cfg.backend.endpoint), asked with
        ?rootIds=<nucleus id>, and which segmentation's proposals have meshes in this bucket. */
     backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
-    extraSegType: "img65"
+    extraSegType: "img65",
+    /* Wan & Wei's TriSAM blood-vessel segmentation of minnie65 (BossDB wei2024), the same asset
+       µJump's "Include vasculature segmentation" puts in Neuroglancer. Its mesh is ONE legacy
+       fragment for segment 1: uint32 vertex count, float32 xyz in NANOMETRES in the MICrONS frame,
+       uint32 triangle indices -- 1.39 M vertices, 2.77 M triangles, 50 MB. Checked 2026-10-13: the
+       vertices span x 283–1600, y 257–1160, z 316–1115 µm, the same frame core/mesh.js returns. */
+    vascMesh: "https://bossdb-open-data.s3.amazonaws.com/wei2024/minnie/bv/mesh/1%3A0%3A276-1562_240-1133_247-871",
+    /* The traced pia / white-matter surfaces, sampled on a grid by src/build_vr_layers.js. */
+    layers: "core/vr_layers_microns.json"
   }
 };
 window.UJ = window.UJ || {};
@@ -131,8 +148,9 @@ function parseHash(){
   return m[1].split(",").filter(Boolean).map(p => {
     const [ds, root, nuc, label, extra] = p.split("~").map(s => decodeURIComponent(s || ""));
     return { ds, root, nuc, label, extra: extra ? extra.split("+").filter(Boolean) : [] };
-  }).filter(e => e.root);
+  }).filter(e => e.root || (e.extra && e.extra.length));
 }
+const OF = +((location.hash.match(/[#&]of=(\d+)/) || [])[1] || 0);   // "these are N of OF filter matches"
 function readBasket(){
   try { const a = JSON.parse(localStorage.getItem(BASKET_KEY) || "[]"); return Array.isArray(a) ? a : []; }
   catch (e){ return []; }
@@ -214,7 +232,9 @@ function renderList(){
     subEl.innerHTML = "No cells collected yet. In µJump, press <b>+ VR</b> beside a cell's root ID, then open this page again.";
     listEl.innerHTML = ""; return;
   }
-  subEl.textContent = CELLS.length + " cell" + (CELLS.length > 1 ? "s" : "") + (FROM_LINK ? " · from link" : " · from this browser's collection");
+  subEl.textContent = CELLS.length + " cell" + (CELLS.length > 1 ? "s" : "")
+    + (OF > CELLS.length ? " · evenly spread through " + OF.toLocaleString() + " filter matches"
+       : (FROM_LINK ? " · from link" : " · from this browser's collection"));
   listEl.innerHTML = CELLS.map(c =>
     `<div class="row"><span class="sw" style="background:${c.colour}"></span><div>
        <b data-pick="${c.i}" title="${esc(c.label)}">${esc(c.label)}</b>
@@ -296,33 +316,171 @@ async function loadAll(){
     }
     renderList(); updateTri(); applyLook();
   }
+  if (token === LOAD_TOKEN && !box.isEmpty()){ CELL_BOX = box.clone(); buildContext(); }
 }
 /* The root IDs the community proposed for this cell -- the same ones µJump's "Show in 3D" and
    .glb download fold in. Asked live from the backend by nucleus id, so a proposal made after the
    cell was collected still counts, merged with whatever travelled in the collection itself. The
    backend being unreachable is not an error: the cell is drawn from what we have. */
-const EXTRA_CACHE = {};
+/* One request for every cell: ?allRootIds=1 answers {byNucleus:{nid:[{rootId,segType}]}}, the
+   same call µJump's Filter-and-show view makes. Thirty cells must not mean thirty requests. */
+let ALL_PROPS = null;
+async function allProposals(ds){
+  if (ALL_PROPS) return ALL_PROPS;
+  try {
+    const r = await fetch(ds.backend + "?allRootIds=1");
+    ALL_PROPS = r.ok ? (((await r.json()) || {}).byNucleus || {}) : {};
+  } catch (e){ ALL_PROPS = {}; }
+  return ALL_PROPS;
+}
 async function extrasFor(c, ds){
   const out = new Set((c.extra || []).map(String));
   if (c.nuc && c.nuc !== "0" && ds.backend){
-    try {
-      if (!EXTRA_CACHE[c.nuc]){
-        const r = await fetch(ds.backend + "?rootIds=" + encodeURIComponent(c.nuc));
-        EXTRA_CACHE[c.nuc] = r.ok ? ((await r.json()).rootIds || []) : [];
-      }
-      EXTRA_CACHE[c.nuc].forEach(x => {
-        if (x && x.rootId && (!x.segType || x.segType === (ds.extraSegType || "img65"))) out.add(String(x.rootId));
-      });
-    } catch (e){ /* offline backend: keep what we have */ }
+    const props = await allProposals(ds);
+    (props[c.nuc] || []).forEach(x => {
+      if (x && x.rootId && (!x.segType || x.segType === (ds.extraSegType || "img65"))) out.add(String(x.rootId));
+    });
   }
   out.delete(String(c.root));
   return [...out];
 }
 function updateTri(){
-  const t = CELLS.reduce((s, c) => s + (c.mesh && !c.hidden ? c.tris : 0), 0);
+  const t = CELLS.reduce((s, c) => s + (c.mesh && !c.hidden ? c.tris : 0), 0)
+          + (VASC.mesh && VASC.mesh.visible ? VASC.tris : 0);
   triEl.textContent = "Showing " + (t / 1e6).toFixed(2) + " M triangles" + (t > 1.5e6 ? " — may stutter on a standalone Quest 2; try Detail: light or hide some cells" : "");
   triEl.className = t > 1.5e6 ? "warn" : "";
 }
+
+/* ── context: the vessels and the cortical layers around the cells ──────────
+   Both live in `content`, in the cells' own micrometre frame, so they turn, move and scale with
+   the cells. Neither changes the fit: the collection is still sized by its cells.
+
+   THE BOX. Everything is cut to the cells' bounding box grown by a margin -- a millimetre of vessel
+   tree around three cells hides the three cells. The margin is 30 % of the largest side, at least
+   40 µm, so a lone cell still shows the capillaries beside it. */
+let CELL_BOX = null;
+const VASC = { raw: null, mesh: null, tris: 0, loading: null };
+const LAYERS = { data: null, group: null };
+const ctxNote = document.getElementById("ctxNote");
+function regionBox(){
+  const b = CELL_BOX.clone(), size = b.getSize(new THREE.Vector3());
+  b.expandByScalar(Math.max(40, 0.3 * Math.max(size.x, size.y, size.z)));
+  return b;
+}
+function dsOfCells(){ return VR_DATASETS[(CELLS.find(c => c.mesh) || CELLS[0] || {}).ds] || VR_DATASETS.microns; }
+function buildContext(){ buildLayers(); buildVessels(); }
+
+async function loadVascRaw(ds){
+  if (VASC.raw) return VASC.raw;
+  if (!VASC.loading) VASC.loading = (async () => {
+    ctxNote.textContent = "Vessels: downloading 50 MB…";
+    const r = await fetch(ds.vascMesh);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const buf = await r.arrayBuffer(), n = new DataView(buf).getUint32(0, true);
+    const pos = new Float32Array(buf, 4, n * 3), idx = new Uint32Array(buf, 4 + n * 12);
+    const um = new Float32Array(n * 3); for (let k = 0; k < um.length; k++) um[k] = pos[k] / 1000;
+    VASC.raw = { pos: um, idx: idx.slice() };
+    return VASC.raw;
+  })();
+  return VASC.loading;
+}
+async function buildVessels(){
+  const mode = document.getElementById("vascSel").value;
+  if (VASC.mesh){ content.remove(VASC.mesh); VASC.mesh.geometry.dispose(); VASC.mesh = null; VASC.tris = 0; }
+  if (mode === "off" || !CELL_BOX){ ctxNote.textContent = ""; updateTri(); return; }
+  const ds = dsOfCells();
+  if (!ds.vascMesh){ ctxNote.textContent = "No vessel segmentation for this dataset."; return; }
+  let raw;
+  try { raw = await loadVascRaw(ds); }
+  catch (e){ ctxNote.textContent = "Vessels could not be loaded: " + (e.message || e); VASC.loading = null; return; }
+  if (document.getElementById("vascSel").value !== mode) return;     // changed while downloading
+  let pos = raw.pos, idx = raw.idx;
+  if (mode === "box"){
+    /* Keep a triangle when any corner is inside the box; then keep only the vertices used. */
+    const b = regionBox(), P = raw.pos, I = raw.idx, inB = new Uint8Array(P.length / 3);
+    for (let v = 0, k = 0; v < inB.length; v++, k += 3)
+      inB[v] = P[k] >= b.min.x && P[k] <= b.max.x && P[k+1] >= b.min.y && P[k+1] <= b.max.y && P[k+2] >= b.min.z && P[k+2] <= b.max.z ? 1 : 0;
+    const keep = [];
+    for (let t = 0; t < I.length; t += 3) if (inB[I[t]] || inB[I[t+1]] || inB[I[t+2]]) keep.push(I[t], I[t+1], I[t+2]);
+    const remap = new Int32Array(inB.length).fill(-1), np = [];
+    const ni = new Uint32Array(keep.length);
+    for (let k = 0; k < keep.length; k++){
+      const v = keep[k];
+      if (remap[v] < 0){ remap[v] = np.length / 3; np.push(P[v*3], P[v*3+1], P[v*3+2]); }
+      ni[k] = remap[v];
+    }
+    pos = new Float32Array(np); idx = ni;
+  }
+  if (!idx.length){ ctxNote.textContent = "No vessels inside the box around these cells."; updateTri(); return; }
+  const g = geometryFrom(pos, idx);
+  VASC.mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: "#b03a48", roughness: 0.6,
+    transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
+  VASC.mesh.renderOrder = 2; VASC.mesh.userData.context = true;
+  VASC.tris = idx.length / 3;
+  content.add(VASC.mesh);
+  ctxNote.textContent = "Vessels: " + (VASC.tris / 1000).toFixed(0) + "k triangles — TriSAM, Wan & Wei 2025 (BossDB wei2024).";
+  updateTri();
+}
+
+/* THE LAYERS. y(x,z) = pia + f·(wm − pia) for each boundary fraction f -- exactly how
+   estimateLayer() places them -- sampled from the stored grid by bilinear interpolation and drawn
+   as faint sheets over the box's x/z, labelled at the box's edge. A sheet that never comes within
+   the box's height is left out, so a collection in layer 2/3 is not walled in by layer 6. */
+async function loadLayers(ds){
+  if (LAYERS.data) return LAYERS.data;
+  const r = await fetch(ds.layers); LAYERS.data = await r.json(); return LAYERS.data;
+}
+function surfaceAt(L, arr, x, z){
+  const G = L.grid;
+  const fx = Math.min(Math.max((x - G.x0) / (G.x1 - G.x0) * G.nx, 0), G.nx - 1e-6);
+  const fz = Math.min(Math.max((z - G.z0) / (G.z1 - G.z0) * G.nz, 0), G.nz - 1e-6);
+  const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, W = G.nx + 1;
+  const a = arr[j*W + i], b = arr[j*W + i + 1], c = arr[(j+1)*W + i], d = arr[(j+1)*W + i + 1];
+  return (a*(1-u) + b*u) * (1-v) + (c*(1-u) + d*u) * v;
+}
+async function buildLayers(){
+  if (LAYERS.group){ content.remove(LAYERS.group); LAYERS.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); LAYERS.group = null; }
+  if (!document.getElementById("layerBtn").classList.contains("on") || !CELL_BOX) return;
+  const ds = dsOfCells(); if (!ds.layers) return;
+  let L; try { L = await loadLayers(ds); } catch (e){ return; }
+  const b = regionBox(), N = 24, grp = new THREE.Group();
+  const frac = [0].concat(L.layers.map(l => l[2] / L.refThickUm));     // pia, then each layer's bottom
+  const name = k => k === 0 ? "Pia" : (k === frac.length - 1 ? "White matter" : L.layers[k-1][0] + " | " + L.layers[k][0]);
+  const yAt = (f, x, z) => { const p = surfaceAt(L, L.pia, x, z), w = surfaceAt(L, L.wm, x, z); return p + f * (w - p); };
+  const ext = Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
+  frac.forEach((f, k) => {
+    const P = [], I = [];
+    let near = false;
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++){
+      const x = b.min.x + (b.max.x - b.min.x) * i / N, z = b.min.z + (b.max.z - b.min.z) * j / N, y = yAt(f, x, z);
+      if (y >= b.min.y && y <= b.max.y) near = true;
+      P.push(x, y, z);
+    }
+    if (!near) return;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){ const a = j*(N+1) + i; I.push(a, a + N + 1, a + 1, a + N + 1, a + N + 2, a + 1); }
+    const edge = (k === 0 || k === frac.length - 1);
+    const sheet = new THREE.Mesh(geometryFrom(new Float32Array(P), new Uint32Array(I)),
+      new THREE.MeshBasicMaterial({ color: edge ? 0xe6edf3 : 0xc9d1d9, transparent: true, opacity: edge ? 0.10 : 0.06,
+                                    side: THREE.DoubleSide, depthWrite: false }));
+    sheet.renderOrder = 3; grp.add(sheet);
+    /* The sheet's rim, so a boundary seen edge-on is still a line. */
+    const rim = [];
+    for (let i = 0; i <= N; i++) rim.push(P[i*3], P[i*3+1], P[i*3+2]);
+    for (let j = 1; j <= N; j++) rim.push(P[(j*(N+1)+N)*3], P[(j*(N+1)+N)*3+1], P[(j*(N+1)+N)*3+2]);
+    for (let i = N - 1; i >= 0; i--) rim.push(P[(N*(N+1)+i)*3], P[(N*(N+1)+i)*3+1], P[(N*(N+1)+i)*3+2]);
+    for (let j = N - 1; j >= 0; j--) rim.push(P[(j*(N+1))*3], P[(j*(N+1))*3+1], P[(j*(N+1))*3+2]);
+    const line = new THREE.Line(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(rim, 3)),
+      new THREE.LineBasicMaterial({ color: edge ? 0xe6edf3 : 0x8b949e, transparent: true, opacity: 0.6 }));
+    grp.add(line);
+    const lab = textSprite([name(k)], { width: 1 });
+    lab.scale.multiplyScalar(ext * 0.28);
+    lab.position.set(b.max.x, yAt(f, b.max.x, b.min.z), b.min.z);
+    grp.add(lab);
+  });
+  LAYERS.group = grp; content.add(grp);
+}
+document.getElementById("layerBtn").addEventListener("click", e => { e.target.classList.toggle("on"); buildLayers(); });
+document.getElementById("vascSel").addEventListener("change", buildVessels);
 
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
