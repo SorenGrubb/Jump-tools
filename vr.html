@@ -91,6 +91,13 @@
     </select>
     <input id="cutDepth" type="range" min="-100" max="100" value="0" style="flex:1" title="Where the cut sits, front to back">
   </div>
+  <div class="ctl">
+    <button id="measBtn" title="Click two points on a cell, nucleus, vessel or the EM to measure the distance between them in µm">Measure</button>
+    <button id="measClr" title="Remove the measurements">Clear</button>
+    <button id="scaleBtn" class="on" title="A scale bar under the collection that stays true as you resize it">Scale bar</button>
+    <button id="nbBtn" title="Add the 3 cells whose nuclei are nearest the picked cell's (MICrONS predictions)">+3 neighbours</button>
+    <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells">Organelles</button>
+  </div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
@@ -101,6 +108,7 @@
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
     A = see-through · B = reset · X = only the picked cell · <b>Y = menu</b> (layers, vessels, EM section, cutting plane, size, cells, exit VR).
     With the cut in your hand, the right trigger freezes it in place and frees it again.
+    With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
 </div>
 
@@ -137,6 +145,8 @@ window.VR_DATASETS = {
     /* The EM, read through core/emtiles.js + core/segread.js exactly as the tracing pad and the
        EM preview read it: raw uint8, sharded, no token. res is the tool frame, nm per voxel. */
     em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
+    /* The Jump tab's nucleus table in 100 µm tiles (src/build_vr_nuclei.js), for neighbours. */
+    nuclei: "core/vr_nuc/microns/",
     res: [4, 4, 40]
   }
 };
@@ -188,11 +198,12 @@ CELLS = CELLS.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
 
 /* Colour by cell type, so two of a kind read as two of a kind. */
 const typeColour = {};
-CELLS.forEach(c => {
-  const t = c.label.replace(/\s*\(.*\)\s*$/, "");
+function colourFor(label){
+  const t = String(label).replace(/\s*\(.*\)\s*$/, "").toLowerCase();
   if (!typeColour[t]) typeColour[t] = PALETTE[Object.keys(typeColour).length % PALETTE.length];
-  c.colour = typeColour[t];
-});
+  return typeColour[t];
+}
+CELLS.forEach(c => { c.colour = colourFor(c.label); });
 
 function headsetLink(){
   const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
@@ -288,6 +299,45 @@ function cellMaterial(colour){
   return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
 }
 
+/* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
+   "bring in the neighbours", which adds cells to a scene that is already standing. */
+async function loadOne(c, token, light){
+  const ds = VR_DATASETS[c.ds];
+  if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); return false; }
+  try {
+    c.status = "fetching mesh…"; renderList();
+    const extras = await extrasFor(c, ds);
+    const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
+      const s = (msg || "") + " " + Math.round(f * 100) + "%";
+      if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
+    }, false, extras, light);
+    if (token !== LOAD_TOKEN) return false;
+    const g = geometryFrom(geo.positions, geo.indices);
+    const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
+    mesh.userData.cell = c.i;
+    content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
+    c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
+             + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
+             + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "")
+             + (c.neighbourOf != null ? " · neighbour, " + c.dist.toFixed(0) + " µm away" : "");
+    if (c.nuc && c.nuc !== "0"){
+      try {
+        if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
+        const n = await UJ.nucmesh.fetchNucleus(c.nuc);
+        if (n && token === LOAD_TOKEN){
+          const nm = new THREE.Mesh(geometryFrom(n.positions, n.indices),
+            new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5 }));
+          nm.userData.cell = c.i; nm.userData.nucleus = true;
+          content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
+        }
+      } catch (e){ /* no nucleus is not an error */ }
+    }
+    return true;
+  } catch (e){
+    c.err = true; c.status = "could not load: " + (e && e.message ? e.message : e);
+    return false;
+  }
+}
 async function loadAll(){
   const token = ++LOAD_TOKEN;
   /* Drop whatever an earlier load put there. */
@@ -300,39 +350,9 @@ async function loadAll(){
   const box = new THREE.Box3();
   for (const c of CELLS){
     if (token !== LOAD_TOKEN) return;
-    const ds = VR_DATASETS[c.ds];
-    if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); continue; }
-    try {
-      c.status = "fetching mesh…"; renderList();
-      const extras = await extrasFor(c, ds);
-      const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
-        const s = (msg || "") + " " + Math.round(f * 100) + "%";
-        if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
-      }, false, extras, light);
-      if (token !== LOAD_TOKEN) return;
-      const g = geometryFrom(geo.positions, geo.indices);
-      const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
-      mesh.userData.cell = c.i;
-      content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
-      box.union(g.boundingBox);
-      c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
-               + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
-               + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "");
-      if (c.nuc && c.nuc !== "0"){
-        try {
-          if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
-          const n = await UJ.nucmesh.fetchNucleus(c.nuc);
-          if (n && token === LOAD_TOKEN){
-            const nm = new THREE.Mesh(geometryFrom(n.positions, n.indices),
-              new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5 }));
-            nm.userData.cell = c.i; nm.userData.nucleus = true;
-            content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
-          }
-        } catch (e){ /* no nucleus is not an error */ }
-      }
-    } catch (e){
-      c.err = true; c.status = "could not load: " + (e && e.message ? e.message : e);
-    }
+    await loadOne(c, token, light);
+    if (token !== LOAD_TOKEN) return;
+    if (c.mesh) box.union(c.mesh.geometry.boundingBox);
     /* Re-centre and re-fit as each cell arrives, so the first cell is not off in a corner. */
     if (!box.isEmpty()){
       const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
@@ -394,7 +414,7 @@ function regionBox(){
   return b;
 }
 function dsOfCells(){ return VR_DATASETS[(CELLS.find(c => c.mesh) || CELLS[0] || {}).ds] || VR_DATASETS.microns; }
-function buildContext(){ buildLayers(); buildVessels(); }
+function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); }
 
 async function loadVascRaw(ds){
   if (VASC.raw) return VASC.raw;
@@ -673,6 +693,242 @@ function cutFrame(){
 }
 document.getElementById("cutSel").addEventListener("change", e => setCut(e.target.value));
 
+/* ── 3. MEASURING TAPE ─────────────────────────────────────────────────────  2026-10-13
+   Two points, a line and its length in µm. Each point is where the ray first meets something you
+   can see -- a cell, a nucleus, a vessel or the EM section -- skipping anything the cutting plane
+   has removed; with nothing under the ray it is the controller's tip, so you can also measure in
+   empty space. Points are kept in the cells' own frame, so a measurement turns and scales with
+   them and its number never changes. Up to six are kept; the seventh pushes out the first. */
+const MEAS = { on: false, a: null, items: [], group: new THREE.Group() };
+content.add(MEAS.group);
+const _mr = new THREE.Raycaster();
+function rayOf(h){
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  const o = new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld);
+  return { origin: o, dir: new THREE.Vector3(0, 0, -1).applyMatrix4(tmpM), tip: o.clone() };
+}
+function measTargets(){
+  const t = [];
+  for (const c of CELLS){ if (c.mesh && c.mesh.visible) t.push(c.mesh); if (c.nucMesh && c.nucMesh.visible) t.push(c.nucMesh); }
+  if (VASC.mesh && VASC.mesh.visible) t.push(VASC.mesh);
+  if (EM.mesh) t.push(EM.mesh);
+  return t;
+}
+function measureWithRay(r){
+  _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
+  const hits = _mr.intersectObjects(measTargets(), false)
+    .filter(x => !cutActive() || x.object === EM.mesh || CUT.plane.distanceToPoint(x.point) >= 0);
+  const w = hits.length ? hits[0].point : r.tip;
+  addMeasurePoint(content.worldToLocal(w.clone()));
+}
+function dot(at, col){
+  const r = 0.6 / (stage.scale.x / FIT_SCALE) * 1;      // ~constant size at the current zoom
+  const m = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.15, r), 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+  m.position.copy(at); m.renderOrder = 15; return m;
+}
+function addMeasurePoint(p){
+  if (!MEAS.a){ MEAS.a = p; MEAS.pending = dot(p, 0xffd38a); MEAS.group.add(MEAS.pending); return; }
+  const a = MEAS.a, b = p, um = a.distanceTo(b);
+  MEAS.a = null;
+  const g = new THREE.Group();
+  if (MEAS.pending){ MEAS.group.remove(MEAS.pending); }
+  g.add(dot(a, 0xffd38a), dot(b, 0xffd38a));
+  const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
+    new THREE.LineBasicMaterial({ color: 0xffd38a, depthTest: false }));
+  ln.renderOrder = 15; g.add(ln);
+  const lab = textSprite([um < 10 ? um.toFixed(2) + " µm" : um.toFixed(1) + " µm"], { width: 1, border: "#ffd38a" });
+  const ext = CELL_BOX ? CELL_BOX.getSize(new THREE.Vector3()).length() : 100;
+  lab.scale.multiplyScalar(ext * 0.3); lab.position.copy(a).add(b).multiplyScalar(0.5);
+  g.add(lab); g.userData.um = um;
+  MEAS.items.push(g); MEAS.group.add(g);
+  while (MEAS.items.length > 6) MEAS.group.remove(MEAS.items.shift());
+  ctxNote.textContent = "Measured " + um.toFixed(2) + " µm";
+  MENU.dirty = true;
+}
+function clearMeasure(){ MEAS.items.forEach(g => MEAS.group.remove(g)); MEAS.items = []; MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); MENU.dirty = true; }
+function setMeasure(v){
+  MEAS.on = v; document.getElementById("measBtn").classList.toggle("on", v);
+  if (v && (CUT.mode === "hand" || CUT.mode === "frozen")) setCut("off");    // both want the right trigger
+  if (!v){ MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); }
+  MENU.dirty = true;
+}
+document.getElementById("measBtn").addEventListener("click", () => setMeasure(!MEAS.on));
+document.getElementById("measClr").addEventListener("click", clearMeasure);
+/* Mouse: a click (not a drag) on the canvas while Measure is on. */
+let _down = null;
+renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!MEAS.on || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
+  const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  _mr.setFromCamera(ndc, camera);
+  measureWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone(),
+                   tip: _mr.ray.origin.clone().addScaledVector(_mr.ray.direction, camera.position.distanceTo(stage.position)) });
+});
+
+/* ── 4. SCALE BAR ──────────────────────────────────────────────────────────────
+   A bar of a round number of µm (1, 2, 5, 10, 20, 50, …) chosen so it is 10-25 cm long at the
+   current size, lying under the collection and turned to face you. It lives in the scene, not in
+   the cells, so it stays level whatever you do to them, and its number is recomputed every frame
+   from the stage's own scale -- it cannot drift from the truth. */
+const SBAR = { on: true, group: null, um: 0, line: null, lab: null };
+function niceUm(target){
+  const p = Math.pow(10, Math.floor(Math.log10(target))), m = target / p;
+  return (m >= 5 ? 5 : m >= 2 ? 2 : 1) * p;
+}
+function scaleBarFrame(){
+  if (!SBAR.on || !CELL_BOX){ if (SBAR.group) SBAR.group.visible = false; return; }
+  const mPerUm = stage.scale.x, um = niceUm(0.18 / mPerUm), len = um * mPerUm;
+  if (!SBAR.group){
+    SBAR.group = new THREE.Group();
+    SBAR.line = new THREE.Mesh(new THREE.BoxGeometry(1, 0.006, 0.006), new THREE.MeshBasicMaterial({ color: 0xe6edf3 }));
+    SBAR.group.add(SBAR.line); scene.add(SBAR.group);
+  }
+  SBAR.group.visible = true;
+  if (um !== SBAR.um){
+    SBAR.um = um;
+    if (SBAR.lab){ SBAR.group.remove(SBAR.lab); SBAR.lab.material.map.dispose(); }
+    SBAR.lab = textSprite([um >= 1000 ? (um / 1000) + " mm" : um + " µm"], { width: 0.22 });
+    SBAR.lab.position.set(0, 0.035, 0); SBAR.group.add(SBAR.lab);
+  }
+  SBAR.line.scale.x = len;
+  /* Under the collection: half its current size below the stage centre. */
+  const r = TABLE_SIZE * 0.5 * (stage.scale.x / FIT_SCALE);
+  SBAR.group.position.set(stage.position.x, stage.position.y - r - 0.06, stage.position.z);
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  cam.getWorldPosition(_cam);
+  SBAR.group.lookAt(_cam.x, SBAR.group.position.y, _cam.z);
+}
+function setScaleBar(v){ SBAR.on = v; document.getElementById("scaleBtn").classList.toggle("on", v); MENU.dirty = true; }
+document.getElementById("scaleBtn").addEventListener("click", () => setScaleBar(!SBAR.on));
+
+/* ── 5. ORGANELLE REPORTS ──────────────────────────────────────────────────────
+   What the community has reported in µJump (?allOrganelles=1 -- the call Filter-and-show's
+   viewer makes): one point per centriole, plug, …, and a line from A to B for the kinds that have
+   two ends (a cilium from its base to its tip). Coordinates are tool voxels (4 x 4 x 40 nm).
+   Everything inside the box around the cells is drawn, not only what belongs to them -- a
+   neighbour's cilium pointing at your cell is part of the picture. The call takes ~10 s, once. */
+const ORG = { on: false, data: null, group: null, loading: false };
+const ORG_PALETTE = ["#ffd38a","#56d4c8","#f778ba","#a5e075","#d2a8ff","#ffb3c7","#e3d24f","#9fd8a8","#ff8f5a","#b0bec5"];
+async function setOrganelles(v){
+  ORG.on = v; document.getElementById("orgBtn").classList.toggle("on", v); MENU.dirty = true;
+  if (ORG.group){ content.remove(ORG.group); ORG.group = null; }
+  if (!v || !CELL_BOX) return;
+  const ds = dsOfCells();
+  if (!ORG.data){
+    if (ORG.loading) return; ORG.loading = true;
+    ctxNote.textContent = "Organelles: asking µJump for every report (about 10 s)…";
+    try { const r = await fetch(ds.backend + "?allOrganelles=1"); ORG.data = ((await r.json()) || {}).organelles || []; }
+    catch (e){ ORG.data = null; ctxNote.textContent = "Organelles could not be loaded: " + (e.message || e); ORG.loading = false; return; }
+    ORG.loading = false;
+    if (!ORG.on) return;
+  }
+  const b = regionBox(), res = ds.res || [4, 4, 40];
+  const P = s => { const a = String(s || "").split(",").map(Number); return a.length === 3 && a.every(isFinite) ? new THREE.Vector3(a[0] * res[0] / 1000, a[1] * res[1] / 1000, a[2] * res[2] / 1000) : null; };
+  const kinds = {}, grp = new THREE.Group();
+  const ext = b.getSize(new THREE.Vector3()).length(), rad = Math.max(0.25, ext * 0.004);
+  let n = 0;
+  for (const o of ORG.data){
+    const a = P(o.pointA), z = P(o.pointB);
+    if (!a || !b.containsPoint(a)) continue;
+    const k = o.kind || "organelle";
+    if (!kinds[k]) kinds[k] = { col: ORG_PALETTE[Object.keys(kinds).length % ORG_PALETTE.length], n: 0 };
+    const col = kinds[k].col; kinds[k].n++; n++;
+    const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35, roughness: 0.4 });
+    const s1 = new THREE.Mesh(new THREE.SphereGeometry(rad, 14, 10), mat); s1.position.copy(a); grp.add(s1);
+    if (z){
+      const d = z.clone().sub(a), L = d.length();
+      if (L > 0.01){
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.45, rad * 0.45, L, 10), mat);
+        cyl.position.copy(a).addScaledVector(d, 0.5);
+        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+        grp.add(cyl);
+        const s2 = new THREE.Mesh(new THREE.SphereGeometry(rad * 0.7, 12, 8), mat); s2.position.copy(z); grp.add(s2);
+      }
+    }
+  }
+  /* A legend at the box's corner: each kind in its colour, with its count. */
+  const ks = Object.keys(kinds);
+  if (ks.length){
+    const lines = ks.map(k => k.replace(/_/g, " ") + "  ×" + kinds[k].n);
+    const leg = textSprite(["Organelle reports"].concat(lines), { width: 1 });
+    leg.scale.multiplyScalar(ext * 0.22);
+    leg.position.set(b.min.x, b.min.y, b.min.z); grp.add(leg);
+  }
+  ORG.group = grp; content.add(grp);
+  ctxNote.textContent = n ? "Organelles: " + n + " reports here — " + ks.map(k => k.replace(/_/g, " ") + " " + kinds[k].n).join(", ")
+                          : "Organelles: none reported inside the box around these cells.";
+}
+document.getElementById("orgBtn").addEventListener("click", () => setOrganelles(!ORG.on));
+
+/* ── 6. BRING IN THE NEIGHBOURS ────────────────────────────────────────────  2026-10-13
+   The cells nearest the picked one, fetched while you stand there. Positions, predicted types and
+   root ids come from core/vr_nuc/<dataset>/ -- the Jump tab's own nucleus table (nucdata) cut into
+   100 µm tiles by src/build_vr_nuclei.js, so this reads one to four ~70 KB files, not the page.
+   Distance is nucleus centre to nucleus centre. Cells already here, and nuclei with no root id, are
+   skipped. The model does not re-centre when they arrive -- in a headset that would yank the scene
+   out of your hands -- but the box for vessels, layers and organelles grows to include them.
+   Labels are the MICrONS prediction (the page's own short names), marked as such. */
+const NUC = { index: null, tiles: {} };
+async function nucIndex(ds){
+  if (!NUC.index){ const r = await fetch(ds.nuclei + "index.json"); NUC.index = await r.json(); }
+  return NUC.index;
+}
+async function nucTile(ds, k){
+  if (!(k in NUC.tiles)){
+    NUC.tiles[k] = null;
+    if (NUC.index.tiles.includes(k)){ const r = await fetch(ds.nuclei + k + ".json"); NUC.tiles[k] = (await r.json()).rows; }
+  }
+  return NUC.tiles[k] || [];
+}
+function nucCentreOf(c){
+  const g = c && ((c.nucMesh && c.nucMesh.geometry) || (c.mesh && c.mesh.geometry));
+  if (!g) return null; g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3());
+}
+async function addNeighbours(k){
+  const c0 = CELLS[SELECTED];
+  if (!c0){ ctxNote.textContent = "Pick a cell first (trigger on it, or click its name)."; return; }
+  const ds = VR_DATASETS[c0.ds];
+  if (!ds || !ds.nuclei){ ctxNote.textContent = "No nucleus table for this dataset."; return; }
+  ctxNote.textContent = "Neighbours: looking around " + c0.label + "…";
+  const I = await nucIndex(ds), T = I.tileUm;
+  /* Where the picked cell is: its own row in the table when its nucleus id is there, else the
+     centre of its nucleus mesh. */
+  let at = null;
+  const p0 = nucCentreOf(c0);
+  const tx = p0 ? Math.floor(p0.x / T) : 0, tz = p0 ? Math.floor(p0.z / T) : 0;
+  const rows = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) rows.push(...await nucTile(ds, (tx + dx) + "_" + (tz + dz)));
+  const own = c0.nuc ? rows.find(r => String(r[4]) === String(c0.nuc)) : null;
+  at = own ? new THREE.Vector3(own[0], own[1], own[2]) : p0;
+  if (!at){ ctxNote.textContent = "Neighbours: the picked cell has no position yet."; return; }
+  const have = new Set(CELLS.flatMap(c => [String(c.root), String(c.nuc)]));
+  const near = rows.filter(r => r[5] && !have.has(String(r[5])) && !have.has(String(r[4])))
+    .map(r => ({ r, d: Math.hypot(r[0] - at.x, r[1] - at.y, r[2] - at.z) }))
+    .sort((a, b) => a.d - b.d).slice(0, k);
+  if (!near.length){ ctxNote.textContent = "Neighbours: none with a root id nearby."; return; }
+  const light = document.getElementById("detail").value === "light", token = LOAD_TOKEN, added = [];
+  for (const { r, d } of near){
+    const code = I.types[r[3]] || "Unclassified";
+    const name = (I.labels && I.labels[code]) || code;
+    const label = name.charAt(0).toUpperCase() + name.slice(1)
+      + (r[3] ? (name.toLowerCase() === code.toLowerCase() ? " (MICrONS prediction)" : " (" + code + ", MICrONS prediction)") : "");
+    const c = { i: CELLS.length, ds: c0.ds, root: String(r[5]), nuc: String(r[4]), label, extra: [],
+                colour: colourFor(label), neighbourOf: c0.i, dist: d, status: "waiting…" };
+    CELLS.push(c); added.push(c);
+  }
+  renderList(); MENU.dirty = true;
+  for (const c of added){
+    if (token !== LOAD_TOKEN) return;
+    await loadOne(c, token, light);
+    if (c.mesh){ CELL_BOX = (CELL_BOX || new THREE.Box3()).union(c.mesh.geometry.boundingBox); }
+    renderList(); updateTri(); applyLook(); MENU.dirty = true;
+  }
+  buildContext();
+  ctxNote.textContent = "Added " + added.length + " neighbour" + (added.length > 1 ? "s" : "") + " of " + c0.label + ": "
+    + added.map(c => c.label.replace(/ \(.*$/, "") + " " + c.dist.toFixed(0) + " µm").join(", ");
+}
+document.getElementById("nbBtn").addEventListener("click", () => addNeighbours(3));
+
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
@@ -773,6 +1029,7 @@ const hands = [0, 1].map(k => {
     const k = menuRowUnder(h);
     if (k >= 0){ MENU.rows[k].act(); MENU.dirty = true; return; }
     if (MENU.open) return;                     // pointing past the menu does nothing
+    if (MEAS.on && h.source && h.source.handedness === "right"){ measureWithRay(rayOf(h)); return; }
     if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
       setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
     }
@@ -897,6 +1154,10 @@ function menuRows(){
   rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume (heavy)" })[vm],
               on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
   rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
+  rows.push({ label: "Organelle reports", on: ORG.on, act: () => setOrganelles(!ORG.on) });
+  rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
+  rows.push({ label: "Measure (right trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
+  if (MEAS.items.length) rows.push({ label: "Clear the measurements", act: clearMeasure });
   rows.push({ head: "EM and cutting" });
   rows.push({ label: EM.mesh ? "EM section: move to the picked cell" : "EM section: show it", on: !!EM.mesh || EM.loading,
               act: () => showEM() });
@@ -911,6 +1172,8 @@ function menuRows(){
               act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
   rows.push({ label: "Cut: at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
   rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
+  rows.push({ label: SELECTED >= 0 ? "Bring in the 3 nearest neighbours of the picked cell" : "Neighbours: pick a cell first",
+              act: () => addNeighbours(3) });
   rows.push({ head: "Size" });
   rows.push({ label: "Tabletop", act: () => setSize(1) });
   rows.push({ label: "Room-sized", act: () => setSize(6) });
@@ -996,7 +1259,8 @@ function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
 const helpCard = textSprite(["Controls", "Trigger: pick a cell · Y: menu", "Grip: grab · both grips: resize",
                              "Right stick: turn / zoom", "Left stick: tilt · flick = next cell",
                              "A: see-through · B: reset · X: only picked",
-                             "Cutting in hand: right trigger freezes / frees"], { width: 0.17 });
+                             "Cutting in hand: right trigger freezes / frees",
+                             "Measuring: right trigger sets two points"], { width: 0.17 });
 helpCard.position.set(0, 0.09, -0.02);
 renderer.xr.addEventListener("sessionstart", () => {
   const left = hands.find(h => h.source && h.source.handedness === "left") || hands[0];
@@ -1035,6 +1299,7 @@ renderer.setAnimationLoop(() => {
   else controls.update();
   placeLabel();
   cutFrame();
+  scaleBarFrame();
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
@@ -1047,7 +1312,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
