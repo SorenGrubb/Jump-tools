@@ -74,6 +74,23 @@
       <option value="whole">Vessels: whole volume (PC only, 2.8 M triangles)</option>
     </select>
   </div>
+  <div class="ctl">
+    <button id="emBtn" title="The electron micrograph through the picked cell's nucleus (or the middle of the collection), as a plane the cells pass through">EM section</button>
+    <select id="emSize" title="Wide: 65 µm across at 128 nm per pixel (about 15 s). Close: 33 µm at 64 nm (about 25 s). Both average a few 40 nm sections into one slab.">
+      <option value="wide">EM: wide 65 µm</option>
+      <option value="close">EM: close 33 µm</option>
+    </select>
+    <button id="emDn" title="5 µm back through the sections">−5 µm</button>
+    <button id="emUp" title="5 µm on through the sections">+5 µm</button>
+  </div>
+  <div class="ctl">
+    <select id="cutSel" title="Slice the cells and vessels open. In VR the menu also offers a cut held in your right hand.">
+      <option value="off">Cut: off</option>
+      <option value="desk">Cut: across the view</option>
+      <option value="em">Cut: at the EM section</option>
+    </select>
+    <input id="cutDepth" type="range" min="-100" max="100" value="0" style="flex:1" title="Where the cut sits, front to back">
+  </div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
@@ -82,7 +99,8 @@
     <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
     <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
-    A = see-through · B = reset · X = only the picked cell · <b>Y = menu</b> (layers, vessels, size, cells, exit VR).
+    A = see-through · B = reset · X = only the picked cell · <b>Y = menu</b> (layers, vessels, EM section, cutting plane, size, cells, exit VR).
+    With the cut in your hand, the right trigger freezes it in place and frees it again.
   </div>
 </div>
 
@@ -115,7 +133,11 @@ window.VR_DATASETS = {
        vertices span x 283–1600, y 257–1160, z 316–1115 µm, the same frame core/mesh.js returns. */
     vascMesh: "https://bossdb-open-data.s3.amazonaws.com/wei2024/minnie/bv/mesh/1%3A0%3A276-1562_240-1133_247-871",
     /* The traced pia / white-matter surfaces, sampled on a grid by src/build_vr_layers.js. */
-    layers: "core/vr_layers_microns.json"
+    layers: "core/vr_layers_microns.json",
+    /* The EM, read through core/emtiles.js + core/segread.js exactly as the tracing pad and the
+       EM preview read it: raw uint8, sharded, no token. res is the tool frame, nm per voxel. */
+    em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
+    res: [4, 4, 40]
   }
 };
 window.UJ = window.UJ || {};
@@ -123,6 +145,8 @@ UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh };
 </script>
 <script src="core/mesh.js"></script>
 <script src="core/nucmesh.js"></script>
+<script src="core/segread.js"></script>
+<script src="core/emtiles.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "./core/vendor/three/three.module.min.js",
@@ -183,6 +207,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType("local-floor");
 renderer.xr.setFoveation(1);
+renderer.localClippingEnabled = true;          // the cutting plane
 view.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -421,7 +446,7 @@ async function buildVessels(){
     side: THREE.DoubleSide }));
   VASC.mesh.renderOrder = 2; VASC.mesh.userData.context = true;
   VASC.tris = idx.length / 3;
-  content.add(VASC.mesh);
+  content.add(VASC.mesh); applyClip();
   ctxNote.textContent = "Vessels: " + (VASC.tris / 1000).toFixed(0) + "k triangles — TriSAM, Wan & Wei 2025 (BossDB wei2024).";
   updateTri();
 }
@@ -489,6 +514,165 @@ function setVessels(mode){ document.getElementById("vascSel").value = mode; buil
 document.getElementById("layerBtn").addEventListener("click", () => setLayers(!layersOn()));
 document.getElementById("vascSel").addEventListener("change", buildVessels);
 
+/* ── 1. THE EM SECTION ─────────────────────────────────────────────────────  2026-10-13
+   Søren: "Give me 1 and 2" -- the electron micrograph through the cell, so the ultrastructure and
+   the 3D shape are seen in the same place.
+
+   One section-plane of the EM, through the picked cell's nucleus (or the middle of the collection
+   when nothing is picked), drawn as a flat picture the cells pass through. Read by core/emtiles.js
+   -- the same reader the tracing pad and the EM preview use -- into a canvas, which becomes the
+   texture. It lives in `content`, in the cells' micrometre frame, so it turns and scales with them.
+
+   COARSE ON PURPOSE. Measured on the live bucket from grubblab.com: a 512 x 512 window takes ~13 s
+   at 128 nm/px (65 µm across) and ~26 s at 64 nm/px (33 µm). The finer 40 nm levels would show a
+   few µm -- less than one cell body -- for the same wait. Both levels average 2-4 sections into a
+   slab (slabOk), which is fine for seeing a soma, a nucleus and a vessel lumen in a headset.
+
+   MOVING THROUGH THE SECTIONS IS CHEAP: a chunk at these levels is 64 slabs deep (10-20 µm), so
+   ±5 µm usually re-reads nothing and redraws in well under a second. */
+const EM = { mesh: null, centre: null, size: "wide", loading: false, token: 0 };
+const EM_LEVEL = { wide: { mip: 4, px: 512 }, close: { mip: 3, px: 512 } };
+function emCentreUm(){
+  const c = CELLS[SELECTED];
+  const g = c && ((c.nucMesh && c.nucMesh.geometry) || (c.mesh && c.mesh.geometry));
+  if (g){ g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3()).toArray(); }
+  return CELL_BOX ? CELL_BOX.getCenter(new THREE.Vector3()).toArray() : null;
+}
+function emPlaceholder(text){
+  const cv = document.createElement("canvas"); cv.width = 512; cv.height = 512;
+  const g = cv.getContext("2d"); g.fillStyle = "#161b22"; g.fillRect(0, 0, 512, 512);
+  g.strokeStyle = "#30363d"; g.lineWidth = 8; g.strokeRect(4, 4, 504, 504);
+  g.fillStyle = "#8b949e"; g.font = "30px system-ui, sans-serif"; g.textAlign = "center";
+  g.fillText(text, 256, 262); return cv;
+}
+function emTexture(cv){
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  /* Canvas row 0 is the SMALLEST data y. The plane's -y side is the smallest data y (content is
+     the data frame), so the texture must NOT be flipped. */
+  t.flipY = false; return t;
+}
+async function showEM(centre){
+  const ds = dsOfCells();
+  if (!ds.em){ ctxNote.textContent = "No EM source for this dataset."; return; }
+  const c = centre || emCentreUm();
+  if (!c){ ctxNote.textContent = "Load a cell first."; return; }
+  EM.centre = c.slice(); EM.size = document.getElementById("emSize").value;
+  const L = EM_LEVEL[EM.size], token = ++EM.token;
+  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res });
+  /* Size known before the read: px pixels at the level's nm per pixel. */
+  const info = await UJ.emtiles.scaleAt(L.mip, true);
+  const um = L.px * info.scale.resolution[0] / 1000;
+  if (!EM.mesh){
+    EM.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }));
+    EM.mesh.userData.context = true; content.add(EM.mesh);
+  }
+  EM.mesh.scale.set(um, um, 1);
+  EM.mesh.position.set(c[0], c[1], c[2]);
+  const setMap = cv => { if (EM.mesh.material.map) EM.mesh.material.map.dispose(); EM.mesh.material.map = emTexture(cv); EM.mesh.material.needsUpdate = true; };
+  setMap(emPlaceholder("reading the EM…"));
+  EM.loading = true; MENU.dirty = true;
+  ctxNote.textContent = "EM: reading " + um.toFixed(0) + " µm at " + info.scale.resolution[0] + " nm/px…";
+  const cv = document.createElement("canvas");
+  try {
+    const v = await UJ.emtiles.drawSection(cv, {
+      centre: [c[0] * 1000 / ds.res[0], c[1] * 1000 / ds.res[1], c[2] * 1000 / ds.res[2]],
+      w: L.px, h: L.px, mip: L.mip, zoom: 1, slabOk: true, tighten: true,
+      onProgress: (d, n) => { if (token === EM.token){ ctxNote.textContent = "EM: " + d + "/" + n + " chunks"; setMap(emPlaceholder("reading the EM… " + d + "/" + n)); } }
+    });
+    if (token !== EM.token) return;
+    setMap(cv);
+    ctxNote.textContent = "EM section at z " + c[2].toFixed(1) + " µm · " + v.umAcross.toFixed(0) + " µm across · "
+      + v.nmPerPx + " nm/px" + (v.slab > 1 ? " (" + v.slab + " sections averaged)" : "");
+  } catch (e){
+    if (token === EM.token){ setMap(emPlaceholder("EM could not be read")); ctxNote.textContent = "EM: " + (e.message || e); }
+  }
+  if (token === EM.token){ EM.loading = false; MENU.dirty = true; }
+}
+function moveEM(dz){ if (EM.centre){ const c = EM.centre.slice(); c[2] += dz; showEM(c); } }
+function hideEM(){
+  EM.token++; EM.loading = false;
+  if (EM.mesh){ content.remove(EM.mesh); if (EM.mesh.material.map) EM.mesh.material.map.dispose(); EM.mesh.material.dispose(); EM.mesh.geometry.dispose(); EM.mesh = null; }
+  if (CUT.mode === "em") setCut("off");
+  MENU.dirty = true; ctxNote.textContent = "";
+}
+document.getElementById("emBtn").addEventListener("click", () => showEM());
+document.getElementById("emUp").addEventListener("click", () => moveEM(5));
+document.getElementById("emDn").addEventListener("click", () => moveEM(-5));
+document.getElementById("emSize").addEventListener("change", () => { if (EM.mesh) showEM(EM.centre); });
+
+/* ── 2. THE CUTTING PLANE ──────────────────────────────────────────────────────
+   One world-space plane, shared by every cell, nucleus and vessel material (three.js clips
+   per material). Whatever is on YOUR side of it is removed, so the cut face looks at you.
+
+   hand    follows the right controller, 8 cm in front of it -- a knife you push into the cells
+   frozen  left where the right trigger was pulled; turn the cells through it with the sticks
+   em      lies in the EM section and keeps the half on your side, so each cell rises out of the
+           micrograph with its cut edge on its own profile in the EM
+   desk    on a flat screen: across the view, moved front to back by the slider
+
+   The surfaces are open shells, so a cut shows the inside of the membrane, not a solid face.
+   Meshes are drawn double-sided, so that inside is lit and reads as a hollow. */
+const CUT = { mode: "off", plane: new THREE.Plane(), knife: null };
+const _n = new THREE.Vector3(), _cp = new THREE.Vector3(), _q2 = new THREE.Quaternion(), _cam = new THREE.Vector3();
+function cutActive(){ return CUT.mode !== "off"; }
+function applyClip(){
+  const planes = cutActive() ? [CUT.plane] : null;
+  for (const c of CELLS) for (const m of [c.mesh, c.nucMesh]) if (m){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; }
+  if (VASC.mesh){ VASC.mesh.material.clippingPlanes = planes; VASC.mesh.material.needsUpdate = true; }
+}
+function knife(){
+  if (!CUT.knife){
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22),
+      new THREE.MeshBasicMaterial({ color: 0x56d4c8, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })));
+    g.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.11, -0.11, 0), new THREE.Vector3(0.11, -0.11, 0), new THREE.Vector3(0.11, 0.11, 0), new THREE.Vector3(-0.11, 0.11, 0)]),
+      new THREE.LineBasicMaterial({ color: 0x56d4c8 })));
+    CUT.knife = g;
+  }
+  return CUT.knife;
+}
+function rightHand(){ return hands.find(h => h.source && h.source.handedness === "right") || hands[1]; }
+function setCut(mode){
+  if (mode === "em" && !EM.mesh){ showEM().then(() => setCut("em")); return; }
+  const k = knife();
+  if (mode === "hand"){ const h = rightHand(); h.ctl.add(k); k.position.set(0, 0, -0.08); k.quaternion.identity(); }
+  else if (mode === "frozen"){ k.updateMatrixWorld(); scene.attach(k); }
+  else if (k.parent) k.parent.remove(k);
+  CUT.mode = mode;
+  const sel = document.getElementById("cutSel");
+  sel.value = (mode === "desk" || mode === "em") ? mode : "off";
+  applyClip(); MENU.dirty = true;
+}
+function cutFrame(){
+  if (CUT.mode === "off") return;
+  if (CUT.mode === "hand" || CUT.mode === "frozen"){
+    /* The knife's own plane, normal = the controller's forward (local −z) in the world, pointing away from you, so the
+       half between you and the knife is the half that goes. */
+    const k = knife(); k.updateMatrixWorld();
+    k.getWorldPosition(_cp); k.getWorldQuaternion(_q2);
+    _n.set(0, 0, -1).applyQuaternion(_q2);
+    CUT.plane.setFromNormalAndCoplanarPoint(_n, _cp);
+  } else if (CUT.mode === "em" && EM.mesh){
+    EM.mesh.updateMatrixWorld(); EM.mesh.getWorldPosition(_cp); EM.mesh.getWorldQuaternion(_q2);
+    _n.set(0, 0, 1).applyQuaternion(_q2);
+    /* Keep YOUR half. The far half is behind the micrograph anyway; what is worth seeing is the
+       cell rising out of the EM towards you, its cut edge lying exactly on its own profile in the
+       section. Walk round to the other side and the other half shows. */
+    (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera).getWorldPosition(_cam);
+    if (_n.dot(_cam.clone().sub(_cp)) < 0) _n.negate();
+    CUT.plane.setFromNormalAndCoplanarPoint(_n, _cp);
+  } else if (CUT.mode === "desk"){
+    camera.getWorldDirection(_n);
+    const d = +document.getElementById("cutDepth").value / 100;
+    const r = TABLE_SIZE * 0.5 * (stage.scale.x / FIT_SCALE);
+    _cp.copy(stage.position).addScaledVector(_n, d * r);
+    CUT.plane.setFromNormalAndCoplanarPoint(_n, _cp);
+  }
+}
+document.getElementById("cutSel").addEventListener("change", e => setCut(e.target.value));
+
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
@@ -513,6 +697,7 @@ function applyLook(){
   }
   /* Transparent things draw back to front; the nuclei should draw before the glassy cells. */
   for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
+  applyClip();
   updateTri(); updateLabel();
 }
 function select(i){ SELECTED = i; applyLook(); }
@@ -588,6 +773,9 @@ const hands = [0, 1].map(k => {
     const k = menuRowUnder(h);
     if (k >= 0){ MENU.rows[k].act(); MENU.dirty = true; return; }
     if (MENU.open) return;                     // pointing past the menu does nothing
+    if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
+      setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
+    }
     pickWith(h);
   });
   ctl.addEventListener("squeezestart", () => { h.squeezing = true; grabStart(); });
@@ -709,6 +897,19 @@ function menuRows(){
   rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume (heavy)" })[vm],
               on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
   rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
+  rows.push({ head: "EM and cutting" });
+  rows.push({ label: EM.mesh ? "EM section: move to the picked cell" : "EM section: show it", on: !!EM.mesh || EM.loading,
+              act: () => showEM() });
+  if (EM.mesh || EM.loading){
+    rows.push({ label: "EM: +5 µm through the sections", act: () => moveEM(5) });
+    rows.push({ label: "EM: −5 µm", act: () => moveEM(-5) });
+    rows.push({ label: "EM: " + (EM.size === "wide" ? "wide 65 µm → switch to close 33 µm" : "close 33 µm → switch to wide 65 µm"),
+                act: () => { document.getElementById("emSize").value = EM.size === "wide" ? "close" : "wide"; showEM(EM.centre); } });
+    rows.push({ label: "Hide the EM section", act: hideEM });
+  }
+  rows.push({ label: "Cut: in my right hand (trigger freezes it)", on: CUT.mode === "hand" || CUT.mode === "frozen",
+              act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
+  rows.push({ label: "Cut: at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
   rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
   rows.push({ head: "Size" });
   rows.push({ label: "Tabletop", act: () => setSize(1) });
@@ -794,7 +995,8 @@ function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
 /* ── the help card on the left hand, in VR only ───────────────────────────── */
 const helpCard = textSprite(["Controls", "Trigger: pick a cell · Y: menu", "Grip: grab · both grips: resize",
                              "Right stick: turn / zoom", "Left stick: tilt · flick = next cell",
-                             "A: see-through · B: reset · X: only picked"], { width: 0.17 });
+                             "A: see-through · B: reset · X: only picked",
+                             "Cutting in hand: right trigger freezes / frees"], { width: 0.17 });
 helpCard.position.set(0, 0.09, -0.02);
 renderer.xr.addEventListener("sessionstart", () => {
   const left = hands.find(h => h.source && h.source.handedness === "left") || hands[0];
@@ -804,6 +1006,7 @@ renderer.xr.addEventListener("sessionstart", () => {
 renderer.xr.addEventListener("sessionend", () => {
   if (helpCard.parent) helpCard.parent.remove(helpCard);
   if (MENU.open) toggleMenu();
+  if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off");   // no hand to hold it on a flat screen
 });
 
 /* ── the VR button ────────────────────────────────────────────────────────── */
@@ -831,6 +1034,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); menuFrame(); }
   else controls.update();
   placeLabel();
+  cutFrame();
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
@@ -843,7 +1047,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
