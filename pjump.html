@@ -640,6 +640,13 @@ document.addEventListener("DOMContentLoaded", function(){
      same code on every page rather than jumplink's own fallback copy. 2026-10-03. -->
 <script src="core/volumes.js"></script>
 <script src="core/jumplink.js"></script>
+<!-- THE REGISTRY OF JUMPS: which tool a post came from, that tool's colour, and the
+     volumes its coordinates are in. core/jumplink.js does not read it — it is
+     handed a host built from it. 2026-10-13. -->
+<script src="core/tools.js"></script>
+<!-- The Discussion: one forum shared by every Jump, with the places a post names made
+     clickable by core/jumplink.js above. 2026-10-13. -->
+<script src="core/forum.js"></script>
 <script src="core/panel.js"></script>
 <script src="core/tree.js"></script>
 <script src="core/report.js"></script>
@@ -662,7 +669,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:09</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:53</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -747,6 +754,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">🔍 Jump</button>
 <button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">📥 Filter and show</button>
 <button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false">📚 References</button>
+<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas — ONE discussion shared by every Jump. A post is marked with the tool it was written from, and coordinates and ids written into it become links in that tool's own frame.">💬 Discussion</button>
 <button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Live/static statistics dashboard built from this dataset + the community-reporting backend — opens inline, no separate tab or re-login">📊 Statistics dashboard</button>
 </div>
 <script>
@@ -1051,6 +1059,26 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
 <p class="hint">Nearest-nucleus, IDs &amp; predictions from <a class="ref" href="https://minnie.microns-daf.com/dash/datastack/minnie65_public/apps/table_viewer/?datastack=%22minnie65_public%22" target="_blank" rel="noopener" title="Opens the CAVE Table Viewer &mdash; choose this table from the dropdown"><code>nucleus_detection_v0</code></a> and <a class="ref" href="https://minnie.microns-daf.com/dash/datastack/minnie65_public/apps/table_viewer/?datastack=%22minnie65_public%22" target="_blank" rel="noopener" title="Opens the CAVE Table Viewer &mdash; choose this table from the dropdown"><code>aibs_metamodel_celltypes_V661</code></a> (minnie65 only).</p>
 </div>
 </div>
+<!-- ── DISCUSSION ── 2026-10-13. One forum for every Jump (core/forum.js). The panel is
+     empty markup; everything in it is the module's, exactly as the tracing card works.
+     Filled the first time the tab is opened rather than on load: it is one more request
+     to the backend, and a page nobody has clicked Discussion on should not pay for it. -->
+<div class="tabpanel" data-tabpanel="forum">
+<div id="forumCard"></div>
+</div>
+<script>
+(function(){
+  var started=false;
+  function openForum(){
+    if(started)return; started=true;
+    if(window.UJ&&UJ.forum)UJ.forum.init({tool:"pjump",volume:"pinky100"});
+  }
+  /* The tab engine switches panels by toggling .active on [data-tabpanel]; there is no
+     event to listen for, so this watches the button that opens it. */
+  var btn=document.querySelector('#mainTabs .tabbtn[data-tab="forum"]');
+  if(btn)btn.addEventListener("click",openForum);
+})();
+</script>
 <div class="tabpanel" data-tabpanel="dashboard" id="dashPanel">
 <!-- 2026-08: fully inlined (was an iframe to the separate ujump_dashboard.html -- see
      [[ujump-dashboard-embed]] -- Søren: "I didn't realize that the dashboard is only 55kb,

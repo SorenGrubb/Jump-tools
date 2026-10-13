@@ -655,6 +655,20 @@ renderer.xr.addEventListener("sessionend", () => { if (helpCard.parent) helpCard
 /* ── the VR button ────────────────────────────────────────────────────────── */
 const vrBtn = VRButton.createButton(renderer);
 document.getElementById("vrslot").appendChild(vrBtn);
+/* "VR NOT SUPPORTED" means the browser HAS WebXR but no headset runtime answered. On a PC that is
+   almost always the OpenXR runtime (Air Link / Link not set as active, or SteamVR holding it);
+   inside the headset the Meta Quest Browser always has it. Say so where the button is. */
+(async () => {
+  let ok = false;
+  try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported("immersive-vr")); } catch (e){}
+  if (ok) return;
+  const n = document.createElement("div"); n.className = "help";
+  n.innerHTML = "<b>No headset found by this browser.</b> Either open the <b>headset link</b> in the " +
+    "<b>Meta Quest Browser</b> inside the headset (simplest), or, on the PC with Air Link: in the " +
+    "<b>Meta Quest Link</b> app go to Settings → General → OpenXR Runtime → <b>Set Meta Quest Link as active</b>, " +
+    "start Air Link, then reload this page in Chrome or Edge.";
+  document.getElementById("vrslot").appendChild(n);
+})();
 
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();

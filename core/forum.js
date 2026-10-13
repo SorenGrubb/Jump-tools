@@ -105,9 +105,17 @@ function toolHost(tool){
   try { if (window.UJ && UJ.tools) return UJ.tools.hostFor(tool); } catch (_e){}
   return null;
 }
+/* ── AND OUR OWN POSTS, ON A PAGE THAT DECLARES NO HOST ────────────────────────  2026-10-13
+   µJump is the only page with a window.jumpLinkHost(): it was written for the Discussion when the
+   Discussion was only here. Its host carries the nucleus table behind “cell 253863”, the EM
+   shader, and whichever viewer the reader picked from the dropdown — none of which is in the
+   registry — so where it exists it still wins. Everywhere else the registry answers for this
+   tool exactly as it answers for anybody else's, which is also the honest result for ηJump and
+   βJump: no verified box, no links, rather than links to a box nobody checked. */
 function linkOpts(tool){
-  if (!foreign(tool)) return null;
-  var h = toolHost(tool);
+  var t = String(tool || "");
+  if (!foreign(t) && typeof window.jumpLinkHost === "function") return null;
+  var h = toolHost(foreign(t) ? t : TOOL);
   return h ? { host: h } : { none: true };
 }
 /* ── THE BADGE ────────────────────────────────────────────────────────────────────────────────
@@ -128,6 +136,11 @@ function toolBadge(p){
     if (window.UJ && UJ.tools){ lab = UJ.tools.label(k); about = UJ.tools.dataset(k) || ""; }
   } catch (_e){}
   var vol = String((p && p.volume) || "");
+  /* Shown where the tool serves more than one — ωJump's sixty-three, µJump's two slabs. On a
+     one-volume tool it would be the tool's name twice. */
+  try {
+    if (vol && window.UJ && UJ.tools && UJ.tools.manyVolumes && !UJ.tools.manyVolumes(k)) vol = "";
+  } catch (_ve){}
   return "<span class=\"ftool ftool-" + esc(k) + "\" title=\"Written from " + esc(lab)
        + (about ? " — " + esc(about) : "") + "\" style=\"color:var(--tool-accent);"
        + "border:1px solid var(--tool-accent);border-radius:999px;padding:0 6px;font-size:11px;"
@@ -539,7 +552,14 @@ function watchSignIn(){
    Neuroglancer link, so the click that used to leave the page keeps you on it, and the thing that
    leaves is the thing you can see first. */
 function wirePreviews(host){
-  if (!host || !window.UJ || !UJ.empreview) return;
+  if (!host || !window.UJ) return;
+  /* ── A LINK THAT DOES NOTHING IS WORSE THAN A NUMBER ───────────────────────────  2026-10-13
+     This used to return here when core/empreview.js was absent — and this function is what
+     attaches the click handlers, so on the five pages that do not load it every link in every
+     post would have been an <a href="#"> that swallows the click and does nothing at all. The
+     anchors are wired either way now: the picture where there is one, the viewer where there is
+     not. Which is also what the link meant before 2026-10-03. */
+  var canDraw = !!UJ.empreview;
   [].slice.call(host.querySelectorAll(".forumbody")).forEach(function(body){
     var slot = document.createElement("div");
     slot.className = "forumprev";
@@ -569,7 +589,7 @@ function wirePreviews(host){
             if (fh && UJ.jumplink) fu = UJ.jumplink.url([h], { host: fh }) || "";
           } catch (_fe){}
           open = "";
-          UJ.empreview.close(slot);
+          if (canDraw) UJ.empreview.close(slot);
           slot.innerHTML = "<p class='forumelsewhere' style='font-size:12px;color:var(--mut);"
             + "margin:6px 0;line-height:1.5'>That is a place in <b>"
             + esc(h.label || h.volume || "another volume") + "</b>, which is "
@@ -595,6 +615,16 @@ function wirePreviews(host){
            one picture of the two -- idsOf() above has assumed that since it was written -- so an
            id this page cannot place still has somewhere to be drawn when the sentence says where.
            Last, because the thing you clicked wins over the thing beside it. */
+        if (!canDraw){
+          /* The viewer, with this page's own host — which on a page without jumpLinkHost() is the
+             registry's, so the link opens this tool's volume rather than nothing. */
+          ev.preventDefault();
+          ev.stopPropagation();
+          var lo = linkOpts(btool), lu = "";
+          try { if (UJ.jumplink) lu = UJ.jumplink.url([h], lo || undefined) || ""; } catch (_ve){}
+          if (lu) window.open(lu, "_blank", "noopener");
+          return;
+        }
         var at = h.voxel;
         if (!at && h.kind === "nucleus") at = nucleusPos(h.id);
         if (!at && h.kind === "root") at = cellPos(h.id);
@@ -813,7 +843,14 @@ async function init(opts){
   render();
 }
 
+/* ── AND ωJUMP CHANGES VOLUME WITHOUT RELOADING ────────────────────────────────  2026-10-13
+   Søren: *"For wJump it should depend which dataset you have open when you enter the discussion."*
+   Seven of the eight tools are one volume each and `volume` arrives once, at init. ωJump serves
+   sixty-three and switches between them in place, so a Discussion opened over one volume and
+   posted to from another would file the post under the wrong one. Its selectDataset() calls this,
+   beside the two calls that already tell the tracing card. */
 UJ.forum = { init: init, render: render,
+             volume: function(v){ if (v !== undefined) VOLUME = String(v || ""); return VOLUME; },
              _foundSay: foundSay, _postHtml: postHtml, _indexHtml: indexHtml,
              _open: function(pid){ OPEN = pid || ""; MODE = ""; render(); },
              _new: function(){ MODE = "new"; OPEN = ""; render(); },

@@ -420,11 +420,12 @@ code{font-family:var(--mono);color:var(--accent)}a.ref{color:var(--accent);font-
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:09</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:53</span></p>
 <div class="tabbar" id="mainTabs" role="tablist">
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">🔍 Jump</button>
 <button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">📥 Filter and show</button>
 <button type="button" class="tabbtn" data-tab="references" role="tab" aria-selected="false">📚 References</button>
+<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas — ONE discussion shared by every Jump. A post is marked with the tool it was written from, and coordinates and ids written into it become links in that tool's own frame.">💬 Discussion</button>
 <button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Charts built from this page's own data plus the community backend — the charting library loads only when you open this tab">📊 Statistics dashboard</button>
 </div>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
@@ -783,6 +784,26 @@ reviewed those rows. That review is what &lambda;Jump is for.</p>
 </div>
 </div><!-- /references tabpanel -->
 
+<!-- ── DISCUSSION ── 2026-10-13. One forum for every Jump (core/forum.js). The panel is
+     empty markup; everything in it is the module's, exactly as the tracing card works.
+     Filled the first time the tab is opened rather than on load: it is one more request
+     to the backend, and a page nobody has clicked Discussion on should not pay for it. -->
+<div class="tabpanel" data-tabpanel="forum">
+<div id="forumCard"></div>
+</div>
+<script>
+(function(){
+  var started=false;
+  function openForum(){
+    if(started)return; started=true;
+    if(window.UJ&&UJ.forum)UJ.forum.init({tool:"ljump",volume:"lee16"});
+  }
+  /* The tab engine switches panels by toggling .active on [data-tabpanel]; there is no
+     event to listen for, so this watches the button that opens it. */
+  var btn=document.querySelector('#mainTabs .tabbtn[data-tab="forum"]');
+  if(btn)btn.addEventListener("click",openForum);
+})();
+</script>
 <div class="tabpanel" data-tabpanel="dashboard">
 <div class="card">
 <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);font-weight:600;margin-bottom:2px">Statistics dashboard</div>
@@ -1375,6 +1396,13 @@ UJ.cfg.bulk = {
      same code on every page rather than jumplink's own fallback copy. 2026-10-03. -->
 <script src="core/volumes.js"></script>
 <script src="core/jumplink.js"></script>
+<!-- THE REGISTRY OF JUMPS: which tool a post came from, that tool's colour, and the
+     volumes its coordinates are in. core/jumplink.js does not read it — it is
+     handed a host built from it. 2026-10-13. -->
+<script src="core/tools.js"></script>
+<!-- The Discussion: one forum shared by every Jump, with the places a post names made
+     clickable by core/jumplink.js above. 2026-10-13. -->
+<script src="core/forum.js"></script>
 <script src="core/panel.js"></script>
 <script src="core/tree.js"></script>
 <script src="core/report.js"></script>

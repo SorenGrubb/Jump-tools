@@ -128,7 +128,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-12 20:55</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-13 19:51</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -311,6 +311,17 @@ try{var _t=localStorage.getItem("ujump_theme");
   <div id="f-results"></div>
 </details>
 
+
+
+<!-- ── THE DISCUSSION ─────────────────────────────  2026-10-13
+     One forum shared by every Jump (core/forum.js). A card rather than a tab, because this page
+     has no tab bar; closed, because the forum is one more read of the backend and a page nobody
+     has opened it on should not pay for it. See src/wjump_joins_the_discussion.py. -->
+<details class="card" id="forum-card">
+  <summary><span class="lbl">Discussion</span>
+    <span class="hint">Findings, bugs and ideas &mdash; shared with every Jump</span></summary>
+  <div id="forumCard" style="margin-top:12px"></div>
+</details>
 
 
 <div class="card">
@@ -6892,6 +6903,11 @@ UJ.app = (function(){
        carrying it across would silently filter the new volume by the old one's geometry. */
     mountRegionBox();
     filterInvalidate();
+    /* THE DISCUSSION'S SCOPE. Unconditional rather than guarded by `switched`, so the first call
+       at boot sets it too -- the forum is read when somebody opens the card, which may be before
+       any switch has happened. A post carries this as `volume` and its badge names it; see
+       src/wjump_joins_the_discussion.py. */
+    if (window.UJ && UJ.forum && UJ.forum.volume) try { UJ.forum.volume(id); } catch (e){}
     if (switched && window.UJ.tracingcard && UJ.tracingcard.datasetChanged)
       try { UJ.tracingcard.datasetChanged(); } catch (e){}
     /* The bulk card too: markers pasted for the old volume are the wrong voxels here. 2026-09-21 */
@@ -25834,6 +25850,1513 @@ if (typeof document !== "undefined"){
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bulkOrganMount);
   else bulkOrganMount();
 }
+</script>
+
+<script>/* core/jumplink.js — a coordinate written in a sentence is a place you can go.      2026-10-01
+
+   Søren, on Gary's forum idea: *"what if a user wants to talk about more than one coordinate in a
+   post? Can we instead make it recognise when a coordinate or rootID is pasted and then make it
+   into a link automatically?"*
+
+   An anchor field holds one place. A paragraph holds as many as somebody wants to write about, so
+   the text itself is the anchor: this reads a piece of prose and finds the references in it.
+
+   ── RESOLVE, DO NOT PATTERN-MATCH ────────────────────────────────────────────────────────────
+   A bare six-digit number could be a nucleus id, a count, a year or a page number. Three numbers
+   in a row could be a coordinate or three measurements. Shape alone cannot tell, and a linkifier
+   that guesses is worse than none: a wrong link in somebody's sentence is a claim the author did
+   not make, on a page about getting cell identity right.
+
+   So nothing is linked on appearance. A triple becomes a coordinate only when it LANDS INSIDE one
+   of the two imaged volumes, and a bare number becomes a cell only when it is IN THIS VOLUME'S
+   NUCLEUS TABLE *and* the author wrote a word meaning cell in front of it. The page answers both
+   questions from data it already holds. A page that cannot answer (ωJump and χJump have no nucleus
+   table) leaves the hook undefined, and then those references stay as the text somebody typed —
+   which is the honest failure.
+
+   The cue word is there because the lookup alone was not enough, and the check caught it before
+   anyone saw it: in "Between 2024 and 2026 we traced 42 cells", the number 2026 IS a nucleus in
+   this dataset. See RE_CUED below.
+
+   ── SCANNED RAW, EMITTED ESCAPED ─────────────────────────────────────────────────────────────
+   This is user-written text going into innerHTML on a page holding a Google credential, so the
+   output is fully escaped. The ORDER is the subtle half, and the obvious order is wrong: escaping
+   first and then scanning would hand the scanner "it&#39;s", whose entity contains the digits 39 —
+   a number rule would read them, link half an entity, and render a broken apostrophe beside a link
+   to nothing. Scanning the raw text and escaping each plain run as it is emitted cannot do that.
+   Nothing the author typed reaches the page unescaped either way; only this way is also correct.
+
+   ── WHAT IS STORED IS WHAT WAS TYPED ─────────────────────────────────────────────────────────
+   The linkifying happens at render, never on save. A mis-detection is then a display bug rather
+   than data loss, and sharpening the rules next month sharpens every post already written.
+
+   ── BOTH VOLUMES, ALWAYS ─────────────────────────────────────────────────────────────────────
+   Søren: *"Make sure that it recognises the minnie35 and minnie65 differences but opens the viewer
+   with both segmentation layers and both em layers."* So the DIFFERENCE is used for what it can
+   actually settle — which volume a coordinate is in, hence what the link says and where the point
+   is drawn — and the viewer is opened with both EM layers and both segmentations regardless, since
+   a post comparing across the boundary is exactly the post worth writing. The nuclei layer is the
+   one exception: there is no nucleus detection over minnie35, so out there it would be an empty
+   layer pretending to be a dataset.
+
+   WHAT A HOST DOES
+     define   window.jumpLinkHost() -> { resNm, volumes:[{key,label,bb,em,seg,nuc?}], dim,
+                                         emShader, bg, viewer(), nucleus(id) }
+              `bb` is in NANOMETRES, `nucleus(id)` returns {xVox,yVox,zVox,label} or null.
+     call     el.innerHTML = UJ.jumplink.html(rawText);
+              and, for "open all of them", UJ.jumplink.url(UJ.jumplink.scan(rawText)).
+   A host that defines no hook gets plain escaped text and no links — never an exception.
+
+   Check: jumplinkcheck.js */
+var UJ = UJ || {};
+(function(){
+"use strict";
+
+function hostOf(){
+  if (typeof window.jumpLinkHost !== "function") return null;
+  try { return window.jumpLinkHost() || null; } catch (_e){ return null; }
+}
+function esc(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/* ── WHICH VOLUME, AND IN WHAT UNITS ──────────────────────────────────────────────────────────
+   VOXELS ARE TRIED FIRST because that is what every box, link and label in these tools is in --
+   there is a build guard that says so. Nanometres are tried second, for a number copied out of a
+   paper or a mesh file. A triple that is inside neither volume in either reading is not a
+   coordinate, and this returns null rather than linking to somewhere nobody meant. */
+/* ── ONE CONTAINMENT TEST, AND IT LIVES IN core/volumes.js ─────────────────────  2026-10-03
+   It was written here, because this was the only thing that needed it. The pad, the cell card, the
+   mesh fetch and the EM preview need it too now that minnie35 is being drawn, and four copies of
+   "is this point in that box" is four chances for one of them to be the wrong one. The fallback is
+   the same three lines rather than a refusal: core/volumes.js is loaded before this file on every
+   page that has one, and a page that somehow has not loaded it should still linkify. */
+function inBox(nm, bb){
+  if (window.UJ && UJ.volumes && UJ.volumes.inBox) return UJ.volumes.inBox(nm, bb);
+  if (!nm || !bb) return false;
+  return nm[0] >= bb.xmin && nm[0] <= bb.xmax
+      && nm[1] >= bb.ymin && nm[1] <= bb.ymax
+      && nm[2] >= bb.zmin && nm[2] <= bb.zmax;
+}
+function placeOf(triple, host){
+  if (!host || !host.resNm || !host.volumes || !host.volumes.length) return null;
+  var r = host.resNm;
+  var readings = [
+    { unit: "voxel", voxel: triple.slice(),
+      nm: [triple[0] * r[0], triple[1] * r[1], triple[2] * r[2]] },
+    { unit: "nm", nm: triple.slice(),
+      voxel: [Math.round(triple[0] / r[0]), Math.round(triple[1] / r[1]),
+              Math.round(triple[2] / r[2])] }
+  ];
+  for (var i = 0; i < readings.length; i++){
+    for (var v = 0; v < host.volumes.length; v++){
+      var vol = host.volumes[v];
+      /* THE VOLUMES ARE IN PRIORITY ORDER, which settles the overlap rather than leaving it to
+         whichever happens to be first in an object: the two imaged slabs touch in z, and a point
+         in the seam is reported as the one with segmentation and nuclei over it. */
+      if (vol.bb && inBox(readings[i].nm, vol.bb))
+        return { unit: readings[i].unit, voxel: readings[i].voxel, nm: readings[i].nm,
+                 volume: vol.key, volumeLabel: vol.label || vol.key };
+    }
+  }
+  return null;
+}
+
+/* ── WHAT IS LOOKED FOR, IN THIS ORDER ────────────────────────────────────────────────────────
+   Priority matters because the patterns overlap: a coordinate is three numbers, and two of them
+   would each pass for a nucleus id on their own. Earlier rules CLAIM their span and later rules
+   skip anything that overlaps a claim -- so "at 240000, 200000, 20000" is one coordinate rather
+   than one coordinate and two spurious cells. A rule that looks but does not resolve claims
+   nothing, so a triple that is not a coordinate leaves its numbers free to be read as ids. */
+var RE_VIEWER = /https?:\/\/[^\s<>"']+#!\S+/g;
+var RE_TRIPLE = /\[?\s*(-?\d{1,9})\s*(?:,\s*|\s+)(-?\d{1,9})\s*(?:,\s*|\s+)(-?\d{1,9})\s*\]?/g;
+/* EXACTLY EIGHTEEN DIGITS: MICrONS root ids are 18 wide, and eighteen consecutive digits in a
+   sentence are not a year, a count or a measurement. This is the one rule that needs no lookup,
+   because nothing else in prose looks remotely like it. */
+var RE_ROOT   = /\b\d{18}\b/g;
+/* ── AND THE AMBIGUOUS ONE, WHICH NEEDS BOTH A LOOKUP AND A CUE ───────────────────────────────
+   "Resolve, do not pattern-match" was necessary and not sufficient, and jumplinkcheck.js said so
+   before a single user saw it: in the sentence "Between 2024 and 2026 we traced 42 cells", the
+   number 2026 IS a nucleus in this dataset. The table answered honestly and the link was still
+   nonsense -- a year turned into a cell.
+
+   There is no amount of looking at the digits that fixes that, because the digits are identical.
+   What differs is what the author was doing, so the author says: a bare number is linked only when
+   something immediately before it means a cell. "cell 253863" and "#253863" link; "2026" and
+   "42 cells" do not, and nor does the stray 240640 in "the numbers 240640, 207872, 41784 are from
+   a different experiment" -- which the triple rule had already, correctly, refused.
+
+   This is deliberately the strict direction. A missed link is a number somebody can still read; a
+   wrong one is a claim the author never made, on a page about getting cell identity right. The
+   compose box says what it recognised, so an author who meant a cell can see that it was not taken
+   as one and write the word. */
+var RE_CUED   = /(^|[^0-9A-Za-z_])((?:nucleus|nuclei|nuc|cell|soma|id)\s*[:#.]?\s*|#\s*)(\d{3,8})\b/gi;
+
+/* ── WHOSE PAGE DECIDES WHERE A COORDINATE IS ──────────────────────────────────  2026-10-13
+   Søren: *"You should be able to share a coordinate from xJump in a conversation with one from
+   uJump."*  Until today this file had one answer to "which volumes": window.jumpLinkHost(), the
+   page doing the reading. One forum per tool made that correct. One shared forum makes it a way
+   to publish a claim nobody made -- δJump's volume centre, read in µJump's frame, is inside
+   minnie35, so the link would open mouse visual cortex under a V1DD coordinate.
+
+   So `opts.host` is the author's page, handed in by core/forum.js from core/tools.js. No host is
+   the old behaviour, unchanged, which is what every other caller still relies on. */
+function scan(text, opts){
+  var s = String(text == null ? "" : text);
+  var host = (opts && opts.host) ? opts.host : hostOf();
+  var hits = [], taken = [];
+  var free = function(a, b){
+    for (var i = 0; i < taken.length; i++)
+      if (a < taken[i][1] && taken[i][0] < b) return false;
+    return true;
+  };
+  var claim = function(a, b, h){ taken.push([a, b]); h.start = a; h.end = b; h.raw = s.slice(a, b);
+                                 hits.push(h); };
+  var m;
+
+  RE_VIEWER.lastIndex = 0;
+  while ((m = RE_VIEWER.exec(s))){
+    if (free(m.index, m.index + m[0].length))
+      claim(m.index, m.index + m[0].length, { kind: "viewer", url: m[0] });
+  }
+
+  RE_TRIPLE.lastIndex = 0;
+  while ((m = RE_TRIPLE.exec(s))){
+    /* The match may have eaten surrounding spaces and brackets; the claim is the numbers. */
+    var a = s.indexOf(m[1], m.index), bEnd = m.index + m[0].length;
+    while (bEnd > a && !/\d/.test(s.charAt(bEnd - 1))) bEnd--;
+    if (!free(a, bEnd)) continue;
+    var place = placeOf([Number(m[1]), Number(m[2]), Number(m[3])], host);
+    if (!place) continue;            /* claims nothing: those numbers may still be ids */
+    claim(a, bEnd, { kind: "coord", unit: place.unit, voxel: place.voxel,
+                     volume: place.volume, label: place.volumeLabel });
+  }
+
+  RE_ROOT.lastIndex = 0;
+  while ((m = RE_ROOT.exec(s))){
+    if (free(m.index, m.index + m[0].length))
+      claim(m.index, m.index + m[0].length, { kind: "root", id: m[0] });
+  }
+
+  RE_CUED.lastIndex = 0;
+  while ((m = RE_CUED.exec(s))){
+    /* The CUE IS NOT CLAIMED, only the number: "cell" stays ordinary prose and the link is the id,
+       which is what a reader wants to click and what they want to be able to copy. */
+    var nStart = m.index + m[1].length + m[2].length, nEnd = nStart + m[3].length;
+    if (!free(nStart, nEnd)) continue;
+    var nuc = null;
+    if (host && typeof host.nucleus === "function"){
+      try { nuc = host.nucleus(m[3]); } catch (_e){ nuc = null; }
+    }
+    /* Cued AND in the table. The cue says what was meant; the table says whether it exists here. */
+    if (!nuc) continue;
+    claim(nStart, nEnd,
+          { kind: "nucleus", id: m[3], label: nuc.label || "",
+            voxel: [nuc.xVox, nuc.yVox, nuc.zVox], volume: nuc.volume || "minnie65" });
+    /* A cue immediately followed by another cued number ("cells 1234 and 5678") would otherwise be
+       skipped, because lastIndex has moved past the gap the next match needs to start in. */
+    RE_CUED.lastIndex = nEnd;
+  }
+
+  hits.sort(function(x, y){ return x.start - y.start; });
+  return hits;
+}
+
+/* What a link says when you hover it. The volume is named on every coordinate, because "which
+   volume is this in" is the question the two imaged slabs make somebody ask. */
+function titleOf(h){
+  if (h.kind === "viewer") return "Open this Neuroglancer view";
+  if (h.kind === "root")   return "Open segment " + h.id + " in the viewer";
+  if (h.kind === "nucleus")
+    return "Nucleus " + h.id + (h.label ? " — " + h.label : "") + ". Open it in the viewer.";
+  return "A place in " + (h.label || h.volume)
+       + (h.unit === "nm" ? ", written in nanometres" : "")
+       + ". Opens with both volumes’ imagery and segmentation.";
+}
+
+/* ── RAW IN, ESCAPED OUT ──────────────────────────────────────────────────────────────────────
+   Each plain run is escaped as it is emitted and each hit becomes an anchor built from values this
+   module computed -- never from a slice of the author's text used as markup. */
+function html(text, opts){
+  var s = String(text == null ? "" : text);
+  var o = opts || {}, cls = o.className || "jumplink";
+  var hits;
+  /* THE SAME OPTIONS THE CALLER GAVE, so the anchors, their titles and their indices all come
+     from one scan of one host. Scanning here against the reader and resolving on click against
+     the author would put the two out of step by exactly the hits one of them refuses. */
+  try { hits = scan(s, o); } catch (_e){ hits = []; }
+  if (!hits.length) return esc(s);
+  var out = [], at = 0;
+  hits.forEach(function(h, i){
+    out.push(esc(s.slice(at, h.start)));
+    var shown = esc(h.kind === "viewer" ? "this view" : h.raw);
+    out.push('<a href="#" class="' + esc(cls) + '" data-jl="' + i + '" title="' + esc(titleOf(h))
+             + '">' + shown + "</a>");
+    at = h.end;
+  });
+  out.push(esc(s.slice(at)));
+  return out.join("");
+}
+
+/* ── THE VIEWER STATE ─────────────────────────────────────────────────────────────────────────
+   Both EM layers and both segmentations, whichever volume the point is in -- Søren's instruction,
+   and the right one: a post comparing something across the two slabs is exactly the post worth
+   writing, and a viewer that opened only one of them would make that post unreadable.
+
+   Root ids go on BOTH segmentations' `segments`. Nothing in a sentence says which segmentation an
+   id came from, and a viewer simply does not find an id that is not in a layer -- so listing it in
+   both shows the cell wherever it lives, where guessing would show it half the time. */
+function state(hits, opts){
+  var o = opts || {};
+  var host = o.host || hostOf();
+  if (!host) return null;
+  var list = (hits || []).filter(function(h){ return h && h.voxel; });
+  var pos = (o.position || (list[0] && list[0].voxel) || null);
+  var roots = (hits || []).filter(function(h){ return h.kind === "root"; })
+                          .map(function(h){ return h.id; });
+  var nucs = (hits || []).filter(function(h){ return h.kind === "nucleus"; })
+                         .map(function(h){ return h.id; });
+  var here = (list[0] && list[0].volume) || (host.volumes[0] && host.volumes[0].key);
+  var layers = [];
+
+  host.volumes.forEach(function(v){
+    if (v.em) layers.push({ type: "image", source: v.em, tab: "rendering",
+                            name: "EM (" + (v.label || v.key) + ")",
+                            shaderControls: host.emShader });
+  });
+  /* ── SEE-THROUGH ONLY WHERE THERE IS SOMETHING INSIDE ──────────────  2026-10-03
+     Søren: "The nucleus should be visible through the soma in the neuroglancer view also. Use same
+     settings as for the cell identity cell name neuroglancer link." A solid soma hides the nucleus
+     in it, and the cell-identity link has turned the cell down to 0.35 for that reason since it was
+     written. The two numbers come from the host rather than being repeated here, so retuning them
+     moves every link this tool writes.
+
+     Conditional on the nuclei layer actually being in the state: a cell with nothing inside it
+     should stay solid, because solid is the right picture for a lone cell. */
+  var wantNuc = host.volumes.some(function(v){
+    return v.nuc && (v.key === here || nucs.length); });
+  var alpha = host.alpha || {};
+  host.volumes.forEach(function(v){
+    if (!v.seg) return;
+    var s = { type: "segmentation", source: v.seg, tab: "source",
+              name: "segmentation (" + (v.label || v.key) + ")", notSelectedAlpha: 0.05 };
+    if (roots.length) s.segments = roots.slice();
+    if (wantNuc) s.objectAlpha = (alpha.cell === undefined ? 0.35 : alpha.cell);
+    layers.push(s);
+  });
+  /* NUCLEI ONLY WHERE THERE ARE ANY. minnie35 has no nucleus detection over it, so a nuclei layer
+     out there would be an empty layer that looks like a dataset with nothing in it. */
+  host.volumes.forEach(function(v){
+    if (!v.nuc) return;
+    if (v.key !== here && !nucs.length) return;
+    var nl = { type: "segmentation", source: v.nuc, tab: "source", name: "nuclei",
+               notSelectedAlpha: 0.05,
+               objectAlpha: (alpha.nuc === undefined ? 0.4 : alpha.nuc) };
+    if (nucs.length) nl.segments = nucs.slice();
+    layers.push(nl);
+  });
+
+  /* ONE LAYER FOR EVERY PLACE THE POST MENTIONS, not one tab per place. A paragraph comparing
+     four capillaries then opens as one picture, which is the thing a list of links cannot do. */
+  if (list.length){
+    layers.push({ type: "annotation", source: "local://annotations", tab: "annotations",
+                  name: "mentioned here (" + list.length + ")",
+                  annotationColor: o.color || "#f0883e",
+                  annotations: list.map(function(h, i){
+                    return { type: "point", id: "jl" + i, point: h.voxel.slice(),
+                             description: h.kind === "nucleus"
+                               ? ("nucleus " + h.id + (h.label ? " — " + h.label : ""))
+                               : (h.label || h.volume || "") };
+                  }) });
+  }
+  /* A POST MAY NAME CELLS AND NO PLACE. "Compare 864691135570733037 with 864691135234029401" has
+     two references, both real, and neither is a coordinate -- so there is nothing to centre on, and
+     the viewer opens on its own default with both segments already selected. Returning null there
+     would have made the button do nothing, which is the worse of the two answers. */
+  if (!pos && !roots.length && !nucs.length) return null;
+  var st = { dimensions: host.dim,
+             crossSectionScale: 3.0, layers: layers,
+             selectedLayer: { layer: layers[0] && layers[0].name, visible: true },
+             layout: { type: "xy-3d", orthographicProjection: true },
+             showDefaultAnnotations: false };
+  if (pos) st.position = pos.slice();
+  if (host.bg){ st.crossSectionBackgroundColor = host.bg; st.perspectiveViewBackgroundColor = host.bg; }
+  return st;
+}
+
+function url(hits, opts){
+  var host = (opts && opts.host) ? opts.host : hostOf();
+  if (!host) return "";
+  /* A pasted viewer link is already a state somebody built, and opening OUR state instead would
+     throw away whatever they had set up. Theirs wins. */
+  var paste = (hits || []).filter(function(h){ return h.kind === "viewer"; })[0];
+  if (paste && (hits || []).length === 1) return paste.url;
+  var st = state(hits, opts);
+  if (!st) return paste ? paste.url : "";
+  var base = (typeof host.viewer === "function" ? host.viewer() : "") || "";
+  return base + "#!" + encodeURIComponent(JSON.stringify(st));
+}
+
+/* One click handler for a whole container: the anchors carry an index into the scan of their own
+   element's text, so nothing has to be re-scanned on click and no state is kept between renders. */
+function wire(el, text, opts){
+  if (!el) return;
+  el.innerHTML = html(text, opts);
+  var hits = scan(text, opts);
+  [].slice.call(el.querySelectorAll("a[data-jl]")).forEach(function(a){
+    a.addEventListener("click", function(ev){
+      ev.preventDefault();
+      var h = hits[Number(a.getAttribute("data-jl"))];
+      if (!h) return;
+      var u = url([h], opts);
+      if (u) window.open(u, "_blank", "noopener");
+    });
+  });
+}
+
+UJ.jumplink = { scan: scan, html: html, state: state, url: url, wire: wire,
+                _esc: esc, _placeOf: placeOf };
+})();
+</script>
+<script>/* core/tools.js — one list of the Jumps, so a post can say where it came from.      2026-10-13
+
+   Søren: *"I want one stream for all the tools (when we implement it) the post should always be
+   marked with the tool you are writing from and with the color code of the tool. So, there is one
+   discussion forum for all the tools. ... You should be able to share a coordinate from xJump in a
+   conversation with one from uJump to show an example from your dataset and then the person from
+   uJump can show an example from there."*
+
+   ── WHY THIS IS A FILE AND NOT A COLOUR MAP IN core/forum.js ─────────────────────────────────
+   One shared stream means every page renders text written from a tool it is not. Two things in
+   that sentence need knowledge no single page has, and only one of them is cosmetic:
+
+     THE COLOUR. Each Jump declares its own --accent in its own <style>, so a badge in µJump
+     saying “χJump” has to be χJump's green — a colour µJump has never heard of.
+
+     AND THE COORDINATE, which is the half with teeth. core/jumplink.js resolves a triple against
+     window.jumpLinkHost() — THE READER'S PAGE. With one forum per tool that was exactly right.
+     In one shared stream it is a way to publish a claim nobody made: cb2 is 4×4×40 nm and so is
+     minnie65, so a χJump coordinate pasted into a post and read in µJump would be tested against
+     minnie65's box in the reader's own units and could land inside it. The link would then open
+     unrelated cortex and attribute it to the person who wrote the post. core/jumplink.js exists
+     to refuse to guess; this is the registry that lets it keep that promise across tools.
+
+   So a post resolves against ITS OWN tool, and hostFor() is that: a jumpLinkHost shaped like the
+   one the writer's page would have handed the linkifier.
+
+   ── EVERY BOX HERE IS ALREADY IN THIS REPOSITORY ─────────────────────────────────────────────
+   Nothing was fetched, scaled or inferred to fill a gap. Each entry names where its numbers come
+   from, and two of them were checked against the tool's own data rather than taken on trust:
+
+     δJump's box is declared in djump.html as MINNIE65_EM_BB with a comment naming minnie65's info
+     manifest — a comment copied from µJump, which makes the numbers look copied too. They are not:
+     all 207,455 V1DD nuclei in that page's own nucdata lie inside it (x 105,615–1,785,960 nm
+     against 88,745–1,886,631; y 163,656–1,249,281 against 145,277–1,288,694; z 1,260–791,775
+     against 765–792,270), which a minnie65 box in a 9×9×45 frame would not do.
+
+     πJump's the same way: its 452 pinky100 nuclei run x 168,260–473,868 nm inside 140,000–500,000,
+     y 142,360–310,824 inside 124,000–338,000, z 840–86,240 inside 40–87,080.
+
+   ── AND THREE TOOLS HAVE NO BOX, DELIBERATELY ────────────────────────────────────────────────
+     ηJump (H01) and βJump read their extents from the volume's own `info` at run time, so there
+     is no verified constant here to copy; βJump's only literal box is the sub-volume its nucleus
+     detector was run over, and its imagery extends past it.
+
+     ωJump serves 63 volumes and a post is about ONE of them. A single box for “ωJump” would be
+     false for sixty-two of them, so its coordinates wait for the dataset stamp (see `volumeKey`).
+
+   A tool with no box linkifies nothing in its posts: those coordinates stay as the text somebody
+   typed. That is core/jumplink.js's own rule — a missed link is a number a reader can still copy,
+   a wrong one is a claim the author never made — and a guessed box would buy the worse half.
+
+   WHAT A CALLER DOES
+     colours   document.head.appendChild(UJ.tools.styleEl());   once, then class="ftool ftool-<key>"
+               and the badge's colour is var(--tool-accent), which follows [data-theme].
+     places    UJ.jumplink.html(post.body, { host: UJ.tools.hostFor(post.tool) })
+               — null host means “this tool is not in the registry”, and the caller should then
+               render the body with no links rather than with the reader's.
+
+   Check: toolscheck.js */
+var UJ = UJ || {};
+UJ.tools = (function(){
+  "use strict";
+
+  /* The MICrONS minnie block, as two imaged volumes. Both boxes are µJump's own constants
+     (MINNIE65_EM_BB / MINNIE35_EM_BB in ujump.html), in nanometres, and minnie65 is first for the
+     reason core/volumes.js documents: forty-four sections are inside both, and a point in the seam
+     belongs to the volume that has segmentation, nuclei and cell types over it. */
+  var MINNIE65 = {
+    key: "minnie65", label: "minnie65",
+    bb: { xmin: 110592, xmax: 1814528, ymin: 110592, ymax: 1552384,
+          zmin: 592640, zmax: 1116160 },
+    em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
+    seg: "precomputed://gs://iarpa_microns/minnie/minnie65/seg_m1300",
+    nuc: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei"
+  };
+  var MINNIE35 = {
+    key: "minnie35", label: "minnie35",
+    bb: { xmin: 0, xmax: 2097152, ymin: 0, ymax: 2097152, zmin: 317240, zmax: 594400 },
+    em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie35/em",
+    seg: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie35/seg"
+    /* No `nuc`, and absent rather than empty: there is no nucleus detection over minnie35, and an
+       empty nuclei layer out there looks like a dataset with nothing in it. */
+  };
+
+  /* ── THE EIGHT ─────────────────────────────────────────────────────────────────────────────
+       key        what init({tool:…}) sends and what is stored in the Forum sheet's `tool` column
+       label      the badge
+       dataset    what the tool is about, for the badge's title
+       page       so a reader can go and look for themselves
+       dark/light the tool's own --accent, in both themes, copied from that page's :root rules
+       res        nm per voxel, x/y/z — the frame every coordinate that tool writes is in
+       viewer     the viewer that volume loads in, which is NOT one answer for all of them
+       volumes    [] where there is no verified box; see the header */
+  var LIST = [
+    { key: "ujump", label: "µJump", dataset: "MICrONS minnie65 + minnie35",
+      page: "ujump.html", dark: "#27e0b3", light: "#0f766e",
+      res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
+      volumes: [MINNIE65, MINNIE35] },
+
+    { key: "djump", label: "δJump", dataset: "V1DD — Allen Institute V1 Deep Dive",
+      page: "djump.html", dark: "#b388ff", light: "#6d28d9",
+      res: [9, 9, 45], viewer: "https://spelunker.cave-explorer.org/",
+      volumes: [{ key: "v1dd", label: "V1DD",
+        bb: { xmin: 88745, xmax: 1886631, ymin: 145277, ymax: 1288694,
+              zmin: 765, zmax: 792270 },
+        em: "precomputed://gs://v1dd_imagery/image/aligned_image",
+        /* The segmentation is graphene://middleauth+, which asks the reader to be logged in to
+           CAVE. Named anyway: a link that prompts for a login the reader may already have is
+           better than one that silently leaves the cell out. */
+        seg: "graphene://middleauth+https://api.em.brain.allentech.org/segmentation/table/v1dd_public",
+        nuc: "precomputed://gs://v1dd_imagery/v1dd_nuclei/segmentation" }] },
+
+    { key: "pjump", label: "πJump", dataset: "MICrONS pinky100 (Layer 2/3)",
+      page: "pjump.html", dark: "#f78ad4", light: "#b81a8f",
+      res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
+      volumes: [{ key: "pinky100", label: "pinky100",
+        bb: { xmin: 140000, xmax: 500000, ymin: 124000, ymax: 338000,
+              zmin: 40, zmax: 87080 },
+        em: "precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",
+        seg: "precomputed://gs://microns_public_datasets/pinky100_v185/seg",
+        nuc: "precomputed://https://td.princeton.edu/sseung-archive/pinky100-nuclei/seg" }] },
+
+    /* λJump's box is the SERVED volume, 163,840 × 163,840 × 822 voxels from #ljumpdata's size_vox,
+       not the ~454 × 447 µm of tissue inside it. A coordinate in the black padding is a real place
+       in the volume that happens to be empty, and refusing to link it would be a lie about where
+       the volume ends. Image only: no segmentation, no nuclei. */
+    { key: "ljump", label: "λJump", dataset: "Lee16 — mouse V1 serial-section TEM",
+      page: "ljump.html", dark: "#7aa2ff", light: "#1d4ed8",
+      res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
+      volumes: [{ key: "lee16", label: "Lee16",
+        bb: { xmin: 0, xmax: 655360, ymin: 0, ymax: 655360, zmin: 0, zmax: 32880 },
+        em: "precomputed://s3://open-neurodata/lee/lee16/image" }] },
+
+    { key: "hjump", label: "ηJump", dataset: "H01 — human temporal cortex",
+      page: "hjump.html", dark: "#ffb454", light: "#9a3412",
+      res: [8, 8, 33], viewer: "https://h01-dot-neuroglancer-demo.appspot.com/",
+      volumes: [] },
+
+    { key: "bjump", label: "βJump", dataset: "Alzheimer's vCLEM — hippocampal CA1",
+      page: "bjump.html", dark: "#ff6b81", light: "#a4133c",
+      res: [8, 8, 30], viewer: "https://neuroglancer-demo.appspot.com/",
+      volumes: [] },
+
+    { key: "wjump", label: "ωJump", dataset: "63 volumes — OpenOrganelle and others",
+      page: "wjump.html", dark: "#fbbf24", light: "#854d0e",
+      res: null, viewer: "https://neuroglancer-demo.appspot.com/",
+      volumes: [], perVolume: true },
+
+    /* χJump's box is cb2's own shape, UJ.cfg.volume in xjump.html: shape [1200, 230400, 249600]
+       at res_nm [40, 4, 4], both z-first, which is 998,400 × 921,600 × 48,000 nm.
+
+       EM ONLY, AND THAT IS NOT AN OVERSIGHT. cb2's published segmentation sits 1,216 sections
+       below its imagery and χJump corrects for it with a transform on the source. core/jumplink.js
+       writes a plain source string and has nowhere to put that transform, so a seg layer here
+       would draw the right cells 48 µm from the tissue they belong to. */
+    { key: "xjump", label: "χJump", dataset: "cb2 — mouse cerebellum (lobule V)",
+      page: "xjump.html", dark: "#4ade80", light: "#166534",
+      res: [4, 4, 40], viewer: "https://neuroglancer-demo.appspot.com/",
+      volumes: [{ key: "cb2", label: "cb2",
+        bb: { xmin: 0, xmax: 998400, ymin: 0, ymax: 921600, zmin: 0, zmax: 48000 },
+        em: "precomputed://https://bossdb-open-data.s3.amazonaws.com/nguyen_thomas2022/cb2/em" }] }
+  ];
+
+  function all(){ return LIST.slice(); }
+  function keys(){ return LIST.map(function(t){ return t.key; }); }
+  function byKey(k){
+    var want = String(k || "").toLowerCase();
+    for (var i = 0; i < LIST.length; i++) if (LIST[i].key === want) return LIST[i];
+    return null;
+  }
+  /* The badge's text for a key this registry does not know: the key itself, lower-cased, rather
+     than nothing. A row in the sheet written by a tool added after this file is still a post by
+     somebody, and showing it unlabelled would read as a bug in the forum. */
+  function label(k){
+    var t = byKey(k);
+    return t ? t.label : String(k || "");
+  }
+  function dataset(k){
+    var t = byKey(k);
+    return t ? t.dataset : "";
+  }
+  function boxed(k){
+    var t = byKey(k);
+    return !!(t && t.volumes && t.volumes.length);
+  }
+  /* ── IS THE VOLUME WORTH NAMING BESIDE THE TOOL? ───────────────────────────  2026-10-13
+     Every tool sends which volume was open; only some of them are telling you something by it.
+     "ωJump · jrc_hela-2" picks one of sixty-three and "µJump · minnie35" picks the slab without
+     nuclei over it; "δJump · v1dd" says δJump twice. `perVolume` is for ωJump, whose sixty-three
+     are not listed here at all, so volumes.length cannot answer for it. */
+  function manyVolumes(k){
+    var t = byKey(k);
+    if (!t) return true;          /* a tool this list does not know: say everything that is known */
+    return !!t.perVolume || (t.volumes || []).length > 1;
+  }
+
+  /* ── THE COLOURS, AS CSS RATHER THAN AS JAVASCRIPT ─────────────────────────────────────────
+     A badge could be coloured by reading [data-theme] and picking a hex, and then it would be
+     wrong the moment somebody toggles the theme — every one of these pages re-skins live, and the
+     forum does not re-render on a toggle. Two rules per tool let the browser do it, which is also
+     what every page already does with its own --accent.
+
+     The dark rule is unconditional and the light rule is the override, in that order, because dark
+     is these pages' default: :root carries the dark palette and :root[data-theme="light"]
+     replaces it. */
+  function css(){
+    var out = [".ftool{--tool-accent:var(--mut,#8b949e)}"];
+    LIST.forEach(function(t){
+      out.push(".ftool-" + t.key + "{--tool-accent:" + t.dark + "}");
+    });
+    LIST.forEach(function(t){
+      out.push(':root[data-theme="light"] .ftool-' + t.key + "{--tool-accent:" + t.light + "}");
+    });
+    return out.join("\n");
+  }
+  var STYLE_ID = "ujtoolscss";
+  /* Idempotent, because the forum re-renders and a module should not need to remember whether it
+     has already done this once. */
+  function styleEl(doc){
+    var d = doc || (typeof document !== "undefined" ? document : null);
+    if (!d) return null;
+    var el = d.getElementById(STYLE_ID);
+    if (el) return el;
+    el = d.createElement("style");
+    el.id = STYLE_ID;
+    el.textContent = css();
+    (d.head || d.documentElement).appendChild(el);
+    return el;
+  }
+
+  /* ── A HOST FOR SOMEBODY ELSE'S TOOL ───────────────────────────────────────────────────────
+     Shaped like window.jumpLinkHost(): core/jumplink.js reads resNm, volumes, dim, viewer() and
+     nucleus(), and nothing else of it.
+
+     NULL WHERE THERE IS NO BOX, which is the whole point. A host with an empty `volumes` would
+     make placeOf() return null for every triple — the same outcome — but it would also tell the
+     caller that this tool is known and simply has nothing in this post, when what is true is that
+     the registry cannot place its coordinates at all. The forum says so out loud instead.
+
+     NO nucleus(), AND NO WAY AROUND IT. “cell 253863” is a lookup in a nucleus table this page
+     does not have for somebody else's volume, so a cued number in a foreign post stays text. It
+     is the one reference that cannot cross tools without a server, and pretending otherwise would
+     mean resolving it against the READER'S table, which is the exact mistake this file prevents. */
+  function hostFor(k){
+    var t = byKey(k);
+    if (!t || !t.res || !t.volumes || !t.volumes.length) return null;
+    var r = t.res;
+    return {
+      resNm: r.slice(),
+      volumes: t.volumes.map(function(v){ return v; }),
+      dim: { x: [r[0] * 1e-9, "m"], y: [r[1] * 1e-9, "m"], z: [r[2] * 1e-9, "m"] },
+      viewer: function(){ return t.viewer; },
+      nucleus: null,
+      /* Read by nobody in core/jumplink.js; here so a caller that was handed a host can say which
+         tool it belongs to without looking it up again. */
+      tool: t.key
+    };
+  }
+
+  return { all: all, keys: keys, byKey: byKey, label: label, dataset: dataset,
+           boxed: boxed, manyVolumes: manyVolumes,
+           css: css, styleEl: styleEl, hostFor: hostFor };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = UJ.tools;
+</script>
+<script>/* core/forum.js — somewhere to say what you found, and to be answered.             2026-10-01
+
+   Gary: *"a separate space where users can make suggestions for new features, log bug reports, or
+   even discuss interesting findings they've noticed."*  Søren: *"one forum for each jump."*
+
+   ── REWRITTEN 2026-10-03, AS AN INDEX AND A THREAD ───────────────────────────────────────────
+   Søren: *"We also need a way to index the different conversations. They should be threads. I think
+   it is fine to categorise them in questions, bugs, etc. but they should be collapsed by default and
+   then open in a view. I think the index should be on the left side of the screen and then the
+   window to show the thread on the right and the input field below the thread."*
+
+   The first version showed every post and every reply expanded, one after another, in two long
+   cards. That reads well with four posts and not at all with forty: the thing you are reading
+   scrolls away from the thing you are replying to, and there is no way to see what conversations
+   exist without scrolling past all of them. An index is the fix, and it is the shape every forum
+   converges on for the same reason.
+
+   So: threads on the left, the open one on the right, the box you write in underneath it. Within
+   the index, threads are grouped by kind — questions, bugs, ideas, findings — and the groups are
+   <details>, closed. ONE EXCEPTION, and it is a deliberate departure from "collapsed by default":
+   the group holding the newest thread opens on arrival, and so does the group holding whatever
+   thread you have open. A panel whose entire content is four closed headings looks broken, and the
+   first thing anybody does is open one of them anyway.
+
+   THIS FILE IS NO LONGER WHAT THE EARLY GENERATORS EDITED. src/a_place_to_say_what_you_found.py
+   still owns the TAB; but src/the_discussion_notices_you_signing_in.py,
+   src/a_coordinate_becomes_a_picture.py and src/the_preview_shows_the_cell_too.py edited functions
+   this rewrite replaced. Their reasoning is kept here, in the code they were reasoning about, and
+   re-running them against this file will fail on the anchor rather than silently do something odd.
+
+   ── ONE STREAM, FOR ALL EIGHT TOOLS ──────────────────────────────────────────  2026-10-13
+   Søren: *"I want one stream for all the tools... So, there is one discussion forum for all the
+   tools."*  And of the two chips that used to be here: *"For now, let's leave out the choice
+   between this volume and the tools. Also remove the helper text."*
+
+   It was two streams: posts about THIS VOLUME in this dataset's book, posts about THE TOOLS in the
+   primary one. That division was defensible and it was also a filter the reader had to operate
+   before seeing anything, over a forum with a few dozen posts in it.
+
+   THE SHARED STREAM ALREADY EXISTED. backend/Code.gs's forumSS_("tools") returns primarySS(), and
+   every deployment's read takes `tools` rows from that one book — so a post tagged scope:"tools"
+   is, and always was, visible from every Jump. New posts are tagged that way and the index lists
+   every root it was given, whichever stream it came from. Nothing in Code.gs changed.
+
+   AND THEN A POST IS NOT NECESSARILY IN YOUR FRAME. This is the part that needed care rather than
+   deletion. core/jumplink.js resolved coordinates against the READER'S page, which was right when
+   a forum could only hold one tool's posts. δJump's volume centre is 109743, 79665, 8811 in its
+   own 9×9×45 nm frame; read in µJump's 4×4×40 that is inside minnie35, so the link would have
+   opened unrelated cortex under somebody else's coordinate. So a post's places resolve against the
+   tool that WROTE it, from core/tools.js, and a tool whose extent this family cannot verify
+   (ηJump, βJump, ωJump) linkifies nothing rather than linkifying wrongly.
+
+   ── A POST IS PROSE, AND THE PROSE IS THE ANCHOR ─────────────────────────────────────────────
+   There is no "attach a coordinate" field. core/jumplink.js reads the body and finds the places
+   named in it, and core/empreview.js draws one when a reader clicks it. So a post may be about one
+   place or six — Søren, on seeing the anchor-field version: *"what if a user wants to talk about
+   more than one coordinate in a post?"*
+
+   The compose box SAYS WHAT IT RECOGNISED before anything is sent, because the linkifier resolves
+   rather than guesses and will sometimes decline; the author should find that out while they can
+   still write the word "cell". And a post naming several places gets ONE "open all of them".
+
+   ── WHAT THIS STILL DOES NOT DO ──────────────────────────────────────────────────────────────
+   No rich text, no images, no attachments, no search, no notifications. A forum is the first thing
+   on Jump that needs a PERSON. Hiding is there from the first day, because a forum that cannot be
+   cleaned eventually embarrasses its owner.
+
+   WHAT A HOST DOES
+     markup   <div class="tabpanel" data-tabpanel="forum"><div id="forumCard"></div></div>
+              and a tab button with data-tab="forum".
+     call     UJ.forum.init({tool:"ujump", volume:"minnie65"});
+   Needs REPORT_ENDPOINT, the page's Google sign-in globals, core/jumplink.js for the bodies and
+   core/empreview.js for the pictures.
+
+   Check: forumcheck.js */
+var UJ = UJ || {};
+(function(){
+"use strict";
+
+var POSTS = [], CAN_MODERATE = false, LOADED = false, TOOL = "", VOLUME = "", BUSY = false;
+/* WHAT THE PANEL IS SHOWING. `OPEN` is the thread in the right-hand pane, `MODE` "new" when that
+   pane is holding a new-thread form instead. There is no SCOPE any more: the index lists every
+   root, and `STREAM` is where a new one is written — the primary book, which every deployment
+   reads, so one post reaches every Jump. */
+var OPEN = "", MODE = "";
+var STREAM = "tools";
+
+/* ── WHOSE FRAME A POST'S COORDINATES ARE IN ──────────────────────────────────────────────────
+   The dangerous half of one shared forum. A post from another tool was written in another frame
+   against another volume, and resolving its numbers here would answer a question nobody asked.
+
+   THREE OUTCOMES, AND THE THIRD IS THE ONE THAT MATTERS:
+     our own tool    -> null: this page's jumpLinkHost() is the right one, unchanged behaviour
+     another, known  -> that tool's host, built by core/tools.js from boxes verified in this
+                        repository, so the link opens THAT volume's imagery
+     another, no box -> { none: true }: nothing is linkified. ηJump and βJump read their extents
+                        from the volume at run time and ωJump serves 63 volumes, so there is no
+                        constant here to resolve against — and a guessed box would be the worse
+                        half of core/jumplink.js's own rule. */
+function foreign(tool){
+  var t = String(tool || "");
+  return !!(t && TOOL && t !== TOOL);
+}
+function toolHost(tool){
+  try { if (window.UJ && UJ.tools) return UJ.tools.hostFor(tool); } catch (_e){}
+  return null;
+}
+/* ── AND OUR OWN POSTS, ON A PAGE THAT DECLARES NO HOST ────────────────────────  2026-10-13
+   µJump is the only page with a window.jumpLinkHost(): it was written for the Discussion when the
+   Discussion was only here. Its host carries the nucleus table behind “cell 253863”, the EM
+   shader, and whichever viewer the reader picked from the dropdown — none of which is in the
+   registry — so where it exists it still wins. Everywhere else the registry answers for this
+   tool exactly as it answers for anybody else's, which is also the honest result for ηJump and
+   βJump: no verified box, no links, rather than links to a box nobody checked. */
+function linkOpts(tool){
+  var t = String(tool || "");
+  if (!foreign(t) && typeof window.jumpLinkHost === "function") return null;
+  var h = toolHost(foreign(t) ? t : TOOL);
+  return h ? { host: h } : { none: true };
+}
+/* ── THE BADGE ────────────────────────────────────────────────────────────────────────────────
+   Søren: *"the post should always be marked with the tool you are writing from and with the color
+   code of the tool."*  The colour is var(--tool-accent), set by two CSS rules per tool in
+   core/tools.js rather than by a hex picked here: every one of these pages re-skins live when the
+   theme is toggled, and the forum does not re-render when it does.
+
+   AND WHICH VOLUME, where the tool alone does not say. `volume` is sent with every post from
+   today; backend/Code.gs builds its row from a fixed list of fields and so drops it until one line
+   is added there, after which ωJump's badge names the dataset that was open. Read rather than
+   assumed, so the day it arrives nothing here changes. */
+function toolBadge(p){
+  var k = String((p && p.tool) || "");
+  if (!k) return "";
+  var lab = k, about = "";
+  try {
+    if (window.UJ && UJ.tools){ lab = UJ.tools.label(k); about = UJ.tools.dataset(k) || ""; }
+  } catch (_e){}
+  var vol = String((p && p.volume) || "");
+  /* Shown where the tool serves more than one — ωJump's sixty-three, µJump's two slabs. On a
+     one-volume tool it would be the tool's name twice. */
+  try {
+    if (vol && window.UJ && UJ.tools && UJ.tools.manyVolumes && !UJ.tools.manyVolumes(k)) vol = "";
+  } catch (_ve){}
+  return "<span class=\"ftool ftool-" + esc(k) + "\" title=\"Written from " + esc(lab)
+       + (about ? " — " + esc(about) : "") + "\" style=\"color:var(--tool-accent);"
+       + "border:1px solid var(--tool-accent);border-radius:999px;padding:0 6px;font-size:11px;"
+       + "white-space:nowrap\">" + esc(lab) + (vol ? " · " + esc(vol) : "") + "</span>";
+}
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+/* The body, with the places it names made clickable. Falls back to plain escaped text when
+   core/jumplink.js is not there: these files deploy one at a time, and a page that arrives before
+   the module it wants must lose the links, not the post. */
+function bodyHtml(s, tool){
+  var o = linkOpts(tool);
+  if (o && o.none) return esc(s);
+  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.html(s, o || undefined); } catch (_e){}
+  return esc(s);
+}
+function hits(s, tool){
+  var o = linkOpts(tool);
+  if (o && o.none) return [];
+  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.scan(s, o || undefined) || []; }
+  catch (_e){}
+  return [];
+}
+function signedIn(){
+  return !!(typeof GOOGLE_VERIFIED !== "undefined" && GOOGLE_VERIFIED
+            && typeof GOOGLE_CREDENTIAL !== "undefined" && GOOGLE_CREDENTIAL);
+}
+function dsQS(){
+  try { if (UJ && UJ.cfg && UJ.cfg.backend && UJ.cfg.backend.ds)
+          return "&ds=" + encodeURIComponent(UJ.cfg.backend.ds); } catch (_e){}
+  return "";
+}
+function when(iso){
+  var s = String(iso || ""); if (!s) return "";
+  var d = new Date(s); if (isNaN(d.getTime())) return s;
+  var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return days + " days ago";
+  return d.toISOString().slice(0, 10);
+}
+
+/* ── THE CATEGORIES ───────────────────────────────────────────────────────────────────────────
+   Søren: "it is fine to categorise them in questions, bugs, etc." Four, in the order somebody
+   scanning the index would want them: a question is waiting for an answer and a finding is not.
+   `plural` heads the group; `one` is what the compose box offers. */
+var KINDS = [
+  ["question", "A question", "Questions"],
+  ["bug",      "A bug",      "Bugs"],
+  ["idea",     "An idea",    "Ideas"],
+  ["finding",  "A finding",  "Findings"]
+];
+function kindName(k){
+  for (var i = 0; i < KINDS.length; i++) if (KINDS[i][0] === k) return KINDS[i][1];
+  return "A note";
+}
+function kindPlural(k){
+  for (var i = 0; i < KINDS.length; i++) if (KINDS[i][0] === k) return KINDS[i][2];
+  return "Notes";
+}
+/* A reply carries kind "reply" and is never a row in the index; an older post may carry a kind this
+   list has since dropped, and lands under Findings rather than vanishing. */
+function kindOf(p){
+  var k = String(p.kind || "");
+  for (var i = 0; i < KINDS.length; i++) if (KINDS[i][0] === k) return k;
+  return "finding";
+}
+
+/* ── READING ──────────────────────────────────────────────────────────────────────────────────
+   The credential goes WITH THE READ when there is one, so the backend can mark the caller's own
+   posts without ever sending anybody's address to anybody. A signed-out reader gets the same
+   forum, minus the Edit buttons. */
+async function load(force){
+  if (LOADED && !force) return;
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  var qs = "?forum=1" + dsQS() + "&tool=" + encodeURIComponent(TOOL);
+  if (signedIn()) qs += "&credential=" + encodeURIComponent(GOOGLE_CREDENTIAL);
+  var r = await fetch(REPORT_ENDPOINT + qs);
+  var d = await r.json();
+  POSTS = (d && d.posts) || [];
+  CAN_MODERATE = !!(d && d.canModerate);
+  LOADED = true;
+}
+
+async function send(payload){
+  if (!signedIn()) return { ok: false, error: "please sign in with Google first" };
+  var body = {};
+  for (var k in payload) body[k] = payload[k];
+  body.credential = GOOGLE_CREDENTIAL;
+  body.tool = TOOL;
+  /* WHICH VOLUME WAS OPEN. Søren: *"For wJump it should depend which dataset you have open when
+     you enter the discussion."*  ωJump serves 63 and the tool alone does not say which a post is
+     about. Sent from today; backend/Code.gs assembles its row from a fixed list of fields, so it
+     is dropped there until one line is added — and the badge reads it rather than assuming it, so
+     the day the column exists nothing here changes. */
+  if (VOLUME) body.volume = VOLUME;
+  try { if (UJ.cfg.backend.ds) body.ds = UJ.cfg.backend.ds; } catch (_e){}
+  var text = "";
+  try {
+    var r = await fetch(REPORT_ENDPOINT, { method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+    text = await r.text();
+  } catch (e){ return { ok: false, error: "could not reach the server" }; }
+  var d = null; try { d = JSON.parse(text); } catch (_pe){}
+  if (!d) return { ok: false, error: "the server did not answer with JSON — the deployment "
+                                   + "may be older than this page" };
+  return d;
+}
+
+/* ── WHAT THE LINKIFIER FOUND, BEFORE ANYTHING IS SENT ────────────────────────────────────────
+   Live, under the textarea. A linkifier that resolves rather than guesses declines quietly — a
+   coordinate outside both volumes is not a coordinate, a bare number is not a cell — and this is
+   where the author finds that out, while they can still fix it. */
+function foundSay(text){
+  var h = hits(text);
+  if (!h.length) return "No places recognised yet. A coordinate inside the volume, an 18-digit "
+                      + "root id, or “cell 253863” all become links.";
+  var n = {};
+  h.forEach(function(x){ n[x.kind] = (n[x.kind] || 0) + 1; });
+  var bits = [];
+  if (n.coord)   bits.push(n.coord + (n.coord === 1 ? " coordinate" : " coordinates"));
+  if (n.nucleus) bits.push(n.nucleus + (n.nucleus === 1 ? " cell" : " cells"));
+  if (n.root)    bits.push(n.root + (n.root === 1 ? " segment" : " segments"));
+  if (n.viewer)  bits.push(n.viewer + (n.viewer === 1 ? " viewer link" : " viewer links"));
+  var vols = {};
+  h.forEach(function(x){ if (x.volume) vols[x.volume] = 1; });
+  var vk = Object.keys(vols);
+  return "Recognised: " + bits.join(", ")
+       + (vk.length ? " — in " + vk.join(" and ") : "") + ".";
+}
+
+/* The cell a post is about, from the post itself: its first root id and its first nucleus id. Both
+   where both are there — core/segpaint.js takes them together and paints the nucleus inside the
+   cell, which is the picture somebody who named both is asking for. */
+function idsOf(hs){
+  var out = {};
+  (hs || []).forEach(function(h){
+    if (h.kind === "root" && !out.root) out.root = h.id;
+    if (h.kind === "nucleus" && !out.nuc) out.nuc = h.id;
+  });
+  return out;
+}
+function nucleusPos(nid){
+  try {
+    var cfg = (typeof window.emPreviewHost === "function") ? window.emPreviewHost() : null;
+    if (cfg && typeof cfg.nucleusAt === "function") return cfg.nucleusAt(nid) || null;
+  } catch (_e){}
+  return null;
+}
+/* The same question for a ROOT id. µJump answers it from the nucleus table it already holds,
+   through the reverse map its own root-id search box uses; a page without one simply says no, and
+   the caller then falls back to the post's own coordinate. 2026-10-03. */
+function cellPos(rid){
+  try {
+    var cfg = (typeof window.emPreviewHost === "function") ? window.emPreviewHost() : null;
+    if (cfg && typeof cfg.cellAt === "function") return cfg.cellAt(rid) || null;
+  } catch (_e){}
+  return null;
+}
+/* Neuroglancer, for an id this page cannot place. It is the one answer that works for any id at
+   all -- a community-proposed root, another volume's cell -- and it is half of what was asked for:
+   "clicking it ... should show it in Neuroglancer or as a 2D and 3d window". */
+function viewerUrlFor(h){
+  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.url([h]) || ""; } catch (_e){}
+  return "";
+}
+
+/* ── THE THREADS ──────────────────────────────────────────────────────────────────────────────
+   A thread is a post with no replyTo, plus everything pointing at it. One level: a reply to a reply
+   is still a reply to the thread, which is what every forum discovers it wanted after trying two. */
+/* ONE INDEX. The scope a post was written with says which BOOK it lives in, which is the
+   backend's business; it is not a category a reader should have to pick before reading anything. */
+function roots(){
+  return POSTS.filter(function(p){ return !p.replyTo; });
+}
+function repliesOf(pid){
+  return POSTS.filter(function(p){ return String(p.replyTo) === String(pid); })
+              .sort(function(a, b){ return String(a.timestamp).localeCompare(String(b.timestamp)); });
+}
+/* Sorted by LAST ACTIVITY, not by when the thread was started: a question answered this morning is
+   the one somebody wants to see, even if it was asked in June. */
+function lastAt(p){
+  var t = String(p.timestamp || "");
+  repliesOf(p.postId).forEach(function(r){
+    var s = String(r.timestamp || ""); if (s > t) t = s;
+  });
+  return t;
+}
+function postById(pid){
+  return POSTS.filter(function(p){ return String(p.postId) === String(pid); })[0] || null;
+}
+/* A thread with no title is listed by its first line, so the index never shows a blank row. */
+function titleOf(p){
+  var t = String(p.title || "").trim();
+  if (t) return t;
+  var b = String(p.body || "").trim().split("\n")[0];
+  return b.length > 60 ? b.slice(0, 57) + "…" : (b || "(untitled)");
+}
+
+/* ── THE INDEX ────────────────────────────────────────────────────────────────────────────────
+   Left column. A button to start something, then one <details> per category with the threads
+   inside it. The two chips and the paragraph under them went on 2026-10-13: one forum, and a
+   reader should not have to operate a filter before seeing anything.
+
+   WHICH GROUPS ARE OPEN. Søren asked for collapsed by default, and that is the rule — with one
+   exception, because a panel showing four closed headings and nothing else looks broken: the group
+   holding the open thread is open, and on arrival the group holding the newest thread is. */
+function indexHtml(){
+  var rs = roots();
+  var openPost = OPEN ? postById(OPEN) : null;
+  var openKind = openPost ? kindOf(openPost) : "";
+  var newestKind = "";
+  if (!openKind && rs.length){
+    var newest = rs.slice().sort(function(a, b){
+      return lastAt(b).localeCompare(lastAt(a)); })[0];
+    newestKind = newest ? kindOf(newest) : "";
+  }
+  /* No chip row. The two streams are one index; see the heading above. */
+  var groups = KINDS.map(function(k){
+    var mine = rs.filter(function(p){ return kindOf(p) === k[0]; })
+                 .sort(function(a, b){ return lastAt(b).localeCompare(lastAt(a)); });
+    if (!mine.length) return "";
+    var isOpen = (k[0] === openKind) || (k[0] === newestKind);
+    return "<details class='fcat' data-kind='" + k[0] + "'" + (isOpen ? " open" : "") + ">"
+         + "<summary style='cursor:pointer;padding:4px 0;font-size:12px;text-transform:uppercase;"
+         + "letter-spacing:.04em;color:var(--mut)'>" + esc(k[2]) + " · " + mine.length
+         + "</summary>"
+         + mine.map(function(p){
+             var n = repliesOf(p.postId).length;
+             return "<button type='button' class='fthread" + (OPEN === p.postId ? " on" : "")
+                  + "' data-pid='" + esc(p.postId) + "' style=\"display:block;width:100%;"
+                  + "text-align:left;background:" + (OPEN === p.postId ? "var(--accent-dim)" : "none")
+                  + ";border:0;border-left:2px solid " + (OPEN === p.postId ? "var(--accent)" : "transparent")
+                  + ";padding:5px 8px;cursor:pointer;color:inherit;font:inherit\">"
+                  + "<span style='display:block'>" + esc(titleOf(p)) + "</span>"
+                  + "<span class='hint' style='display:block;font-size:11px'>"
+                    + esc(p.authorName || "somebody") + " · " + esc(when(lastAt(p)))
+                    + (n ? " · " + n + (n === 1 ? " reply" : " replies") : "")
+                  + "</span>"
+                  + (p.tool ? "<span style='display:block;margin-top:2px'>" + toolBadge(p)
+                              + "</span>" : "")
+                  + "</button>";
+           }).join("")
+         + "</details>";
+  }).join("");
+  return "<div class='forum-index' style='flex:1 1 230px;min-width:0;max-width:320px'>"
+       + "<button type='button' class='idbtn' id='forum_new' style=\"width:auto;padding:3px 12px;"
+         + "margin-bottom:8px\">+ New thread</button>"
+       + (groups || "<p class='hint'>Nothing here yet.</p>")
+       + "</div>";
+}
+
+/* ── ONE POST, IN THE THREAD VIEW ─────────────────────────────────────────────────────────────
+   The root and its replies use the same markup; a reply is just indented and has no title. */
+function postHtml(p, isRoot){
+  var n = hits(p.body || "", p.tool).filter(function(h){
+    return h.voxel || h.kind === "root"; }).length;
+  var mine = !!p.isMine;
+  return "<div class='forumpost' data-pid='" + esc(p.postId) + "' style=\"padding:6px 0;"
+       + (isRoot ? "" : "margin-left:14px;border-left:2px solid var(--line);padding-left:12px;")
+       + "\">"
+       + (isRoot && p.title ? "<h3 style='margin:0 0 2px;font-size:16px'>" + esc(p.title) + "</h3>" : "")
+       + "<div class='hint' style='margin-bottom:4px'>"
+         + (isRoot ? esc(kindName(p.kind)) + " · " : "")
+         + esc(p.authorName || "somebody") + " · " + esc(when(p.timestamp))
+         + (p.editedAt ? " · edited" : "")
+         + (p.tool ? " · " + toolBadge(p) : "")
+       + "</div>"
+       /* data-tool TRAVELS WITH THE TEXT, because wirePreviews() re-scans data-raw on every click
+          and has to scan it the same way it was rendered. A body whose links were resolved against
+          V1DD and whose clicks resolve against minnie65 is worse than either. */
+       + "<div class='forumbody' data-raw='" + esc(p.body || "") + "' data-tool='"
+         + esc(p.tool || "") + "' style='margin:4px 0'>"
+         + bodyHtml(p.body || "", p.tool) + "</div>"
+       + "<div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>"
+       + (n > 1 ? "<button type='button' class='hist-chip forumopenall' data-pid='" + esc(p.postId)
+                  + "' title=\"Opens every place this post mentions in ONE viewer, as a single "
+                  + "annotation layer, with both volumes’ imagery and segmentation.\">Open all "
+                  + n + " of them</button>" : "")
+       + (mine ? "<button type='button' class='hist-chip forumedit' data-pid='" + esc(p.postId)
+                 + "'>Edit</button>" : "")
+       + ((mine || CAN_MODERATE) ? "<button type='button' class='hist-chip forumhide' data-pid='"
+                 + esc(p.postId) + "' title='"
+                 + (mine ? "Withdraws your post." : "Hides this post. You are a moderator here.")
+                 + "'>" + (mine ? "Withdraw" : "Hide") + "</button>" : "")
+       + "</div>"
+       + "<div class='forumeditbox' data-pid='" + esc(p.postId) + "'></div>"
+       + "</div>";
+}
+
+/* ── THE COMPOSE BOX ──────────────────────────────────────────────────────────────────────────
+   Søren: "the input field below the thread." So the reply box is the last thing in the right-hand
+   pane, under what it is answering, rather than at the top where the first version had it.
+
+   THE FIELDS ARE ALWAYS THERE, whatever Google has or has not said yet — a textarea is not a
+   privilege. The BUTTON is the part that knows: it posts when you are signed in and opens the
+   sign-in prompt when you are not, so the slow half of signing in happens while you write rather
+   than instead of it. (2026-10-02, Søren: "sometimes the discussion does not show the fields to
+   write anything. I think it depends on whether you are logged in when it loads." It did.) */
+function composeHtml(id, opts){
+  var o = opts || {}, inOk = signedIn();
+  return "<div class='forumcompose' style='margin-top:10px;border-top:1px solid var(--line);"
+       + "padding-top:8px'>"
+       + (o.label ? "<label>" + esc(o.label) + "</label>" : "")
+       + (o.kinds
+           ? "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:6px 0'>"
+             + "<select id='" + id + "_kind' style='flex:0 0 auto'>"
+             + KINDS.map(function(k){
+                 return "<option value='" + k[0] + "'>" + esc(k[1]) + "</option>"; }).join("")
+             + "</select>"
+             + "<input id='" + id + "_title' placeholder='A one-line title' "
+               + "style='flex:1 1 220px;min-width:0'></div>"
+           : "")
+       + "<textarea id='" + id + "_body' rows='" + (o.rows || 4) + "' style='width:100%' "
+         + "placeholder='" + esc(o.placeholder || "") + "'></textarea>"
+       + "<div class='hint' id='" + id + "_found' style='margin:4px 0 6px'></div>"
+       + "<div id='" + id + "_prev' style='margin:0 0 8px'></div>"
+       + "<button type='button' class='idbtn' id='" + id + "_go' style='width:auto;padding:4px 14px'>"
+       + (inOk ? esc(o.go || "Post it") : "Sign in with Google to post") + "</button>"
+       + " <span class='hint' id='" + id + "_say'>"
+       + (inOk ? "" : "Everything here is signed, so people can be answered and credited.")
+       + "</span></div>";
+}
+
+function viewHtml(){
+  var inner;
+  if (MODE === "new"){
+    inner = "<h3 style='margin:0 0 2px;font-size:16px'>A new thread</h3>"
+          + composeHtml("forum_thread", { kinds: true, rows: 5, go: "Post it",
+              placeholder: "What you saw, and where. Write coordinates and ids straight into the "
+                + "sentence — they become links, in this volume's frame, for readers in every "
+                + "Jump." });
+  } else if (OPEN && postById(OPEN)){
+    var p = postById(OPEN), kids = repliesOf(OPEN);
+    inner = postHtml(p, true)
+          + (kids.length ? kids.map(function(r){ return postHtml(r, false); }).join("")
+                         : "<p class='hint' style='margin-left:14px'>No replies yet.</p>")
+          + composeHtml("forum_reply", { label: "Reply", rows: 3, go: "Post the reply",
+              placeholder: "Your reply. Coordinates and ids become links here too." });
+  } else {
+    inner = "<p class='hint'>Pick a conversation on the left, or start one.</p>";
+  }
+  return "<div class='forum-view' style='flex:3 1 340px;min-width:0;border-left:1px solid "
+       + "var(--line);padding-left:14px'>" + inner + "</div>";
+}
+
+/* ── WHAT IS TYPED SURVIVES A RE-RENDER ───────────────────────────────────────────────────────
+   The trap in re-rendering a form at a moment nobody asked for: you are mid-sentence, Google
+   answers, and the page helpfully throws the sentence away. Lifted out before the HTML is replaced
+   and put back after, per form. */
+var FORM_DRAFT = {};
+function formIds(){ return ["forum_thread", "forum_reply"]; }
+function grabDrafts(){
+  formIds().forEach(function(id){
+    var b = document.getElementById(id + "_body");
+    if (!b) return;
+    var g = function(n){ var el = document.getElementById(id + "_" + n); return el ? el.value : ""; };
+    FORM_DRAFT[id] = { body: b.value, title: g("title"), kind: g("kind") };
+  });
+}
+function putDrafts(){
+  formIds().forEach(function(id){
+    var d = FORM_DRAFT[id];
+    if (!d) return;
+    var set = function(n, v){ var el = document.getElementById(id + "_" + n); if (el && v) el.value = v; };
+    set("body", d.body); set("title", d.title); set("kind", d.kind);
+  });
+}
+
+/* ── AND THE PANEL LOOKS AGAIN WHEN YOU SIGN IN ───────────────────────────────────────────────
+   Edit and Hide rest on `isMine`, which is the BACKEND's answer to a credential, so the posts have
+   to be read again, not just redrawn. Nothing on these pages dispatches an event when
+   GOOGLE_VERIFIED flips, and adding one would mean editing six hand-maintained pages and two
+   generated ones to fix a bug in one module. So this watches, cheaply: the tick reads two variables
+   and returns, it runs only while the panel is on screen, and `focus` covers the usual case
+   directly, because a One Tap popup handing control back IS a focus event. */
+var SIGNED_WAS = null, WATCHING = false, RELOADING = false;
+function panelShowing(){
+  var el = document.querySelector('[data-tabpanel="forum"]');
+  /* No panel at all means a host that put the card somewhere else; then it is always showing. */
+  return el ? /(^|\s)active(\s|$)/.test(el.className || "") : true;
+}
+async function signInChanged(){
+  var now = signedIn();
+  if (now === SIGNED_WAS || RELOADING) return;
+  SIGNED_WAS = now;
+  RELOADING = true;
+  try { await load(true); } catch (_e){}
+  RELOADING = false;
+  render();
+}
+function watchSignIn(){
+  if (WATCHING) return;
+  WATCHING = true;
+  SIGNED_WAS = signedIn();
+  setInterval(function(){ if (panelShowing()) signInChanged(); }, 1200);
+  window.addEventListener("focus", function(){ if (panelShowing()) signInChanged(); });
+}
+
+/* ── A COORDINATE IN A POST OPENS ITS OWN PICTURE ─────────────────────────────────────────────
+   ON CLICK, which is Søren's own answer to when: a preview is fifteen chunk fetches, nothing once
+   and a lot thirty times. The coordinate stays a link, clicking draws the tissue underneath, and
+   clicking it again puts it away.
+
+   THE LINK THEREFORE MEANS SOMETHING NEW: it used to leave for Neuroglancer. Now the PICTURE is the
+   Neuroglancer link, so the click that used to leave the page keeps you on it, and the thing that
+   leaves is the thing you can see first. */
+function wirePreviews(host){
+  if (!host || !window.UJ) return;
+  /* ── A LINK THAT DOES NOTHING IS WORSE THAN A NUMBER ───────────────────────────  2026-10-13
+     This used to return here when core/empreview.js was absent — and this function is what
+     attaches the click handlers, so on the five pages that do not load it every link in every
+     post would have been an <a href="#"> that swallows the click and does nothing at all. The
+     anchors are wired either way now: the picture where there is one, the viewer where there is
+     not. Which is also what the link meant before 2026-10-03. */
+  var canDraw = !!UJ.empreview;
+  [].slice.call(host.querySelectorAll(".forumbody")).forEach(function(body){
+    var slot = document.createElement("div");
+    slot.className = "forumprev";
+    body.parentNode.insertBefore(slot, body.nextSibling);
+    var open = "";
+    [].slice.call(body.querySelectorAll("a[data-jl]")).forEach(function(a){
+      a.addEventListener("click", function(ev){
+        var btool = body.dataset.tool || "";
+        var hs = hits(body.dataset.raw || "", btool);
+        var h = hs[Number(a.getAttribute("data-jl"))];
+        if (!h) return;
+        /* A VIEWER LINK KEEPS ITS OLD MEANING: it is already a state somebody built. */
+        if (h.kind === "viewer") return;
+        /* ── SOMEBODY ELSE'S VOLUME IS NOT DRAWN HERE ───────────────────────────  2026-10-13
+           The imagery on this page is this page's volume. Drawing it at another tool's voxels
+           would produce a picture of the wrong tissue under the right numbers, with somebody
+           else's sentence as its caption — the most convincing wrong answer in the feature,
+           because it looks like data rather than like a bug. So a foreign place is OFFERED
+           instead: which volume it is in, which Jump it belongs to, and the one link that can
+           show it, built from that tool's own sources. */
+        if (foreign(btool)){
+          ev.preventDefault();
+          ev.stopPropagation();
+          var fh = toolHost(btool), lab = "", fu = "";
+          try {
+            if (window.UJ && UJ.tools) lab = UJ.tools.label(btool);
+            if (fh && UJ.jumplink) fu = UJ.jumplink.url([h], { host: fh }) || "";
+          } catch (_fe){}
+          open = "";
+          if (canDraw) UJ.empreview.close(slot);
+          slot.innerHTML = "<p class='forumelsewhere' style='font-size:12px;color:var(--mut);"
+            + "margin:6px 0;line-height:1.5'>That is a place in <b>"
+            + esc(h.label || h.volume || "another volume") + "</b>, which is "
+            + esc(lab || btool) + "’s. The imagery on this page is a different block of tissue, "
+            + "so it is not drawn here. "
+            + (fu ? "<a href='" + esc(fu) + "' target='_blank' rel='noopener'>Open it in "
+                    + "Neuroglancer</a>." : "")
+            + "</p>";
+          return;
+        }
+        /* THE IDS ARE THE POST'S, not the link's. Søren: "if a nucleus or root ID is written, then
+           the EM should also show segmentation." A sentence naming a place and a cell is asking for
+           one picture of the two, and which word came first does not matter. */
+        var ids = idsOf(hs);
+        /* ── CLICKING A THING SHOWS THAT THING ────────────────────────────────────  2026-10-03
+           One rule for three kinds, which is easier to predict than three rules. A coordinate goes
+           to that coordinate; a nucleus id to that nucleus, as it has since "a post naming only a
+           nucleus has no coordinate to centre on, and its link used to do nothing, which looks
+           exactly like a broken link"; and a root id to that cell, which is the case that was
+           left out and the one Søren hit: "Clicking the root ID does nothing at all."
+
+           ONLY THEN THE POST'S OWN COORDINATE. A sentence naming a place and a cell is asking for
+           one picture of the two -- idsOf() above has assumed that since it was written -- so an
+           id this page cannot place still has somewhere to be drawn when the sentence says where.
+           Last, because the thing you clicked wins over the thing beside it. */
+        if (!canDraw){
+          /* The viewer, with this page's own host — which on a page without jumpLinkHost() is the
+             registry's, so the link opens this tool's volume rather than nothing. */
+          ev.preventDefault();
+          ev.stopPropagation();
+          var lo = linkOpts(btool), lu = "";
+          try { if (UJ.jumplink) lu = UJ.jumplink.url([h], lo || undefined) || ""; } catch (_ve){}
+          if (lu) window.open(lu, "_blank", "noopener");
+          return;
+        }
+        var at = h.voxel;
+        if (!at && h.kind === "nucleus") at = nucleusPos(h.id);
+        if (!at && h.kind === "root") at = cellPos(h.id);
+        if (!at) at = (hs.filter(function(x){ return x.voxel; })[0] || {}).voxel || null;
+        if (!at){
+          /* NOT NOTHING. rootIdToIndex only knows this tool's own resolved root ids: a
+             community-proposed root, or a cell in another volume, is not in it. Silence there is
+             the fault being fixed, so this says which id it was and offers the one answer that
+             works for any id at all. */
+          ev.preventDefault();
+          ev.stopPropagation();
+          var u = viewerUrlFor(h);
+          open = "";
+          slot.innerHTML = "<p class='forumnoplace' style='font-size:12px;color:var(--mut);"
+            + "margin:6px 0;line-height:1.5'>Nothing on this page knows where <b>"
+            + esc(h.id || h.text || "that") + "</b> is — it may be a community-proposed root id, "
+            + "or a cell in another volume. "
+            + (u ? "<a href='" + esc(u) + "' target='_blank' rel='noopener'>Open it in "
+                   + "Neuroglancer</a>, or add a coordinate to the post and the picture will "
+                   + "draw here."
+                 : "Add a coordinate to the post and the picture will draw here.")
+            + "</p>";
+          return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        var key = at.join(",");
+        if (open === key){ UJ.empreview.close(slot); open = ""; return; }
+        open = key;
+        UJ.empreview.open(slot, at, { ids: ids });
+      });
+    });
+  });
+}
+
+/* And in the compose box, as you type, so you can see the coordinate you pasted is the place you
+   meant before anybody else reads it. KEYED ON WHAT WOULD BE DRAWN — the place and the ids — so
+   adding a root id repaints and typing the next word does not. */
+function wireComposePreview(id){
+  var ta = document.getElementById(id + "_body");
+  var slot = document.getElementById(id + "_prev");
+  if (!ta || !slot || !window.UJ || !UJ.empreview) return;
+  var shown = "";
+  var look = function(){
+    var hs = hits(ta.value);
+    var h = hs.filter(function(x){ return x.voxel && x.kind === "coord"; })[0];
+    var at = h ? h.voxel : null;
+    var ids = idsOf(hs);
+    if (!at && ids.nuc) at = nucleusPos(ids.nuc);
+    var key = at ? (at.join(",") + "|" + (ids.root || "") + "|" + (ids.nuc || "")) : "";
+    if (key === shown) return;
+    shown = key;
+    if (!at){ UJ.empreview.close(slot); return; }
+    UJ.empreview.open(slot, at, { ids: ids });
+  };
+  /* A BEAT AFTER THE TYPING STOPS. Pasting fires one input event; typing one by hand fires a dozen,
+     and the first eleven are prefixes that may each land inside the volume and each start a read. */
+  var t = 0;
+  ta.addEventListener("input", function(){
+    if (t) clearTimeout(t);
+    t = setTimeout(look, 450);
+  });
+}
+
+function render(){
+  var host = document.getElementById("forumCard");
+  if (!host) return;
+  /* One <style> for every tool's accent, added once. Idempotent in core/tools.js, so this does not
+     have to remember whether it has already run. */
+  try { if (window.UJ && UJ.tools && UJ.tools.styleEl) UJ.tools.styleEl(); } catch (_e){}
+  grabDrafts();
+  host.innerHTML = "<div class='forum-wrap' style=\"display:flex;gap:14px;align-items:flex-start;"
+                 + "flex-wrap:wrap\">" + indexHtml() + viewHtml() + "</div>";
+  putDrafts();
+  wire();
+}
+
+function wire(){
+  var host = document.getElementById("forumCard");
+  if (!host) return;
+  var byId = function(id){ return document.getElementById(id); };
+
+  /* Nothing to wire above the index: one stream, no chooser. */
+  [].slice.call(host.querySelectorAll(".fthread")).forEach(function(b){
+    b.addEventListener("click", function(){
+      OPEN = b.dataset.pid; MODE = "";
+      render();
+    });
+  });
+  var nb = byId("forum_new");
+  if (nb) nb.addEventListener("click", function(){ MODE = "new"; OPEN = ""; render(); });
+
+  /* The new-thread form and the reply box are the same machinery with different payloads: one
+     starts a thread, the other points at one. */
+  var composer = function(id, payload){
+    var ta = byId(id + "_body"), found = byId(id + "_found"), go = byId(id + "_go"),
+        say = byId(id + "_say");
+    if (!ta || !go) return;
+    var refresh = function(){ if (found) found.textContent = foundSay(ta.value); };
+    ta.addEventListener("input", refresh);
+    refresh();
+    go.addEventListener("click", async function(){
+      /* NOT SIGNED IN IS NOT AN ERROR, it is the next step. The same One Tap prompt the account
+         chip uses, from the button somebody just pressed — and what they have written stays in the
+         box, because the re-render after they sign in puts it back. */
+      if (!signedIn()){
+        try { if (window.google && google.accounts && google.accounts.id) google.accounts.id.prompt(); }
+        catch (_gp){}
+        if (say) say.textContent = "Sign in with Google and press it again — "
+                                 + "what you have written is kept.";
+        return;
+      }
+      var body = String(ta.value || "").trim();
+      if (!body){ if (say) say.textContent = "Write something first."; return; }
+      if (BUSY) return;
+      BUSY = true; go.disabled = true; if (say) say.textContent = "Posting…";
+      var d = payload();
+      d.body = body;
+      var kindEl = byId(id + "_kind"), titleEl = byId(id + "_title");
+      if (kindEl) d.kind = kindEl.value || "finding";
+      if (titleEl) d.title = titleEl.value || "";
+      var r = await send(d);
+      BUSY = false; go.disabled = false;
+      if (!r.ok){ if (say) say.textContent = "Not posted — " + (r.error || "refused") + "."; return; }
+      ta.value = ""; if (titleEl) titleEl.value = "";
+      FORM_DRAFT[id] = null;
+      if (say) say.textContent = "";
+      /* A NEW THREAD OPENS ITSELF. You wrote it to be read; making you find it in the index would
+         be a small insult. A reply keeps the thread you are in. */
+      if (!d.replyTo && r.postId){ OPEN = r.postId; MODE = ""; }
+      await load(true); render();
+    });
+  };
+  composer("forum_thread", function(){ return { type: "forum_post", scope: STREAM }; });
+  /* A REPLY GOES TO THE SHARED STREAM TOO, even when the post it answers is an old `volume` one.
+     Code.gs writes a scope:"volume" row into the DEPLOYMENT'S OWN book, so a reply written in
+     δJump to a µJump thread would land where no µJump reader would ever see it. The read
+     concatenates both books and joins on replyTo, so a thread whose root and replies live in
+     different books reads as one thread. */
+  composer("forum_reply", function(){
+    return { type: "forum_post", scope: STREAM, kind: "reply", replyTo: OPEN };
+  });
+
+  wirePreviews(host);
+  formIds().forEach(wireComposePreview);
+
+  [].slice.call(host.querySelectorAll(".forumopenall")).forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = postById(b.dataset.pid);
+      if (!p || !window.UJ || !UJ.jumplink) return;
+      var o = linkOpts(p.tool);
+      if (o && o.none) return;
+      var u = UJ.jumplink.url(UJ.jumplink.scan(p.body || "", o || undefined), o || undefined);
+      if (u) window.open(u, "_blank", "noopener");
+    });
+  });
+
+  [].slice.call(host.querySelectorAll(".forumedit")).forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = postById(b.dataset.pid);
+      var box = host.querySelector('.forumeditbox[data-pid="' + b.dataset.pid + '"]');
+      if (!p || !box) return;
+      if (box.innerHTML){ box.innerHTML = ""; return; }
+      box.innerHTML = "<input class='etitle' style='width:100%;margin-top:6px'>"
+                    + "<textarea class='ebody' rows='4' style='width:100%;margin-top:4px'></textarea>"
+                    + "<div class='hint efound' style='margin:4px 0'></div>"
+                    + "<button type='button' class='hist-chip ego'>Save the edit</button>"
+                    + " <span class='hint esay'></span>";
+      var ti = box.querySelector(".etitle"), ta = box.querySelector(".ebody"),
+          note = box.querySelector(".efound"), say = box.querySelector(".esay");
+      ti.value = p.title || ""; ta.value = p.body || "";
+      ta.addEventListener("input", function(){ note.textContent = foundSay(ta.value); });
+      note.textContent = foundSay(ta.value);
+      box.querySelector(".ego").addEventListener("click", async function(){
+        say.textContent = "Saving…";
+        var r = await send({ type: "forum_post", postId: p.postId, title: ti.value, body: ta.value });
+        if (!r.ok){ say.textContent = "Not saved — " + (r.error || "refused") + "."; return; }
+        await load(true); render();
+      });
+    });
+  });
+
+  [].slice.call(host.querySelectorAll(".forumhide")).forEach(function(b){
+    b.addEventListener("click", async function(){
+      /* ASKED, BECAUSE THIS PAGE OFFERS NO WAY BACK. The backend can unhide; there is no button for
+         it here, so the person pressing this should mean it. */
+      if (!window.confirm("Hide this post? It stops being sent to anybody. "
+                        + "It stays in the sheet and can be restored there.")) return;
+      var r = await send({ type: "forum_post", postId: b.dataset.pid, hide: true });
+      if (!r.ok){ window.alert("Not hidden — " + (r.error || "refused")); return; }
+      /* Hiding the thread you are reading leaves nothing to read. */
+      if (b.dataset.pid === OPEN) OPEN = "";
+      await load(true); render();
+    });
+  });
+}
+
+/* Rendered when the tab is first opened rather than on load: the forum is one more request, and a
+   page nobody has clicked Discussion on should not pay for it. */
+async function init(opts){
+  opts = opts || {};
+  TOOL = opts.tool || ""; VOLUME = opts.volume || "";
+  var host = document.getElementById("forumCard");
+  if (!host) return;
+  host.innerHTML = '<p class="hint">Reading the discussion…</p>';
+  /* Started before the first read, so that a sign-in arriving DURING that read is still noticed:
+     the read is the slowest thing here and the likeliest moment for Google to answer. */
+  watchSignIn();
+  try { await load(true); }
+  catch (e){
+    host.innerHTML = '<p class="hint" style="color:var(--bad)">Could not read the discussion: '
+      + esc(String(e && e.message || e)) + ". If the backend has not been redeployed since "
+      + "2026-10-01 it does not answer this question yet.</p>";
+    return;
+  }
+  render();
+}
+
+/* ── AND ωJUMP CHANGES VOLUME WITHOUT RELOADING ────────────────────────────────  2026-10-13
+   Søren: *"For wJump it should depend which dataset you have open when you enter the discussion."*
+   Seven of the eight tools are one volume each and `volume` arrives once, at init. ωJump serves
+   sixty-three and switches between them in place, so a Discussion opened over one volume and
+   posted to from another would file the post under the wrong one. Its selectDataset() calls this,
+   beside the two calls that already tell the tracing card. */
+UJ.forum = { init: init, render: render,
+             volume: function(v){ if (v !== undefined) VOLUME = String(v || ""); return VOLUME; },
+             _foundSay: foundSay, _postHtml: postHtml, _indexHtml: indexHtml,
+             _open: function(pid){ OPEN = pid || ""; MODE = ""; render(); },
+             _new: function(){ MODE = "new"; OPEN = ""; render(); },
+             _set: function(p, m){ POSTS = p || []; CAN_MODERATE = !!m; LOADED = true; } };
+})();
+</script>
+<script>
+(function(){
+  var started=false, card=document.getElementById("forum-card");
+  if(!card)return;
+  /* <details> fires `toggle` on open AND on close; `started` is what makes it one read. The
+     volume comes from UJ.app's own selectDataset(), which has already run by now and will run
+     again on every switch -- init takes whatever is open at this moment. */
+  card.addEventListener("toggle",function(){
+    if(!card.open||started)return; started=true;
+    var ds="";
+    try{ ds=(window.UJ&&UJ.app&&UJ.app.dataset)?(UJ.app.dataset()||""):""; }catch(e){}
+    if(window.UJ&&UJ.forum)UJ.forum.init({tool:"wjump",volume:ds});
+  });
+})();
 </script>
 
 </body></html>

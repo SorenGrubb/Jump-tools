@@ -183,6 +183,16 @@ UJ.tools = (function(){
     var t = byKey(k);
     return !!(t && t.volumes && t.volumes.length);
   }
+  /* ── IS THE VOLUME WORTH NAMING BESIDE THE TOOL? ───────────────────────────  2026-10-13
+     Every tool sends which volume was open; only some of them are telling you something by it.
+     "ωJump · jrc_hela-2" picks one of sixty-three and "µJump · minnie35" picks the slab without
+     nuclei over it; "δJump · v1dd" says δJump twice. `perVolume` is for ωJump, whose sixty-three
+     are not listed here at all, so volumes.length cannot answer for it. */
+  function manyVolumes(k){
+    var t = byKey(k);
+    if (!t) return true;          /* a tool this list does not know: say everything that is known */
+    return !!t.perVolume || (t.volumes || []).length > 1;
+  }
 
   /* ── THE COLOURS, AS CSS RATHER THAN AS JAVASCRIPT ─────────────────────────────────────────
      A badge could be coloured by reading [data-theme] and picking a hex, and then it would be
@@ -248,6 +258,7 @@ UJ.tools = (function(){
   }
 
   return { all: all, keys: keys, byKey: byKey, label: label, dataset: dataset,
-           boxed: boxed, css: css, styleEl: styleEl, hostFor: hostFor };
+           boxed: boxed, manyVolumes: manyVolumes,
+           css: css, styleEl: styleEl, hostFor: hostFor };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = UJ.tools;

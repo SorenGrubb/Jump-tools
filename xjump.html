@@ -455,12 +455,13 @@ try{var _t=localStorage.getItem("ujump_theme");
 <p class="sub">Assemble cells from fragments &middot; <span id="dslabel"></span>
 &middot; <span class="build" title="When this file was built. If it does not match the file you
 think you are looking at, your browser is showing you a cached copy — reload with
-ctrl-shift-R.">build 2026-10-12 20:51</span></p>
+ctrl-shift-R.">build 2026-10-13 19:48</span></p>
 
 <div class="tabbar" id="mainTabs" role="tablist">
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">&#128269; Jump</button>
 <button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">&#128229; Filter and show</button>
 <button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false">&#128218; References</button>
+<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas &mdash; ONE discussion shared by every Jump. A post is marked with the tool it was written from, and the coordinates in it resolve in that tool's own volume.">&#128172; Discussion</button>
 <button type="button" class="tabbtn" data-tab="dash" role="tab" aria-selected="false">&#128202; Statistics</button>
 </div>
 
@@ -800,6 +801,10 @@ it.">Download the whole list (CSV)</button>
   
 </div>
 </div><!-- /refs -->
+
+<div class="tabpanel" data-tabpanel="forum">
+<div id="forumCard"></div>
+</div>
 
 <div class="tabpanel" data-tabpanel="dash">
 <div class="card">
@@ -9214,5 +9219,30 @@ function buildState(pos){ return UJ.xjump.buildState([], pos); }
      through -- core/openall.js, as on βJump and λJump. -->
 <script src="core/tracedoutlines.js"></script>
 <script src="core/openall.js"></script>
+
+<!-- ── THE DISCUSSION ───────────────────────────  2026-10-13
+     One forum shared by every Jump. See src/xjump_joins_the_discussion.py.
+
+     core/jumplink.js turns the coordinates and ids in a post into links; core/tools.js says which
+     tool wrote it, in which frame, and in which colour; core/forum.js is the panel. The order is
+     the dependency order and it matters. -->
+<script src="core/jumplink.js"></script>
+<script src="core/tools.js"></script>
+<script src="core/forum.js"></script>
+<script>
+(function(){
+  var started=false;
+  function openForum(){
+    if(started)return; started=true;
+    if(window.UJ&&UJ.forum)UJ.forum.init({tool:"xjump",volume:"cb2"});
+  }
+  /* The tab engine switches panels by toggling .active on [data-tabpanel]; there is no event to
+     listen for, so this watches the button that opens it. The forum is read the first time the
+     tab is opened rather than on load: a page nobody has clicked Discussion on should not pay a
+     request for it. */
+  var btn=document.querySelector('#mainTabs .tabbtn[data-tab="forum"]');
+  if(btn)btn.addEventListener("click",openForum);
+})();
+</script>
 
 </body></html>
