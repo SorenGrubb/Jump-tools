@@ -322,10 +322,26 @@ UJ.mesh3dshot = (function(){
      builds ONE palette from them; the second encodes. Holding all forty-eight frames to palette
      them together would be 140 MB at the panel's retina size, and a palette per frame is both
      slower and larger. Painting is cheap; memory is not. */
+  /* \u2500\u2500 HOW LONG A TURN TAKES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-12
+     S\u00f8ren: *"The downloaded gif of a turn is too fast... around half the speed."*
+
+     It was 48 frames at 24 fps, and 24 fps is not what came out. A GIF stores its frame delay in
+     CENTISECONDS: 1000/24 = 42 ms, written as Math.round(42/10) = 4 cs, so every frame was held
+     for 40 ms and the turn ran at 25 fps \u2014 1.92 s a revolution, 7.5\u00b0 a frame.
+
+     50 at 12.5 is 4.00 s, exactly half, and the rate is chosen FOR THE UNIT: only 50, 25, 20,
+     12.5 and 10 fps survive the centisecond, and 1000/12.5 = 80 ms = 8 cs on the nose. Bought
+     with TIME rather than with frames, so the file is the one he already has shown twice as long;
+     80 at 20 fps is the same four seconds and smoother, at 1.6x the bytes, and is one argument
+     away: saveTurn({frames: 80, fps: 20}).
+
+     NOT THE PANEL'S OWN SPEED, which is a revolution in 14 s (view.yaw += dt * 0.00045 in
+     core/mesh3d.js) \u2014 that is 300-plus frames and several megabytes. The ceiling is raised to
+     240 so a longer turn is reachable from the console: saveTurn({frames: 160, fps: 20}). */
   function turnBlob(opts){
     var o = opts || {};
-    var n = Math.max(8, Math.min(120, o.frames || 48));
-    var fps = Math.max(5, Math.min(50, o.fps || 24));
+    var n = Math.max(8, Math.min(240, o.frames || 50));
+    var fps = Math.max(5, Math.min(50, o.fps || 12.5));
     var M = m3d();
     var first = M.frame();
     if (!first) return Promise.reject(new Error("there is no 3D panel open to turn"));

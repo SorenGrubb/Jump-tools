@@ -187,10 +187,17 @@ const SETUP = `(() => {
        the latter and reported 568 frames for a 24-frame turn, because 0x2C is a perfectly ordinary
        byte inside LZW data -- an assertion that cannot fail is not an assertion. */
     let n = 0, i = 13;
+    const delays = [];
     if (b[10] & 0x80) i += 3 * (1 << ((b[10] & 7) + 1));     // global colour table
     const skipSubBlocks = () => { while (i < b.length && b[i]) i += b[i] + 1; i++; };
     while (i < b.length && b[i] !== 0x3B){
-      if (b[i] === 0x21){ i += 2; skipSubBlocks(); }          // extension: label, then sub-blocks
+      if (b[i] === 0x21){
+        /* A graphic control extension carries the frame delay, in CENTISECONDS: 21 F9 04 <packed>
+           <lo> <hi> <transparent> 00. This is the number a player actually obeys, and nothing here
+           read it until 2026-10-12 -- which is how 24 fps was written and 25 fps played. */
+        if (b[i + 1] === 0xF9 && b[i + 2] === 0x04) delays.push(b[i + 4] | (b[i + 5] << 8));
+        i += 2; skipSubBlocks();
+      }
       else if (b[i] === 0x2C){
         n++;
         const flags = b[i + 9];
@@ -200,7 +207,30 @@ const SETUP = `(() => {
         skipSubBlocks();
       } else break;                                           // not a structure we understand
     }
-    return { sig: sig, w: w, h: h, n: n, bytes: b.length, ms: ms,
+    /* ...and the DEFAULT turn, which is the one he downloads, beside a turn of the OLD length so
+       the cost of slowing it down is measured rather than guessed at. A megabyte threshold would
+       be about this check's own test shape, which is a dithered gradient and nothing like a cell. */
+    const was = await UJ.mesh3dshot.turnBlob({ frames: 48, fps: 24 });
+    const wasBytes = (await was.arrayBuffer()).byteLength;
+    const d = await UJ.mesh3dshot.turnBlob({});
+    const db = new Uint8Array(await d.arrayBuffer());
+    let dn = 0, j = 13, dcs = 0;
+    if (db[10] & 0x80) j += 3 * (1 << ((db[10] & 7) + 1));
+    const skipD = () => { while (j < db.length && db[j]) j += db[j] + 1; j++; };
+    while (j < db.length && db[j] !== 0x3B){
+      if (db[j] === 0x21){
+        if (db[j + 1] === 0xF9 && db[j + 2] === 0x04) dcs = db[j + 4] | (db[j + 5] << 8);
+        j += 2; skipD();
+      } else if (db[j] === 0x2C){
+        dn++;
+        const f2 = db[j + 9];
+        j += 10;
+        if (f2 & 0x80) j += 3 * (1 << ((f2 & 7) + 1));
+        j++; skipD();
+      } else break;
+    }
+    return { sig: sig, w: w, h: h, n: n, bytes: b.length, ms: ms, delays: delays,
+             def: { n: dn, cs: dcs, bytes: db.length, wasBytes: wasBytes },
              yawBack: Math.abs((window.__v.yaw || 0) - yaw0) < 1e-9 };
   })()`);
   ok(gif.sig === "GIF89a", "it is a GIF", gif.sig);
@@ -213,6 +243,39 @@ const SETUP = `(() => {
   ok(gif.yawBack,
      "the camera is put back where it was — a turn is an export, not a navigation",
      gif.yawBack ? "same yaw" : "the model was left turned");
+
+  /* \u2500\u2500 AND HOW LONG IT TAKES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  2026-10-12
+     S\u00f8ren: *"The downloaded gif of a turn is too fast."* Nothing here had ever read the delay,
+     so "24 fps" was asserted nowhere and was not what played: a GIF holds its delay in
+     centiseconds, 1000/24 = 42 ms rounds to 4, and the file ran at 25 fps. The number that
+     matters is the one in the file, so that is the one this reads. */
+  console.log("\nand it turns at a speed somebody chose");
+  const cs = (gif.delays || [])[0] || 0;
+  ok((gif.delays || []).length > 0 && gif.delays.every(d => d === cs),
+     "every frame is held for the same time, so the turn does not stutter",
+     (gif.delays || []).length + " delays, all " + cs + " cs");
+  ok(gif.def.cs === 8,
+     "the downloaded turn holds each frame for 8 centiseconds \u2014 12.5 fps, and the rate is chosen "
+     + "because 1000/12.5 = 80 ms is a WHOLE centisecond. Only 50, 25, 20, 12.5 and 10 fps are; "
+     + "anything else is rounded by the format and plays at a speed nobody picked",
+     gif.def.cs + " cs");
+  ok(gif.def.n === 50,
+     "...and carries 50 of them \u2014 the length is bought with TIME, not with frames, so the "
+     + "file is the one he already had shown twice as long", gif.def.n + " frames");
+  ok(gif.def.n * gif.def.cs === 400,
+     "...so a full revolution takes 4.00 s, half of what it was",
+     (gif.def.n * gif.def.cs / 100).toFixed(2) + " s");
+  /* IN FRAMES, NOT IN BYTES. Duration is frames \u00d7 delay, so the price of halving the speed is
+     whichever of the two you spend \u2014 and this one is spent on time: 50 frames against the old
+     48. The byte size is not asserted because this check's own test shape is a dithered gradient,
+     and two turns of the SAME length here differ by 15% depending on where the dither lands: an
+     assertion on it passes and fails by the weather. */
+  ok(gif.def.n <= 56,
+     "...and it is bought with TIME rather than with frames: 50 against the old 48, so the file is "
+     + "the one he already had, shown twice as long. The same four seconds at 80 frames and 20 fps "
+     + "would be smoother and about 1.6\u00d7 the bytes, and is one argument away",
+     gif.def.n + " frames, " + (gif.def.bytes / 1048576).toFixed(2) + " MB here against "
+     + (gif.def.wasBytes / 1048576).toFixed(2) + " MB at 48 \u2014 this scene, not a cell");
 
   /* ── WHAT THE PICTURE IS OF, SAID ON THE PICTURE ─────────────────────────────────────────
      Søren, on the exported figure: *"Instead of the cell and nucleus IDs, I want the verdict on the
