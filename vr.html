@@ -707,6 +707,10 @@ document.getElementById("cutSel").addEventListener("change", e => setCut(e.targe
    them and its number never changes. Up to six are kept; the seventh pushes out the first. */
 const MEAS = { on: false, a: null, items: [], group: new THREE.Group() };
 content.add(MEAS.group);
+/* The number tags live in the scene, not in the cells' frame, because each one is turned every frame
+   to lie ALONG its own line (Søren: the tag "aligns with my view and not with the measurement") and
+   that is easiest to do in world terms. */
+MEAS.tags = new THREE.Group(); scene.add(MEAS.tags);
 const _mr = new THREE.Raycaster();
 function rayOf(h){
   tmpM.identity().extractRotation(h.ctl.matrixWorld);
@@ -728,10 +732,40 @@ function measureWithRay(r){
   const w = hits.length ? hits[0].point : r.tip;
   addMeasurePoint(content.worldToLocal(w.clone()));
 }
+/* Dots and number tags are sized in the WORLD (metres), not in µm: a 4 mm dot and a 2.2 cm tall
+   tag whatever the zoom, so a short measurement is not buried under its own label and a long one
+   does not get a speck. Re-applied every frame from the stage's scale. */
+const MEAS_DOT_M = 0.004, MEAS_TAG_M = 0.022;
 function dot(at, col){
-  const r = 0.6 / (stage.scale.x / FIT_SCALE) * 1;      // ~constant size at the current zoom
-  const m = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.15, r), 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
-  m.position.copy(at); m.renderOrder = 15; return m;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+  m.position.copy(at); m.renderOrder = 15; m.userData.measDot = true; return m;
+}
+const _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _td = new THREE.Vector3(), _tv = new THREE.Vector3(),
+      _tn = new THREE.Vector3(), _tu = new THREE.Vector3(), _tr = new THREE.Vector3(), _tm = new THREE.Matrix4();
+function measureFrame(){
+  const k = 1 / stage.scale.x;                    // µm per metre at the current size
+  MEAS.group.traverse(o => { if (o.userData.measDot) o.scale.setScalar(MEAS_DOT_M * k); });
+  if (!MEAS.items.length) return;
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  cam.getWorldPosition(_cam);
+  _tr.set(1, 0, 0).applyQuaternion(cam.getWorldQuaternion(_q2));          // the viewer's right
+  for (const g of MEAS.items){
+    const tag = g.userData.tag; if (!tag) continue;
+    content.localToWorld(_ta.copy(g.userData.a)); content.localToWorld(_tb.copy(g.userData.b));
+    /* x along the line, pointing to the viewer's right so the text never reads backwards;
+       z towards the viewer as far as the line allows (turned about the line, like a ruler);
+       y the rest. The tag sits just above the line's middle. */
+    _td.subVectors(_tb, _ta); if (_td.lengthSq() < 1e-12) continue; _td.normalize();
+    if (_td.dot(_tr) < 0) _td.negate();
+    _tv.addVectors(_ta, _tb).multiplyScalar(0.5);
+    _tn.subVectors(_cam, _tv); _tn.addScaledVector(_td, -_tn.dot(_td));
+    if (_tn.lengthSq() < 1e-12) continue; _tn.normalize();
+    _tu.crossVectors(_tn, _td).normalize();
+    _tm.makeBasis(_td, _tu, _tn);
+    tag.quaternion.setFromRotationMatrix(_tm);
+    tag.scale.set(MEAS_TAG_M * tag.userData.aspect, MEAS_TAG_M, 1);
+    tag.position.copy(_tv).addScaledVector(_tu, MEAS_TAG_M * 0.75);
+  }
 }
 function addMeasurePoint(p){
   if (!MEAS.a){ MEAS.a = p; MEAS.pending = dot(p, 0xffd38a); MEAS.group.add(MEAS.pending); return; }
@@ -743,16 +777,24 @@ function addMeasurePoint(p){
   const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
     new THREE.LineBasicMaterial({ color: 0xffd38a, depthTest: false }));
   ln.renderOrder = 15; g.add(ln);
-  const lab = textSprite([um < 10 ? um.toFixed(2) + " µm" : um.toFixed(1) + " µm"], { width: 1, border: "#ffd38a" });
-  const ext = CELL_BOX ? CELL_BOX.getSize(new THREE.Vector3()).length() : 100;
-  lab.scale.multiplyScalar(ext * 0.3); lab.position.copy(a).add(b).multiplyScalar(0.5);
-  g.add(lab); g.userData.um = um;
+  const spr = textSprite([um < 10 ? um.toFixed(2) + " µm" : um.toFixed(1) + " µm"], { fit: true, border: "#ffd38a" });
+  /* The sprite's card, on a flat plane instead, so it can lie along the line. */
+  const tag = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: spr.material.map, transparent: true, depthTest: false, side: THREE.DoubleSide }));
+  tag.renderOrder = 16; tag.userData.aspect = spr.userData.aspect;
+  spr.material.dispose();
+  MEAS.tags.add(tag);
+  g.userData = { um, a: a.clone(), b: b.clone(), tag };
   MEAS.items.push(g); MEAS.group.add(g);
-  while (MEAS.items.length > 6) MEAS.group.remove(MEAS.items.shift());
+  while (MEAS.items.length > 6) dropMeasure(MEAS.items.shift());
   ctxNote.textContent = "Measured " + um.toFixed(2) + " µm";
   MENU.dirty = true;
 }
-function clearMeasure(){ MEAS.items.forEach(g => MEAS.group.remove(g)); MEAS.items = []; MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); MENU.dirty = true; }
+function dropMeasure(g){
+  MEAS.group.remove(g);
+  const t = g.userData.tag; if (t){ MEAS.tags.remove(t); t.material.map.dispose(); t.material.dispose(); t.geometry.dispose(); }
+}
+function clearMeasure(){ MEAS.items.forEach(dropMeasure); MEAS.items = []; MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); MENU.dirty = true; }
 function setMeasure(v){
   MEAS.on = v; document.getElementById("measBtn").classList.toggle("on", v);
   if (v && (CUT.mode === "hand" || CUT.mode === "frozen")) setCut("off");    // both want the right trigger
@@ -794,7 +836,8 @@ function scaleBarFrame(){
   if (um !== SBAR.um){
     SBAR.um = um;
     if (SBAR.lab){ SBAR.group.remove(SBAR.lab); SBAR.lab.material.map.dispose(); }
-    SBAR.lab = textSprite([um >= 1000 ? (um / 1000) + " mm" : um + " µm"], { width: 0.22 });
+    SBAR.lab = textSprite([um >= 1000 ? (um / 1000) + " mm" : um + " µm"], { fit: true });
+    SBAR.lab.scale.set(0.02 * SBAR.lab.userData.aspect, 0.02, 1);
     SBAR.lab.position.set(0, 0.035, 0); SBAR.group.add(SBAR.lab);
   }
   SBAR.line.scale.x = len;
@@ -1068,7 +1111,14 @@ document.getElementById("show").addEventListener("click", () => { panel.style.di
 
 /* ── labels drawn into the scene (a headset cannot see the HTML panel) ─────── */
 function textSprite(lines, opts = {}){
-  const W = 1024, lh = 64, pad = 28, H = pad * 2 + lh * lines.length;
+  const lh = 64, pad = 28, H = pad * 2 + lh * lines.length;
+  /* fit: the card is as wide as its text, not a fixed 1024 -- a "8.64 µm" tag on a full-width card
+     was most of what Søren saw after his first measurement. */
+  let W = 1024;
+  if (opts.fit){
+    const m = document.createElement("canvas").getContext("2d");
+    W = Math.ceil(Math.max(...lines.map((l, k) => { m.font = (k === 0 ? "600 50px" : "40px") + " system-ui, sans-serif"; return m.measureText(l).width; })) + pad * 2 + 8);
+  }
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const g = cv.getContext("2d");
   g.fillStyle = "rgba(13,17,23,0.88)"; g.strokeStyle = opts.border || "#30363d"; g.lineWidth = 6;
@@ -1081,6 +1131,7 @@ function textSprite(lines, opts = {}){
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   const w = opts.width || 0.32; s.scale.set(w, w * H / W, 1); s.renderOrder = 10;
+  s.userData.aspect = W / H;
   return s;
 }
 let label = null;
@@ -1432,6 +1483,7 @@ renderer.setAnimationLoop(() => {
   placeLabel();
   cutFrame();
   scaleBarFrame();
+  measureFrame();
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
@@ -1444,7 +1496,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
