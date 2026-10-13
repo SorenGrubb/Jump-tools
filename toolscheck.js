@@ -183,6 +183,65 @@ console.log("\nand a host for the picture is built out of the same entry");
      T.label(k) + " has no preview host — not for want of imagery, but because without a box "
      + "nothing in its posts becomes a link to click in the first place", String(T.emHostFor(k)));
 });
+/* ── AND THE READER IS HANDED ONLY WHAT IT CAN READ ──────────────────────────────────────────
+   Søren, with the Discussion's EM drawn in δJump: *"in the discussion it gives me an error"* —
+   “the segmentation could not be configured”. V1DD's segmentation is graphene://middleauth+ and
+   core/segread.js refuses one on purpose: indexing a graphene source returns SUPERVOXEL ids, not
+   the root ids these tools hand out, so an answer from it is a wrong cell rather than no cell.
+   The registry carries that URL because it is the right LAYER for a viewer link. The two must
+   not be the same field, and this is what holds them apart. */
+console.log("\nand the reader is given only sources it can actually read");
+{
+  const dj = T.emHostFor("djump"), djHost = T.hostFor("djump");
+  ok(dj.seg === "",
+     "δJump's preview gets NO segmentation: V1DD's is graphene://middleauth+, which "
+     + "core/segread.js refuses rather than return supervoxel ids", JSON.stringify(dj.seg));
+  ok(/^graphene:\/\//.test(djHost.volumes[0].seg),
+     "...while the VIEWER link still carries it, where a reader signed in to CAVE sees the cells. "
+     + "Stripping it from both would be the quieter mistake",
+     djHost.volumes[0].seg.slice(0, 32) + "…");
+  ok(/CAVE|graphene/i.test(dj.noSegWhy),
+     "...and the picture says why the cell lookup is not offered, rather than leaving a gap",
+     dj.noSegWhy.slice(0, 70));
+  ok(T.emHostFor("ljump").noSegWhy === "this volume publishes no segmentation",
+     "λJump's reason is the plain one, because it is image only", T.emHostFor("ljump").noSegWhy);
+  ok(/1,216 sections/.test(T.emHostFor("xjump").noSegWhy),
+     "...and χJump's is its own: cb2 HAS a segmentation, 1,216 sections below its imagery, so "
+     + "“publishes no segmentation” would be a false statement about it",
+     T.emHostFor("xjump").noSegWhy.slice(0, 60));
+  T.all().forEach(t => {
+    const h = T.emHostFor(t.key);
+    if (!h) return;
+    ok(!/^graphene:\/\//.test(h.seg) && !/^graphene:\/\//.test(h.nuc),
+       T.label(t.key) + " hands the reader no graphene source at all", h.seg.slice(0, 28) || '""');
+  });
+}
+
+/* ── AND THE SCALES A VOLUME LISTS AND DOES NOT SERVE ────────────────────────────────────────
+   Søren: *"It is super slow though."*  V1DD's scale list opens with a dead 4.85 nm `placeholder`,
+   and since the INDEX IS THE MIP, keeping it shifts every level by one — the preview asks for
+   mip 3 and reads the level above, four times the pixels for the same picture. djump.html names
+   it at every call site; the registry is one more call site. */
+console.log("\nand the scales a volume lists but does not serve are named");
+{
+  const dj = T.emHostFor("djump");
+  ok((dj.skipScales || []).indexOf("placeholder") >= 0,
+     "δJump's dead 4.85 nm level is named, as djump.html names it everywhere else — without it "
+     + "every mip shifts by one and the preview reads four times the pixels it meant to",
+     JSON.stringify(dj.skipScales));
+  let src = "";
+  try { src = fs.readFileSync(page_("djump.html"), "utf8"); } catch (e){ src = ""; }
+  ok(!src || /skipScales:\s*\[\s*"placeholder"\s*\]/.test(src),
+     "...and it is the same string djump.html uses, not a second spelling of the same fact");
+  T.all().forEach(t => {
+    const h = T.emHostFor(t.key);
+    if (h) ok(Array.isArray(h.skipScales),
+              T.label(t.key) + "'s host always carries the list, empty or not — a caller that has "
+              + "to test for its absence is a caller that will forget",
+              JSON.stringify(h.skipScales));
+  });
+}
+
 /* µJump has two slabs, and which one a coordinate is in decides which imagery is read. */
 const in35 = T.emHostFor("ujump", [120000, 120000, 10000]);
 const in65 = T.emHostFor("ujump", [120000, 120000, 20000]);

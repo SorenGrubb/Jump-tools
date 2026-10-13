@@ -106,6 +106,18 @@ UJ.tools = (function(){
         bb: { xmin: 88745, xmax: 1886631, ymin: 145277, ymax: 1288694,
               zmin: 765, zmax: 792270 },
         em: "precomputed://gs://v1dd_imagery/image/aligned_image",
+        /* ── THE LEVEL THAT IS NOT THERE ───────────────────────────────────────  2026-10-13
+           V1DD's scale list opens with `key: "placeholder"`, 4.85 nm, chunk 2048×2048×128, and
+           404s at its own voxel_offset and at the origin: an entry with no bytes behind it. Its z
+           is 45 nm like the real scales, so core/emtiles.js's sectionScales() keeps it unless the
+           page says otherwise — and THE INDEX IS THE MIP, so keeping it shifts every level by
+           one. A preview that asked for mip 3 got the level above: four times the pixels for the
+           same picture, which is what Søren saw as "super slow".
+
+           Nothing in an info file marks a scale as empty; the only honest test is to fetch one.
+           So the page names it, and djump.html has named it at every call site since 2026-09-20.
+           This is the fourth, and the first that is not on djump.html. */
+        skipScales: ["placeholder"],
         /* The segmentation is graphene://middleauth+, which asks the reader to be logged in to
            CAVE. Named anyway: a link that prompts for a login the reader may already have is
            better than one that silently leaves the cell out. */
@@ -168,6 +180,12 @@ UJ.tools = (function(){
       res: [4, 4, 40], viewer: "https://neuroglancer-demo.appspot.com/",
       volumes: [{ key: "cb2", label: "cb2",
         bb: { xmin: 0, xmax: 998400, ymin: 0, ymax: 921600, zmin: 0, zmax: 48000 },
+        /* "publishes no segmentation" would be false here: cb2 publishes one, 1,216 sections
+           below its imagery, and χJump corrects for it with a transform on the source. Neither a
+           jumplink layer nor core/segread.js has anywhere to carry that, so the picture says the
+           real reason rather than the default one. */
+        segWhy: "cb2's segmentation is published 1,216 sections below its imagery, and neither "
+              + "the viewer link nor the reader here has anywhere to carry that correction",
         em: "precomputed://https://bossdb-open-data.s3.amazonaws.com/nguyen_thomas2022/cb2/em" }] }
   ];
 
@@ -280,7 +298,37 @@ UJ.tools = (function(){
       }
     }
     var h = hostFor(k);
-    return { res: t.res.slice(), em: v.em || "", seg: v.seg || "", nuc: v.nuc || "",
+    /* ── ONLY WHAT core/segread.js WILL READ ───────────────────────────────────────  2026-10-13
+       Søren, on the Discussion in δJump: *"in the discussion it gives me an error"* — “the
+       segmentation could not be configured”.
+
+       V1DD's cell segmentation is graphene://middleauth+, and core/segread.js refuses a graphene
+       source on purpose: indexing one returns SUPERVOXEL ids, not the root ids these tools hand
+       out, so an answer from it would be a wrong cell id rather than no cell id. δJump has always
+       known this about itself and configures `seg: ""`; its own 3D works because the page already
+       has the root id from its nucleus table and never reads the segmentation at a point.
+
+       The registry carries the graphene URL because that is the right LAYER for a viewer link —
+       a reader signed in to CAVE sees the cells there. It is the wrong thing to hand a reader,
+       and this is the line that keeps those two apart. hostFor() above is untouched. */
+    var readable = function(src){
+      return (src && !/^graphene:\/\//.test(String(src))) ? src : "";
+    };
+    /* AND WHERE A VOLUME DOES PUBLISH ONE AND THIS REGISTRY STILL DOES NOT NAME IT, the entry
+       says so itself — "publishes no segmentation" would be a false statement about cb2. */
+    var why = "";
+    if (!readable(v.seg))
+      why = v.segWhy ? v.segWhy
+          : v.seg ? ("its segmentation is a live CAVE volume (graphene://), which cannot be "
+                     + "indexed at a point without returning supervoxels rather than cells")
+                  : "this volume publishes no segmentation";
+    return { res: t.res.slice(), em: v.em || "",
+             seg: readable(v.seg), nuc: readable(v.nuc),
+             /* The scales this volume lists and does not serve — see the entry it comes from. */
+             skipScales: (v.skipScales || []).slice(),
+             /* Said out loud where the two 3D buttons are withheld, so the gap reads as an answer
+                rather than as something that failed to load. */
+             noSegWhy: why,
              window: t.emWindow ? { lo: t.emWindow.lo, hi: t.emWindow.hi } : null,
              volume: v.key, tool: t.key, label: t.label,
              /* The picture is a link, and it is the same link core/jumplink.js would write for

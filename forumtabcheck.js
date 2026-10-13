@@ -162,6 +162,23 @@ const otherWithBox = (key) =>
       if (realDraw) UJ.empreview.open = realDraw;
       out.acted = opened + drew;
       out.drew = drew; out.opened = opened;
+      /* ── AND THE PICTURE OFFERS ONLY WHAT IT CAN READ ─────────────────────────────────
+         boxHtml() is written synchronously, before a single chunk is fetched, so this reads the
+         markup without needing the network. Søren got "the segmentation could not be configured"
+         from a button that should never have been there: V1DD's segmentation is graphene and
+         core/segread.js refuses one. Where the reader has no segmentation the two buttons are
+         withheld AND the reason is printed; where it has one they are offered. */
+      if (window.UJ && UJ.empreview && mine){
+        const probe = document.createElement("div");
+        document.body.appendChild(probe);
+        const eh = (UJ.tools && UJ.tools.emHostFor) ? UJ.tools.emHostFor(key, mine) : null;
+        try { UJ.empreview.open(probe, mine, eh ? { host: eh } : {}); } catch (_e){}
+        out.probeSeg = !!(eh && eh.seg);
+        out.probeBtns = probe.querySelectorAll(".emp-cell, .emp-nuc").length;
+        out.probeText = probe.textContent.replace(/\s+/g, " ").trim();
+        probe.remove();
+      }
+
       /* A FOREIGN ONE DOES NEITHER, and that is the right answer: it writes the line offering
          that volume, with a link in it the reader chooses to follow. Opening a viewer under
          somebody's cursor because they clicked a word in a sentence would be a surprise. */
@@ -203,6 +220,21 @@ const otherWithBox = (key) =>
            : "...and clicking it opens the viewer, which is this page's honest answer: it has no "
              + "core/empreview.js",
          got.drew + " drawn, " + got.opened + " opened");
+      if (got.probeBtns !== undefined){
+        ok(got.probeSeg ? got.probeBtns === 2 : got.probeBtns === 0,
+           got.probeSeg
+             ? "...and the picture offers the two 3D buttons, because this volume's segmentation "
+               + "is one core/segread.js can index"
+             : "...and the picture offers NO 3D buttons, because this volume's segmentation is "
+               + "not one core/segread.js can index — the button Søren pressed answered “the "
+               + "segmentation could not be configured”",
+           got.probeBtns + " buttons");
+        ok(got.probeSeg || /No cell lookup here/.test(got.probeText),
+           got.probeSeg ? "...and says nothing about a lookup it can do"
+                        : "...and says WHY, so the gap reads as an answer rather than as "
+                          + "something that failed to load",
+           (got.probeText.match(/No cell lookup here[^.]*\./) || ["—"])[0].slice(0, 90));
+      }
     } else {
       ok(got.own.links === 0,
          T.label(key) + " has no verified extent in this repository, so a coordinate in its own "

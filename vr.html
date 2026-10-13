@@ -96,6 +96,7 @@
     <button id="measClr" title="Remove the measurements">Clear</button>
     <button id="scaleBtn" class="on" title="A scale bar under the collection that stays true as you resize it">Scale bar</button>
     <button id="nbBtn" title="Add the 3 cells whose nuclei are nearest the picked cell's (MICrONS predictions)">+3 neighbours</button>
+    <button id="trcBtn" title="Structures traced by hand in µJump's tracing pad (lysosomes, whole cells, …), on these cells and inside the box around them">Traced</button>
     <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells">Organelles</button>
   </div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
@@ -106,7 +107,7 @@
     <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
     <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
-    A = see-through · B = reset · X = only the picked cell · <b>Y = menu</b> (layers, vessels, EM section, cutting plane, size, cells, exit VR).
+    A = see-through · B = reset · X = only the picked cell · <b>Y = palette</b> on your left hand (tabs Show · Tools · EM · Cells · View; point the right controller and pull the trigger).
     With the cut in your hand, the right trigger freezes it in place and frees it again.
     With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
@@ -147,16 +148,20 @@ window.VR_DATASETS = {
     em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
     /* The Jump tab's nucleus table in 100 µm tiles (src/build_vr_nuclei.js), for neighbours. */
     nuclei: "core/vr_nuc/microns/",
+    /* Hand-traced structures (the tracing pad), from the same backend: ?tracings=1&ds=… */
+    tracingDs: "ujump",
     res: [4, 4, 40]
   }
 };
 window.UJ = window.UJ || {};
-UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh };
+UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh, res: [4, 4, 40] };
 </script>
 <script src="core/mesh.js"></script>
 <script src="core/nucmesh.js"></script>
 <script src="core/segread.js"></script>
 <script src="core/emtiles.js"></script>
+<script src="core/tracing.js"></script>
+<script src="core/traceloft.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "./core/vendor/three/three.module.min.js",
@@ -414,7 +419,7 @@ function regionBox(){
   return b;
 }
 function dsOfCells(){ return VR_DATASETS[(CELLS.find(c => c.mesh) || CELLS[0] || {}).ds] || VR_DATASETS.microns; }
-function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); }
+function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); if (TRC.on) setTraced(true); }
 
 async function loadVascRaw(ds){
   if (VASC.raw) return VASC.raw;
@@ -640,6 +645,7 @@ function applyClip(){
   const planes = cutActive() ? [CUT.plane] : null;
   for (const c of CELLS) for (const m of [c.mesh, c.nucMesh]) if (m){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; }
   if (VASC.mesh){ VASC.mesh.material.clippingPlanes = planes; VASC.mesh.material.needsUpdate = true; }
+  if (typeof TRC !== "undefined" && TRC.group) TRC.group.children.forEach(m => { if (m.isMesh){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; } });
 }
 function knife(){
   if (!CUT.knife){
@@ -712,6 +718,7 @@ function measTargets(){
   for (const c of CELLS){ if (c.mesh && c.mesh.visible) t.push(c.mesh); if (c.nucMesh && c.nucMesh.visible) t.push(c.nucMesh); }
   if (VASC.mesh && VASC.mesh.visible) t.push(VASC.mesh);
   if (EM.mesh) t.push(EM.mesh);
+  if (TRC.group) TRC.group.children.forEach(m => { if (m.isMesh) t.push(m); });
   return t;
 }
 function measureWithRay(r){
@@ -929,6 +936,90 @@ async function addNeighbours(k){
 }
 document.getElementById("nbBtn").addEventListener("click", () => addNeighbours(3));
 
+/* ── 7. TRACED STRUCTURES ──────────────────────────────────────────────────  2026-10-13
+   What people have outlined section by section in µJump's tracing pad -- lysosomes, whole cells the
+   segmentation does not have, collagen -- drawn as surfaces lofted through their contours by
+   core/traceloft.js, the same loft the pad's own 3D preview uses (not the export's marching
+   cubes; for one outline per section the two agree on the shape).
+
+   Two reads, so the cells you collected are not kept waiting on everybody else's work: first the
+   tracings whose nucleus or root id is one of these cells, then all the rest, of which only those
+   whose contours fall inside the box around the cells are drawn. The index is ~4 s; the outlines
+   for everything were measured at ~20 s (68 structures, 183 k vertices) on 2026-10-13.
+   Each keeps the colour it was traced with; a traced CELL is drawn see-through when the same cell's
+   segmentation mesh is also here, so the two can be compared rather than one hiding the other. */
+const TRC = { on: false, index: null, rings: {}, group: null, busy: false };
+async function setTraced(v){
+  TRC.on = v; document.getElementById("trcBtn").classList.toggle("on", v); MENU.dirty = true;
+  if (TRC.group){ content.remove(TRC.group); TRC.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); TRC.group = null; }
+  if (!v || !CELL_BOX || TRC.busy) return;
+  const ds = dsOfCells(); if (!ds.backend || !UJ.tracing || !UJ.traceloft) return;
+  const qs = "&ds=" + encodeURIComponent(ds.tracingDs || "");
+  TRC.busy = true;
+  try {
+    if (!TRC.index){
+      ctxNote.textContent = "Traced: reading the index…";
+      const r = await fetch(ds.backend + "?tracings=1" + qs);
+      TRC.index = ((await r.json()) || {}).tracings || [];
+    }
+    const ids = new Set(CELLS.flatMap(c => [String(c.root || ""), String(c.nuc || "")]).filter(Boolean));
+    const mine = TRC.index.filter(t => ids.has(String(t.rootId || "")) || ids.has(String(t.nucleusId || "")));
+    const rest = TRC.index.filter(t => !mine.includes(t));
+    const fetchRings = async (list, what) => {
+      const want = list.filter(t => !(t.structureId in TRC.rings));
+      if (!want.length) return;
+      const res = await UJ.tracing.fetchMany(ds.backend, want, qs,
+        (d, n) => { ctxNote.textContent = "Traced: reading " + what + " " + d + "/" + n + "…"; });
+      want.forEach(t => { const x = res[t.structureId]; TRC.rings[t.structureId] = (x && x.st && x.st.rings) || []; });
+    };
+    await fetchRings(mine, "this collection's tracings");
+    if (TRC.on) drawTraced();
+    await fetchRings(rest, "the other tracings");
+    if (TRC.on) drawTraced();
+  } catch (e){ ctxNote.textContent = "Traced structures could not be read: " + (e.message || e); }
+  TRC.busy = false;
+}
+function drawTraced(){
+  if (TRC.group){ content.remove(TRC.group); TRC.group = null; }
+  const ds = dsOfCells(), res = ds.res || [4, 4, 40], b = regionBox(), grp = new THREE.Group();
+  const segRoots = new Set(CELLS.filter(c => c.mesh).map(c => String(c.root)));
+  const kinds = {};
+  for (const t of TRC.index || []){
+    const rings = TRC.rings[t.structureId];
+    if (!rings || !rings.length) continue;
+    /* Inside the box? Test the contours' own centre, in µm. */
+    let sx = 0, sy = 0, n = 0;
+    rings.forEach(r => (r.points || []).forEach(p => { sx += p[0]; sy += p[1]; n++; }));
+    if (!n) continue;
+    const zc = rings.reduce((s, r) => s + r.z, 0) / rings.length;
+    const ctr = new THREE.Vector3(sx / n * res[0] / 1000, sy / n * res[1] / 1000, zc * res[2] / 1000);
+    if (!b.containsPoint(ctr)) continue;
+    let L;
+    try { L = UJ.traceloft.loft(rings, res); } catch (e){ continue; }
+    if (!L || !L.positions || !L.indices || !L.indices.length) continue;
+    const pos = new Float32Array(L.positions.length);
+    for (let k = 0; k < pos.length; k++) pos[k] = L.positions[k] / 1000;      // nm -> µm
+    const isCell = t.kind === "cell";
+    const glass = isCell && segRoots.has(String(t.rootId || ""));
+    const m = new THREE.Mesh(geometryFrom(pos, new Uint32Array(L.indices)),
+      new THREE.MeshStandardMaterial({ color: t.color || "#40e28c", roughness: 0.5, side: THREE.DoubleSide,
+        transparent: glass, opacity: glass ? 0.35 : 1, depthWrite: !glass }));
+    m.userData.tracing = t.structureId; grp.add(m);
+    const k = t.kind || "structure";
+    kinds[k] = (kinds[k] || 0) + 1;
+  }
+  const ks = Object.keys(kinds);
+  if (ks.length){
+    const ext = b.getSize(new THREE.Vector3()).length();
+    const leg = textSprite(["Traced by hand"].concat(ks.map(k => k + "  ×" + kinds[k])), { width: 1 });
+    leg.scale.multiplyScalar(ext * 0.18); leg.position.set(b.max.x, b.min.y, b.max.z); grp.add(leg);
+  }
+  TRC.group = grp; content.add(grp); applyClip();
+  ctxNote.textContent = ks.length ? "Traced: " + ks.map(k => kinds[k] + " " + k).join(", ") + " in view."
+                                  : "Traced: nothing traced inside the box around these cells (yet).";
+}
+document.getElementById("trcBtn").addEventListener("click", () => setTraced(!TRC.on));
+
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
@@ -1026,9 +1117,8 @@ const hands = [0, 1].map(k => {
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
   ctl.addEventListener("selectstart", () => {
-    const k = menuRowUnder(h);
-    if (k >= 0){ MENU.rows[k].act(); MENU.dirty = true; return; }
-    if (MENU.open) return;                     // pointing past the menu does nothing
+    const mh = menuHit(h);
+    if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
     if (MEAS.on && h.source && h.source.handedness === "right"){ measureWithRay(rayOf(h)); return; }
     if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
       setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
@@ -1110,7 +1200,7 @@ function sticks(dt){
     const gp = h.source && h.source.gamepad; if (!gp) continue;
     const left = h.source.handedness === "left";
     const ax = gp.axes.length >= 4 ? [gp.axes[2], gp.axes[3]] : [gp.axes[0] || 0, gp.axes[1] || 0];
-    if (!grab && !MENU.open){
+    if (!grab){
       if (Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15) USER_MOVED = true;
       if (!left){
         if (Math.abs(ax[0]) > 0.15) stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -ax[0] * 1.6 * dt);
@@ -1136,139 +1226,181 @@ function sticks(dt){
 /* ── isolate: only the picked cell, everything else hidden ─────────────────── */
 function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
 
-/* ── the menu, in VR ─────────────────────────────────────────────────────────
-   Y on the left controller opens it in front of you; point with either controller and pull the
-   trigger to choose. While it is open the trigger works the menu, not the cells, and the sticks
-   do nothing, so nothing moves behind it. Drawn on a canvas, so every row is just text and the
-   hit test is one raycast against one plane. */
-const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: -1, dirty: true };
-const MENU_W = 1024, ROW_H = 64, MENU_PAD = 24;
+/* ── THE PALETTE, on the left hand ──────────────────────────────────────────  2026-10-13
+   Søren, after trying the floating menu: *"could we make it like a palette on the left controller
+   and then we use the right controller to select … organize it into menus, so that it is not a
+   super long list."*
+
+   So: Y shows or hides a small board held above the left controller, tilted towards you like a
+   painter's palette. A row of tabs across its top -- Show · Tools · EM · Cells · View -- and under
+   it only that tab's switches. Point the RIGHT controller at it and pull the trigger. Because it
+   rides on your hand, nothing in the scene pauses while it is up: the sticks still turn and tilt,
+   and a trigger that is not pointing at the palette still picks, measures and cuts as usual.
+
+   Drawn on one canvas, hit-tested by where the right controller's ray meets it (uv), so a tab or
+   a row is just a rectangle on the canvas. The controls card that used to sit on the left hand is
+   now the View tab's "Help" page. */
+const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: null,
+               dirty: true, tab: 0, cellPage: 0, help: false };
+const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26;
+const TABS = ["Show", "Tools", "EM", "Cells", "View"];
 function menuRows(){
   const rows = [];
-  const allShown = CELLS.every(c => !c.hidden);
-  rows.push({ head: "Show" });
-  rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
-  rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
-  rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
-  const vm = document.getElementById("vascSel").value;
-  rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume (heavy)" })[vm],
-              on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
-  rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
-  rows.push({ label: "Organelle reports", on: ORG.on, act: () => setOrganelles(!ORG.on) });
-  rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
-  rows.push({ label: "Measure (right trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
-  if (MEAS.items.length) rows.push({ label: "Clear the measurements", act: clearMeasure });
-  rows.push({ head: "EM and cutting" });
-  rows.push({ label: EM.mesh ? "EM section: move to the picked cell" : "EM section: show it", on: !!EM.mesh || EM.loading,
-              act: () => showEM() });
-  if (EM.mesh || EM.loading){
-    rows.push({ label: "EM: +5 µm through the sections", act: () => moveEM(5) });
-    rows.push({ label: "EM: −5 µm", act: () => moveEM(-5) });
-    rows.push({ label: "EM: " + (EM.size === "wide" ? "wide 65 µm → switch to close 33 µm" : "close 33 µm → switch to wide 65 µm"),
-                act: () => { document.getElementById("emSize").value = EM.size === "wide" ? "close" : "wide"; showEM(EM.centre); } });
-    rows.push({ label: "Hide the EM section", act: hideEM });
-  }
-  rows.push({ label: "Cut: in my right hand (trigger freezes it)", on: CUT.mode === "hand" || CUT.mode === "frozen",
-              act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
-  rows.push({ label: "Cut: at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
-  rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
-  rows.push({ label: SELECTED >= 0 ? "Bring in the 3 nearest neighbours of the picked cell" : "Neighbours: pick a cell first",
-              act: () => addNeighbours(3) });
-  rows.push({ head: "Size" });
-  rows.push({ label: "Tabletop", act: () => setSize(1) });
-  rows.push({ label: "Room-sized", act: () => setSize(6) });
-  rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
-  rows.push({ label: "Reset position", act: resetStage });
-  if (CELLS.length){
-    rows.push({ head: "Cells (trigger = show / hide)" });
-    CELLS.slice(0, 14).forEach(c => rows.push({ label: c.label, sub: c.root, swatch: c.colour, on: !c.hidden,
+  const t = TABS[MENU.tab];
+  if (t === "Show"){
+    const allShown = CELLS.every(c => !c.hidden);
+    rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
+    rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
+    rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
+    const vm = document.getElementById("vascSel").value;
+    rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm],
+                on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
+    rows.push({ label: "Organelle reports", on: ORG.on, act: () => setOrganelles(!ORG.on) });
+    rows.push({ label: "Traced structures", on: TRC.on, act: () => setTraced(!TRC.on) });
+    rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
+  } else if (t === "Tools"){
+    rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
+    rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
+    rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
+                act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
+    rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
+    rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
+    rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
+    rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
+  } else if (t === "EM"){
+    rows.push({ label: EM.mesh ? "Move it to the picked cell" : "Show the EM section", on: !!EM.mesh || EM.loading, act: () => showEM() });
+    if (EM.mesh || EM.loading){
+      rows.push({ label: "+5 µm through the sections", act: () => moveEM(5) });
+      rows.push({ label: "−5 µm", act: () => moveEM(-5) });
+      rows.push({ label: EM.size === "wide" ? "Wide 65 µm → close 33 µm" : "Close 33 µm → wide 65 µm",
+                  act: () => { document.getElementById("emSize").value = EM.size === "wide" ? "close" : "wide"; showEM(EM.centre); } });
+      rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
+      rows.push({ label: "Hide the EM section", act: hideEM });
+    }
+  } else if (t === "Cells"){
+    /* Seven to a page, so the palette never grows past a hand's width of height. */
+    const per = 7, pages = Math.max(1, Math.ceil(CELLS.length / per));
+    MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
+    CELLS.slice(MENU.cellPage * per, MENU.cellPage * per + per).forEach(c => rows.push({
+      label: c.label, swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
       act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); } }));
+    if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
+  } else if (t === "View"){
+    if (MENU.help){
+      ["Right trigger: pick / use a tool", "Grip: grab · both grips: resize", "Right stick: turn · zoom",
+       "Left stick: tilt · flick = next cell", "A see-through · B reset", "X only picked · Y palette"]
+        .forEach(l => rows.push({ label: l, note: true }));
+      rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
+    } else {
+      rows.push({ label: "Tabletop size", act: () => setSize(1) });
+      rows.push({ label: "Room-sized", act: () => setSize(6) });
+      rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
+      rows.push({ label: "Reset position", act: resetStage });
+      rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
+      rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
+    }
   }
-  rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
   return rows;
 }
 function drawMenu(){
   MENU.rows = menuRows();
-  const H = MENU_PAD * 2 + MENU.rows.length * ROW_H;
+  const H = MENU_PAD * 2 + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H;
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
   const cv = MENU.canvas, g = MENU.ctx;
   if (cv.width !== MENU_W || cv.height !== H){
     cv.width = MENU_W; cv.height = H;
     if (MENU.tex){ MENU.tex.dispose(); MENU.tex = null; }
-    if (MENU.mesh){ MENU.mesh.geometry.dispose(); MENU.mesh.geometry = new THREE.PlaneGeometry(0.5, 0.5 * H / MENU_W); }
+    if (MENU.mesh){
+      MENU.mesh.geometry.dispose();
+      MENU.mesh.geometry = new THREE.PlaneGeometry(PAL_W, PAL_W * H / MENU_W);
+      MENU.mesh.geometry.translate(0, PAL_W * H / MENU_W / 2, 0);   // grows upwards from the hand
+    }
   }
   g.clearRect(0, 0, MENU_W, H);
-  g.fillStyle = "rgba(13,17,23,0.94)"; g.strokeStyle = "#30363d"; g.lineWidth = 6;
-  g.beginPath(); g.roundRect(3, 3, MENU_W - 6, H - 6, 28); g.fill(); g.stroke();
-  MENU.rows.forEach((r, k) => {
-    const y = MENU_PAD + k * ROW_H;
-    if (r.head){ g.fillStyle = "#8b949e"; g.font = "600 30px system-ui, sans-serif"; g.fillText(r.head.toUpperCase(), 40, y + 44); return; }
-    if (k === MENU.hover){ g.fillStyle = "rgba(63,185,80,0.18)"; g.fillRect(16, y + 2, MENU_W - 32, ROW_H - 4); }
-    let x = 40;
-    if (r.on !== undefined){
-      g.fillStyle = r.on ? "#3fb950" : "#30363d"; g.beginPath(); g.roundRect(x, y + 16, 64, 32, 16); g.fill();
-      g.fillStyle = "#e6edf3"; g.beginPath(); g.arc(r.on ? x + 48 : x + 16, y + 32, 12, 0, 7); g.fill();
-      x += 88;
-    }
-    if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 20, 24, 24); x += 40; }
-    g.fillStyle = r.exit ? "#f0883e" : "#e6edf3"; g.font = "40px system-ui, sans-serif";
-    g.fillText(r.label, x, y + 46, MENU_W - x - 40);
+  g.fillStyle = "rgba(13,17,23,0.95)"; g.strokeStyle = "#30363d"; g.lineWidth = 6;
+  g.beginPath(); g.roundRect(3, 3, MENU_W - 6, H - 6, 30); g.fill(); g.stroke();
+  /* Tabs. */
+  const tw = (MENU_W - MENU_PAD * 2) / TABS.length;
+  TABS.forEach((t, k) => {
+    const x = MENU_PAD + k * tw, y = MENU_PAD, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
+    g.fillStyle = on ? "#3fb950" : (hv ? "rgba(63,185,80,0.25)" : "#161b22");
+    g.beginPath(); g.roundRect(x + 4, y, tw - 8, TAB_H - 8, 16); g.fill();
+    g.fillStyle = on ? "#0d1117" : "#e6edf3"; g.font = "600 36px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(t, x + tw / 2, y + 52); g.textAlign = "left";
   });
+  const top = MENU_PAD + TAB_H + 10;
+  MENU.rows.forEach((r, k) => {
+    const y = top + k * ROW_H;
+    if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(63,185,80,0.18)"; g.fillRect(14, y + 2, MENU_W - 28, ROW_H - 4); }
+    let x = 34;
+    if (r.on !== undefined){
+      g.fillStyle = r.on ? "#3fb950" : "#30363d"; g.beginPath(); g.roundRect(x, y + 18, 68, 36, 18); g.fill();
+      g.fillStyle = "#e6edf3"; g.beginPath(); g.arc(r.on ? x + 50 : x + 18, y + 36, 13, 0, 7); g.fill();
+      x += 90;
+    }
+    if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
+    g.fillStyle = r.exit ? "#f0883e" : (r.note ? "#8b949e" : "#e6edf3"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
+    g.fillText(r.label, x, y + 50, MENU_W - x - 30);
+  });
+  if (!MENU.rows.length){ g.fillStyle = "#8b949e"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
   if (!MENU.mesh){
-    MENU.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5 * H / MENU_W),
-      new THREE.MeshBasicMaterial({ map: MENU.tex, transparent: true, depthTest: false }));
+    const geo = new THREE.PlaneGeometry(PAL_W, PAL_W * H / MENU_W); geo.translate(0, PAL_W * H / MENU_W / 2, 0);
+    MENU.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: MENU.tex, transparent: true, depthTest: false, side: THREE.DoubleSide }));
     MENU.mesh.renderOrder = 30;
   }
   MENU.dirty = false;
 }
+function leftHand(){ return hands.find(h => h.source && h.source.handedness === "left") || hands[0]; }
 function toggleMenu(){
   MENU.open = !MENU.open;
   if (MENU.open){
     drawMenu();
-    /* Half a metre in front of your face, level, turned to face you. */
-    const cam = renderer.xr.getCamera(), p = new THREE.Vector3(), d = new THREE.Vector3();
-    cam.getWorldPosition(p); cam.getWorldDirection(d); d.y = 0; d.normalize();
-    MENU.mesh.position.copy(p).addScaledVector(d, 0.55); MENU.mesh.position.y -= 0.1;
-    MENU.mesh.lookAt(p.x, MENU.mesh.position.y, p.z);
-    scene.add(MENU.mesh);
-  } else if (MENU.mesh) scene.remove(MENU.mesh);
+    /* On the left grip: just above and in front of the controller, its foot at the hand, tilted
+       back towards your face the way you would hold a palette. */
+    const g = leftHand().grip;
+    g.add(MENU.mesh);
+    MENU.mesh.position.set(0.0, 0.035, -0.05);
+    MENU.mesh.rotation.set(-0.75, 0, 0);
+  } else if (MENU.mesh && MENU.mesh.parent) MENU.mesh.parent.remove(MENU.mesh);
 }
 const _uv = new THREE.Raycaster();
-function menuRowUnder(h){
-  if (!MENU.open || !MENU.mesh) return -1;
+/* What the controller is pointing at on the palette: {tab} or {row}, or null. The palette's own
+   hand is never the pointer -- you cannot point a hand at itself. */
+function menuHit(h){
+  if (!MENU.open || !MENU.mesh || h === leftHand()) return null;
   tmpM.identity().extractRotation(h.ctl.matrixWorld);
   _uv.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld);
   _uv.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
   const hit = _uv.intersectObject(MENU.mesh, false)[0];
-  if (!hit || !hit.uv) return -1;
-  const py = (1 - hit.uv.y) * MENU.canvas.height, k = Math.floor((py - MENU_PAD) / ROW_H);
-  return k >= 0 && k < MENU.rows.length && !MENU.rows[k].head ? k : -1;
+  if (!hit || !hit.uv) return null;
+  const px = hit.uv.x * MENU_W, py = (1 - hit.uv.y) * MENU.canvas.height;
+  if (py >= MENU_PAD && py < MENU_PAD + TAB_H){
+    const k = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / TABS.length));
+    return k >= 0 && k < TABS.length ? { tab: k } : { none: true };
+  }
+  const k = Math.floor((py - MENU_PAD - TAB_H - 10) / ROW_H);
+  return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? { row: k } : { none: true };
+}
+function menuAct(hit){
+  if (hit.tab != null){ MENU.tab = hit.tab; MENU.help = false; }
+  else if (hit.row != null) MENU.rows[hit.row].act();
+  MENU.dirty = true;
 }
 function menuFrame(){
   if (!MENU.open) return;
-  let hv = -1;
-  for (const h of hands){ const k = menuRowUnder(h); if (k >= 0){ hv = k; break; } }
-  if (hv !== MENU.hover){ MENU.hover = hv; MENU.dirty = true; }
+  let hv = null;
+  for (const h of hands){ const x = menuHit(h); if (x && !x.none){ hv = x; break; } }
+  if (JSON.stringify(hv) !== JSON.stringify(MENU.hover)){ MENU.hover = hv; MENU.dirty = true; }
   if (MENU.dirty) drawMenu();
 }
 function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
 
-/* ── the help card on the left hand, in VR only ───────────────────────────── */
-const helpCard = textSprite(["Controls", "Trigger: pick a cell · Y: menu", "Grip: grab · both grips: resize",
-                             "Right stick: turn / zoom", "Left stick: tilt · flick = next cell",
-                             "A: see-through · B: reset · X: only picked",
-                             "Cutting in hand: right trigger freezes / frees",
-                             "Measuring: right trigger sets two points"], { width: 0.17 });
-helpCard.position.set(0, 0.09, -0.02);
 renderer.xr.addEventListener("sessionstart", () => {
-  const left = hands.find(h => h.source && h.source.handedness === "left") || hands[0];
-  left.grip.add(helpCard);
   resetStage();
 });
 renderer.xr.addEventListener("sessionend", () => {
-  if (helpCard.parent) helpCard.parent.remove(helpCard);
   if (MENU.open) toggleMenu();
   if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off");   // no hand to hold it on a flat screen
 });
@@ -1312,7 +1444,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>

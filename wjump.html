@@ -128,7 +128,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-13 19:51</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-13 20:46</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -26315,16 +26315,30 @@ UJ.tools = (function(){
   var LIST = [
     { key: "ujump", label: "µJump", dataset: "MICrONS minnie65 + minnie35",
       page: "ujump.html", dark: "#27e0b3", light: "#0f766e",
+      emWindow: { lo: 86, hi: 172 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [MINNIE65, MINNIE35] },
 
     { key: "djump", label: "δJump", dataset: "V1DD — Allen Institute V1 Deep Dive",
       page: "djump.html", dark: "#b388ff", light: "#6d28d9",
+      emWindow: { lo: 115, hi: 144 },
       res: [9, 9, 45], viewer: "https://spelunker.cave-explorer.org/",
       volumes: [{ key: "v1dd", label: "V1DD",
         bb: { xmin: 88745, xmax: 1886631, ymin: 145277, ymax: 1288694,
               zmin: 765, zmax: 792270 },
         em: "precomputed://gs://v1dd_imagery/image/aligned_image",
+        /* ── THE LEVEL THAT IS NOT THERE ───────────────────────────────────────  2026-10-13
+           V1DD's scale list opens with `key: "placeholder"`, 4.85 nm, chunk 2048×2048×128, and
+           404s at its own voxel_offset and at the origin: an entry with no bytes behind it. Its z
+           is 45 nm like the real scales, so core/emtiles.js's sectionScales() keeps it unless the
+           page says otherwise — and THE INDEX IS THE MIP, so keeping it shifts every level by
+           one. A preview that asked for mip 3 got the level above: four times the pixels for the
+           same picture, which is what Søren saw as "super slow".
+
+           Nothing in an info file marks a scale as empty; the only honest test is to fetch one.
+           So the page names it, and djump.html has named it at every call site since 2026-09-20.
+           This is the fourth, and the first that is not on djump.html. */
+        skipScales: ["placeholder"],
         /* The segmentation is graphene://middleauth+, which asks the reader to be logged in to
            CAVE. Named anyway: a link that prompts for a login the reader may already have is
            better than one that silently leaves the cell out. */
@@ -26333,6 +26347,7 @@ UJ.tools = (function(){
 
     { key: "pjump", label: "πJump", dataset: "MICrONS pinky100 (Layer 2/3)",
       page: "pjump.html", dark: "#f78ad4", light: "#b81a8f",
+      emWindow: { lo: 33, hi: 231 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [{ key: "pinky100", label: "pinky100",
         bb: { xmin: 140000, xmax: 500000, ymin: 124000, ymax: 338000,
@@ -26347,6 +26362,7 @@ UJ.tools = (function(){
        the volume ends. Image only: no segmentation, no nuclei. */
     { key: "ljump", label: "λJump", dataset: "Lee16 — mouse V1 serial-section TEM",
       page: "ljump.html", dark: "#7aa2ff", light: "#1d4ed8",
+      emWindow: { lo: 27, hi: 240 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [{ key: "lee16", label: "Lee16",
         bb: { xmin: 0, xmax: 655360, ymin: 0, ymax: 655360, zmin: 0, zmax: 32880 },
@@ -26354,14 +26370,19 @@ UJ.tools = (function(){
 
     { key: "hjump", label: "ηJump", dataset: "H01 — human temporal cortex",
       page: "hjump.html", dark: "#ffb454", light: "#9a3412",
+      emWindow: { lo: 29, hi: 212 },
       res: [8, 8, 33], viewer: "https://h01-dot-neuroglancer-demo.appspot.com/",
       volumes: [] },
 
     { key: "bjump", label: "βJump", dataset: "Alzheimer's vCLEM — hippocampal CA1",
       page: "bjump.html", dark: "#ff6b81", light: "#a4133c",
+      emWindow: { lo: 10, hi: 244 },
       res: [8, 8, 30], viewer: "https://neuroglancer-demo.appspot.com/",
       volumes: [] },
 
+    /* NO emWindow: ωJump's sixty-three volumes include two uint16 blocks whose tissue is a
+       band 2,000 counts wide at 33,000, and a single pair of numbers for "ωJump" would be a
+       false statement about sixty-two of them. Its own page reads each dataset's own. */
     { key: "wjump", label: "ωJump", dataset: "63 volumes — OpenOrganelle and others",
       page: "wjump.html", dark: "#fbbf24", light: "#854d0e",
       res: null, viewer: "https://neuroglancer-demo.appspot.com/",
@@ -26376,9 +26397,16 @@ UJ.tools = (function(){
        would draw the right cells 48 µm from the tissue they belong to. */
     { key: "xjump", label: "χJump", dataset: "cb2 — mouse cerebellum (lobule V)",
       page: "xjump.html", dark: "#4ade80", light: "#166534",
+      emWindow: { lo: 29, hi: 233 },
       res: [4, 4, 40], viewer: "https://neuroglancer-demo.appspot.com/",
       volumes: [{ key: "cb2", label: "cb2",
         bb: { xmin: 0, xmax: 998400, ymin: 0, ymax: 921600, zmin: 0, zmax: 48000 },
+        /* "publishes no segmentation" would be false here: cb2 publishes one, 1,216 sections
+           below its imagery, and χJump corrects for it with a transform on the source. Neither a
+           jumplink layer nor core/segread.js has anywhere to carry that, so the picture says the
+           real reason rather than the default one. */
+        segWhy: "cb2's segmentation is published 1,216 sections below its imagery, and neither "
+              + "the viewer link nor the reader here has anywhere to carry that correction",
         em: "precomputed://https://bossdb-open-data.s3.amazonaws.com/nguyen_thomas2022/cb2/em" }] }
   ];
 
@@ -26462,6 +26490,80 @@ UJ.tools = (function(){
      does not have for somebody else's volume, so a cued number in a foreign post stays text. It
      is the one reference that cannot cross tools without a server, and pretending otherwise would
      mean resolving it against the READER'S table, which is the exact mistake this file prevents. */
+  /* ── AND A HOST FOR THE PICTURE ────────────────────────────────────────────────  2026-10-13
+     Søren, with the Discussion open in δJump: *"when I paste a coordinate and then open it, it
+     opens neuroglancer and not EM with a possibility of a 3D window."*
+
+     core/empreview.js reads window.emPreviewHost(). µJump has one, written when the Discussion
+     was only there, and it carries things the registry cannot: the nucleus table behind
+     “cell 253863”, the long type name drawn in the corner of the picture, the viewer the reader
+     picked from the dropdown. The other seven have none, and writing seven would be seven more
+     copies of seven volumes' sources to keep in step.
+
+     So this builds one out of what is already here. The page's own hook still wins where it
+     exists; core/forum.js reaches for this only when there is none.
+
+     `vox` PICKS THE VOLUME where a tool has more than one — µJump's two slabs — and is ignored
+     by everything else. Null for a tool with no verified box, which is the same answer hostFor()
+     gives and for the same reason. */
+  function emHostFor(k, vox){
+    var t = byKey(k);
+    if (!t || !t.res || !(t.volumes || []).length) return null;
+    var v = t.volumes[0], i;
+    if (vox && t.volumes.length > 1){
+      var nm = [vox[0] * t.res[0], vox[1] * t.res[1], vox[2] * t.res[2]];
+      for (i = 0; i < t.volumes.length; i++){
+        var bb = t.volumes[i].bb;
+        if (bb && nm[0] >= bb.xmin && nm[0] <= bb.xmax && nm[1] >= bb.ymin && nm[1] <= bb.ymax
+            && nm[2] >= bb.zmin && nm[2] <= bb.zmax){ v = t.volumes[i]; break; }
+      }
+    }
+    var h = hostFor(k);
+    /* ── ONLY WHAT core/segread.js WILL READ ───────────────────────────────────────  2026-10-13
+       Søren, on the Discussion in δJump: *"in the discussion it gives me an error"* — “the
+       segmentation could not be configured”.
+
+       V1DD's cell segmentation is graphene://middleauth+, and core/segread.js refuses a graphene
+       source on purpose: indexing one returns SUPERVOXEL ids, not the root ids these tools hand
+       out, so an answer from it would be a wrong cell id rather than no cell id. δJump has always
+       known this about itself and configures `seg: ""`; its own 3D works because the page already
+       has the root id from its nucleus table and never reads the segmentation at a point.
+
+       The registry carries the graphene URL because that is the right LAYER for a viewer link —
+       a reader signed in to CAVE sees the cells there. It is the wrong thing to hand a reader,
+       and this is the line that keeps those two apart. hostFor() above is untouched. */
+    var readable = function(src){
+      return (src && !/^graphene:\/\//.test(String(src))) ? src : "";
+    };
+    /* AND WHERE A VOLUME DOES PUBLISH ONE AND THIS REGISTRY STILL DOES NOT NAME IT, the entry
+       says so itself — "publishes no segmentation" would be a false statement about cb2. */
+    var why = "";
+    if (!readable(v.seg))
+      why = v.segWhy ? v.segWhy
+          : v.seg ? ("its segmentation is a live CAVE volume (graphene://), which cannot be "
+                     + "indexed at a point without returning supervoxels rather than cells")
+                  : "this volume publishes no segmentation";
+    return { res: t.res.slice(), em: v.em || "",
+             seg: readable(v.seg), nuc: readable(v.nuc),
+             /* The scales this volume lists and does not serve — see the entry it comes from. */
+             skipScales: (v.skipScales || []).slice(),
+             /* Said out loud where the two 3D buttons are withheld, so the gap reads as an answer
+                rather than as something that failed to load. */
+             noSegWhy: why,
+             window: t.emWindow ? { lo: t.emWindow.lo, hi: t.emWindow.hi } : null,
+             volume: v.key, tool: t.key, label: t.label,
+             /* The picture is a link, and it is the same link core/jumplink.js would write for
+                this place in this tool — built from the host rather than from a second opinion. */
+             viewerUrl: function(pos){
+               try {
+                 if (window.UJ && UJ.jumplink && h)
+                   return UJ.jumplink.url(UJ.jumplink.scan(pos.join(", "), { host: h }),
+                                          { host: h }) || "";
+               } catch (_e){}
+               return "";
+             } };
+  }
+
   function hostFor(k){
     var t = byKey(k);
     if (!t || !t.res || !t.volumes || !t.volumes.length) return null;
@@ -26480,7 +26582,7 @@ UJ.tools = (function(){
 
   return { all: all, keys: keys, byKey: byKey, label: label, dataset: dataset,
            boxed: boxed, manyVolumes: manyVolumes,
-           css: css, styleEl: styleEl, hostFor: hostFor };
+           css: css, styleEl: styleEl, hostFor: hostFor, emHostFor: emHostFor };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = UJ.tools;
 </script>
@@ -26570,6 +26672,10 @@ var POSTS = [], CAN_MODERATE = false, LOADED = false, TOOL = "", VOLUME = "", BU
    reads, so one post reaches every Jump. */
 var OPEN = "", MODE = "";
 var STREAM = "tools";
+/* This tool's EM host, built once from core/tools.js on a page that declares no emPreviewHost().
+   Held rather than rebuilt per click because it closes over a viewerUrl() the picture uses, and
+   because rebuilding it would make two pictures of the same place two different objects. */
+var EMHOST = null;
 
 /* ── WHOSE FRAME A POST'S COORDINATES ARE IN ──────────────────────────────────────────────────
    The dangerous half of one shared forum. A post from another tool was written in another frame
@@ -27101,6 +27207,20 @@ function wirePreviews(host){
            one picture of the two -- idsOf() above has assumed that since it was written -- so an
            id this page cannot place still has somewhere to be drawn when the sentence says where.
            Last, because the thing you clicked wins over the thing beside it. */
+        /* ── AND THE PICTURE, ON A PAGE THAT DECLARES NO HOST ──────────────────────  2026-10-13
+           Søren: *"when I paste a coordinate and then open it, it opens neuroglancer and not EM
+           with a possibility of a 3D window."*  core/empreview.js is loaded on these pages now;
+           what it has nowhere but µJump is window.emPreviewHost(). core/tools.js builds one from
+           the registry's verified sources, so the picture is drawn here rather than left to a
+           new tab. µJump's own hook wins where it exists — it carries a nucleus table and a type
+           name the registry has no idea about. */
+        if (canDraw && typeof window.emPreviewHost !== "function" && !EMHOST){
+          try {
+            if (window.UJ && UJ.tools && UJ.tools.emHostFor)
+              EMHOST = UJ.tools.emHostFor(TOOL, h.voxel) || null;
+          } catch (_eh){}
+        }
+        if (canDraw && !EMHOST && typeof window.emPreviewHost !== "function") canDraw = false;
         if (!canDraw){
           /* The viewer, with this page's own host — which on a page without jumpLinkHost() is the
              registry's, so the link opens this tool's volume rather than nothing. */
@@ -27140,7 +27260,7 @@ function wirePreviews(host){
         var key = at.join(",");
         if (open === key){ UJ.empreview.close(slot); open = ""; return; }
         open = key;
-        UJ.empreview.open(slot, at, { ids: ids });
+        UJ.empreview.open(slot, at, EMHOST ? { ids: ids, host: EMHOST } : { ids: ids });
       });
     });
   });
@@ -27164,7 +27284,14 @@ function wireComposePreview(id){
     if (key === shown) return;
     shown = key;
     if (!at){ UJ.empreview.close(slot); return; }
-    UJ.empreview.open(slot, at, { ids: ids });
+    var eh = null;
+    if (typeof window.emPreviewHost !== "function"){
+      try {
+        if (window.UJ && UJ.tools && UJ.tools.emHostFor) eh = UJ.tools.emHostFor(TOOL, at);
+      } catch (_eh){}
+      if (!eh) return;
+    }
+    UJ.empreview.open(slot, at, eh ? { ids: ids, host: eh } : { ids: ids });
   };
   /* A BEAT AFTER THE TYPING STOPS. Pasting fires one input event; typing one by hand fires a dozen,
      and the first eleven are prefixes that may each land inside the volume and each start a read. */

@@ -142,7 +142,9 @@ function boxHtml(pos, cfg){
             + '3D</button>'
             + '<button type="button" class="hist-chip emp-nuc" title="The nucleus of that same '
             + 'cell, from the nuclei volume, drawn in blue inside it.">and its nucleus</button>'
-          : "")
+          : '<span class="hint" style="flex:1 1 200px;min-width:0">No cell lookup here \u2014 '
+            + esc(cfg && cfg.noSegWhy ? cfg.noSegWhy : "this volume publishes no segmentation")
+            + ".</span>")
        + '<span class="hint emp-say" style="flex:1 1 140px;min-width:0"></span>'
        + "</div></div>";
 }
@@ -318,7 +320,13 @@ async function open(hostEl, pos, opts){
   note("reading the EM…");
   var painted = false, segNote = "";
   try {
-    if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: cfg.em, res: cfg.res });
+    /* skipScales NAMES THE LEVELS A VOLUME LISTS AND DOES NOT SERVE, and it was not forwarded
+       until 2026-10-13. V1DD's list opens with a dead 4.85 nm `placeholder`; since the index IS
+       the mip, keeping it shifted every level by one and this preview read four times the pixels
+       it meant to. The hazard runs both ways — whichever of the pad and this configures the
+       reader first wins — so the full set is passed rather than the two fields this used to. */
+    if (!UJ.emtiles.configured())
+      UJ.emtiles.configure({ em: cfg.em, res: cfg.res, skipScales: cfg.skipScales || [] });
     var view = await UJ.emtiles.drawSection(cv, {
       centre: pos, w: W, h: H, mip: MIP, zoom: 1, slabOk: true,
       lo: (cfg.window || {}).lo, hi: (cfg.window || {}).hi, tighten: true,
