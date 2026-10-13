@@ -28,12 +28,27 @@
    this rewrite replaced. Their reasoning is kept here, in the code they were reasoning about, and
    re-running them against this file will fail on the anchor rather than silently do something odd.
 
-   ── TWO STREAMS, BECAUSE THEY ARE ABOUT DIFFERENT THINGS ─────────────────────────────────────
-   "The capillary at 240640, 207872, 21360 has an odd pericyte" is about minnie65 and means nothing
-   in H01, so it belongs to this volume. "The pad forgets my colour" is about the tracing pad, which
-   is the same code in all eight tools — scattered across eight forums it would be eight half-dead
-   threads, so the tools stream is ONE conversation, written here and visible from every Jump. They
-   are now the two chips at the top of the index rather than two stacked cards.
+   ── ONE STREAM, FOR ALL EIGHT TOOLS ──────────────────────────────────────────  2026-10-13
+   Søren: *"I want one stream for all the tools... So, there is one discussion forum for all the
+   tools."*  And of the two chips that used to be here: *"For now, let's leave out the choice
+   between this volume and the tools. Also remove the helper text."*
+
+   It was two streams: posts about THIS VOLUME in this dataset's book, posts about THE TOOLS in the
+   primary one. That division was defensible and it was also a filter the reader had to operate
+   before seeing anything, over a forum with a few dozen posts in it.
+
+   THE SHARED STREAM ALREADY EXISTED. backend/Code.gs's forumSS_("tools") returns primarySS(), and
+   every deployment's read takes `tools` rows from that one book — so a post tagged scope:"tools"
+   is, and always was, visible from every Jump. New posts are tagged that way and the index lists
+   every root it was given, whichever stream it came from. Nothing in Code.gs changed.
+
+   AND THEN A POST IS NOT NECESSARILY IN YOUR FRAME. This is the part that needed care rather than
+   deletion. core/jumplink.js resolved coordinates against the READER'S page, which was right when
+   a forum could only hold one tool's posts. δJump's volume centre is 109743, 79665, 8811 in its
+   own 9×9×45 nm frame; read in µJump's 4×4×40 that is inside minnie35, so the link would have
+   opened unrelated cortex under somebody else's coordinate. So a post's places resolve against the
+   tool that WROTE it, from core/tools.js, and a tool whose extent this family cannot verify
+   (ηJump, βJump, ωJump) linkifies nothing rather than linkifying wrongly.
 
    ── A POST IS PROSE, AND THE PROSE IS THE ANCHOR ─────────────────────────────────────────────
    There is no "attach a coordinate" field. core/jumplink.js reads the body and finds the places
@@ -63,9 +78,61 @@ var UJ = UJ || {};
 "use strict";
 
 var POSTS = [], CAN_MODERATE = false, LOADED = false, TOOL = "", VOLUME = "", BUSY = false;
-/* WHAT THE PANEL IS SHOWING. `SCOPE` is which stream's index is listed, `OPEN` the thread in the
-   right-hand pane, `MODE` "new" when that pane is holding a new-thread form instead. */
-var SCOPE = "volume", OPEN = "", MODE = "";
+/* WHAT THE PANEL IS SHOWING. `OPEN` is the thread in the right-hand pane, `MODE` "new" when that
+   pane is holding a new-thread form instead. There is no SCOPE any more: the index lists every
+   root, and `STREAM` is where a new one is written — the primary book, which every deployment
+   reads, so one post reaches every Jump. */
+var OPEN = "", MODE = "";
+var STREAM = "tools";
+
+/* ── WHOSE FRAME A POST'S COORDINATES ARE IN ──────────────────────────────────────────────────
+   The dangerous half of one shared forum. A post from another tool was written in another frame
+   against another volume, and resolving its numbers here would answer a question nobody asked.
+
+   THREE OUTCOMES, AND THE THIRD IS THE ONE THAT MATTERS:
+     our own tool    -> null: this page's jumpLinkHost() is the right one, unchanged behaviour
+     another, known  -> that tool's host, built by core/tools.js from boxes verified in this
+                        repository, so the link opens THAT volume's imagery
+     another, no box -> { none: true }: nothing is linkified. ηJump and βJump read their extents
+                        from the volume at run time and ωJump serves 63 volumes, so there is no
+                        constant here to resolve against — and a guessed box would be the worse
+                        half of core/jumplink.js's own rule. */
+function foreign(tool){
+  var t = String(tool || "");
+  return !!(t && TOOL && t !== TOOL);
+}
+function toolHost(tool){
+  try { if (window.UJ && UJ.tools) return UJ.tools.hostFor(tool); } catch (_e){}
+  return null;
+}
+function linkOpts(tool){
+  if (!foreign(tool)) return null;
+  var h = toolHost(tool);
+  return h ? { host: h } : { none: true };
+}
+/* ── THE BADGE ────────────────────────────────────────────────────────────────────────────────
+   Søren: *"the post should always be marked with the tool you are writing from and with the color
+   code of the tool."*  The colour is var(--tool-accent), set by two CSS rules per tool in
+   core/tools.js rather than by a hex picked here: every one of these pages re-skins live when the
+   theme is toggled, and the forum does not re-render when it does.
+
+   AND WHICH VOLUME, where the tool alone does not say. `volume` is sent with every post from
+   today; backend/Code.gs builds its row from a fixed list of fields and so drops it until one line
+   is added there, after which ωJump's badge names the dataset that was open. Read rather than
+   assumed, so the day it arrives nothing here changes. */
+function toolBadge(p){
+  var k = String((p && p.tool) || "");
+  if (!k) return "";
+  var lab = k, about = "";
+  try {
+    if (window.UJ && UJ.tools){ lab = UJ.tools.label(k); about = UJ.tools.dataset(k) || ""; }
+  } catch (_e){}
+  var vol = String((p && p.volume) || "");
+  return "<span class=\"ftool ftool-" + esc(k) + "\" title=\"Written from " + esc(lab)
+       + (about ? " — " + esc(about) : "") + "\" style=\"color:var(--tool-accent);"
+       + "border:1px solid var(--tool-accent);border-radius:999px;padding:0 6px;font-size:11px;"
+       + "white-space:nowrap\">" + esc(lab) + (vol ? " · " + esc(vol) : "") + "</span>";
+}
 
 function esc(s){
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -74,12 +141,17 @@ function esc(s){
 /* The body, with the places it names made clickable. Falls back to plain escaped text when
    core/jumplink.js is not there: these files deploy one at a time, and a page that arrives before
    the module it wants must lose the links, not the post. */
-function bodyHtml(s){
-  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.html(s); } catch (_e){}
+function bodyHtml(s, tool){
+  var o = linkOpts(tool);
+  if (o && o.none) return esc(s);
+  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.html(s, o || undefined); } catch (_e){}
   return esc(s);
 }
-function hits(s){
-  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.scan(s) || []; } catch (_e){}
+function hits(s, tool){
+  var o = linkOpts(tool);
+  if (o && o.none) return [];
+  try { if (window.UJ && UJ.jumplink) return UJ.jumplink.scan(s, o || undefined) || []; }
+  catch (_e){}
   return [];
 }
 function signedIn(){
@@ -149,6 +221,12 @@ async function send(payload){
   for (var k in payload) body[k] = payload[k];
   body.credential = GOOGLE_CREDENTIAL;
   body.tool = TOOL;
+  /* WHICH VOLUME WAS OPEN. Søren: *"For wJump it should depend which dataset you have open when
+     you enter the discussion."*  ωJump serves 63 and the tool alone does not say which a post is
+     about. Sent from today; backend/Code.gs assembles its row from a fixed list of fields, so it
+     is dropped there until one line is added — and the badge reads it rather than assuming it, so
+     the day the column exists nothing here changes. */
+  if (VOLUME) body.volume = VOLUME;
   try { if (UJ.cfg.backend.ds) body.ds = UJ.cfg.backend.ds; } catch (_e){}
   var text = "";
   try {
@@ -223,8 +301,10 @@ function viewerUrlFor(h){
 /* ── THE THREADS ──────────────────────────────────────────────────────────────────────────────
    A thread is a post with no replyTo, plus everything pointing at it. One level: a reply to a reply
    is still a reply to the thread, which is what every forum discovers it wanted after trying two. */
-function roots(scope){
-  return POSTS.filter(function(p){ return String(p.scope) === scope && !p.replyTo; });
+/* ONE INDEX. The scope a post was written with says which BOOK it lives in, which is the
+   backend's business; it is not a category a reader should have to pick before reading anything. */
+function roots(){
+  return POSTS.filter(function(p){ return !p.replyTo; });
 }
 function repliesOf(pid){
   return POSTS.filter(function(p){ return String(p.replyTo) === String(pid); })
@@ -251,14 +331,15 @@ function titleOf(p){
 }
 
 /* ── THE INDEX ────────────────────────────────────────────────────────────────────────────────
-   Left column. Two chips for the two streams, a button to start something, then one <details> per
-   category with the threads inside it.
+   Left column. A button to start something, then one <details> per category with the threads
+   inside it. The two chips and the paragraph under them went on 2026-10-13: one forum, and a
+   reader should not have to operate a filter before seeing anything.
 
    WHICH GROUPS ARE OPEN. Søren asked for collapsed by default, and that is the rule — with one
    exception, because a panel showing four closed headings and nothing else looks broken: the group
    holding the open thread is open, and on arrival the group holding the newest thread is. */
 function indexHtml(){
-  var rs = roots(SCOPE);
+  var rs = roots();
   var openPost = OPEN ? postById(OPEN) : null;
   var openKind = openPost ? kindOf(openPost) : "";
   var newestKind = "";
@@ -267,11 +348,7 @@ function indexHtml(){
       return lastAt(b).localeCompare(lastAt(a)); })[0];
     newestKind = newest ? kindOf(newest) : "";
   }
-  var chip = function(s, label){
-    return '<button type="button" class="hist-chip fscope' + (SCOPE === s ? " on" : "")
-         + '" data-scope="' + s + '"' + (SCOPE === s ? ' style="border-color:var(--accent);'
-         + 'color:var(--accent)"' : "") + ">" + esc(label) + "</button>";
-  };
+  /* No chip row. The two streams are one index; see the heading above. */
   var groups = KINDS.map(function(k){
     var mine = rs.filter(function(p){ return kindOf(p) === k[0]; })
                  .sort(function(a, b){ return lastAt(b).localeCompare(lastAt(a)); });
@@ -292,23 +369,14 @@ function indexHtml(){
                   + "<span class='hint' style='display:block;font-size:11px'>"
                     + esc(p.authorName || "somebody") + " · " + esc(when(lastAt(p)))
                     + (n ? " · " + n + (n === 1 ? " reply" : " replies") : "")
-                    + (SCOPE === "tools" && p.tool ? " · " + esc(p.tool) : "")
-                  + "</span></button>";
+                  + "</span>"
+                  + (p.tool ? "<span style='display:block;margin-top:2px'>" + toolBadge(p)
+                              + "</span>" : "")
+                  + "</button>";
            }).join("")
          + "</details>";
   }).join("");
   return "<div class='forum-index' style='flex:1 1 230px;min-width:0;max-width:320px'>"
-       + "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px'>"
-         + chip("volume", "This volume") + chip("tools", "The tools") + "</div>"
-       + "<p class='hint' style='margin:0 0 8px'>"
-       + (SCOPE === "tools"
-            ? "Bugs and ideas about the Jump tools themselves. <b>Shared across every Jump</b> "
-              + "— the tracing pad is the same code everywhere, so one conversation about it "
-              + "is worth more than eight."
-            : "Findings, oddities and questions about the cells themselves. Posts here belong to "
-              + "this dataset. Write coordinates and ids straight into the sentence: a reader "
-              + "clicks one and sees the tissue.")
-       + "</p>"
        + "<button type='button' class='idbtn' id='forum_new' style=\"width:auto;padding:3px 12px;"
          + "margin-bottom:8px\">+ New thread</button>"
        + (groups || "<p class='hint'>Nothing here yet.</p>")
@@ -318,7 +386,7 @@ function indexHtml(){
 /* ── ONE POST, IN THE THREAD VIEW ─────────────────────────────────────────────────────────────
    The root and its replies use the same markup; a reply is just indented and has no title. */
 function postHtml(p, isRoot){
-  var n = hits(p.body || "").filter(function(h){
+  var n = hits(p.body || "", p.tool).filter(function(h){
     return h.voxel || h.kind === "root"; }).length;
   var mine = !!p.isMine;
   return "<div class='forumpost' data-pid='" + esc(p.postId) + "' style=\"padding:6px 0;"
@@ -329,10 +397,14 @@ function postHtml(p, isRoot){
          + (isRoot ? esc(kindName(p.kind)) + " · " : "")
          + esc(p.authorName || "somebody") + " · " + esc(when(p.timestamp))
          + (p.editedAt ? " · edited" : "")
-         + (isRoot && String(p.scope) === "tools" && p.tool ? " · from " + esc(p.tool) : "")
+         + (p.tool ? " · " + toolBadge(p) : "")
        + "</div>"
-       + "<div class='forumbody' data-raw='" + esc(p.body || "") + "' style='margin:4px 0'>"
-         + bodyHtml(p.body || "") + "</div>"
+       /* data-tool TRAVELS WITH THE TEXT, because wirePreviews() re-scans data-raw on every click
+          and has to scan it the same way it was rendered. A body whose links were resolved against
+          V1DD and whose clicks resolve against minnie65 is worse than either. */
+       + "<div class='forumbody' data-raw='" + esc(p.body || "") + "' data-tool='"
+         + esc(p.tool || "") + "' style='margin:4px 0'>"
+         + bodyHtml(p.body || "", p.tool) + "</div>"
        + "<div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>"
        + (n > 1 ? "<button type='button' class='hist-chip forumopenall' data-pid='" + esc(p.postId)
                   + "' title=\"Opens every place this post mentions in ONE viewer, as a single "
@@ -387,14 +459,10 @@ function viewHtml(){
   var inner;
   if (MODE === "new"){
     inner = "<h3 style='margin:0 0 2px;font-size:16px'>A new thread</h3>"
-          + "<p class='hint' style='margin:0 0 4px'>In "
-          + (SCOPE === "tools" ? "<b>The tools</b>, where every Jump will see it"
-                               : "<b>this volume</b>") + ".</p>"
-          + composeHtml("forum_" + SCOPE, { kinds: true, rows: 5, go: "Post it",
-              placeholder: SCOPE === "tools"
-                ? "What the tool did, and what you expected."
-                : "What you saw, and where. Write coordinates and ids straight into the sentence "
-                  + "— they become links." });
+          + composeHtml("forum_thread", { kinds: true, rows: 5, go: "Post it",
+              placeholder: "What you saw, and where. Write coordinates and ids straight into the "
+                + "sentence — they become links, in this volume's frame, for readers in every "
+                + "Jump." });
   } else if (OPEN && postById(OPEN)){
     var p = postById(OPEN), kids = repliesOf(OPEN);
     inner = postHtml(p, true)
@@ -414,7 +482,7 @@ function viewHtml(){
    answers, and the page helpfully throws the sentence away. Lifted out before the HTML is replaced
    and put back after, per form. */
 var FORM_DRAFT = {};
-function formIds(){ return ["forum_volume", "forum_tools", "forum_reply"]; }
+function formIds(){ return ["forum_thread", "forum_reply"]; }
 function grabDrafts(){
   formIds().forEach(function(id){
     var b = document.getElementById(id + "_body");
@@ -479,11 +547,39 @@ function wirePreviews(host){
     var open = "";
     [].slice.call(body.querySelectorAll("a[data-jl]")).forEach(function(a){
       a.addEventListener("click", function(ev){
-        var hs = hits(body.dataset.raw || "");
+        var btool = body.dataset.tool || "";
+        var hs = hits(body.dataset.raw || "", btool);
         var h = hs[Number(a.getAttribute("data-jl"))];
         if (!h) return;
         /* A VIEWER LINK KEEPS ITS OLD MEANING: it is already a state somebody built. */
         if (h.kind === "viewer") return;
+        /* ── SOMEBODY ELSE'S VOLUME IS NOT DRAWN HERE ───────────────────────────  2026-10-13
+           The imagery on this page is this page's volume. Drawing it at another tool's voxels
+           would produce a picture of the wrong tissue under the right numbers, with somebody
+           else's sentence as its caption — the most convincing wrong answer in the feature,
+           because it looks like data rather than like a bug. So a foreign place is OFFERED
+           instead: which volume it is in, which Jump it belongs to, and the one link that can
+           show it, built from that tool's own sources. */
+        if (foreign(btool)){
+          ev.preventDefault();
+          ev.stopPropagation();
+          var fh = toolHost(btool), lab = "", fu = "";
+          try {
+            if (window.UJ && UJ.tools) lab = UJ.tools.label(btool);
+            if (fh && UJ.jumplink) fu = UJ.jumplink.url([h], { host: fh }) || "";
+          } catch (_fe){}
+          open = "";
+          UJ.empreview.close(slot);
+          slot.innerHTML = "<p class='forumelsewhere' style='font-size:12px;color:var(--mut);"
+            + "margin:6px 0;line-height:1.5'>That is a place in <b>"
+            + esc(h.label || h.volume || "another volume") + "</b>, which is "
+            + esc(lab || btool) + "’s. The imagery on this page is a different block of tissue, "
+            + "so it is not drawn here. "
+            + (fu ? "<a href='" + esc(fu) + "' target='_blank' rel='noopener'>Open it in "
+                    + "Neuroglancer</a>." : "")
+            + "</p>";
+          return;
+        }
         /* THE IDS ARE THE POST'S, not the link's. Søren: "if a nucleus or root ID is written, then
            the EM should also show segmentation." A sentence naming a place and a cell is asking for
            one picture of the two, and which word came first does not matter. */
@@ -566,6 +662,9 @@ function wireComposePreview(id){
 function render(){
   var host = document.getElementById("forumCard");
   if (!host) return;
+  /* One <style> for every tool's accent, added once. Idempotent in core/tools.js, so this does not
+     have to remember whether it has already run. */
+  try { if (window.UJ && UJ.tools && UJ.tools.styleEl) UJ.tools.styleEl(); } catch (_e){}
   grabDrafts();
   host.innerHTML = "<div class='forum-wrap' style=\"display:flex;gap:14px;align-items:flex-start;"
                  + "flex-wrap:wrap\">" + indexHtml() + viewHtml() + "</div>";
@@ -578,13 +677,7 @@ function wire(){
   if (!host) return;
   var byId = function(id){ return document.getElementById(id); };
 
-  [].slice.call(host.querySelectorAll(".fscope")).forEach(function(b){
-    b.addEventListener("click", function(){
-      if (SCOPE === b.dataset.scope) return;
-      SCOPE = b.dataset.scope; OPEN = ""; MODE = "";
-      render();
-    });
-  });
+  /* Nothing to wire above the index: one stream, no chooser. */
   [].slice.call(host.querySelectorAll(".fthread")).forEach(function(b){
     b.addEventListener("click", function(){
       OPEN = b.dataset.pid; MODE = "";
@@ -635,10 +728,14 @@ function wire(){
       await load(true); render();
     });
   };
-  composer("forum_" + SCOPE, function(){ return { type: "forum_post", scope: SCOPE }; });
+  composer("forum_thread", function(){ return { type: "forum_post", scope: STREAM }; });
+  /* A REPLY GOES TO THE SHARED STREAM TOO, even when the post it answers is an old `volume` one.
+     Code.gs writes a scope:"volume" row into the DEPLOYMENT'S OWN book, so a reply written in
+     δJump to a µJump thread would land where no µJump reader would ever see it. The read
+     concatenates both books and joins on replyTo, so a thread whose root and replies live in
+     different books reads as one thread. */
   composer("forum_reply", function(){
-    var p = postById(OPEN) || {};
-    return { type: "forum_post", scope: p.scope || SCOPE, kind: "reply", replyTo: OPEN };
+    return { type: "forum_post", scope: STREAM, kind: "reply", replyTo: OPEN };
   });
 
   wirePreviews(host);
@@ -648,7 +745,9 @@ function wire(){
     b.addEventListener("click", function(){
       var p = postById(b.dataset.pid);
       if (!p || !window.UJ || !UJ.jumplink) return;
-      var u = UJ.jumplink.url(UJ.jumplink.scan(p.body || ""));
+      var o = linkOpts(p.tool);
+      if (o && o.none) return;
+      var u = UJ.jumplink.url(UJ.jumplink.scan(p.body || "", o || undefined), o || undefined);
       if (u) window.open(u, "_blank", "noopener");
     });
   });
@@ -717,7 +816,6 @@ async function init(opts){
 UJ.forum = { init: init, render: render,
              _foundSay: foundSay, _postHtml: postHtml, _indexHtml: indexHtml,
              _open: function(pid){ OPEN = pid || ""; MODE = ""; render(); },
-             _scope: function(s){ if (s){ SCOPE = s; OPEN = ""; MODE = ""; } return SCOPE; },
              _new: function(){ MODE = "new"; OPEN = ""; render(); },
              _set: function(p, m){ POSTS = p || []; CAN_MODERATE = !!m; LOADED = true; } };
 })();

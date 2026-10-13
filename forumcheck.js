@@ -1,7 +1,12 @@
-/* The Discussion tab: two streams, and a post that is prose.                       2026-10-01
+/* The Discussion tab: one stream, and a post that is prose.                        2026-10-01
+                                                                     (one stream, 2026-10-13)
 
    Gary: *"a separate space where users can make suggestions for new features, log bug reports, or
-   even discuss interesting findings they've noticed."*  Søren: *"one forum for each jump."*
+   even discuss interesting findings they've noticed."*  Søren: *"one forum for each jump."* — and
+   then, on 2026-10-13: *"I want one stream for all the tools... So, there is one discussion forum
+   for all the tools."*  The chooser this file was written around is gone; what one shared stream
+   has to get right instead — a post's coordinates belonging to the tool that wrote them — is
+   forumonecheck.js, because it is a different subject and a longer one.
 
    The backend end of this contract is backend/gs_harness_forum.js. This is the page: that the tab
    exists and is wired, that the forum is NOT fetched until somebody opens it, that a post's body is
@@ -160,17 +165,16 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
     const b2 = view ? view.getBoundingClientRect() : null;
     return { idx: !!idx, view: !!view,
              leftOf: !!(a && b2 && a.left < b2.left),
-             chips: document.querySelectorAll("#forumCard .fscope").length,
              text: document.getElementById("forumCard").textContent };
   });
   ok(layout.idx && layout.view, "there is an index and a view",
      "index " + layout.idx + ", view " + layout.view);
   ok(layout.leftOf, "...and the index really is the left-hand one");
-  ok(layout.chips === 2, "two streams, as two chips rather than two stacked cards", layout.chips);
-  ok(/This volume/.test(layout.text) && /The tools/.test(layout.text),
-     "...named for what they are about");
-  ok(/shared across every/i.test(layout.text) || /This volume/.test(layout.text),
-     "...and the blurb belongs to the one you are looking at");
+  ok(!/This volume|The tools|shared across every/i.test(layout.text),
+     "...and there is nothing above it to choose between, nor a paragraph explaining the choice "
+     + "— Søren, 2026-10-13: \"let's leave out the choice between this volume and the tools. Also "
+     + "remove the helper text.\"",
+     (layout.text.match(/This volume|The tools|shared across every/i) || ["nothing"])[0]);
 
   /* ── CATEGORISED, COLLAPSED, AND OPENED IN THE VIEW ─────────────────────────────────────
      Søren: "it is fine to categorise them in questions, bugs, etc. but they should be collapsed by
@@ -188,7 +192,7 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
       { postId: "r1", scope: "volume", kind: "reply", body: "me too", authorName: "B",
         timestamp: "2026-09-04T00:00:00Z", replyTo: "q1", isMine: false }
     ], false);
-    UJ.forum._scope("volume"); UJ.forum.render();
+    UJ.forum.render();
     const cats = [].slice.call(document.querySelectorAll("#forumCard .fcat"));
     return { cats: cats.map(c => c.dataset.kind),
              open: cats.filter(c => c.open).map(c => c.dataset.kind),
@@ -238,28 +242,30 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
   ok(/\bon\b/.test(opened.marked), "...and the row is marked as the one you are reading",
      opened.marked);
 
-  console.log("\nthe two streams are separate indexes");
+  /* WHAT THE SCOPE MEANS NOW. It says which BOOK a row lives in, which is the backend's
+     business; it was never a thing a reader should have had to pick before seeing anything. Both
+     kinds of row are listed together, and the badge is what says where a post came from. */
+  console.log("\nboth books' posts are one index");
   const scoped = await p.evaluate(() => {
     UJ.forum._set([
       { postId: "v1", scope: "volume", kind: "finding", title: "In the data", body: "x",
-        authorName: "A", timestamp: "2026-10-01T00:00:00Z", replyTo: "", isMine: false },
+        tool: "ujump", authorName: "A", timestamp: "2026-10-01T00:00:00Z", replyTo: "",
+        isMine: false },
       { postId: "t1", scope: "tools", kind: "bug", title: "In the pad", body: "y", tool: "wjump",
         authorName: "B", timestamp: "2026-10-01T00:00:00Z", replyTo: "", isMine: false }
     ], false);
-    UJ.forum._scope("volume"); UJ.forum.render();
-    const vol = [].slice.call(document.querySelectorAll("#forumCard .fthread"))
-                  .map(x => x.dataset.pid);
-    document.querySelector("#forumCard .fscope[data-scope='tools']").click();
-    const tools = [].slice.call(document.querySelectorAll("#forumCard .fthread"))
-                    .map(x => x.dataset.pid);
-    return { vol: vol, tools: tools,
+    UJ.forum.render();
+    [].slice.call(document.querySelectorAll("#forumCard details")).forEach(d => { d.open = true; });
+    return { pids: [].slice.call(document.querySelectorAll("#forumCard .fthread"))
+                      .map(x => x.dataset.pid).sort(),
              says: document.getElementById("forumCard").textContent };
   });
-  ok(scoped.vol.join(",") === "v1", "this volume's index holds only its own", scoped.vol.join(","));
-  ok(scoped.tools.join(",") === "t1", "...and the tools index only the tools' ones",
-     scoped.tools.join(","));
-  ok(/wjump/.test(scoped.says),
-     "...which still say which tool they were written from, read from any Jump");
+  ok(scoped.pids.join(",") === "t1,v1",
+     "a post written to this dataset's book and one written to the shared one are listed in the "
+     + "same index", scoped.pids.join(","));
+  ok(/ωJump/.test(scoped.says),
+     "...each saying which tool it was written from, read from any Jump",
+     (scoped.says.match(/[µδπλημωχ]Jump/g) || ["none"]).join(" "));
 
   /* ── A POST IS PROSE, AND THE PROSE IS THE ANCHOR ────────────────────────────────────────── */
   console.log("\na post's body is rendered through the linkifier");
@@ -488,14 +494,10 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
   const out = await p.evaluate(() => {
     GOOGLE_VERIFIED = false; GOOGLE_CREDENTIAL = "";
     UJ.forum._set([], false);
-    /* BACK TO THE VOLUME STREAM. The section above left the panel on "The tools", and the compose
-       box is named for the stream it is in -- so without this these assertions would be about
-       forum_tools_* while looking for forum_volume_*. */
-    UJ.forum._scope("volume");
     UJ.forum._new();
-    const go = document.getElementById("forum_volume_go");
-    return { body: !!document.getElementById("forum_volume_body"),
-             title: !!document.getElementById("forum_volume_title"),
+    const go = document.getElementById("forum_thread_go");
+    return { body: !!document.getElementById("forum_thread_body"),
+             title: !!document.getElementById("forum_thread_title"),
              btn: go ? go.textContent : "(no button)" };
   });
   ok(out.body && out.title, "signed OUT, the box and the title are still there",
@@ -504,16 +506,16 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
 
   console.log("\nand what you typed survives signing in");
   const kept = await p.evaluate(async () => {
-    document.getElementById("forum_volume_body").value = "Half a sentence about ";
-    document.getElementById("forum_volume_title").value = "My title";
+    document.getElementById("forum_thread_body").value = "Half a sentence about ";
+    document.getElementById("forum_thread_title").value = "My title";
     /* Google answers, the way it does: the variables flip and nothing is dispatched. */
     GOOGLE_VERIFIED = true; GOOGLE_CREDENTIAL = "tok";
     window.dispatchEvent(new Event("focus"));
     await new Promise(r => setTimeout(r, 900));
-    const go = document.getElementById("forum_volume_go");
+    const go = document.getElementById("forum_thread_go");
     return { btn: go ? go.textContent : "",
-             body: (document.getElementById("forum_volume_body") || {}).value,
-             title: (document.getElementById("forum_volume_title") || {}).value };
+             body: (document.getElementById("forum_thread_body") || {}).value,
+             title: (document.getElementById("forum_thread_title") || {}).value };
   });
   ok(/post it/i.test(kept.btn),
      "the button becomes Post it WITHOUT a reload, which is the whole bug", kept.btn);
@@ -526,7 +528,7 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
     GOOGLE_VERIFIED = false; GOOGLE_CREDENTIAL = "";
     window.dispatchEvent(new Event("focus"));
     await new Promise(r => setTimeout(r, 900));
-    const go = document.getElementById("forum_volume_go");
+    const go = document.getElementById("forum_thread_go");
     return go ? go.textContent : "";
   });
   ok(/sign in/i.test(lapsed),
@@ -536,19 +538,20 @@ const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what
   const posted = await p.evaluate(async () => {
     GOOGLE_VERIFIED = true; GOOGLE_CREDENTIAL = "tok";
     UJ.forum._set([], false);
-    UJ.forum._scope("volume");
     UJ.forum._new();
-    document.getElementById("forum_volume_body").value = "A thing I saw.";
-    document.getElementById("forum_volume_title").value = "A title";
-    document.getElementById("forum_volume_kind").value = "idea";
-    document.getElementById("forum_volume_go").click();
+    document.getElementById("forum_thread_body").value = "A thing I saw.";
+    document.getElementById("forum_thread_title").value = "A title";
+    document.getElementById("forum_thread_kind").value = "idea";
+    document.getElementById("forum_thread_go").click();
     await new Promise(r => setTimeout(r, 600));
     return true;
   });
   ok(posted && forumPosts.length === 1, "one post was sent", forumPosts.length);
   const d = forumPosts[0] || {};
   ok(d.type === "forum_post", "...of the right type", d.type);
-  ok(d.scope === "volume", "...in the stream it was written in", d.scope);
+  ok(d.scope === "tools",
+     "...in the ONE stream: forumSS_(\"tools\") is the primary book and every deployment's read "
+     + "takes its rows, so a post written here is read from every Jump", d.scope);
   ok(d.kind === "idea" && d.title === "A title" && d.body === "A thing I saw.",
      "...carrying what the box held", [d.kind, d.title, d.body].join(" | "));
   ok(d.tool === "ujump", "...and which tool it came from", d.tool);

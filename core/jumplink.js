@@ -139,8 +139,18 @@ var RE_ROOT   = /\b\d{18}\b/g;
    as one and write the word. */
 var RE_CUED   = /(^|[^0-9A-Za-z_])((?:nucleus|nuclei|nuc|cell|soma|id)\s*[:#.]?\s*|#\s*)(\d{3,8})\b/gi;
 
-function scan(text){
-  var s = String(text == null ? "" : text), host = hostOf();
+/* ── WHOSE PAGE DECIDES WHERE A COORDINATE IS ──────────────────────────────────  2026-10-13
+   Søren: *"You should be able to share a coordinate from xJump in a conversation with one from
+   uJump."*  Until today this file had one answer to "which volumes": window.jumpLinkHost(), the
+   page doing the reading. One forum per tool made that correct. One shared forum makes it a way
+   to publish a claim nobody made -- δJump's volume centre, read in µJump's frame, is inside
+   minnie35, so the link would open mouse visual cortex under a V1DD coordinate.
+
+   So `opts.host` is the author's page, handed in by core/forum.js from core/tools.js. No host is
+   the old behaviour, unchanged, which is what every other caller still relies on. */
+function scan(text, opts){
+  var s = String(text == null ? "" : text);
+  var host = (opts && opts.host) ? opts.host : hostOf();
   var hits = [], taken = [];
   var free = function(a, b){
     for (var i = 0; i < taken.length; i++)
@@ -216,10 +226,13 @@ function titleOf(h){
    module computed -- never from a slice of the author's text used as markup. */
 function html(text, opts){
   var s = String(text == null ? "" : text);
-  var hits;
-  try { hits = scan(s); } catch (_e){ hits = []; }
-  if (!hits.length) return esc(s);
   var o = opts || {}, cls = o.className || "jumplink";
+  var hits;
+  /* THE SAME OPTIONS THE CALLER GAVE, so the anchors, their titles and their indices all come
+     from one scan of one host. Scanning here against the reader and resolving on click against
+     the author would put the two out of step by exactly the hits one of them refuses. */
+  try { hits = scan(s, o); } catch (_e){ hits = []; }
+  if (!hits.length) return esc(s);
   var out = [], at = 0;
   hits.forEach(function(h, i){
     out.push(esc(s.slice(at, h.start)));
@@ -241,9 +254,9 @@ function html(text, opts){
    id came from, and a viewer simply does not find an id that is not in a layer -- so listing it in
    both shows the cell wherever it lives, where guessing would show it half the time. */
 function state(hits, opts){
-  var host = hostOf();
-  if (!host) return null;
   var o = opts || {};
+  var host = o.host || hostOf();
+  if (!host) return null;
   var list = (hits || []).filter(function(h){ return h && h.voxel; });
   var pos = (o.position || (list[0] && list[0].voxel) || null);
   var roots = (hits || []).filter(function(h){ return h.kind === "root"; })
@@ -319,7 +332,7 @@ function state(hits, opts){
 }
 
 function url(hits, opts){
-  var host = hostOf();
+  var host = (opts && opts.host) ? opts.host : hostOf();
   if (!host) return "";
   /* A pasted viewer link is already a state somebody built, and opening OUR state instead would
      throw away whatever they had set up. Theirs wins. */
@@ -336,7 +349,7 @@ function url(hits, opts){
 function wire(el, text, opts){
   if (!el) return;
   el.innerHTML = html(text, opts);
-  var hits = scan(text);
+  var hits = scan(text, opts);
   [].slice.call(el.querySelectorAll("a[data-jl]")).forEach(function(a){
     a.addEventListener("click", function(ev){
       ev.preventDefault();

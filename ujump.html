@@ -611,6 +611,9 @@ document.addEventListener("DOMContentLoaded", function(){
 <!-- A coordinate becomes a picture: the EM here, its scale bar, and the cell in 3D beside it
      -- core/empreview.js, 2026-10-02. Before core/forum.js, which opens one per coordinate. -->
 <script src="core/empreview.js"></script>
+<!-- THE REGISTRY OF JUMPS, before the forum, which asks it which tool a post came from and
+     what that tool's volumes are. core/jumplink.js does not read it: it is handed a host. -->
+<script src="core/tools.js"></script>
 <script src="core/forum.js"></script>
 <script src="core/panel.js"></script>
 <script src="core/tree.js"></script>
@@ -634,7 +637,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-12 20:43</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:09</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
