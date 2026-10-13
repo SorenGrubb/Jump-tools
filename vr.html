@@ -80,8 +80,9 @@
   <div class="ctl"><button id="copyBtn">Copy headset link</button></div>
   <div class="help">
     <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
-    <b>In VR:</b> trigger = pick a cell (again on nothing = all) · grip = grab and move ·
-    both grips = resize · thumbstick = turn / zoom · A or X = see-through · B or Y = reset.
+    <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
+    right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
+    A = see-through · B = reset · X = only the picked cell · <b>Y = menu</b> (layers, vessels, size, cells, exit VR).
   </div>
 </div>
 
@@ -222,7 +223,7 @@ function resetCamera(){ controls.target.copy(HOME); camera.position.set(0, 1.45,
 const listEl = document.getElementById("list");
 const subEl = document.getElementById("sub");
 const triEl = document.getElementById("tri");
-let SEE_THROUGH = false, SHOW_NUC = true, SELECTED = -1;
+let SEE_THROUGH = false, SHOW_NUC = true, SELECTED = -1, ISOLATE = false;
 let LOAD_TOKEN = 0;
 
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
@@ -413,8 +414,11 @@ async function buildVessels(){
   }
   if (!idx.length){ ctxNote.textContent = "No vessels inside the box around these cells."; updateTri(); return; }
   const g = geometryFrom(pos, idx);
+  /* OPAQUE. Søren, after the first session in the headset: "The vasculature should not be
+     transparent, that confuses more than it helps." In VR you can lean round a vessel, which is
+     what see-through was standing in for on a flat screen. */
   VASC.mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: "#b03a48", roughness: 0.6,
-    transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
+    side: THREE.DoubleSide }));
   VASC.mesh.renderOrder = 2; VASC.mesh.userData.context = true;
   VASC.tris = idx.length / 3;
   content.add(VASC.mesh);
@@ -479,16 +483,20 @@ async function buildLayers(){
   });
   LAYERS.group = grp; content.add(grp);
 }
-document.getElementById("layerBtn").addEventListener("click", e => { e.target.classList.toggle("on"); buildLayers(); });
+function layersOn(){ return document.getElementById("layerBtn").classList.contains("on"); }
+function setLayers(v){ document.getElementById("layerBtn").classList.toggle("on", v); buildLayers(); }
+function setVessels(mode){ document.getElementById("vascSel").value = mode; buildVessels(); }
+document.getElementById("layerBtn").addEventListener("click", () => setLayers(!layersOn()));
 document.getElementById("vascSel").addEventListener("change", buildVessels);
 
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
     const dim = SELECTED >= 0 && SELECTED !== c.i;
+    const gone = c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED !== c.i);
     if (c.mesh){
       const m = c.mesh.material;
-      c.mesh.visible = !c.hidden;
+      c.mesh.visible = !gone;
       const glass = SEE_THROUGH || dim;
       m.transparent = glass;
       m.opacity = dim ? 0.08 : (SEE_THROUGH ? 0.35 : 1);
@@ -498,7 +506,7 @@ function applyLook(){
       m.needsUpdate = true;
     }
     if (c.nucMesh){
-      c.nucMesh.visible = !c.hidden && SHOW_NUC;
+      c.nucMesh.visible = !gone && SHOW_NUC;
       c.nucMesh.material.transparent = dim; c.nucMesh.material.opacity = dim ? 0.12 : 1;
       c.nucMesh.material.depthWrite = !dim; c.nucMesh.material.needsUpdate = true;
     }
@@ -510,9 +518,11 @@ function applyLook(){
 function select(i){ SELECTED = i; applyLook(); }
 
 document.getElementById("detail").addEventListener("change", loadAll);
-document.getElementById("nucBtn").addEventListener("click", e => { SHOW_NUC = !SHOW_NUC; e.target.classList.toggle("on", SHOW_NUC); applyLook(); });
+function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
+document.getElementById("nucBtn").addEventListener("click", () => setNuclei(!SHOW_NUC));
+function syncVisChecks(){ listEl.querySelectorAll("[data-vis]").forEach(el => { el.checked = !CELLS[+el.dataset.vis].hidden; }); }
 const glassBtn = document.getElementById("glassBtn");
-function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("on", SEE_THROUGH); applyLook(); }
+function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("on", SEE_THROUGH); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true; }
 glassBtn.addEventListener("click", toggleGlass);
 document.getElementById("resetBtn").addEventListener("click", () => { resetStage(); resetCamera(); });
 document.getElementById("copyBtn").addEventListener("click", e => {
@@ -574,7 +584,12 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {} };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectstart", () => pickWith(h));
+  ctl.addEventListener("selectstart", () => {
+    const k = menuRowUnder(h);
+    if (k >= 0){ MENU.rows[k].act(); MENU.dirty = true; return; }
+    if (MENU.open) return;                     // pointing past the menu does nothing
+    pickWith(h);
+  });
   ctl.addEventListener("squeezestart", () => { h.squeezing = true; grabStart(); });
   ctl.addEventListener("squeezeend", () => { h.squeezing = false; grabStart(); });
   return h;
@@ -621,36 +636,175 @@ function grabUpdate(){
 }
 
 /* Thumbstick and face buttons, read every frame from the gamepad. */
+/* THE STICKS (2026-10-13, after the first headset session).
+   Right stick, unchanged because Søren liked it: left/right turns the collection about the
+   vertical, up/down resizes it.
+   Left stick: up/down TILTS it about the horizontal axis across your view -- the partner of the
+   right stick's turn, so between them any side can be brought to face you. Left/right steps to
+   the previous / next cell: a flick, not a hold, and the picked cell is highlighted with its
+   label, which is the way to go through a filter result one cell at a time.
+   Buttons: A see-through · B reset · X isolate the picked cell · Y the menu. */
+const _ax = new THREE.Vector3(), _fw = new THREE.Vector3();
+function horizontalAxis(){
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  cam.getWorldDirection(_fw); _fw.y = 0;
+  if (_fw.lengthSq() < 1e-6) _fw.set(0, 0, -1);
+  _fw.normalize();
+  return _ax.set(-_fw.z, 0, _fw.x);            // right-hand vector, level with the floor
+}
+function stepCell(dir){
+  const shown = CELLS.filter(c => c.mesh && !c.hidden).map(c => c.i);
+  if (!shown.length) return;
+  const at = shown.indexOf(SELECTED);
+  const next = at < 0 ? (dir > 0 ? shown[0] : shown[shown.length - 1])
+                      : shown[(at + dir + shown.length) % shown.length];
+  select(next);
+}
 function sticks(dt){
   for (const h of hands){
     const gp = h.source && h.source.gamepad; if (!gp) continue;
+    const left = h.source.handedness === "left";
     const ax = gp.axes.length >= 4 ? [gp.axes[2], gp.axes[3]] : [gp.axes[0] || 0, gp.axes[1] || 0];
-    if (!grab){
+    if (!grab && !MENU.open){
       if (Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15) USER_MOVED = true;
-      if (Math.abs(ax[0]) > 0.15) stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -ax[0] * 1.6 * dt);
-      if (Math.abs(ax[1]) > 0.15){
-        const s = THREE.MathUtils.clamp(stage.scale.x * Math.exp(-ax[1] * 1.2 * dt), FIT_SCALE * 0.05, FIT_SCALE * 400);
-        stage.scale.setScalar(s);
+      if (!left){
+        if (Math.abs(ax[0]) > 0.15) stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -ax[0] * 1.6 * dt);
+        if (Math.abs(ax[1]) > 0.15){
+          const s = THREE.MathUtils.clamp(stage.scale.x * Math.exp(-ax[1] * 1.2 * dt), FIT_SCALE * 0.05, FIT_SCALE * 400);
+          stage.scale.setScalar(s);
+        }
+      } else {
+        if (Math.abs(ax[1]) > 0.15) stage.rotateOnWorldAxis(horizontalAxis(), ax[1] * 1.6 * dt);
+        /* A flick: fire once when the stick passes 0.7, re-arm when it comes back under 0.3. */
+        if (Math.abs(ax[0]) > 0.7 && !h.flicked){ h.flicked = true; stepCell(ax[0] > 0 ? 1 : -1); }
+        if (Math.abs(ax[0]) < 0.3) h.flicked = false;
       }
     }
     /* buttons[4] = A / X, buttons[5] = B / Y on Quest Touch controllers (xr-standard mapping). */
     const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed), b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);
-    if (b4 && !h.prevBtn[4]) toggleGlass();
-    if (b5 && !h.prevBtn[5]) resetStage();
+    if (b4 && !h.prevBtn[4]){ if (left) toggleIsolate(); else toggleGlass(); }
+    if (b5 && !h.prevBtn[5]){ if (left) toggleMenu(); else { resetStage(); } }
     h.prevBtn[4] = b4; h.prevBtn[5] = b5;
   }
 }
 
+/* ── isolate: only the picked cell, everything else hidden ─────────────────── */
+function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
+
+/* ── the menu, in VR ─────────────────────────────────────────────────────────
+   Y on the left controller opens it in front of you; point with either controller and pull the
+   trigger to choose. While it is open the trigger works the menu, not the cells, and the sticks
+   do nothing, so nothing moves behind it. Drawn on a canvas, so every row is just text and the
+   hit test is one raycast against one plane. */
+const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: -1, dirty: true };
+const MENU_W = 1024, ROW_H = 64, MENU_PAD = 24;
+function menuRows(){
+  const rows = [];
+  const allShown = CELLS.every(c => !c.hidden);
+  rows.push({ head: "Show" });
+  rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
+  rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
+  rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
+  const vm = document.getElementById("vascSel").value;
+  rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume (heavy)" })[vm],
+              on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
+  rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
+  rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
+  rows.push({ head: "Size" });
+  rows.push({ label: "Tabletop", act: () => setSize(1) });
+  rows.push({ label: "Room-sized", act: () => setSize(6) });
+  rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
+  rows.push({ label: "Reset position", act: resetStage });
+  if (CELLS.length){
+    rows.push({ head: "Cells (trigger = show / hide)" });
+    CELLS.slice(0, 14).forEach(c => rows.push({ label: c.label, sub: c.root, swatch: c.colour, on: !c.hidden,
+      act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); } }));
+  }
+  rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
+  return rows;
+}
+function drawMenu(){
+  MENU.rows = menuRows();
+  const H = MENU_PAD * 2 + MENU.rows.length * ROW_H;
+  if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
+  const cv = MENU.canvas, g = MENU.ctx;
+  if (cv.width !== MENU_W || cv.height !== H){
+    cv.width = MENU_W; cv.height = H;
+    if (MENU.tex){ MENU.tex.dispose(); MENU.tex = null; }
+    if (MENU.mesh){ MENU.mesh.geometry.dispose(); MENU.mesh.geometry = new THREE.PlaneGeometry(0.5, 0.5 * H / MENU_W); }
+  }
+  g.clearRect(0, 0, MENU_W, H);
+  g.fillStyle = "rgba(13,17,23,0.94)"; g.strokeStyle = "#30363d"; g.lineWidth = 6;
+  g.beginPath(); g.roundRect(3, 3, MENU_W - 6, H - 6, 28); g.fill(); g.stroke();
+  MENU.rows.forEach((r, k) => {
+    const y = MENU_PAD + k * ROW_H;
+    if (r.head){ g.fillStyle = "#8b949e"; g.font = "600 30px system-ui, sans-serif"; g.fillText(r.head.toUpperCase(), 40, y + 44); return; }
+    if (k === MENU.hover){ g.fillStyle = "rgba(63,185,80,0.18)"; g.fillRect(16, y + 2, MENU_W - 32, ROW_H - 4); }
+    let x = 40;
+    if (r.on !== undefined){
+      g.fillStyle = r.on ? "#3fb950" : "#30363d"; g.beginPath(); g.roundRect(x, y + 16, 64, 32, 16); g.fill();
+      g.fillStyle = "#e6edf3"; g.beginPath(); g.arc(r.on ? x + 48 : x + 16, y + 32, 12, 0, 7); g.fill();
+      x += 88;
+    }
+    if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 20, 24, 24); x += 40; }
+    g.fillStyle = r.exit ? "#f0883e" : "#e6edf3"; g.font = "40px system-ui, sans-serif";
+    g.fillText(r.label, x, y + 46, MENU_W - x - 40);
+  });
+  if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
+  MENU.tex.needsUpdate = true;
+  if (!MENU.mesh){
+    MENU.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5 * H / MENU_W),
+      new THREE.MeshBasicMaterial({ map: MENU.tex, transparent: true, depthTest: false }));
+    MENU.mesh.renderOrder = 30;
+  }
+  MENU.dirty = false;
+}
+function toggleMenu(){
+  MENU.open = !MENU.open;
+  if (MENU.open){
+    drawMenu();
+    /* Half a metre in front of your face, level, turned to face you. */
+    const cam = renderer.xr.getCamera(), p = new THREE.Vector3(), d = new THREE.Vector3();
+    cam.getWorldPosition(p); cam.getWorldDirection(d); d.y = 0; d.normalize();
+    MENU.mesh.position.copy(p).addScaledVector(d, 0.55); MENU.mesh.position.y -= 0.1;
+    MENU.mesh.lookAt(p.x, MENU.mesh.position.y, p.z);
+    scene.add(MENU.mesh);
+  } else if (MENU.mesh) scene.remove(MENU.mesh);
+}
+const _uv = new THREE.Raycaster();
+function menuRowUnder(h){
+  if (!MENU.open || !MENU.mesh) return -1;
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  _uv.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld);
+  _uv.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  const hit = _uv.intersectObject(MENU.mesh, false)[0];
+  if (!hit || !hit.uv) return -1;
+  const py = (1 - hit.uv.y) * MENU.canvas.height, k = Math.floor((py - MENU_PAD) / ROW_H);
+  return k >= 0 && k < MENU.rows.length && !MENU.rows[k].head ? k : -1;
+}
+function menuFrame(){
+  if (!MENU.open) return;
+  let hv = -1;
+  for (const h of hands){ const k = menuRowUnder(h); if (k >= 0){ hv = k; break; } }
+  if (hv !== MENU.hover){ MENU.hover = hv; MENU.dirty = true; }
+  if (MENU.dirty) drawMenu();
+}
+function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
+
 /* ── the help card on the left hand, in VR only ───────────────────────────── */
-const helpCard = textSprite(["Controls", "Trigger: pick a cell", "Grip: grab · both grips: resize",
-                             "Stick: turn / zoom", "A/X: see-through · B/Y: reset"], { width: 0.16 });
+const helpCard = textSprite(["Controls", "Trigger: pick a cell · Y: menu", "Grip: grab · both grips: resize",
+                             "Right stick: turn / zoom", "Left stick: tilt · flick = next cell",
+                             "A: see-through · B: reset · X: only picked"], { width: 0.17 });
 helpCard.position.set(0, 0.09, -0.02);
 renderer.xr.addEventListener("sessionstart", () => {
   const left = hands.find(h => h.source && h.source.handedness === "left") || hands[0];
   left.grip.add(helpCard);
   resetStage();
 });
-renderer.xr.addEventListener("sessionend", () => { if (helpCard.parent) helpCard.parent.remove(helpCard); });
+renderer.xr.addEventListener("sessionend", () => {
+  if (helpCard.parent) helpCard.parent.remove(helpCard);
+  if (MENU.open) toggleMenu();
+});
 
 /* ── the VR button ────────────────────────────────────────────────────────── */
 const vrBtn = VRButton.createButton(renderer);
@@ -674,7 +828,7 @@ document.getElementById("vrslot").appendChild(vrBtn);
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
-  if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); }
+  if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); menuFrame(); }
   else controls.update();
   placeLabel();
   renderer.render(scene, camera);
@@ -689,7 +843,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
