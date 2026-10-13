@@ -140,6 +140,57 @@ const nucOf = (file) => {
    minnie35 do, on purpose — but a coordinate at the CENTRE of one volume landing inside a
    different tool's box is worth knowing about, because it is the case where resolving against the
    reader instead of the author draws the wrong tissue and says nothing. */
+/* ── THE EM WINDOW IS THAT PAGE'S OWN ────────────────────────────────────────────────────────
+   core/emtiles.js stretches [lo,hi] to black-white and defaults to minnie65's 86/172. V1DD's
+   tissue is a band 29 counts wide (115–144); drawn with µJump's window it is a grey slab. A
+   window copied wrong is not an error anywhere — it is a picture of the right tissue that reads
+   as a broken reader, which is a day's debugging. So the numbers are read back out of the pages
+   rather than trusted here. */
+console.log("\neach EM window is the one its own page uses");
+T.all().forEach(t => {
+  if (!t.emWindow){
+    ok(t.key === "wjump",
+       T.label(t.key) + " has no EM window — only ωJump may be without one, because its sixty-three "
+       + "volumes include uint16 blocks whose band is nowhere near the others'", t.key);
+    return;
+  }
+  let src = "";
+  try { src = fs.readFileSync(page_(t.page), "utf8"); } catch (e){ src = ""; }
+  if (!src){ console.log("  --   " + t.page + " is not here to read"); return; }
+  const pat = new RegExp("range:\\s*\\[\\s*" + t.emWindow.lo + "\\s*,\\s*" + t.emWindow.hi
+                         + "\\s*\\]|EM_WINDOW\\s*=\\s*\\{\\s*lo:\\s*" + t.emWindow.lo
+                         + "\\s*,\\s*hi:\\s*" + t.emWindow.hi + "|em_range:\\s*\\[\\s*"
+                         + t.emWindow.lo + "\\s*,\\s*" + t.emWindow.hi + "\\s*\\]");
+  ok(pat.test(src), T.label(t.key) + "'s window " + t.emWindow.lo + "–" + t.emWindow.hi
+     + " is the one " + t.page + " sets", pat.test(src) ? "matched" : "not found in the page");
+});
+
+console.log("\nand a host for the picture is built out of the same entry");
+["ujump", "djump", "pjump", "ljump", "xjump"].forEach(k => {
+  const h = T.emHostFor(k);
+  ok(!!(h && h.em && h.res && h.window && typeof h.viewerUrl === "function"),
+     T.label(k) + "'s preview host has imagery, a frame and a window",
+     h ? (h.volume + " · " + h.window.lo + "–" + h.window.hi) : "null");
+});
+/* ── AND THE THREE WITHOUT A BOX HAVE NO PICTURE EITHER ──────────────────────────────────────
+   Worth stating plainly, because the two requirements are NOT the same and it would be easy to
+   assume they are: resolving a coordinate needs a BOX, drawing one needs IMAGERY. ηJump and
+   βJump have imagery and no verified box — so nothing in their posts becomes a link, so there is
+   never anything to click, so the picture is moot. They would be drawable the day the registry
+   learns their extents, which their own pages compute at run time from the volume's info. */
+["hjump", "bjump", "wjump"].forEach(k => {
+  ok(T.emHostFor(k) === null,
+     T.label(k) + " has no preview host — not for want of imagery, but because without a box "
+     + "nothing in its posts becomes a link to click in the first place", String(T.emHostFor(k)));
+});
+/* µJump has two slabs, and which one a coordinate is in decides which imagery is read. */
+const in35 = T.emHostFor("ujump", [120000, 120000, 10000]);
+const in65 = T.emHostFor("ujump", [120000, 120000, 20000]);
+ok(!!(in35 && in65) && in35.volume === "minnie35" && in65.volume === "minnie65",
+   "...and µJump's host follows the coordinate into the right slab, because the two are "
+   + "different blocks of tissue with different imagery",
+   (in35 || {}).volume + " / " + (in65 || {}).volume);
+
 console.log("\nand a coordinate at the heart of one volume is reported");
 const mids = [];
 T.all().forEach(t => (t.volumes || []).forEach(v => {

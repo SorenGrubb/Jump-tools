@@ -94,11 +94,13 @@ UJ.tools = (function(){
   var LIST = [
     { key: "ujump", label: "µJump", dataset: "MICrONS minnie65 + minnie35",
       page: "ujump.html", dark: "#27e0b3", light: "#0f766e",
+      emWindow: { lo: 86, hi: 172 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [MINNIE65, MINNIE35] },
 
     { key: "djump", label: "δJump", dataset: "V1DD — Allen Institute V1 Deep Dive",
       page: "djump.html", dark: "#b388ff", light: "#6d28d9",
+      emWindow: { lo: 115, hi: 144 },
       res: [9, 9, 45], viewer: "https://spelunker.cave-explorer.org/",
       volumes: [{ key: "v1dd", label: "V1DD",
         bb: { xmin: 88745, xmax: 1886631, ymin: 145277, ymax: 1288694,
@@ -112,6 +114,7 @@ UJ.tools = (function(){
 
     { key: "pjump", label: "πJump", dataset: "MICrONS pinky100 (Layer 2/3)",
       page: "pjump.html", dark: "#f78ad4", light: "#b81a8f",
+      emWindow: { lo: 33, hi: 231 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [{ key: "pinky100", label: "pinky100",
         bb: { xmin: 140000, xmax: 500000, ymin: 124000, ymax: 338000,
@@ -126,6 +129,7 @@ UJ.tools = (function(){
        the volume ends. Image only: no segmentation, no nuclei. */
     { key: "ljump", label: "λJump", dataset: "Lee16 — mouse V1 serial-section TEM",
       page: "ljump.html", dark: "#7aa2ff", light: "#1d4ed8",
+      emWindow: { lo: 27, hi: 240 },
       res: [4, 4, 40], viewer: "https://ngl.microns-explorer.org/",
       volumes: [{ key: "lee16", label: "Lee16",
         bb: { xmin: 0, xmax: 655360, ymin: 0, ymax: 655360, zmin: 0, zmax: 32880 },
@@ -133,14 +137,19 @@ UJ.tools = (function(){
 
     { key: "hjump", label: "ηJump", dataset: "H01 — human temporal cortex",
       page: "hjump.html", dark: "#ffb454", light: "#9a3412",
+      emWindow: { lo: 29, hi: 212 },
       res: [8, 8, 33], viewer: "https://h01-dot-neuroglancer-demo.appspot.com/",
       volumes: [] },
 
     { key: "bjump", label: "βJump", dataset: "Alzheimer's vCLEM — hippocampal CA1",
       page: "bjump.html", dark: "#ff6b81", light: "#a4133c",
+      emWindow: { lo: 10, hi: 244 },
       res: [8, 8, 30], viewer: "https://neuroglancer-demo.appspot.com/",
       volumes: [] },
 
+    /* NO emWindow: ωJump's sixty-three volumes include two uint16 blocks whose tissue is a
+       band 2,000 counts wide at 33,000, and a single pair of numbers for "ωJump" would be a
+       false statement about sixty-two of them. Its own page reads each dataset's own. */
     { key: "wjump", label: "ωJump", dataset: "63 volumes — OpenOrganelle and others",
       page: "wjump.html", dark: "#fbbf24", light: "#854d0e",
       res: null, viewer: "https://neuroglancer-demo.appspot.com/",
@@ -155,6 +164,7 @@ UJ.tools = (function(){
        would draw the right cells 48 µm from the tissue they belong to. */
     { key: "xjump", label: "χJump", dataset: "cb2 — mouse cerebellum (lobule V)",
       page: "xjump.html", dark: "#4ade80", light: "#166534",
+      emWindow: { lo: 29, hi: 233 },
       res: [4, 4, 40], viewer: "https://neuroglancer-demo.appspot.com/",
       volumes: [{ key: "cb2", label: "cb2",
         bb: { xmin: 0, xmax: 998400, ymin: 0, ymax: 921600, zmin: 0, zmax: 48000 },
@@ -241,6 +251,50 @@ UJ.tools = (function(){
      does not have for somebody else's volume, so a cued number in a foreign post stays text. It
      is the one reference that cannot cross tools without a server, and pretending otherwise would
      mean resolving it against the READER'S table, which is the exact mistake this file prevents. */
+  /* ── AND A HOST FOR THE PICTURE ────────────────────────────────────────────────  2026-10-13
+     Søren, with the Discussion open in δJump: *"when I paste a coordinate and then open it, it
+     opens neuroglancer and not EM with a possibility of a 3D window."*
+
+     core/empreview.js reads window.emPreviewHost(). µJump has one, written when the Discussion
+     was only there, and it carries things the registry cannot: the nucleus table behind
+     “cell 253863”, the long type name drawn in the corner of the picture, the viewer the reader
+     picked from the dropdown. The other seven have none, and writing seven would be seven more
+     copies of seven volumes' sources to keep in step.
+
+     So this builds one out of what is already here. The page's own hook still wins where it
+     exists; core/forum.js reaches for this only when there is none.
+
+     `vox` PICKS THE VOLUME where a tool has more than one — µJump's two slabs — and is ignored
+     by everything else. Null for a tool with no verified box, which is the same answer hostFor()
+     gives and for the same reason. */
+  function emHostFor(k, vox){
+    var t = byKey(k);
+    if (!t || !t.res || !(t.volumes || []).length) return null;
+    var v = t.volumes[0], i;
+    if (vox && t.volumes.length > 1){
+      var nm = [vox[0] * t.res[0], vox[1] * t.res[1], vox[2] * t.res[2]];
+      for (i = 0; i < t.volumes.length; i++){
+        var bb = t.volumes[i].bb;
+        if (bb && nm[0] >= bb.xmin && nm[0] <= bb.xmax && nm[1] >= bb.ymin && nm[1] <= bb.ymax
+            && nm[2] >= bb.zmin && nm[2] <= bb.zmax){ v = t.volumes[i]; break; }
+      }
+    }
+    var h = hostFor(k);
+    return { res: t.res.slice(), em: v.em || "", seg: v.seg || "", nuc: v.nuc || "",
+             window: t.emWindow ? { lo: t.emWindow.lo, hi: t.emWindow.hi } : null,
+             volume: v.key, tool: t.key, label: t.label,
+             /* The picture is a link, and it is the same link core/jumplink.js would write for
+                this place in this tool — built from the host rather than from a second opinion. */
+             viewerUrl: function(pos){
+               try {
+                 if (window.UJ && UJ.jumplink && h)
+                   return UJ.jumplink.url(UJ.jumplink.scan(pos.join(", "), { host: h }),
+                                          { host: h }) || "";
+               } catch (_e){}
+               return "";
+             } };
+  }
+
   function hostFor(k){
     var t = byKey(k);
     if (!t || !t.res || !t.volumes || !t.volumes.length) return null;
@@ -259,6 +313,6 @@ UJ.tools = (function(){
 
   return { all: all, keys: keys, byKey: byKey, label: label, dataset: dataset,
            boxed: boxed, manyVolumes: manyVolumes,
-           css: css, styleEl: styleEl, hostFor: hostFor };
+           css: css, styleEl: styleEl, hostFor: hostFor, emHostFor: emHostFor };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = UJ.tools;

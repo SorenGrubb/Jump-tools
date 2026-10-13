@@ -131,11 +131,18 @@ function boxHtml(pos, cfg){
        + '<div class="emp-3d" style="flex:1 1 240px;min-width:0"></div>'
        + "</div>"
        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">'
-       + '<button type="button" class="hist-chip emp-cell" title="Looks up the cell whose '
-         + 'segmentation covers this exact point, fetches its mesh and draws it beside the EM. The '
-         + 'mesh is megabytes, so it is only fetched when you press this.">The cell here in 3D</button>'
-       + '<button type="button" class="hist-chip emp-nuc" title="The nucleus of that same cell, '
-         + 'from the nuclei volume, drawn in blue inside it.">and its nucleus</button>'
+       /* ── ONLY WHERE THERE IS A SEGMENTATION TO READ ────────────────────────────  2026-10-13
+          λJump is image only, and the Eyewire-style volumes behind other tools may be too. A
+          button whose single possible outcome is "there is no segmentation here" is a worse
+          answer than no button: it offers something and then explains that it was never there. */
+       + ((cfg && cfg.seg)
+          ? '<button type="button" class="hist-chip emp-cell" title="Looks up the cell whose '
+            + 'segmentation covers this exact point, fetches its mesh and draws it beside the EM. '
+            + 'The mesh is megabytes, so it is only fetched when you press this.">The cell here in '
+            + '3D</button>'
+            + '<button type="button" class="hist-chip emp-nuc" title="The nucleus of that same '
+            + 'cell, from the nuclei volume, drawn in blue inside it.">and its nucleus</button>'
+          : "")
        + '<span class="hint emp-say" style="flex:1 1 140px;min-width:0"></span>'
        + "</div></div>";
 }
@@ -287,7 +294,13 @@ function drawMeshes(host, parts, about){
 
 async function open(hostEl, pos, opts){
   if (!hostEl) return;
-  var cfg = hostCfg();
+  /* ── A HOST MAY BE HANDED IN ───────────────────────────────────────────────────  2026-10-13
+     window.emPreviewHost() is this page's own, and it is the right answer wherever it exists —
+     µJump's carries a nucleus table, a type name and the reader's chosen viewer. Seven tools have
+     none, and core/tools.js can build one out of the registry's verified sources, so core/forum.js
+     passes that instead of leaving the picture undrawn. Nothing else changes: `cfg` is read
+     exactly as before, from one place or the other. */
+  var cfg = (opts && opts.host) || hostCfg();
   if (!cfg){
     hostEl.innerHTML = '<p class="hint">This tool cannot draw EM here.</p>';
     return;
@@ -359,6 +372,9 @@ async function open(hostEl, pos, opts){
     got = await cellAt(pos, cfg, note);
     return got;
   };
+  /* BOTH ARE ABSENT ON AN IMAGE-ONLY VOLUME since 2026-10-13, and both uses below were already
+     guarded — this is the note that says the null is intended rather than a selector that quietly
+     stopped matching. */
   var cellBtn = hostEl.querySelector(".emp-cell"), nucBtn = hostEl.querySelector(".emp-nuc");
   var host3d = hostEl.querySelector(".emp-3d");
 

@@ -84,6 +84,10 @@ var POSTS = [], CAN_MODERATE = false, LOADED = false, TOOL = "", VOLUME = "", BU
    reads, so one post reaches every Jump. */
 var OPEN = "", MODE = "";
 var STREAM = "tools";
+/* This tool's EM host, built once from core/tools.js on a page that declares no emPreviewHost().
+   Held rather than rebuilt per click because it closes over a viewerUrl() the picture uses, and
+   because rebuilding it would make two pictures of the same place two different objects. */
+var EMHOST = null;
 
 /* ── WHOSE FRAME A POST'S COORDINATES ARE IN ──────────────────────────────────────────────────
    The dangerous half of one shared forum. A post from another tool was written in another frame
@@ -615,6 +619,20 @@ function wirePreviews(host){
            one picture of the two -- idsOf() above has assumed that since it was written -- so an
            id this page cannot place still has somewhere to be drawn when the sentence says where.
            Last, because the thing you clicked wins over the thing beside it. */
+        /* ── AND THE PICTURE, ON A PAGE THAT DECLARES NO HOST ──────────────────────  2026-10-13
+           Søren: *"when I paste a coordinate and then open it, it opens neuroglancer and not EM
+           with a possibility of a 3D window."*  core/empreview.js is loaded on these pages now;
+           what it has nowhere but µJump is window.emPreviewHost(). core/tools.js builds one from
+           the registry's verified sources, so the picture is drawn here rather than left to a
+           new tab. µJump's own hook wins where it exists — it carries a nucleus table and a type
+           name the registry has no idea about. */
+        if (canDraw && typeof window.emPreviewHost !== "function" && !EMHOST){
+          try {
+            if (window.UJ && UJ.tools && UJ.tools.emHostFor)
+              EMHOST = UJ.tools.emHostFor(TOOL, h.voxel) || null;
+          } catch (_eh){}
+        }
+        if (canDraw && !EMHOST && typeof window.emPreviewHost !== "function") canDraw = false;
         if (!canDraw){
           /* The viewer, with this page's own host — which on a page without jumpLinkHost() is the
              registry's, so the link opens this tool's volume rather than nothing. */
@@ -654,7 +672,7 @@ function wirePreviews(host){
         var key = at.join(",");
         if (open === key){ UJ.empreview.close(slot); open = ""; return; }
         open = key;
-        UJ.empreview.open(slot, at, { ids: ids });
+        UJ.empreview.open(slot, at, EMHOST ? { ids: ids, host: EMHOST } : { ids: ids });
       });
     });
   });
@@ -678,7 +696,14 @@ function wireComposePreview(id){
     if (key === shown) return;
     shown = key;
     if (!at){ UJ.empreview.close(slot); return; }
-    UJ.empreview.open(slot, at, { ids: ids });
+    var eh = null;
+    if (typeof window.emPreviewHost !== "function"){
+      try {
+        if (window.UJ && UJ.tools && UJ.tools.emHostFor) eh = UJ.tools.emHostFor(TOOL, at);
+      } catch (_eh){}
+      if (!eh) return;
+    }
+    UJ.empreview.open(slot, at, eh ? { ids: ids, host: eh } : { ids: ids });
   };
   /* A BEAT AFTER THE TYPING STOPS. Pasting fires one input event; typing one by hand fires a dozen,
      and the first eleven are prefixes that may each land inside the volume and each start a read. */

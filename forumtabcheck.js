@@ -161,6 +161,7 @@ const otherWithBox = (key) =>
       window.open = realOpen;
       if (realDraw) UJ.empreview.open = realDraw;
       out.acted = opened + drew;
+      out.drew = drew; out.opened = opened;
       /* A FOREIGN ONE DOES NEITHER, and that is the right answer: it writes the line offering
          that volume, with a link in it the reader chooses to follow. Opening a viewer under
          somebody's cursor because they clicked a word in a sentence would be a surprise. */
@@ -189,12 +190,19 @@ const otherWithBox = (key) =>
          got.own.links + " links");
       ok(/place in/i.test(got.own.title),
          "...naming the volume it is in", got.own.title || "no title");
-      ok(got.acted === 1,
-         "...and clicking it DOES something — the tissue where this page can draw it, the viewer "
-         + "where it cannot. An <a href=\"#\"> that eats the click is what this asserts against, "
-         + "and it is what every link on five pages would have been",
-         got.acted + " of (window.open, empreview.open)"
-         + (got.hasEmPreview ? ", preview available" : ", no preview on this page"));
+      /* ── AND THE PICTURE, NOT A NEW TAB ───────────────────────────────────────────────
+         Søren, with the Discussion open in δJump: *"when I paste a coordinate and then open it,
+         it opens neuroglancer and not EM with a possibility of a 3D window."*  Where the page
+         can draw the tissue it must draw it; the viewer is the fallback for a page that cannot,
+         not the answer. Which of the two happened is asserted, not just that something did. */
+      ok(got.hasEmPreview ? (got.drew === 1 && got.opened === 0) : (got.opened === 1),
+         got.hasEmPreview
+           ? "...and clicking it DRAWS THE TISSUE here rather than opening a new tab — the thing "
+             + "the Discussion was built for, and what every page but µJump was missing this "
+             + "morning"
+           : "...and clicking it opens the viewer, which is this page's honest answer: it has no "
+             + "core/empreview.js",
+         got.drew + " drawn, " + got.opened + " opened");
     } else {
       ok(got.own.links === 0,
          T.label(key) + " has no verified extent in this repository, so a coordinate in its own "

@@ -451,7 +451,7 @@ code{font-family:var(--mono);color:var(--accent)}a.ref{color:var(--accent);font-
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 19:53</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 20:27</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -1109,6 +1109,11 @@ document.addEventListener("DOMContentLoaded", function(){
      same code on every page rather than jumplink's own fallback copy. 2026-10-03. -->
 <script src="core/volumes.js"></script>
 <script src="core/jumplink.js"></script>
+<!-- A coordinate in a post becomes a picture: the EM here, its scale bar, and the cell
+     in 3D beside it — core/empreview.js, 2026-10-13. Before core/forum.js, which opens
+     one per coordinate. Everything it is built on (emtiles, segread, segpaint, mesh,
+     nucmesh, mesh3d) is already here for the tracing card. -->
+<script src="core/empreview.js"></script>
 <!-- THE REGISTRY OF JUMPS: which tool a post came from, that tool's colour, and the
      volumes its coordinates are in. core/jumplink.js does not read it — it is
      handed a host built from it. 2026-10-13. -->

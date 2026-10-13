@@ -455,7 +455,7 @@ try{var _t=localStorage.getItem("ujump_theme");
 <p class="sub">Assemble cells from fragments &middot; <span id="dslabel"></span>
 &middot; <span class="build" title="When this file was built. If it does not match the file you
 think you are looking at, your browser is showing you a cached copy — reload with
-ctrl-shift-R.">build 2026-10-13 19:48</span></p>
+ctrl-shift-R.">build 2026-10-13 20:24</span></p>
 
 <div class="tabbar" id="mainTabs" role="tablist">
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">&#128269; Jump</button>
@@ -9226,6 +9226,10 @@ function buildState(pos){ return UJ.xjump.buildState([], pos); }
      core/jumplink.js turns the coordinates and ids in a post into links; core/tools.js says which
      tool wrote it, in which frame, and in which colour; core/forum.js is the panel. The order is
      the dependency order and it matters. -->
+<!-- A coordinate in a post becomes a picture: the EM here, its scale bar, and the cell in 3D
+     beside it. Everything it is built on (emtiles, segread, segpaint, mesh, nucmesh, mesh3d) is
+     already inlined above for the tracing card. 2026-10-13. -->
+<script src="core/empreview.js"></script>
 <script src="core/jumplink.js"></script>
 <script src="core/tools.js"></script>
 <script src="core/forum.js"></script>
