@@ -93,7 +93,11 @@ window.VR_DATASETS = {
       dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
       dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
     },
-    nucSource: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei"
+    nucSource: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei",
+    /* Where community-proposed root IDs live (ujump.html's UJ.cfg.backend.endpoint), asked with
+       ?rootIds=<nucleus id>, and which segmentation's proposals have meshes in this bucket. */
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    extraSegType: "img65"
   }
 };
 window.UJ = window.UJ || {};
@@ -125,8 +129,8 @@ function parseHash(){
   const m = location.hash.match(/[#&]c=([^&]*)/);
   if (!m || !m[1]) return null;
   return m[1].split(",").filter(Boolean).map(p => {
-    const [ds, root, nuc, label] = p.split("~").map(s => decodeURIComponent(s || ""));
-    return { ds, root, nuc, label };
+    const [ds, root, nuc, label, extra] = p.split("~").map(s => decodeURIComponent(s || ""));
+    return { ds, root, nuc, label, extra: extra ? extra.split("+").filter(Boolean) : [] };
   }).filter(e => e.root);
 }
 function readBasket(){
@@ -136,7 +140,8 @@ function readBasket(){
 let FROM_LINK = true;
 let CELLS = parseHash();
 if (!CELLS){ FROM_LINK = false; CELLS = readBasket(); }
-CELLS = CELLS.map((e, i) => Object.assign({ i, ds: e.ds || "microns", label: e.label || "Cell" }, e));
+CELLS = CELLS.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
+  { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" }));
 
 /* Colour by cell type, so two of a kind read as two of a kind. */
 const typeColour = {};
@@ -147,7 +152,7 @@ CELLS.forEach(c => {
 });
 
 function headsetLink(){
-  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || ""].map(encodeURIComponent).join("~"));
+  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
   return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",");
 }
 
@@ -253,17 +258,20 @@ async function loadAll(){
     if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); continue; }
     try {
       c.status = "fetching mesh…"; renderList();
+      const extras = await extrasFor(c, ds);
       const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
         const s = (msg || "") + " " + Math.round(f * 100) + "%";
         if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
-      }, false, [], light);
+      }, false, extras, light);
       if (token !== LOAD_TOKEN) return;
       const g = geometryFrom(geo.positions, geo.indices);
       const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
       mesh.userData.cell = c.i;
       content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
       box.union(g.boundingBox);
-      c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1);
+      c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
+               + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
+               + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "");
       if (c.nuc && c.nuc !== "0"){
         try {
           if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
@@ -288,6 +296,27 @@ async function loadAll(){
     }
     renderList(); updateTri(); applyLook();
   }
+}
+/* The root IDs the community proposed for this cell -- the same ones µJump's "Show in 3D" and
+   .glb download fold in. Asked live from the backend by nucleus id, so a proposal made after the
+   cell was collected still counts, merged with whatever travelled in the collection itself. The
+   backend being unreachable is not an error: the cell is drawn from what we have. */
+const EXTRA_CACHE = {};
+async function extrasFor(c, ds){
+  const out = new Set((c.extra || []).map(String));
+  if (c.nuc && c.nuc !== "0" && ds.backend){
+    try {
+      if (!EXTRA_CACHE[c.nuc]){
+        const r = await fetch(ds.backend + "?rootIds=" + encodeURIComponent(c.nuc));
+        EXTRA_CACHE[c.nuc] = r.ok ? ((await r.json()).rootIds || []) : [];
+      }
+      EXTRA_CACHE[c.nuc].forEach(x => {
+        if (x && x.rootId && (!x.segType || x.segType === (ds.extraSegType || "img65"))) out.add(String(x.rootId));
+      });
+    } catch (e){ /* offline backend: keep what we have */ }
+  }
+  out.delete(String(c.root));
+  return [...out];
 }
 function updateTri(){
   const t = CELLS.reduce((s, c) => s + (c.mesh && !c.hidden ? c.tris : 0), 0);
