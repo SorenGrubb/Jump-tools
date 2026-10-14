@@ -402,6 +402,54 @@ function indexHtml(){
 
 /* ── ONE POST, IN THE THREAD VIEW ─────────────────────────────────────────────────────────────
    The root and its replies use the same markup; a reply is just indented and has no title. */
+/* ── A SAVED VR SCENE IN A POST GETS A PREVIEW CARD ─────────────────────────────  2026-10-14
+   Søren: *"It should also be possible to share it in our discussion forum with a preview."*
+   A post that names a scene -- any link ending vr.html#scene=ID, typed by hand or posted from the VR
+   viewer's "Share in the forum" -- shows a card under its text: the picture saved with the scene,
+   its title, who made it and how many cells, and a button that opens it. The card is filled from
+   ?vrScene=ID&meta=1 (backend/VRScenes.gs), which reads the small preview and never the scene, and
+   each scene is asked for once per page. Scenes live in µJump's book, hence ds=ujump from every tool. */
+var SCENE_META = {};
+function sceneIds(s){
+  var re = /vr\.html#scene=([a-z0-9]{6,16})/g, m, out = [];
+  while ((m = re.exec(String(s || "")))) if (out.indexOf(m[1]) < 0) out.push(m[1]);
+  return out;
+}
+function sceneCardsHtml(body){
+  return sceneIds(body).map(function(id){
+    return "<div class='vrscenecard' data-scene='" + esc(id) + "' style='display:flex;gap:10px;align-items:center;"
+         + "border:1px solid var(--line);border-radius:8px;padding:8px;margin:6px 0;max-width:520px'>"
+         + "<div class='vrsc-img' style='width:160px;height:96px;flex:none;border-radius:6px;background:var(--inset,#161b22);"
+         + "display:flex;align-items:center;justify-content:center;font-size:28px;overflow:hidden'>🥽</div>"
+         + "<div style='flex:1;min-width:0'><div class='vrsc-title' style='font-weight:600'>VR scene</div>"
+         + "<div class='vrsc-meta hint' style='margin:2px 0 6px'>reading…</div>"
+         + "<a class='hist-chip' target='_blank' rel='noopener' href='vr.html#scene=" + esc(id) + "'>🥽 Open in VR</a></div></div>";
+  }).join("");
+}
+function fillSceneCards(host){
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  [].slice.call(host.querySelectorAll(".vrscenecard")).forEach(function(card){
+    var id = card.dataset.scene;
+    var paint = function(m){
+      if (!m || !m.ok){ card.querySelector(".vrsc-meta").textContent = "this scene could not be found"; return; }
+      card.querySelector(".vrsc-title").textContent = m.title || "VR scene";
+      card.querySelector(".vrsc-meta").textContent = (m.authorName || "somebody") + " · " + (m.cells || 0) + " cell"
+        + ((m.cells || 0) === 1 ? "" : "s") + (m.timestamp ? " · " + String(m.updatedAt || m.timestamp).slice(0, 10) : "");
+      if (m.preview && /^data:image\//.test(m.preview)){
+        var box = card.querySelector(".vrsc-img"); box.textContent = "";
+        var img = document.createElement("img"); img.src = m.preview; img.alt = m.title || "VR scene";
+        img.style.cssText = "width:100%;height:100%;object-fit:cover"; box.appendChild(img);
+      }
+    };
+    if (SCENE_META[id] && SCENE_META[id].then){ SCENE_META[id].then(paint); return; }
+    if (SCENE_META[id]){ paint(SCENE_META[id]); return; }
+    SCENE_META[id] = fetch(REPORT_ENDPOINT + "?vrScene=" + encodeURIComponent(id) + "&meta=1&ds=ujump")
+      .then(function(r){ return r.json(); }).catch(function(){ return null; })
+      .then(function(m){ SCENE_META[id] = m || { ok: false }; return SCENE_META[id]; });
+    SCENE_META[id].then(paint);
+  });
+}
+
 function postHtml(p, isRoot){
   var n = hits(p.body || "", p.tool).filter(function(h){
     return h.voxel || h.kind === "root"; }).length;
@@ -422,6 +470,7 @@ function postHtml(p, isRoot){
        + "<div class='forumbody' data-raw='" + esc(p.body || "") + "' data-tool='"
          + esc(p.tool || "") + "' style='margin:4px 0'>"
          + bodyHtml(p.body || "", p.tool) + "</div>"
+       + sceneCardsHtml(p.body || "")
        + "<div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>"
        + (n > 1 ? "<button type='button' class='hist-chip forumopenall' data-pid='" + esc(p.postId)
                   + "' title=\"Opens every place this post mentions in ONE viewer, as a single "
@@ -776,6 +825,7 @@ function render(){
 function wire(){
   var host = document.getElementById("forumCard");
   if (!host) return;
+  fillSceneCards(host);
   var byId = function(id){ return document.getElementById(id); };
 
   /* Nothing to wire above the index: one stream, no chooser. */

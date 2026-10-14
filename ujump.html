@@ -13280,7 +13280,12 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     vrBtn.disabled=false;vrBtn.textContent=orig;
     if(!parts.length){alert("None of these matches has a root ID with a mesh to show.");return;}
     const base=location.href.replace(/[#?].*$/,"").replace(/[^\/]*$/,"");
-    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:""),"_blank");
+    /* The region boxes travel too (2026-10-14, Søren: "they should be included when the VR has been
+       opened via Filter and show and bounding boxes have been set"): each as min~max corners in
+       micrometres, in the same order and so the same colours (REGION_BOX_COLORS) as the 3D view. */
+    const um=v=>Math.round(v/100)/10;
+    const boxes=getRegionBoxesNM().map(bx=>[bx.n,um(bx.xmin),um(bx.ymin),um(bx.zmin),um(bx.xmax),um(bx.ymax),um(bx.zmax)].join("~"));
+    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:"")+(boxes.length?"&box="+boxes.join(","):""),"_blank");
   });
   if(viewAllBtn)viewAllBtn.addEventListener("click",async()=>{
     if(!lastResult||!lastResult.matches.length)return;

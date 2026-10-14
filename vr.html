@@ -64,6 +64,14 @@
   <button id="hide" title="Hide panel">✕</button>
   <h1>🥽 VR collection</h1>
   <div class="sub" id="sub">Loading…</div>
+  <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
+    <div class="ctl" style="margin:0">
+      <input id="sceneTitle" placeholder="Scene title" style="flex:1;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
+      <button id="sceneSave" title="Save everything as it is now — cells, view, EM, cut, measurements, paint — as a link you can share">💾 Save scene</button>
+    </div>
+    <div id="sceneSignin" style="margin-top:6px"></div>
+    <div id="sceneOut" class="help" style="margin-top:6px"></div>
+  </div>
   <div id="list"></div>
   <div class="ctl">
     <select id="detail" title="Mesh detail. Light is the coarsest level of detail (about 50k triangles for a pyramidal cell), which a standalone Quest 2 handles comfortably. Full is the finest level under 8 MB (about 5 M triangles for the same cell).">
@@ -87,6 +95,28 @@
     </select>
   </div>
   <div class="ctl">
+    <select id="v1Sel" title="Allen's hand-classified V1 column (allen_v1_column_types_slanted_ref + aibs_column_nonneuronal_ref), the same envelope Filter-and-show draws: vertical down to the bottom of layer 5, slanted below it, radius = 95th percentile of the members' distance from the axis">
+      <option value="off">V1 column: off</option>
+      <option value="outline">V1 column: outline</option>
+      <option value="cells">V1 column: outline + its 1,899 cells</option>
+    </select>
+    <button id="rboxBtn" class="on" style="display:none" title="The region box(es) that limited Filter and show, in the same colours as its 3D view">Region box</button>
+    <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
+  </div>
+  <div class="ctl">
+    <select id="skelSel" title="The Shih lab's hand-labelled vascular skeletons, including the whole capillary bed (How et al., bioRxiv 2026, doi:10.64898/2026.09.26.754479) — the same layers as Filter-and-show's &quot;Shih lab vascular skeletons&quot;">
+      <option value="off">Vessel skeletons: off</option>
+      <option value="box">Vessel skeletons: around the cells</option>
+      <option value="whole">Vessel skeletons: whole volume (lines)</option>
+    </select>
+    <select id="capSel" title="How the capillary bed is coloured — the paper's Figure 1J/K">
+      <option value="act">Capillaries: branch order from the arteriole (ACT)</option>
+      <option value="cvt">Capillaries: branch order from the venule (CVT)</option>
+      <option value="plain">Capillaries: one colour</option>
+    </select>
+  </div>
+  <div class="ctl" id="skelGroups" style="display:none;font-size:12px"></div>
+  <div class="ctl">
     <button id="emBtn" title="The electron micrograph through the picked cell's nucleus (or the middle of the collection), as a plane the cells pass through">EM section</button>
     <select id="emSize" title="Wide: 65 µm across at 128 nm per pixel (about 15 s). Close: 33 µm at 64 nm (about 25 s). Both average a few 40 nm sections into one slab.">
       <option value="wide">EM: wide 65 µm</option>
@@ -108,8 +138,20 @@
     <button id="measClr" title="Remove the measurements">Clear</button>
     <button id="scaleBtn" class="on" title="A scale bar under the collection that stays true as you resize it">Scale bar</button>
     <button id="nbBtn" title="Add the 3 cells whose nuclei are nearest the picked cell's (MICrONS predictions)">+3 neighbours</button>
-    <button id="trcBtn" title="Structures traced by hand in µJump's tracing pad (lysosomes, whole cells, …), on these cells and inside the box around them">Traced</button>
-    <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells">Organelles</button>
+  </div>
+  <div class="ctl">
+    <button id="trcBtn" title="Structures traced by hand in µJump's tracing pad (lysosomes, whole cells, nuclei, …) — drawn on the cells they belong to, always together with that cell's mesh and nucleus">Traced</button>
+    <select id="trcType" title="Only structures traced in cells of this type"><option value="all">All cell types</option></select>
+    <select id="trcKind" title="Only this kind of traced structure"><option value="all">All traced structures</option></select>
+    <button id="trcAdd" title="Bring in the cells that have traced structures of the chosen kind and cell type (their mesh and nucleus), and show the tracings on them">+ Add their cells</button>
+  </div>
+  <div class="ctl">
+    <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells. Centrioles get a 3D arrow from their cell's nucleus; cilia an arrow from base to tip.">Organelles</button>
+    <select id="orgKind" title="Only this kind of reported organelle"><option value="all">All reported kinds</option></select>
+  </div>
+  <div class="ctl">
+    <button id="cvecBtn" title="3D arrows from each nucleus to its centriole — Søren's verified dataset and the community reports, as Filter-and-show's &quot;Nucleus-to-centriole vector&quot; layer">Nucleus → centriole vectors</button>
+    <button id="lvecBtn" title="3D arrows along each primary cilium from base to tip — verified and reported">Cilium base → tip vectors</button>
   </div>
   <div class="ctl">
     <button id="stimBtn" title="Click (or in VR: right trigger) on a cell to start an action potential there and watch it spread — and cross synapses to the other cells here">⚡ Stimulate</button>
@@ -139,7 +181,7 @@
     <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
     <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
-    A = see-through · B = reset · X = only the picked cell · <b>Y = palette</b> on your left hand (tabs Show · Tools · EM · Cells · View; point the right controller and pull the trigger).
+    A = see-through · B = reset · X = only the picked cell · <b>Y = palette</b> on your left hand (tabs Show · Map · Tools · Spray · EM · Cells · View; point the right controller and pull the trigger).
     With the cut in your hand, the right trigger freezes it in place and frees it again.
     With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
@@ -182,12 +224,23 @@ window.VR_DATASETS = {
     nuclei: "core/vr_nuc/microns/",
     /* Hand-traced structures (the tracing pad), from the same backend: ?tracings=1&ds=… */
     tracingDs: "ujump",
+    /* The V1 column and the four visual areas, from ujump.html itself (src/build_vr_v1areas.js). */
+    v1areas: "core/vr_v1areas_microns.json",
+    /* Søren's verified nucleus→centriole and cilium base→tip vectors (src/build_vr_vectors.js). */
+    vectors: "core/vr_vectors_microns.json",
+    /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
+       because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
+       neuroglancer skeleton for segment 3: uint32 nv, uint32 ne, float32 xyz NANOMETRES, uint32
+       edge pairs, then one float32 per vertex for each attribute in its info. Checked 2026-10-14:
+       x 283–1598, y 263–1159, z 316–1114 µm, the same frame as the cells. */
+    vascSkel: "https://www.googleapis.com/storage/v1/b/microns_vascular_skeleton/o/",
     res: [4, 4, 40]
   }
 };
 window.UJ = window.UJ || {};
 UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh, res: [4, 4, 40] };
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="core/mesh.js"></script>
 <script src="core/nucmesh.js"></script>
 <script src="core/segread.js"></script>
@@ -223,15 +276,28 @@ function parseHash(){
   }).filter(e => e.root || (e.extra && e.extra.length));
 }
 const OF = +((location.hash.match(/[#&]of=(\d+)/) || [])[1] || 0);   // "these are N of OF filter matches"
+/* Filter-and-show's region boxes (section 12): &box=n~xmin~ymin~zmin~xmax~ymax~zmax,… in µm. */
+function parseBoxes(){
+  const m = location.hash.match(/[#&]box=([^&]*)/);
+  if (!m) return [];
+  return decodeURIComponent(m[1]).split(",").map(b => b.split("~").map(Number)).filter(b => b.length === 7 && b.every(isFinite));
+}
+const RBOX = { list: parseBoxes(), on: true, group: null };
 function readBasket(){
   try { const a = JSON.parse(localStorage.getItem(BASKET_KEY) || "[]"); return Array.isArray(a) ? a : []; }
   catch (e){ return []; }
 }
 let FROM_LINK = true;
-let CELLS = parseHash();
+/* A SAVED SCENE (section 10) is named in the link as #scene=ID; its cells arrive with it, so the
+   list starts empty and is filled when the scene has been read. */
+const SCENE_ID = (location.hash.match(/[#&]scene=([a-z0-9]+)/) || [])[1] || "";
+let CELLS = SCENE_ID ? [] : parseHash();
 if (!CELLS){ FROM_LINK = false; CELLS = readBasket(); }
-CELLS = CELLS.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
-  { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" }));
+function prepCells(list){
+  return list.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
+    { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" }));
+}
+CELLS = prepCells(CELLS);
 
 /* Colour by cell type, so two of a kind read as two of a kind. */
 const typeColour = {};
@@ -273,7 +339,8 @@ function setColourMode(mode){
 
 function headsetLink(){
   const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
-  return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",");
+  return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",")
+    + (RBOX.list.length ? "&box=" + RBOX.list.map(b => b.join("~")).join(",") : "");
 }
 
 /* ── scene ────────────────────────────────────────────────────────────────── */
@@ -350,7 +417,7 @@ function renderList(){
   if (autoKey && !OPEN_GROUPS.has(autoKey)){ OPEN_GROUPS.add(autoKey); AUTO_OPEN = autoKey; }
   listEl.innerHTML = groups.map(g => {
     const open = OPEN_GROUPS.has(g.key), n = g.cells.length;
-    const shown = g.cells.filter(c => !c.hidden).length, loaded = g.cells.filter(c => c.mesh).length, bad = g.cells.filter(c => c.err).length;
+    const shown = g.cells.filter(c => !c.hidden).length, loaded = g.cells.filter(c => c.mesh || c.nucMesh).length, bad = g.cells.filter(c => c.err).length;
     const cls = cellClass(g.cells[0]);
     const head = `<div class="grp" data-grp="${esc(g.key)}">
         <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
@@ -471,6 +538,13 @@ async function loadOne(c, token, light){
   const ds = VR_DATASETS[c.ds];
   if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); return false; }
   try {
+    if (!c.root && !(c.extra && c.extra.length)){
+      /* A cell with no root id -- one traced by hand that the segmentation does not have -- is its
+         nucleus and its tracings (section 7). */
+      c.tris = 0; c.status = "no segmentation mesh — its nucleus and traced outline only";
+      await loadNucleus(c, ds, token);
+      return !!c.nucMesh;
+    }
     c.status = "fetching mesh…"; renderList();
     const extras = await extrasFor(c, ds);
     const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
@@ -488,23 +562,37 @@ async function loadOne(c, token, light){
              + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
              + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "")
              + (c.neighbourOf != null ? " · neighbour, " + c.dist.toFixed(0) + " µm away" : "");
-    if (c.nuc && c.nuc !== "0"){
-      try {
-        if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
-        const n = await UJ.nucmesh.fetchNucleus(c.nuc);
-        if (n && token === LOAD_TOKEN){
-          const nm = new THREE.Mesh(geometryFrom(n.positions, n.indices),
-            new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5 }));
-          nm.userData.cell = c.i; nm.userData.nucleus = true;
-          content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
-        }
-      } catch (e){ /* no nucleus is not an error */ }
-    }
+    await loadNucleus(c, ds, token);
     return true;
   } catch (e){
     c.err = true; c.status = "could not load: " + (e && e.message ? e.message : e);
     return false;
   }
+}
+async function loadNucleus(c, ds, token){
+  if (!c.nuc || c.nuc === "0") return;
+  try {
+    if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
+    const n = await UJ.nucmesh.fetchNucleus(c.nuc);
+    if (n && token === LOAD_TOKEN){
+      const nm = new THREE.Mesh(geometryFrom(n.positions, n.indices),
+        new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5 }));
+      nm.userData.cell = c.i; nm.userData.nucleus = true;
+      content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
+    }
+  } catch (e){ /* no nucleus is not an error */ }
+}
+/* The box around the cells: their meshes, or the nucleus of a cell that has none. */
+function cellBoxOf(c){ const m = c.mesh || c.nucMesh; if (!m) return null; if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return m.geometry.boundingBox; }
+function refit(){
+  const box = new THREE.Box3();
+  for (const c of CELLS){ const b = cellBoxOf(c); if (b) box.union(b); }
+  if (box.isEmpty()) return;
+  const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  content.position.set(-ctr.x, ctr.y, ctr.z);
+  FIT_SCALE = TABLE_SIZE / Math.max(size.x, size.y, size.z, 1);
+  if (!USER_MOVED) resetStage();
+  CELL_BOX = box;
 }
 async function loadAll(){
   const token = ++LOAD_TOKEN;
@@ -520,7 +608,7 @@ async function loadAll(){
     if (token !== LOAD_TOKEN) return;
     await loadOne(c, token, light);
     if (token !== LOAD_TOKEN) return;
-    if (c.mesh) box.union(c.mesh.geometry.boundingBox);
+    const cb = cellBoxOf(c); if (cb) box.union(cb);
     /* Re-centre and re-fit as each cell arrives, so the first cell is not off in a corner. */
     if (!box.isEmpty()){
       const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
@@ -560,7 +648,7 @@ async function extrasFor(c, ds){
 }
 function updateTri(){
   const t = CELLS.reduce((s, c) => s + (c.mesh && !c.hidden ? c.tris : 0), 0)
-          + (VASC.mesh && VASC.mesh.visible ? VASC.tris : 0);
+          + (VASC.mesh && VASC.mesh.visible ? VASC.tris : 0) + (SKEL.group ? SKEL.tris || 0 : 0);
   triEl.textContent = "Showing " + (t / 1e6).toFixed(2) + " M triangles" + (t > 1.5e6 ? " — may stutter on a standalone Quest 2; try Detail: light or hide some cells" : "");
   triEl.className = t > 1.5e6 ? "warn" : "";
 }
@@ -575,6 +663,12 @@ function updateTri(){
 let CELL_BOX = null;
 const VASC = { raw: null, mesh: null, tris: 0, loading: null };
 const LAYERS = { data: null, group: null };
+/* Section 11, the atlas: declared here, before anything can draw, so applyClip and the scene saver
+   can always read them. */
+const ATLAS = { data: null, loading: null };
+const V1COL = { mode: "off", group: null };
+const AREAS = { on: false, group: null };
+const SKEL = { mode: "off", groups: new Set(["art", "ven", "deep", "pial", "cap"]), cap: "act", raw: {}, loading: {}, group: null, n: 0 };
 const ctxNote = document.getElementById("ctxNote");
 function regionBox(){
   const b = CELL_BOX.clone(), size = b.getSize(new THREE.Vector3());
@@ -582,7 +676,8 @@ function regionBox(){
   return b;
 }
 function dsOfCells(){ return VR_DATASETS[(CELLS.find(c => c.mesh) || CELLS[0] || {}).ds] || VR_DATASETS.microns; }
-function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); if (TRC.on) setTraced(true); }
+function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); if (TRC.on) setTraced(true);
+  cellAreas(); buildRegionBoxes(); if (VEC.cent || VEC.cil) buildVectors(); if (SKEL.mode !== "off") buildSkel(); if (V1COL.mode !== "off") buildV1Col(); if (AREAS.on) buildAreas(); }
 
 async function loadVascRaw(ds){
   if (VASC.raw) return VASC.raw;
@@ -635,6 +730,7 @@ async function buildVessels(){
   VASC.mesh.renderOrder = 2; VASC.mesh.userData.context = true;
   VASC.tris = idx.length / 3;
   content.add(VASC.mesh); applyClip();
+  replayStrokes(STROKES, "v");                     // paint that was on the vessels (a scene, or before a rebuild)
   ctxNote.textContent = "Vessels: " + (VASC.tris / 1000).toFixed(0) + "k triangles — TriSAM, Wan & Wei 2025 (BossDB wei2024).";
   updateTri();
 }
@@ -848,6 +944,7 @@ function applyClip(){
   for (const c of CELLS) for (const m of [c.mesh, c.nucMesh]) if (m){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; }
   if (VASC.mesh){ VASC.mesh.material.clippingPlanes = planes; VASC.mesh.material.needsUpdate = true; }
   if (typeof TRC !== "undefined" && TRC.group) TRC.group.children.forEach(m => { if (m.isMesh){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; } });
+  if (SKEL.group) SKEL.group.children.forEach(m => { if (m.material){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; } });
 }
 function knife(){
   if (!CUT.knife){
@@ -1063,15 +1160,40 @@ document.getElementById("scaleBtn").addEventListener("click", () => setScaleBar(
 
 /* ── 5. ORGANELLE REPORTS ──────────────────────────────────────────────────────
    What the community has reported in µJump (?allOrganelles=1 -- the call Filter-and-show's
-   viewer makes): one point per centriole, plug, …, and a line from A to B for the kinds that have
-   two ends (a cilium from its base to its tip). Coordinates are tool voxels (4 x 4 x 40 nm).
-   Everything inside the box around the cells is drawn, not only what belongs to them -- a
-   neighbour's cilium pointing at your cell is part of the picture. The call takes ~10 s, once. */
-const ORG = { on: false, data: null, group: null, loading: false };
-const ORG_PALETTE = ["#ffd38a","#56d4c8","#f778ba","#a5e075","#d2a8ff","#ffb3c7","#e3d24f","#9fd8a8","#ff8f5a","#b0bec5"];
+   viewer makes): one point per centriole, plug, …, and for the kinds that have two ends (a cilium
+   from its base to its tip) both. Coordinates are tool voxels (4 x 4 x 40 nm). Everything inside
+   the box around the cells is drawn, not only what belongs to them -- a neighbour's cilium pointing
+   at your cell is part of the picture. The call takes ~10 s, once.
+
+   These are the POINTS (a two-ended report gets a ball at each end); the nucleus→centriole and
+   cilium base→tip VECTORS are their own layers, as in Filter-and-show -- section 5b. Colours as in
+   µJump: centriole #ffd21a, cilium #ff5bd0. A kind can be chosen on its own (orgKind). */
+const ORG = { on: false, data: null, group: null, loading: false, kind: "all" };
+const ORG_PALETTE = ["#56d4c8","#f778ba","#a5e075","#d2a8ff","#ffb3c7","#e3d24f","#9fd8a8","#ff8f5a","#b0bec5","#ffd38a"];
+const ORG_FIXED = { centriole: "#ffd21a", cilium: "#ff5bd0" };
+/* Where a nucleus is, by its id: the loaded mesh, else the nucleus table near a point. */
+const NUC_AT = {};
+async function nucleusCentre(nid, near){
+  nid = String(nid || ""); if (!nid) return null;
+  /* The nucleus table's position first -- where µJump anchors its vectors -- and the loaded
+     nucleus mesh only when the table has no row for it. */
+  const c = CELLS.find(x => String(x.nuc) === nid && x.nucMesh);
+  if (nid in NUC_AT) return NUC_AT[nid] || (c ? nucCentreOf(c) : null);
+  NUC_AT[nid] = null;
+  const ds = dsOfCells(); if (!ds.nuclei || !near) return null;
+  try {
+    const I = await nucIndex(ds), T = I.tileUm, tx = Math.floor(near.x / T), tz = Math.floor(near.z / T);
+    for (let dx = -1; dx <= 1 && !NUC_AT[nid]; dx++) for (let dz = -1; dz <= 1 && !NUC_AT[nid]; dz++){
+      const r = (await nucTile(ds, (tx + dx) + "_" + (tz + dz))).find(q => String(q[4]) === nid);
+      if (r) NUC_AT[nid] = new THREE.Vector3(r[0], r[1], r[2]);
+    }
+  } catch (e){}
+  return NUC_AT[nid] || (c ? nucCentreOf(c) : null);
+}
+const _Y = new THREE.Vector3(0, 1, 0);
 async function setOrganelles(v){
   ORG.on = v; document.getElementById("orgBtn").classList.toggle("on", v); MENU.dirty = true;
-  if (ORG.group){ content.remove(ORG.group); ORG.group = null; }
+  if (ORG.group){ disposeGroup(ORG.group); ORG.group = null; }
   if (!v || !CELL_BOX) return;
   const ds = dsOfCells();
   if (!ORG.data){
@@ -1084,27 +1206,21 @@ async function setOrganelles(v){
   }
   const b = regionBox(), res = ds.res || [4, 4, 40];
   const P = s => { const a = String(s || "").split(",").map(Number); return a.length === 3 && a.every(isFinite) ? new THREE.Vector3(a[0] * res[0] / 1000, a[1] * res[1] / 1000, a[2] * res[2] / 1000) : null; };
-  const kinds = {}, grp = new THREE.Group();
+  /* The kinds in the box, for the chooser -- every kind, whatever is chosen. */
+  const inBox = ORG.data.map(o => ({ o, a: P(o.pointA), z: P(o.pointB) })).filter(x => x.a && b.containsPoint(x.a));
+  const allKinds = {}; inBox.forEach(x => { const k = x.o.kind || "organelle"; allKinds[k] = (allKinds[k] || 0) + 1; });
+  fillSelect("orgKind", "All reported kinds", Object.keys(allKinds).sort().map(k => [k, k.replace(/_/g, " ") + " (" + allKinds[k] + ")"]), ORG.kind);
+  const kinds = {}, grp = new THREE.Group(), mats = {};
   const ext = b.getSize(new THREE.Vector3()).length(), rad = Math.max(0.25, ext * 0.004);
   let n = 0;
-  for (const o of ORG.data){
-    const a = P(o.pointA), z = P(o.pointB);
-    if (!a || !b.containsPoint(a)) continue;
+  for (const { o, a, z } of inBox){
     const k = o.kind || "organelle";
-    if (!kinds[k]) kinds[k] = { col: ORG_PALETTE[Object.keys(kinds).length % ORG_PALETTE.length], n: 0 };
+    if (ORG.kind !== "all" && k !== ORG.kind) continue;
+    if (!kinds[k]) kinds[k] = { col: ORG_FIXED[k] || ORG_PALETTE[Object.keys(kinds).length % ORG_PALETTE.length], n: 0 };
     const col = kinds[k].col; kinds[k].n++; n++;
-    const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35, roughness: 0.4 });
+    const mat = mats[col] || (mats[col] = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35, roughness: 0.4 }));
     const s1 = new THREE.Mesh(new THREE.SphereGeometry(rad, 14, 10), mat); s1.position.copy(a); grp.add(s1);
-    if (z){
-      const d = z.clone().sub(a), L = d.length();
-      if (L > 0.01){
-        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.45, rad * 0.45, L, 10), mat);
-        cyl.position.copy(a).addScaledVector(d, 0.5);
-        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
-        grp.add(cyl);
-        const s2 = new THREE.Mesh(new THREE.SphereGeometry(rad * 0.7, 12, 8), mat); s2.position.copy(z); grp.add(s2);
-      }
-    }
+    if (z){ const s2 = new THREE.Mesh(new THREE.SphereGeometry(rad * 0.7, 12, 8), mat); s2.position.copy(z); grp.add(s2); }
   }
   /* A legend at the box's corner: each kind in its colour, with its count. */
   const ks = Object.keys(kinds);
@@ -1114,11 +1230,101 @@ async function setOrganelles(v){
     leg.scale.multiplyScalar(ext * 0.22);
     leg.position.set(b.min.x, b.min.y, b.min.z); grp.add(leg);
   }
+  if (ORG.group) disposeGroup(ORG.group);
   ORG.group = grp; content.add(grp);
   ctxNote.textContent = n ? "Organelles: " + n + " reports here — " + ks.map(k => k.replace(/_/g, " ") + " " + kinds[k].n).join(", ")
-                          : "Organelles: none reported inside the box around these cells.";
+                          : "Organelles: none " + (ORG.kind === "all" ? "" : "of that kind ") + "reported inside the box around these cells.";
+}
+/* Refill a <select> with [value, text] pairs, keeping the choice when it is still offered. */
+function fillSelect(id, allText, pairs, keep){
+  const el = document.getElementById(id);
+  el.innerHTML = `<option value="all">${esc(allText)}</option>` + pairs.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
+  el.value = pairs.some(p => p[0] === keep) ? keep : "all";
 }
 document.getElementById("orgBtn").addEventListener("click", () => setOrganelles(!ORG.on));
+document.getElementById("orgKind").addEventListener("change", e => { ORG.kind = e.target.value; setOrganelles(true); });
+
+/* ── 5b. THE VECTORS: nucleus → centriole, cilium base → tip ────────────────  2026-10-14
+   Søren: "the vector between the nucleus and centrioles should be shown as 3D arrows. We should have
+   the same from primary cilium base to tip." Filter-and-show's two vector layers, as solid arrows:
+   a shaft from the nucleus (or cilium base) and a cone at the centriole (or tip), the head 30 % of the
+   length as in µJump's vecArrowAnns. Two sources, both drawn, as there:
+   · Søren's own verified dataset (core/vr_vectors_microns.json, src/build_vr_vectors.js) -- the
+     arrow starts at the nucleus table's position for that nucleus;
+   · the community reports (?allOrganelles=1, shared with section 5) -- a centriole's arrow starts at
+     its nucleus's table position, or the loaded nucleus mesh's centre when the table has none.
+   Every vector with either end inside the box around the cells is drawn. Off by default. */
+const VEC = { cent: false, cil: false, data: null, loading: null, group: null };
+async function loadVectors(){
+  if (VEC.data) return VEC.data;
+  if (!VEC.loading) VEC.loading = fetch(dsOfCells().vectors).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(d => (VEC.data = d)).catch(e => { VEC.loading = null; throw e; });
+  return VEC.loading;
+}
+async function loadReports(){
+  if (ORG.data) return ORG.data;
+  const r = await fetch(dsOfCells().backend + "?allOrganelles=1");
+  ORG.data = ((await r.json()) || {}).organelles || [];
+  return ORG.data;
+}
+function vectorArrow(a, b, col, shaftR){
+  const d = b.clone().sub(a), L = d.length(); if (L < 0.05) return null;
+  const head = L * 0.3, headR = Math.max(head * 0.45, shaftR * 2.2), g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.4, roughness: 0.4 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, L - head, 12), mat);
+  shaft.position.y = (L - head) / 2; g.add(shaft);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(headR, head, 18), mat);
+  cone.position.y = L - head / 2; g.add(cone);
+  const foot = new THREE.Mesh(new THREE.SphereGeometry(shaftR * 1.6, 12, 8), mat); g.add(foot);   // where it starts
+  g.position.copy(a); g.quaternion.setFromUnitVectors(_Y, d.normalize());
+  return g;
+}
+let VEC_TOKEN = 0;
+async function buildVectors(){
+  const token = ++VEC_TOKEN;
+  document.getElementById("cvecBtn").classList.toggle("on", VEC.cent);
+  document.getElementById("lvecBtn").classList.toggle("on", VEC.cil);
+  if (VEC.group){ disposeGroup(VEC.group); VEC.group = null; }
+  MENU.dirty = true;
+  if ((!VEC.cent && !VEC.cil) || !CELL_BOX) return;
+  const ds = dsOfCells(), res = ds.res || [4, 4, 40];
+  ctxNote.textContent = "Vectors: reading the verified and the reported centrioles and cilia…";
+  let own = { cent: [], cil: [] }, reps = [];
+  try { own = await loadVectors(); } catch (e){ ctxNote.textContent = "The verified vectors could not be loaded: " + (e.message || e); }
+  try { reps = await loadReports(); } catch (e){}
+  if (token !== VEC_TOKEN) return;
+  const b = regionBox(), V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const P = s => { const a = String(s || "").split(",").map(Number); return a.length === 3 && a.every(isFinite) ? V(a[0] * res[0] / 1000, a[1] * res[1] / 1000, a[2] * res[2] / 1000) : null; };
+  const list = [];        // [from, to, colour]
+  const inBox = (p, q) => b.containsPoint(p) || b.containsPoint(q);
+  if (VEC.cent){
+    own.cent.forEach(r => { const p = V(r[1], r[2], r[3]), q = V(r[4], r[5], r[6]); if (inBox(p, q)) list.push([p, q, "#ffd21a"]); });
+    for (const o of reps){
+      if (o.kind !== "centriole") continue;
+      const q = P(o.pointA); if (!q || !b.containsPoint(q)) continue;
+      const p = await nucleusCentre(o.nucleusId, q); if (token !== VEC_TOKEN) return;
+      if (p) list.push([p, q, "#ffd21a"]);
+    }
+  }
+  if (VEC.cil){
+    own.cil.forEach(r => { const p = V(r[1], r[2], r[3]), q = V(r[4], r[5], r[6]); if (inBox(p, q)) list.push([p, q, "#ff5bd0"]); });
+    for (const o of reps){
+      if (o.kind !== "cilium") continue;
+      const p = P(o.pointA), q = P(o.pointB); if (p && q && inBox(p, q)) list.push([p, q, "#ff5bd0"]);
+    }
+  }
+  const grp = new THREE.Group(), ext = b.getSize(new THREE.Vector3()).length(), shaftR = Math.max(0.12, ext * 0.0012);
+  let nc = 0, nl = 0;
+  for (const [p, q, col] of list){ const a = vectorArrow(p, q, col, shaftR); if (a){ grp.add(a); col === "#ffd21a" ? nc++ : nl++; } }
+  if (token !== VEC_TOKEN){ disposeGroup(grp); return; }
+  VEC.group = grp; content.add(grp);
+  ctxNote.textContent = (VEC.cent ? nc + " nucleus → centriole vector" + (nc === 1 ? "" : "s") : "")
+    + (VEC.cent && VEC.cil ? " · " : "") + (VEC.cil ? nl + " cilium base → tip vector" + (nl === 1 ? "" : "s") : "")
+    + " around these cells (verified + reported).";
+}
+function setVectors(which, v){ VEC[which] = v; buildVectors(); }
+document.getElementById("cvecBtn").addEventListener("click", () => setVectors("cent", !VEC.cent));
+document.getElementById("lvecBtn").addEventListener("click", () => setVectors("cil", !VEC.cil));
 
 /* ── 6. BRING IN THE NEIGHBOURS ────────────────────────────────────────────  2026-10-13
    The cells nearest the picked one, fetched while you stand there. Positions, predicted types and
@@ -1193,87 +1399,202 @@ document.getElementById("nbBtn").addEventListener("click", () => addNeighbours(3
 
 /* ── 7. TRACED STRUCTURES ──────────────────────────────────────────────────  2026-10-13
    What people have outlined section by section in µJump's tracing pad -- lysosomes, whole cells the
-   segmentation does not have, collagen -- drawn as surfaces lofted through their contours by
-   core/traceloft.js, the same loft the pad's own 3D preview uses (not the export's marching
-   cubes; for one outline per section the two agree on the shape).
+   segmentation does not have, nuclei, collagen -- drawn as surfaces lofted through their contours by
+   core/traceloft.js, the same loft the pad's own 3D preview uses.
 
-   Two reads, so the cells you collected are not kept waiting on everybody else's work: first the
-   tracings whose nucleus or root id is one of these cells, then all the rest, of which only those
-   whose contours fall inside the box around the cells are drawn. The index is ~4 s; the outlines
-   for everything were measured at ~20 s (68 structures, 183 k vertices) on 2026-10-13.
-   Each keeps the colour it was traced with; a traced CELL is drawn see-through when the same cell's
-   segmentation mesh is also here, so the two can be compared rather than one hiding the other. */
-const TRC = { on: false, index: null, rings: {}, group: null, busy: false };
+   ALWAYS WITH ITS CELL (2026-10-14, Søren: "For showing the traced organelles, they don't make sense
+   without the cells they are in. So they should be displayed along with their cell's meshes and its
+   nucleus. I think we should also be able to select the cell type and organelle type. Same for traced
+   whole cell and nuclei meshes.")
+   · A tracing is drawn only on a cell that is here: the one whose root id or nucleus id it carries.
+     A structure that belongs to no cell (collagen) is drawn when it lies inside the box.
+   · "+ Add their cells" brings in every cell that has tracings of the chosen kind and cell type --
+     its segmentation mesh with the community's proposed root ids, and its nucleus -- and turns the
+     tracings on. A cell traced by hand that the segmentation does not have arrives as its nucleus
+     and its traced outline. A tracing with no root id gets its cell's from the nucleus table.
+   · Cell type (the tracing's own cellType, as given in the pad) and kind filter what is drawn and
+     what "+ Add" brings. Whole cells and nuclei are kinds like any other.
+
+   The index is ~4 s; each outline is one Drive file, read when it is first needed. Each keeps the
+   colour it was traced with; a traced CELL is drawn see-through when the same cell's segmentation
+   mesh is also here, so the two can be compared rather than one hiding the other. */
+const TRC = { on: false, index: null, rings: {}, group: null, busy: false, type: "all", kind: "all" };
+const TRC_KIND_NAME = { cell: "whole cells", nucleus: "nuclei" };
+function trcKindName(k, n){
+  if (n === 1) return ({ cell: "whole cell", nucleus: "nucleus" })[k] || String(k || "structure").replace(/_/g, " ");
+  return TRC_KIND_NAME[k] || String(k || "structure").replace(/_/g, " ") + "s";
+}
+function trcMatch(t){ return (TRC.type === "all" || (t.cellType || "") === TRC.type) && (TRC.kind === "all" || t.kind === TRC.kind); }
+function trcCellKey(t){ return String(t.rootId || "") || String(t.nucleusId || ""); }
+/* The cell a tracing belongs to, if it is here. */
+function trcCell(t){
+  const r = String(t.rootId || ""), nid = String(t.nucleusId || "");
+  return CELLS.find(c => (r && (String(c.root) === r || (c.extra || []).map(String).includes(r))) || (nid && String(c.nuc) === nid)) || null;
+}
+async function trcIndex(){
+  if (TRC.index) return TRC.index;
+  const ds = dsOfCells();
+  ctxNote.textContent = "Traced: reading the index…";
+  const r = await fetch(ds.backend + "?tracings=1&ds=" + encodeURIComponent(ds.tracingDs || ""));
+  TRC.index = ((await r.json()) || {}).tracings || [];
+  trcFilters();
+  return TRC.index;
+}
+/* The two choosers, from what has been traced -- counts follow the other chooser. */
+function trcFilters(){
+  if (!TRC.index) return;
+  const types = {}, kinds = {};
+  TRC.index.forEach(t => {
+    if (TRC.kind === "all" || t.kind === TRC.kind){ const y = t.cellType || ""; if (y) types[y] = (types[y] || 0) + 1; }
+    if (TRC.type === "all" || (t.cellType || "") === TRC.type){ const k = t.kind || "structure"; kinds[k] = (kinds[k] || 0) + 1; }
+  });
+  fillSelect("trcType", "All cell types", Object.keys(types).sort().map(y => [y, y + " (" + types[y] + ")"]), TRC.type);
+  fillSelect("trcKind", "All traced structures", Object.keys(kinds).sort().map(k => [k, trcKindName(k) + " (" + kinds[k] + ")"]), TRC.kind);
+  MENU.dirty = true;
+}
+async function fetchRings(list, what){
+  const ds = dsOfCells(), qs = "&ds=" + encodeURIComponent(ds.tracingDs || "");
+  const want = list.filter(t => !(t.structureId in TRC.rings));
+  if (!want.length) return;
+  const res = await UJ.tracing.fetchMany(ds.backend, want, qs,
+    (d, n) => { ctxNote.textContent = "Traced: reading " + what + " " + d + "/" + n + "…"; });
+  want.forEach(t => { const x = res[t.structureId]; TRC.rings[t.structureId] = (x && x.st && x.st.rings) || []; });
+}
+/* A tracing's centre in µm, from its contours. */
+function trcCentre(t){
+  const rings = TRC.rings[t.structureId], res = dsOfCells().res || [4, 4, 40];
+  if (!rings || !rings.length) return null;
+  let sx = 0, sy = 0, n = 0;
+  rings.forEach(r => (r.points || []).forEach(p => { sx += p[0]; sy += p[1]; n++; }));
+  if (!n) return null;
+  const zc = rings.reduce((s, r) => s + r.z, 0) / rings.length;
+  return new THREE.Vector3(sx / n * res[0] / 1000, sy / n * res[1] / 1000, zc * res[2] / 1000);
+}
 async function setTraced(v){
   TRC.on = v; document.getElementById("trcBtn").classList.toggle("on", v); MENU.dirty = true;
-  if (TRC.group){ content.remove(TRC.group); TRC.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); TRC.group = null; }
-  if (!v || !CELL_BOX || TRC.busy) return;
+  if (TRC.group){ disposeGroup(TRC.group); TRC.group = null; }
+  if (!v || TRC.busy) return;
   const ds = dsOfCells(); if (!ds.backend || !UJ.tracing || !UJ.traceloft) return;
-  const qs = "&ds=" + encodeURIComponent(ds.tracingDs || "");
   TRC.busy = true;
   try {
-    if (!TRC.index){
-      ctxNote.textContent = "Traced: reading the index…";
-      const r = await fetch(ds.backend + "?tracings=1" + qs);
-      TRC.index = ((await r.json()) || {}).tracings || [];
-    }
-    const ids = new Set(CELLS.flatMap(c => [String(c.root || ""), String(c.nuc || "")]).filter(Boolean));
-    const mine = TRC.index.filter(t => ids.has(String(t.rootId || "")) || ids.has(String(t.nucleusId || "")));
-    const rest = TRC.index.filter(t => !mine.includes(t));
-    const fetchRings = async (list, what) => {
-      const want = list.filter(t => !(t.structureId in TRC.rings));
-      if (!want.length) return;
-      const res = await UJ.tracing.fetchMany(ds.backend, want, qs,
-        (d, n) => { ctxNote.textContent = "Traced: reading " + what + " " + d + "/" + n + "…"; });
-      want.forEach(t => { const x = res[t.structureId]; TRC.rings[t.structureId] = (x && x.st && x.st.rings) || []; });
-    };
+    await trcIndex();
+    /* This collection's tracings first, then the cell-less ones, which need their contours to know
+       whether they are in the box. */
+    const mine = TRC.index.filter(t => trcCell(t));
     await fetchRings(mine, "this collection's tracings");
     if (TRC.on) drawTraced();
-    await fetchRings(rest, "the other tracings");
+    const loose = TRC.index.filter(t => !t.nucleusId && !t.rootId);
+    await fetchRings(loose, "structures outside cells");
     if (TRC.on) drawTraced();
   } catch (e){ ctxNote.textContent = "Traced structures could not be read: " + (e.message || e); }
   TRC.busy = false;
 }
 function drawTraced(){
-  if (TRC.group){ content.remove(TRC.group); TRC.group = null; }
-  const ds = dsOfCells(), res = ds.res || [4, 4, 40], b = regionBox(), grp = new THREE.Group();
-  const segRoots = new Set(CELLS.filter(c => c.mesh).map(c => String(c.root)));
-  const kinds = {};
+  if (TRC.group){ disposeGroup(TRC.group); TRC.group = null; }
+  const ds = dsOfCells(), res = ds.res || [4, 4, 40], b = CELL_BOX ? regionBox() : null, grp = new THREE.Group();
+  const kinds = {}; let others = 0; const otherCells = new Set();
   for (const t of TRC.index || []){
+    if (!trcMatch(t)) continue;
+    const cell = trcCell(t), loose = !t.nucleusId && !t.rootId;
+    if (!cell && !loose){ others++; otherCells.add(trcCellKey(t)); continue; }
+    if (cell && cell.hidden) continue;
     const rings = TRC.rings[t.structureId];
     if (!rings || !rings.length) continue;
-    /* Inside the box? Test the contours' own centre, in µm. */
-    let sx = 0, sy = 0, n = 0;
-    rings.forEach(r => (r.points || []).forEach(p => { sx += p[0]; sy += p[1]; n++; }));
-    if (!n) continue;
-    const zc = rings.reduce((s, r) => s + r.z, 0) / rings.length;
-    const ctr = new THREE.Vector3(sx / n * res[0] / 1000, sy / n * res[1] / 1000, zc * res[2] / 1000);
-    if (!b.containsPoint(ctr)) continue;
+    if (loose){ const ctr = trcCentre(t); if (!ctr || !b || !b.containsPoint(ctr)) continue; }
     let L;
     try { L = UJ.traceloft.loft(rings, res); } catch (e){ continue; }
     if (!L || !L.positions || !L.indices || !L.indices.length) continue;
     const pos = new Float32Array(L.positions.length);
     for (let k = 0; k < pos.length; k++) pos[k] = L.positions[k] / 1000;      // nm -> µm
-    const isCell = t.kind === "cell";
-    const glass = isCell && segRoots.has(String(t.rootId || ""));
+    const glass = (t.kind === "cell" && cell && cell.mesh) || (t.kind === "nucleus" && cell && cell.nucMesh && SHOW_NUC);
     const m = new THREE.Mesh(geometryFrom(pos, new Uint32Array(L.indices)),
       new THREE.MeshStandardMaterial({ color: t.color || "#40e28c", roughness: 0.5, side: THREE.DoubleSide,
-        transparent: glass, opacity: glass ? 0.35 : 1, depthWrite: !glass }));
-    m.userData.tracing = t.structureId; grp.add(m);
+        transparent: !!glass, opacity: glass ? 0.35 : 1, depthWrite: !glass }));
+    m.userData.tracing = t.structureId; if (cell) m.userData.cellOf = cell.i; grp.add(m);
     const k = t.kind || "structure";
     kinds[k] = (kinds[k] || 0) + 1;
   }
   const ks = Object.keys(kinds);
-  if (ks.length){
+  if (ks.length && b){
     const ext = b.getSize(new THREE.Vector3()).length();
-    const leg = textSprite(["Traced by hand"].concat(ks.map(k => k + "  ×" + kinds[k])), { width: 1 });
+    const leg = textSprite(["Traced by hand" + (TRC.type !== "all" ? " · " + TRC.type : "")].concat(ks.map(k => trcKindName(k) + "  ×" + kinds[k])), { width: 1 });
     leg.scale.multiplyScalar(ext * 0.18); leg.position.set(b.max.x, b.min.y, b.max.z); grp.add(leg);
   }
-  TRC.group = grp; content.add(grp); applyClip();
-  ctxNote.textContent = ks.length ? "Traced: " + ks.map(k => kinds[k] + " " + k).join(", ") + " in view."
-                                  : "Traced: nothing traced inside the box around these cells (yet).";
+  TRC.group = grp; content.add(grp); applyClip(); applyTracedLook();
+  ctxNote.textContent = (ks.length ? "Traced: " + ks.map(k => kinds[k] + " " + trcKindName(k, kinds[k])).join(", ") + " on these cells."
+                                   : "Traced: nothing " + (TRC.kind !== "all" || TRC.type !== "all" ? "of that kind " : "") + "traced on these cells.")
+    + (others ? " " + others + " more on " + otherCells.size + " other cell" + (otherCells.size > 1 ? "s" : "") + " — “+ Add their cells” brings them in." : "");
+}
+/* A tracing follows its cell: hidden with it, gone with "only the picked cell". */
+function applyTracedLook(){
+  if (!TRC.group) return;
+  TRC.group.children.forEach(m => {
+    if (m.userData.cellOf == null) return;
+    const c = CELLS[m.userData.cellOf];
+    m.visible = !!c && !c.hidden && !(ISOLATE && SELECTED >= 0 && SELECTED !== c.i);
+  });
+}
+/* Bring in the cells that have the chosen tracings, each with its mesh and nucleus. */
+const TRC_ADD_MAX = 20;
+async function addTracedCells(){
+  const ds = dsOfCells();
+  if (!ds.backend || !UJ.tracing){ ctxNote.textContent = "No tracing backend for this dataset."; return; }
+  let idx; try { idx = await trcIndex(); } catch (e){ ctxNote.textContent = "Traced structures could not be read: " + (e.message || e); return; }
+  /* One entry per cell, newest tracing first, cells already here skipped. */
+  const by = new Map();
+  idx.filter(t => trcMatch(t) && (t.nucleusId || t.rootId) && !trcCell(t))
+     .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+     .forEach(t => { const k = trcCellKey(t); if (!by.has(k)) by.set(k, []); by.get(k).push(t); });
+  if (!by.size){ ctxNote.textContent = "Traced: every cell with " + (TRC.kind === "all" ? "tracings" : trcKindName(TRC.kind)) + (TRC.type === "all" ? "" : " in " + TRC.type) + " is already here."; setTraced(true); return; }
+  const groups = [...by.values()].slice(0, TRC_ADD_MAX);
+  /* Their outlines first: drawing needs them, and a tracing with no root id finds its cell's root
+     id in the nucleus table near its own centre. */
+  await fetchRings(groups.flat(), "the chosen tracings");
+  const wasEmpty = !CELLS.some(c => c.mesh || c.nucMesh);
+  const light = document.getElementById("detail").value === "light", token = LOAD_TOKEN, added = [];
+  for (const list of groups){
+    const t = list[0];
+    let root = String(list.find(x => x.rootId) ? list.find(x => x.rootId).rootId : ""), nid = String(t.nucleusId || ""), predicted = "";
+    if (nid && ds.nuclei){
+      const at = trcCentre(t);
+      if (at){
+        try {
+          const I = await nucIndex(ds), T = I.tileUm, tx = Math.floor(at.x / T), tz = Math.floor(at.z / T);
+          for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++){
+            const r = (await nucTile(ds, (tx + dx) + "_" + (tz + dz))).find(q => String(q[4]) === nid);
+            if (r){ if (!root && r[5]) root = String(r[5]); predicted = I.types[r[3]] || ""; }
+          }
+        } catch (e){}
+      }
+    }
+    const type = t.cellType || predicted || "Traced cell";
+    const label = type.charAt(0).toUpperCase() + type.slice(1) + (predicted && !t.cellType ? " (" + predicted + ", MICrONS prediction)" : "");
+    const c = { i: CELLS.length, ds: (CELLS[0] || {}).ds || "microns", root, nuc: nid, label, extra: [], status: "waiting…",
+                tracedCell: true };
+    c.colour = c.typeColour = colourFor(label); if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    CELLS.push(c); added.push(c);
+  }
+  renderList(); MENU.dirty = true;
+  ctxNote.textContent = "Traced: bringing in " + added.length + " cell" + (added.length > 1 ? "s" : "") + (by.size > TRC_ADD_MAX ? " (the " + TRC_ADD_MAX + " most recently traced of " + by.size + ")" : "") + "…";
+  for (const c of added){
+    if (token !== LOAD_TOKEN) return;
+    await loadOne(c, token, light);
+    const cb = cellBoxOf(c); if (cb) CELL_BOX = (CELL_BOX || new THREE.Box3()).union(cb);
+    renderList(); updateTri(); applyLook(); MENU.dirty = true;
+  }
+  if (wasEmpty || !USER_MOVED) refit();
+  TRC.on = true; document.getElementById("trcBtn").classList.toggle("on", true);
+  drawTraced(); buildContext();
+  STIM.syn = null; if (STIM.on) loadSynapses();
 }
 document.getElementById("trcBtn").addEventListener("click", () => setTraced(!TRC.on));
+document.getElementById("trcAdd").addEventListener("click", addTracedCells);
+for (const id of ["trcType", "trcKind"]) document.getElementById(id).addEventListener("change", e => {
+  TRC[id === "trcType" ? "type" : "kind"] = e.target.value; trcFilters();
+  if (TRC.on) drawTraced();
+});
+/* The choosers are filled as soon as the index can be read, so they are there before anything is shown. */
+setTimeout(() => { trcIndex().then(() => { if (ctxNote.textContent.startsWith("Traced: reading the index")) ctxNote.textContent = ""; }, () => {}); }, 1500);
 
 /* ── 8. THE STIMULATOR: an action potential, and what it does at synapses ───  2026-10-13
    Søren: *"a tool that can start an action potential at the place you touch and see it spread. If
@@ -1589,9 +1910,53 @@ function sprayAt(origin, dir){
     }
   }
   if (touched){ a.needsUpdate = true; if (gl) gl.needsUpdate = true; }
+  recordStroke(mesh, p, r);
   return true;
 }
+/* The same dab, at a position already in the cells' frame -- what a saved scene replays. */
+function paintAround(mesh, p, r, colour, glow, erase){
+  const a = mesh.geometry.attributes.paint, gl = mesh.geometry.attributes.paintGlow; if (!a) return;
+  const P = mesh.geometry.attributes.position.array, g = sprayGrid(mesh), n = Math.ceil(r / GRID), r2 = r * r;
+  const cx = Math.floor(p.x / GRID), cy = Math.floor(p.y / GRID), cz = Math.floor(p.z / GRID);
+  _sc.set(colour);
+  const R = Math.round(_sc.r * 255), G_ = Math.round(_sc.g * 255), B = Math.round(_sc.b * 255), A = erase ? 0 : 255, GL = glow && !erase ? 255 : 0;
+  for (let dx = -n; dx <= n; dx++) for (let dy = -n; dy <= n; dy++) for (let dz = -n; dz <= n; dz++){
+    const list = g.get((cx + dx) + "," + (cy + dy) + "," + (cz + dz)); if (!list) continue;
+    for (const v of list){
+      const ex = P[v*3] - p.x, ey = P[v*3+1] - p.y, ez = P[v*3+2] - p.z;
+      if (ex*ex + ey*ey + ez*ez > r2) continue;
+      a.array[v*4] = R; a.array[v*4+1] = G_; a.array[v*4+2] = B; a.array[v*4+3] = A; if (gl) gl.array[v] = GL;
+    }
+  }
+  a.needsUpdate = true; if (gl) gl.needsUpdate = true;
+}
+/* Every dab is remembered, as a POSITION in µm on a named mesh rather than as vertex numbers, so a
+   saved scene repaints correctly at any level of detail. Dabs closer than a third of the nozzle to
+   the last one on the same mesh with the same paint are skipped -- a held trigger fires 72 times a
+   second, and the stroke does not need all of them. */
+const STROKES = [];
+function meshKey(mesh){
+  if (VASC.mesh === mesh) return "v";
+  const c = CELLS[mesh.userData.cell]; return c ? "r:" + (c.root || c.nuc) : "";
+}
+function recordStroke(mesh, p, r){
+  const k = meshKey(mesh); if (!k) return;
+  const col = SPRAY.colour, fl = (SPRAY.glow ? 1 : 0) | (SPRAY.erase ? 2 : 0), last = STROKES[STROKES.length - 1];
+  if (last && last[0] === k && last[5] === col && last[6] === fl && Math.abs(last[4] - r) < r * 0.05
+      && Math.hypot(last[1] - p.x, last[2] - p.y, last[3] - p.z) < r / 3) return;
+  STROKES.push([k, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +r.toFixed(2), col, fl]);
+}
+function replayStrokes(list, onlyKey){
+  for (const st of list){
+    const [k, x, y, z, r, col, fl] = st;
+    if (onlyKey && k !== onlyKey) continue;
+    const mesh = k === "v" ? VASC.mesh : (CELLS.find(c => c.mesh && "r:" + (c.root || c.nuc) === k) || {}).mesh;
+    if (!mesh) continue;
+    paintAround(mesh, new THREE.Vector3(x, y, z), r, col, !!(fl & 1), !!(fl & 2));
+  }
+}
 function wipePaint(){
+  STROKES.length = 0;
   for (const m of sprayTargets().concat(CELLS.filter(c => c.mesh).map(c => c.mesh))){
     const a = m.geometry.attributes.paint; if (a){ a.array.fill(0); a.needsUpdate = true; }
     const gl = m.geometry.attributes.paintGlow; if (gl){ gl.array.fill(0); gl.needsUpdate = true; }
@@ -1652,6 +2017,579 @@ renderer.domElement.addEventListener("pointerdown", e => { if (SPRAY.on){ SPRAY.
 renderer.domElement.addEventListener("pointermove", e => { if (SPRAY.mouse) SPRAY.mouseNdc = ndcOf(e); });
 addEventListener("pointerup", () => { SPRAY.mouse = false; });
 
+/* ── 10. SAVED SCENES ────────────────────────────────────────────────────────  2026-10-14
+   Søren: *"I like the saved scenes. Then you can prepare a nice scene and then share it with
+   someone else. It should also be possible to share it in our discussion forum with a preview."*
+
+   A scene is everything needed to put the room back as it was left -- the cells and which are
+   hidden, the detail level, what is shown, where the collection stands and how big it is, the
+   desktop view, the EM section, the cut, the measurements and the spray paint -- written as one JSON
+   object and kept by the backend (backend/VRScenes.gs) as a Drive file with a row in "VR scenes".
+   A small JPEG of the current view goes with it, for the forum's preview card.
+
+   The link is vr.html#scene=ID: opened anywhere, by anybody, it reads the scene and rebuilds it.
+   Saving again from a scene you made UPDATES it (same link); saving one somebody else made gives
+   you your own copy. Saving needs a Google sign-in, so a scene says who made it.
+
+   Paint is kept as the DABS that made it (mesh, position in µm, nozzle, colour) and replayed, so a
+   scene saved at light detail repaints correctly at full detail and vice versa. */
+const CLIENT_ID = "240227117082-gmiv0s37qdqngo3t3ph0lmthg4t4t47p.apps.googleusercontent.com";
+const SCENE = { id: SCENE_ID, mine: false, title: "", pending: null };
+let CRED = "", CRED_EXP = 0, CRED_NAME = "";
+function credOk(){ return CRED && CRED_EXP * 1000 > Date.now() + 30000; }
+function onCred(resp){
+  try {
+    const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+      .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
+    CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
+    document.getElementById("sceneSignin").innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>";
+    if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
+  } catch (e){}
+}
+function signInUI(){
+  const box = document.getElementById("sceneSignin");
+  if (!(window.google && google.accounts && google.accounts.id)){ box.innerHTML = "<span class='help'>Loading Google sign-in…</span>"; setTimeout(signInUI, 800); return; }
+  try {
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCred, auto_select: true });
+    box.innerHTML = ""; google.accounts.id.renderButton(box, { theme: "filled_black", size: "medium", text: "signin_with" });
+    google.accounts.id.prompt();
+  } catch (e){ box.textContent = "Google sign-in could not start: " + (e.message || e); }
+}
+const v3 = v => [+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)];
+function captureScene(){
+  const sel = document.getElementById("vascSel").value;
+  const sc = {
+    v: 1, savedAt: new Date().toISOString(),
+    cells: CELLS.map(c => ({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden })),
+    ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
+          colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value,
+          v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap } },
+    /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
+       after it opened is centred and fitted on fewer cells than it holds, and recomputing either
+       on reopening would move it. */
+    stage: { p: v3(stage.position), q: stage.quaternion.toArray().map(x => +x.toFixed(5)), s: +(stage.scale.x / FIT_SCALE).toFixed(5),
+             abs: stage.scale.x, fit: FIT_SCALE, centre: v3(content.position) },
+    cam: { p: v3(camera.position), t: v3(controls.target) },
+    em: EM.centre && (EM.mesh || EM.loading) ? { c: EM.centre.map(x => +x.toFixed(3)), size: EM.size } : null,
+    cut: { mode: CUT.mode === "hand" ? "frozen" : CUT.mode, depth: +document.getElementById("cutDepth").value },
+    meas: MEAS.items.map(g => [v3(g.userData.a), v3(g.userData.b)]),
+    boxes: RBOX.list, boxesOn: RBOX.on,
+    paint: STROKES.slice()
+  };
+  /* A frozen knife is kept relative to the collection, so it cuts the same place wherever the
+     scene is opened. */
+  if (sc.cut.mode === "frozen" && CUT.knife){
+    CUT.knife.updateMatrixWorld();
+    const m = new THREE.Matrix4().copy(stage.matrixWorld).invert().multiply(CUT.knife.matrixWorld);
+    sc.cut.knife = m.toArray().map(x => +x.toFixed(6));
+  }
+  return sc;
+}
+/* A small picture of the current view, for the forum. Rendered on purpose rather than read off the
+   canvas, which the browser may already have cleared. Not in a headset: the headset's picture is
+   not the page's to read, so a scene saved in VR has no preview until it is saved again on a PC. */
+function previewJpeg(){
+  if (renderer.xr.isPresenting) return "";
+  try {
+    renderer.render(scene, camera);
+    const src = renderer.domElement, w = 480, h = Math.round(w * src.height / src.width);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(src, 0, 0, w, h);
+    return cv.toDataURL("image/jpeg", 0.78);
+  } catch (e){ return ""; }
+}
+function sceneLink(id){ return location.href.replace(/[#?].*$/, "") + "#scene=" + id; }
+async function saveScene(fromVR){
+  const out = document.getElementById("sceneOut");
+  if (!CELLS.length){ out.textContent = "Nothing to save yet."; return; }
+  if (!credOk()){
+    SCENE.waiting = { vr: fromVR };
+    out.textContent = "Sign in with Google to save — the scene will carry your name.";
+    if (fromVR) ctxNote.textContent = "To save from the headset, sign in once on the PC panel (the button under the scene title), then save again here.";
+    signInUI(); return;
+  }
+  const title = (document.getElementById("sceneTitle").value || "").trim()
+    || SCENE.title || (CELLS.length + " cells · " + new Date().toLocaleDateString());
+  const sc = captureScene(), json = JSON.stringify(sc), preview = previewJpeg();
+  out.textContent = "Saving " + Math.round(json.length / 1024) + " kB…";
+  const body = { type: "vr_scene", credential: CRED, title, scene: json, preview, cells: CELLS.length, ds: "ujump" };
+  if (SCENE.id && SCENE.mine) body.sceneId = SCENE.id;
+  let d = null;
+  try {
+    const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+    d = JSON.parse(await r.text());
+  } catch (e){ d = { ok: false, error: "could not reach the server" }; }
+  if (!d || !d.ok){ out.textContent = "Not saved: " + ((d && d.error) || "no answer") + (d && /unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : ""); return; }
+  SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title;
+  history.replaceState(null, "", "#scene=" + d.sceneId);
+  const link = sceneLink(d.sceneId);
+  out.innerHTML = (d.updated ? "Updated" : "Saved") + ": <b>" + esc(title) + "</b><br><a href='" + esc(link) + "' target='_blank' style='color:var(--accent);word-break:break-all'>" + esc(link) + "</a>"
+    + "<div class='ctl' style='margin:6px 0 0'><button id='sceneCopy'>Copy link</button><button id='sceneForum'>Share in the forum…</button></div><div id='sceneForumBox'></div>";
+  document.getElementById("sceneCopy").onclick = e => { (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(() => e.target.textContent = "Copied ✓", () => prompt("Copy:", link)); };
+  document.getElementById("sceneForum").onclick = () => forumComposer(title, link);
+  ctxNote.textContent = "💾 Scene " + (d.updated ? "updated" : "saved") + ": " + title;
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+/* ── into the discussion forum ── one shared stream for all the tools (core/forum.js); the post
+   carries the link, and the forum draws the preview card from it. */
+function forumComposer(title, link){
+  const box = document.getElementById("sceneForumBox");
+  box.innerHTML = "<div style='margin-top:8px'><input id='fTitle' value='" + esc(title) + "' style='width:100%;box-sizing:border-box;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px;margin-bottom:6px'>"
+    + "<textarea id='fBody' rows='4' placeholder='What should people look at?' style='width:100%;box-sizing:border-box;font:13px system-ui;padding:6px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px'></textarea>"
+    + "<div class='ctl'><select id='fKind'><option value='finding'>A finding</option><option value='question'>A question</option><option value='idea'>An idea</option></select><button id='fSend' class='on'>Post</button></div><div id='fOut' class='help'></div></div>";
+  document.getElementById("fSend").onclick = async () => {
+    const fo = document.getElementById("fOut");
+    if (!credOk()){ fo.textContent = "Your sign-in has expired — sign in again above."; signInUI(); return; }
+    const text = (document.getElementById("fBody").value || "").trim();
+    const body = { type: "forum_post", scope: "tools", kind: document.getElementById("fKind").value,
+                   title: document.getElementById("fTitle").value || title,
+                   body: (text ? text + "\n\n" : "") + "🥽 VR scene: " + link, credential: CRED, tool: "ujump", ds: "ujump" };
+    fo.textContent = "Posting…";
+    try {
+      const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+      const d = JSON.parse(await r.text());
+      fo.textContent = d.ok ? "✓ Posted in the discussion forum." : "Not posted: " + (d.error || "no answer");
+    } catch (e){ fo.textContent = "Not posted: could not reach the server."; }
+  };
+}
+document.getElementById("sceneSave").addEventListener("click", () => saveScene(false));
+
+/* ── opening one ── */
+async function openScene(id){
+  subEl.textContent = "Opening the saved scene…";
+  let d = null;
+  try { d = await (await fetch(VR_DATASETS.microns.backend + "?vrScene=" + encodeURIComponent(id) + "&ds=ujump")).json(); }
+  catch (e){ d = { ok: false, error: "could not reach the server" }; }
+  if (!d || !d.ok || !d.scene){ subEl.textContent = "That scene could not be opened: " + ((d && d.error) || "no answer"); return; }
+  let sc; try { sc = typeof d.scene === "string" ? JSON.parse(d.scene) : d.scene; } catch (e){ subEl.textContent = "That scene could not be read."; return; }
+  SCENE.title = d.title || ""; document.getElementById("sceneTitle").value = SCENE.title;
+  document.getElementById("sceneOut").innerHTML = "Scene <b>" + esc(d.title || "") + "</b> by " + esc(d.authorName || "somebody")
+    + " · " + esc(String(d.updatedAt || d.timestamp || "").slice(0, 10)) + ". Saving again makes " + (credOk() ? "" : "(once signed in) ") + "your own copy unless it is yours.";
+  CELLS = prepCells(sc.cells || []);
+  RBOX.list = Array.isArray(sc.boxes) ? sc.boxes : []; RBOX.on = sc.boxesOn !== false;
+  CELLS.forEach(c => { c.colour = c.typeColour = colourFor(c.label); });
+  window.__vr && (window.__vr.CELLS = CELLS);
+  const u = sc.ui || {};
+  if (u.detail) document.getElementById("detail").value = u.detail;
+  if (u.stimMode) document.getElementById("stimMode").value = u.stimMode;
+  SCENE.pending = sc;
+  renderList(); updateLabel();
+  await loadAll();
+  applyScene(sc);
+}
+/* After the cells are in: everything else, in the order it depends on itself. */
+async function applyScene(sc){
+  const u = sc.ui || {};
+  CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; });
+  if (u.colour === "ei") setColourMode("ei");
+  setNuclei(u.nuc !== false);
+  if (!!u.glass !== SEE_THROUGH) toggleGlass();
+  ISOLATE = !!u.isolate;
+  if (sc.stage){
+    stage.position.fromArray(sc.stage.p); stage.quaternion.fromArray(sc.stage.q);
+    if (sc.stage.centre) content.position.fromArray(sc.stage.centre);
+    if (sc.stage.fit) FIT_SCALE = sc.stage.fit;
+    stage.scale.setScalar(sc.stage.abs || FIT_SCALE * (sc.stage.s || 1));
+    USER_MOVED = true;
+  }
+  if (sc.cam){ camera.position.fromArray(sc.cam.p); controls.target.fromArray(sc.cam.t); controls.update(); }
+  select(u.selected != null && u.selected < CELLS.length ? u.selected : -1);
+  replayStrokes(sc.paint || []);
+  STROKES.length = 0; (sc.paint || []).forEach(x => STROKES.push(x));
+  (sc.meas || []).forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); });
+  setScaleBar(u.sbar !== false);
+  if (u.layers === false) setLayers(false);
+  if (u.vessels && u.vessels !== document.getElementById("vascSel").value) setVessels(u.vessels);
+  if (u.orgKind) ORG.kind = u.orgKind;
+  if (u.trcType) TRC.type = u.trcType;
+  if (u.trcKind) TRC.kind = u.trcKind;
+  if (u.org) setOrganelles(true);
+  if (u.cvec || u.lvec){ VEC.cent = !!u.cvec; VEC.cil = !!u.lvec; buildVectors(); }
+  if (u.traced) setTraced(true);
+  if (u.v1 && u.v1 !== "off") setV1Col(u.v1);
+  if (u.areas) setAreas(true);
+  if (u.skel && u.skel.mode && u.skel.mode !== "off"){
+    SKEL.groups = new Set(u.skel.groups || []); SKEL.cap = u.skel.cap || "act"; setSkel(u.skel.mode);
+  }
+  if (sc.em){ document.getElementById("emSize").value = sc.em.size || "wide"; await showEM(sc.em.c); }
+  if (sc.cut){
+    document.getElementById("cutDepth").value = sc.cut.depth || 0;
+    if (sc.cut.mode === "desk" || sc.cut.mode === "em") setCut(sc.cut.mode);
+    else if (sc.cut.mode === "frozen" && sc.cut.knife){
+      const k = knife(); stage.updateMatrixWorld();
+      const m = new THREE.Matrix4().multiplyMatrices(stage.matrixWorld, new THREE.Matrix4().fromArray(sc.cut.knife));
+      m.decompose(k.position, k.quaternion, k.scale); scene.add(k);
+      CUT.mode = "frozen"; applyClip(); MENU.dirty = true;
+    }
+  }
+  SCENE.pending = null;
+  applyLook(); renderList();
+  ctxNote.textContent = "🥽 Scene “" + (SCENE.title || "") + "” opened.";
+}
+
+/* ── 11. THE ATLAS: the V1 column, the visual areas, the vessel skeletons ────  2026-10-14
+   Søren: "We should add the V1 column that we also have in filter and show, and also the visual
+   areas. They should be off by default. Also an option to show the vascular skeletons including
+   the capillary bed."
+
+   All three are what Filter-and-show adds to its Neuroglancer view, drawn here in the cells' own
+   micrometre frame so they turn, move and scale with the cells. None of them changes the fit.
+
+   · THE V1 COLUMN is ujump.html's own derived envelope (V1_COLUMN_BOUNDARY): vertical from the
+     top down to the bottom of layer 5, then slanted along the fitted axis of the deep members;
+     radius = the 95th-percentile distance of the members from that axis. A faint tube with rings
+     and struts where Filter-and-show draws them, and optionally the 1,899 hand-classified members
+     as small balls (green neurons, pale green non-neuronal cells).
+   · THE VISUAL AREAS are the four Allen walls between V1, RL, AL and LM, each a pia polyline joined
+     to a white-matter one (areadata's BR branches = gs://allen-minnie-phase3/areameshes), named at
+     the pia above each area's nuclei. A cell's area is decided exactly as ujump.html's areaAtNm()
+     decides it, so the picked cell's label says which area it is in.
+   · THE VESSEL SKELETONS are the Shih lab's hand-labelled centrelines (How et al., bioRxiv 2026,
+     doi:10.64898/2026.09.26.754479) in the authors' own colours, in five groups. The capillary bed
+     (7,757 branches, 30 MB) carries each vertex's branch order from its arteriole-capillary
+     transition (ACT, 1–12) and from its capillary-venule transition (CVT, 1–8); it is coloured with
+     the same jet ramp and the same divisors as the paper's own shader. Around the cells they are
+     thin tubes; for the whole volume, or more than 80,000 segments, plain lines. */
+async function loadAtlas(){
+  if (ATLAS.data) return ATLAS.data;
+  if (!ATLAS.loading) ATLAS.loading = fetch(dsOfCells().v1areas).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(d => {
+      d.walls = d.areaWalls.BR.map(b64 => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return new Int16Array(u.buffer); });
+      ATLAS.data = d; return d;
+    }).catch(e => { ATLAS.loading = null; throw e; });
+  return ATLAS.loading;
+}
+function disposeGroup(g){ if (!g) return; content.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); }
+/* The size a label should have here: a fixed share of the box around the cells, so it reads the
+   same whether three neighbours or a whole column are loaded. */
+function labelHeight(){ if (!CELL_BOX) return 20; const s = CELL_BOX.getSize(new THREE.Vector3()); return Math.max(8, 0.06 * Math.max(s.x, s.y, s.z, 150)); }
+
+/* ── the V1 column ── */
+async function buildV1Col(){
+  disposeGroup(V1COL.group); V1COL.group = null;
+  document.getElementById("v1Sel").value = V1COL.mode;
+  if (V1COL.mode === "off") return;
+  let d; try { d = await loadAtlas(); } catch (e){ ctxNote.textContent = "The V1 column could not be loaded: " + (e.message || e); return; }
+  if (V1COL.mode === "off") return;
+  disposeGroup(V1COL.group);
+  const v = d.v1, grp = new THREE.Group(), SEG = 48, COL = "#3fb950";
+  const axis = y => (v.breakY == null || y <= v.breakY) ? [v.ux, v.uz] : [v.ux + v.sx * (y - v.breakY), v.uz + v.sz * (y - v.breakY)];
+  const ys = [v.yLo].concat(v.breakY != null && v.breakY > v.yLo && v.breakY < v.yHi ? [v.breakY] : []).concat([v.yHi]);
+  const ring = y => { const [cx, cz] = axis(y), p = []; for (let k = 0; k < SEG; k++){ const a = 2 * Math.PI * k / SEG; p.push([cx + v.r * Math.cos(a), y, cz + v.r * Math.sin(a)]); } return p; };
+  const rings = ys.map(ring);
+  /* The skin: one band per straight stretch of the axis. */
+  const P = [], I = [];
+  rings.forEach(r => r.forEach(q => P.push(q[0], q[1], q[2])));
+  for (let j = 0; j < rings.length - 1; j++) for (let k = 0; k < SEG; k++){
+    const a = j * SEG + k, b = j * SEG + (k + 1) % SEG, c = a + SEG, e = b + SEG;
+    I.push(a, c, b, b, c, e);
+  }
+  const skin = new THREE.Mesh(geometryFrom(new Float32Array(P), new Uint32Array(I)),
+    new THREE.MeshBasicMaterial({ color: COL, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }));
+  skin.renderOrder = 3; grp.add(skin);
+  /* Rings, and a strut every sixth point -- eight, as in Filter-and-show. */
+  const L = [];
+  rings.forEach(r => { for (let k = 0; k < SEG; k++){ const a = r[k], b = r[(k + 1) % SEG]; L.push(...a, ...b); } });
+  for (let j = 0; j < rings.length - 1; j++) for (let k = 0; k < SEG; k += SEG / 8) L.push(...rings[j][k], ...rings[j + 1][k]);
+  grp.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(L, 3)),
+    new THREE.LineBasicMaterial({ color: COL, transparent: true, opacity: 0.85 })));
+  const lab = textSprite(["V1 column", "Allen, hand-classified · n = " + v.n], { fit: true, border: COL });
+  const h = labelHeight(); lab.scale.set(h * lab.userData.aspect, h, 1);
+  lab.position.set(v.ux, v.yLo - h, v.uz); grp.add(lab);
+  if (V1COL.mode === "cells"){
+    const m = v.members, inst = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.5, 1),
+      new THREE.MeshStandardMaterial({ roughness: 0.5 }), m.length);
+    const M4 = new THREE.Matrix4(), cN = new THREE.Color("#3fb950"), cG = new THREE.Color("#c3f0c8");
+    m.forEach((q, i) => { M4.makeTranslation(q[0], q[1], q[2]); inst.setMatrixAt(i, M4); inst.setColorAt(i, q[3] === "N" ? cN : cG); });
+    inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    grp.add(inst);
+  }
+  V1COL.group = grp; content.add(grp);
+  const nN = v.members.filter(q => q[3] === "N").length;
+  ctxNote.textContent = "V1 column: Allen's hand-classified column, " + v.n + " cells (" + nN + " neurons, " + (v.n - nN) + " non-neuronal)"
+    + (V1COL.mode === "cells" ? " — drawn as balls (dark green neurons, pale non-neuronal)." : ".");
+  MENU.dirty = true;
+}
+function setV1Col(mode){ V1COL.mode = mode; buildV1Col(); MENU.dirty = true; }
+document.getElementById("v1Sel").addEventListener("change", e => setV1Col(e.target.value));
+
+/* ── the visual areas ── */
+const AREA_COL = ["#3fb950", "#f0883e", "#d2a8ff", "#58a6ff"];       // V1, AL, LM, RL -- the order of areadata's NAMES
+/* ujump.html's areaAtNm(), in micrometres: the nearest wall at the point's own depth, and which side
+   of it the point is on. */
+function areaAt(X, Y, Z){
+  const d = ATLAS.data; if (!d) return null;
+  let bd = Infinity, bb = -1, bc = 0;
+  for (let k = 0; k < 4; k++){
+    const a = d.walls[k], n = a.length / 6;
+    let px = 0, pz = 0, have = false;
+    for (let i = 0; i < n; i++){
+      const ay = a[i*6+1], by = a[i*6+4], dy = (by - ay) || 1;
+      let t = (Y - ay) / dy; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      const x = a[i*6] + (a[i*6+3] - a[i*6]) * t, z = a[i*6+2] + (a[i*6+5] - a[i*6+2]) * t;
+      if (have){
+        const dx = x - px, dz = z - pz, L2 = (dx*dx + dz*dz) || 1e-9;
+        let u = ((X - px) * dx + (Z - pz) * dz) / L2; u = u < 0 ? 0 : (u > 1 ? 1 : u);
+        const qx = px + u * dx, qz = pz + u * dz, dd = (X - qx) * (X - qx) + (Z - qz) * (Z - qz);
+        if (dd < bd){ bd = dd; bb = k; bc = dx * (Z - pz) - dz * (X - px); }
+      }
+      px = x; pz = z; have = true;
+    }
+  }
+  return bb < 0 ? null : (bc > 0 ? d.areaWalls.NEXTSEC[bb] : d.areaWalls.PREVSEC[bb]);
+}
+/* Where a cell is: its nucleus if it has one, otherwise the middle of its mesh. */
+function cellCentre(c){
+  const m = c.nucMesh || c.mesh; if (!m) return null;
+  if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+  return m.geometry.boundingBox.getCenter(new THREE.Vector3());
+}
+async function cellAreas(){
+  try { await loadAtlas(); } catch (e){ return; }
+  for (const c of CELLS){ const p = cellCentre(c); c.area = p ? areaAt(p.x, p.y, p.z) : null; }
+  updateLabel();
+}
+function areaName(a){ return ATLAS.data && a != null ? ATLAS.data.areas[a].name : ""; }
+async function buildAreas(){
+  disposeGroup(AREAS.group); AREAS.group = null;
+  document.getElementById("areaBtn").classList.toggle("on", AREAS.on);
+  if (!AREAS.on) return;
+  let d; try { d = await loadAtlas(); } catch (e){ ctxNote.textContent = "The visual areas could not be loaded: " + (e.message || e); return; }
+  if (!AREAS.on) return;
+  disposeGroup(AREAS.group);
+  const grp = new THREE.Group();
+  /* Each wall: quads between consecutive pia/white-matter pairs; its pia and white-matter edges as lines. */
+  d.walls.forEach(a => {
+    const n = a.length / 6, P = [], I = [], E = [];
+    for (let i = 0; i < n; i++) P.push(a[i*6], a[i*6+1], a[i*6+2], a[i*6+3], a[i*6+4], a[i*6+5]);
+    for (let i = 0; i < n - 1; i++){ const p = i * 2; I.push(p, p + 1, p + 2, p + 1, p + 3, p + 2); E.push(...P.slice(p*3, p*3+3), ...P.slice((p+2)*3, (p+2)*3+3), ...P.slice((p+1)*3, (p+1)*3+3), ...P.slice((p+3)*3, (p+3)*3+3)); }
+    const w = new THREE.Mesh(geometryFrom(new Float32Array(P), new Uint32Array(I)),
+      new THREE.MeshBasicMaterial({ color: 0xe6edf3, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
+    w.renderOrder = 3; grp.add(w);
+    grp.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(E, 3)),
+      new THREE.LineBasicMaterial({ color: 0xe6edf3, transparent: true, opacity: 0.6 })));
+  });
+  /* The names, just above the pia over each area's nuclei. */
+  let L = null; try { L = await loadLayers(dsOfCells()); } catch (e){}
+  const h = labelHeight() * 1.4;
+  d.areas.forEach((ar, k) => {
+    const y = (L ? surfaceAt(L, L.pia, ar.x, ar.z) : 280) - h;
+    const lab = textSprite([ar.name, ar.count.toLocaleString() + " nuclei"], { fit: true, border: AREA_COL[k] });
+    lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(ar.x, y, ar.z); grp.add(lab);
+  });
+  AREAS.group = grp; content.add(grp);
+  const tally = {};
+  CELLS.forEach(c => { if (c.area != null){ const nm = areaName(c.area).split(" ")[0]; tally[nm] = (tally[nm] || 0) + 1; } });
+  const t = Object.keys(tally).map(k => k + " " + tally[k]).join(", ");
+  ctxNote.textContent = "Visual areas (Allen area walls)" + (t ? " — your cells: " + t + "." : ".");
+  MENU.dirty = true;
+}
+function setAreas(v){ AREAS.on = v; buildAreas(); MENU.dirty = true; }
+document.getElementById("areaBtn").addEventListener("click", () => setAreas(!AREAS.on));
+
+/* ── the vessel skeletons ── */
+const SKEL_FILES = {
+  "skelFinal_PAs_v7_connected":  { name: "Penetrating arterioles",              color: "#ff2828", r: 1.4 },
+  "skelFinal_ACTs_v7":           { name: "Arteriole-capillary transitions",     color: "#ff8800", r: 0.9 },
+  "skelFinal_terminalPAs_v7":    { name: "Terminal penetrating arterioles",     color: "#aa5500", r: 0.9 },
+  "skelFinal_AVs_v7_connected":  { name: "Ascending venules",                   color: "#2266ff", r: 1.4 },
+  "skelFinal_CVTs_v7":           { name: "Capillary-venule transitions",        color: "#00ccaa", r: 0.9 },
+  "skelFinal_terminalAVs_v7":    { name: "Terminal ascending venules",          color: "#5588cc", r: 0.9 },
+  "skelFinal_PCVs_v7":           { name: "Principal cortical veins",            color: "#8822dd", r: 1.4 },
+  "skelFinal_deepCVTs_v7":       { name: "Deep CVTs",                           color: "#dd44aa", r: 0.9 },
+  "skelFinal_terminalPCVs_v7":   { name: "Terminal PCVs",                       color: "#aa77ee", r: 0.9 },
+  "skelFinal_BBs_v7":            { name: "Pial vessels",                        color: "#00ff2a", r: 1.4 },
+  "skelFinal_v7_branch_order":   { name: "Capillary bed",                       color: "#dcb928", r: 0.6, bo: true }
+};
+const SKEL_GROUPS = [
+  { key: "art",  name: "Arterioles (PA, ACT, terminal PA)", color: "#ff2828", files: ["skelFinal_PAs_v7_connected", "skelFinal_ACTs_v7", "skelFinal_terminalPAs_v7"] },
+  { key: "ven",  name: "Venules (AV, CVT, terminal AV)",   color: "#2266ff", files: ["skelFinal_AVs_v7_connected", "skelFinal_CVTs_v7", "skelFinal_terminalAVs_v7"] },
+  { key: "deep", name: "Deep veins (PCV, deep CVT)",        color: "#8822dd", files: ["skelFinal_PCVs_v7", "skelFinal_deepCVTs_v7", "skelFinal_terminalPCVs_v7"] },
+  { key: "pial", name: "Pial vessels",                      color: "#00ff2a", files: ["skelFinal_BBs_v7"] },
+  { key: "cap",  name: "Capillary bed (30 MB)",             color: "#dcb928", files: ["skelFinal_v7_branch_order"] }
+];
+/* Neuroglancer's colormapJet, which the paper's shader calls. */
+function jet(x, out){
+  x = Math.min(1, Math.max(0, x));
+  const cl = v => Math.min(1, Math.max(0, v));
+  return out.setRGB(cl(x < 0.89 ? (x - 0.35) / 0.31 : 1 - (x - 0.89) / 0.11 * 0.5),
+                    cl(x < 0.64 ? (x - 0.125) * 4 : 1 - (x - 0.64) / 0.27),
+                    cl(x < 0.34 ? 0.5 + x * 0.5 / 0.11 : 1 - (x - 0.34) / 0.31), THREE.SRGBColorSpace);
+}
+async function loadSkel(slug){
+  if (SKEL.raw[slug]) return SKEL.raw[slug];
+  if (!SKEL.loading[slug]) SKEL.loading[slug] = (async () => {
+    const r = await fetch(dsOfCells().vascSkel + encodeURIComponent(slug + "/skeletons/3") + "?alt=media");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const buf = await r.arrayBuffer(), dv = new DataView(buf), nv = dv.getUint32(0, true), ne = dv.getUint32(4, true);
+    const nm = new Float32Array(buf, 8, nv * 3), pos = new Float32Array(nv * 3);
+    for (let k = 0; k < pos.length; k++) pos[k] = nm[k] / 1000;
+    const edges = new Uint32Array(buf, 8 + nv * 12, ne * 2).slice();
+    const out = { pos, edges, nv, ne };
+    if (SKEL_FILES[slug].bo){
+      /* Attributes follow in the info's order: radius, BranchOrder_ACT, BranchOrder_CVT, … */
+      const a0 = 8 + nv * 12 + ne * 8;
+      out.act = new Float32Array(buf, a0 + nv * 4, nv).slice();
+      out.cvt = new Float32Array(buf, a0 + nv * 8, nv).slice();
+    }
+    SKEL.raw[slug] = out; return out;
+  })().catch(e => { SKEL.loading[slug] = null; throw e; });
+  return SKEL.loading[slug];
+}
+function skelGroupsUI(){
+  const box = document.getElementById("skelGroups");
+  box.style.display = SKEL.mode === "off" ? "none" : "flex";
+  box.innerHTML = SKEL_GROUPS.map(g => `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-skg="${g.key}" ${SKEL.groups.has(g.key) ? "checked" : ""}><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${g.color}"></span>${esc(g.name)}</label>`).join("");
+  document.getElementById("skelSel").value = SKEL.mode;
+  document.getElementById("capSel").value = SKEL.cap;
+}
+let SKEL_TOKEN = 0;
+async function buildSkel(){
+  const token = ++SKEL_TOKEN;
+  skelGroupsUI();
+  disposeGroup(SKEL.group); SKEL.group = null; SKEL.n = 0;
+  if (SKEL.mode === "off" || !CELL_BOX){ updateTri(); return; }
+  const slugs = SKEL_GROUPS.filter(g => SKEL.groups.has(g.key)).flatMap(g => g.files);
+  if (!slugs.length){ ctxNote.textContent = "Vessel skeletons: tick at least one group."; return; }
+  const raws = {};
+  for (const s of slugs){
+    if (!SKEL.raw[s]) ctxNote.textContent = "Vessel skeletons: downloading " + SKEL_FILES[s].name.toLowerCase() + (SKEL_FILES[s].bo ? " (30 MB)" : "") + "…";
+    try { raws[s] = await loadSkel(s); }
+    catch (e){ ctxNote.textContent = "Vessel skeletons could not be loaded (" + SKEL_FILES[s].name + "): " + (e.message || e); return; }
+    if (token !== SKEL_TOKEN) return;
+  }
+  /* Which segments: around the cells, a segment with either end in the box; otherwise all. */
+  const b = SKEL.mode === "box" ? regionBox() : null;
+  const pick = {}; let total = 0;
+  for (const s of slugs){
+    const R = raws[s], P = R.pos, E = R.edges, keep = [];
+    for (let e = 0; e < R.ne; e++){
+      const i = E[2*e] * 3, j = E[2*e+1] * 3;
+      if (b && !((P[i] >= b.min.x && P[i] <= b.max.x && P[i+1] >= b.min.y && P[i+1] <= b.max.y && P[i+2] >= b.min.z && P[i+2] <= b.max.z) ||
+                 (P[j] >= b.min.x && P[j] <= b.max.x && P[j+1] >= b.min.y && P[j+1] <= b.max.y && P[j+2] >= b.min.z && P[j+2] <= b.max.z))) continue;
+      keep.push(e);
+    }
+    pick[s] = keep; total += keep.length;
+  }
+  if (!total){ ctxNote.textContent = "Vessel skeletons: none of the ticked kinds inside the box around these cells."; updateTri(); return; }
+  /* The colour of one segment: the file's own, or for the capillary bed its branch order -- the
+     mean of the two ends, grey where either end was never reached from a source or drain. */
+  const col = new THREE.Color(), GREY = new THREE.Color("#6e7681");
+  const segColour = (s, e) => {
+    const f = SKEL_FILES[s], R = raws[s];
+    if (!f.bo || SKEL.cap === "plain") return col.set(f.color);
+    const A = SKEL.cap === "cvt" ? R.cvt : R.act, div = SKEL.cap === "cvt" ? 8 : 12;
+    const u = A[R.edges[2*e]], v = A[R.edges[2*e+1]];
+    if (!(u > -0.5) || !(v > -0.5)) return col.copy(GREY);
+    return jet((u + v) / 2 / div, col);
+  };
+  const grp = new THREE.Group(), TUBES = SKEL.mode === "box" && total <= 80000;
+  if (TUBES){
+    /* One instanced, open six-sided cylinder per segment, a little longer than the segment so the
+       joints close. Thin on purpose: these are centrelines, not the vessel wall. */
+    const inst = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true),
+      new THREE.MeshStandardMaterial({ roughness: 0.45, side: THREE.DoubleSide }), total);
+    const M4 = new THREE.Matrix4(), a = new THREE.Vector3(), c = new THREE.Vector3(), d = new THREE.Vector3(),
+          q = new THREE.Quaternion(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    let k = 0;
+    for (const s of slugs){
+      const R = raws[s], P = R.pos, E = R.edges, r = SKEL_FILES[s].r;
+      for (const e of pick[s]){
+        a.fromArray(P, E[2*e] * 3); c.fromArray(P, E[2*e+1] * 3);
+        d.subVectors(c, a); const L = d.length(); if (L < 1e-6){ d.set(0, 1, 0); }
+        q.setFromUnitVectors(Y, d.normalize());
+        sc.set(r, L + r, r);
+        M4.compose(a.add(c).multiplyScalar(0.5), q, sc);
+        inst.setMatrixAt(k, M4); inst.setColorAt(k, segColour(s, e)); k++;
+      }
+    }
+    inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    inst.userData.context = true; grp.add(inst);
+    SKEL.tris = total * 12;
+  } else {
+    const P2 = new Float32Array(total * 6), C2 = new Float32Array(total * 6);
+    let k = 0;
+    for (const s of slugs){
+      const R = raws[s], P = R.pos, E = R.edges;
+      for (const e of pick[s]){
+        const i = E[2*e] * 3, j = E[2*e+1] * 3; segColour(s, e);
+        P2.set([P[i], P[i+1], P[i+2], P[j], P[j+1], P[j+2]], k * 6);
+        C2.set([col.r, col.g, col.b, col.r, col.g, col.b], k * 6); k++;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(P2, 3)); g.setAttribute("color", new THREE.BufferAttribute(C2, 3));
+    grp.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true })));
+    SKEL.tris = 0;
+  }
+  /* A legend card at the box's corner. */
+  const lines = ["Vessel skeletons — How et al. 2026"];
+  SKEL_GROUPS.filter(g => SKEL.groups.has(g.key)).forEach(g => lines.push(g.name.replace(" (30 MB)", "")));
+  if (SKEL.groups.has("cap") && SKEL.cap !== "plain")
+    lines.push("capillaries: branch order from the " + (SKEL.cap === "cvt" ? "venule (CVT) 1 blue → 8 red" : "arteriole (ACT) 1 blue → 12 red") + ", grey = not reached");
+  const lb = CELL_BOX ? regionBox() : null;
+  if (lb){
+    const leg = textSprite(lines, { width: 1 });
+    leg.scale.multiplyScalar(lb.getSize(new THREE.Vector3()).length() * 0.22);
+    leg.position.set(lb.max.x, lb.min.y, lb.max.z); grp.add(leg);
+  }
+  if (token !== SKEL_TOKEN){ disposeGroup(grp); return; }
+  SKEL.group = grp; SKEL.n = total; content.add(grp); applyClip();
+  ctxNote.textContent = "Vessel skeletons: " + total.toLocaleString() + " segments" + (TUBES ? "" : " as lines") + " — Shih lab, How et al. 2026 (bioRxiv).";
+  updateTri(); MENU.dirty = true;
+}
+function setSkel(mode){ SKEL.mode = mode; buildSkel(); MENU.dirty = true; }
+document.getElementById("skelSel").addEventListener("change", e => setSkel(e.target.value));
+document.getElementById("capSel").addEventListener("change", e => { SKEL.cap = e.target.value; if (SKEL.mode !== "off") buildSkel(); });
+document.getElementById("skelGroups").addEventListener("change", e => {
+  const k = e.target.dataset && e.target.dataset.skg; if (!k) return;
+  e.target.checked ? SKEL.groups.add(k) : SKEL.groups.delete(k); buildSkel();
+});
+
+/* ── 12. THE REGION BOXES FROM FILTER AND SHOW ───────────────────────────────  2026-10-14
+   Søren: "For the bounding boxes, they should be included when the VR has been opened via Filter
+   and show and bounding boxes have been set." ujump.html's "Show in VR" sends every region box
+   that limited the filter as &box=n~xmin~ymin~zmin~xmax~ymax~zmax,… in micrometres; each is drawn
+   as the 3D view draws it -- an outline in that box's colour (REGION_BOX_COLORS, the same order),
+   here with solid edges so it reads in the headset, a faint fill and its name on the top corner.
+   On by default when the link carries boxes; a saved scene keeps them. */
+const REGION_BOX_COLORS = ["#ffd43b", "#e64980", "#4dabf7", "#82c91e", "#be4bdb", "#20c997", "#fa5252", "#5c7cfa"];
+function buildRegionBoxes(){
+  disposeGroup(RBOX.group); RBOX.group = null;
+  const btn = document.getElementById("rboxBtn");
+  btn.style.display = RBOX.list.length ? "" : "none";
+  btn.classList.toggle("on", RBOX.on);
+  btn.textContent = "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "");
+  MENU.dirty = true;
+  if (!RBOX.on || !RBOX.list.length) return;
+  const grp = new THREE.Group(), Yv = new THREE.Vector3(0, 1, 0);
+  RBOX.list.forEach((bx, i) => {
+    const col = REGION_BOX_COLORS[i % REGION_BOX_COLORS.length];
+    const lo = new THREE.Vector3(bx[1], bx[2], bx[3]), hi = new THREE.Vector3(bx[4], bx[5], bx[6]);
+    const size = hi.clone().sub(lo), mid = lo.clone().add(hi).multiplyScalar(0.5);
+    const r = Math.max(0.15, 0.004 * Math.max(size.x, size.y, size.z));
+    const mat = new THREE.MeshBasicMaterial({ color: col });
+    /* The twelve edges. */
+    const C = [0, 1].flatMap(a => [0, 1].flatMap(b => [0, 1].map(c => new THREE.Vector3(a ? hi.x : lo.x, b ? hi.y : lo.y, c ? hi.z : lo.z))));
+    [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]].forEach(([a, b]) => {
+      const d = C[b].clone().sub(C[a]), L = d.length(); if (L < 1e-6) return;
+      const e = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L + r * 2, 8), mat);
+      e.position.copy(C[a]).addScaledVector(d, 0.5); e.quaternion.setFromUnitVectors(Yv, d.normalize()); grp.add(e);
+    });
+    const fill = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.04, side: THREE.BackSide, depthWrite: false }));
+    fill.position.copy(mid); fill.renderOrder = 1; grp.add(fill);
+    const name = RBOX.list.length > 1 ? "Region box " + bx[0] : "Region box";
+    const lab = textSprite([name, Math.round(size.x) + " × " + Math.round(size.y) + " × " + Math.round(size.z) + " µm"], { fit: true, border: col });
+    const h = Math.max(6, 0.06 * Math.max(size.x, size.y, size.z)); lab.scale.set(h * lab.userData.aspect, h, 1);
+    lab.position.set(lo.x, lo.y - h * 0.7, lo.z); grp.add(lab);   // the pia-side corner (y is down)
+  });
+  RBOX.group = grp; content.add(grp);
+}
+function setRegionBoxes(v){ RBOX.on = v; buildRegionBoxes(); }
+document.getElementById("rboxBtn").addEventListener("click", () => setRegionBoxes(!RBOX.on));
+
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
@@ -1676,7 +2614,7 @@ function applyLook(){
   }
   /* Transparent things draw back to front; the nuclei should draw before the glassy cells. */
   for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
-  applyClip();
+  applyClip(); applyTracedLook();
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
@@ -1728,7 +2666,7 @@ let label = null;
 function updateLabel(){
   if (label){ scene.remove(label); label.material.map.dispose(); label.material.dispose(); label = null; }
   const c = CELLS[SELECTED];
-  const lines = c ? [c.label, "root " + c.root + (c.nuc ? " · nucleus " + c.nuc : "")]
+  const lines = c ? [c.label, "root " + c.root + (c.nuc ? " · nucleus " + c.nuc : "") + (c.area != null && ATLAS.data ? " · " + areaName(c.area) : "")]
                   : [CELLS.length + " cells — " + (VR_DATASETS[(CELLS[0] || {}).ds] || {}).label, "Trigger on a cell to pick it"];
   label = textSprite(lines, { border: c ? c.colour : "#30363d" });
   scene.add(label);
@@ -1887,7 +2825,7 @@ function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
 const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: null,
                dirty: true, tab: 0, cellPage: 0, help: false };
 const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26;
-const TABS = ["Show", "Tools", "Spray", "EM", "Cells", "View"];
+const TABS = ["Show", "Map", "Tools", "Spray", "EM", "Cells", "View"];
 function menuRows(){
   const rows = [];
   const t = TABS[MENU.tab];
@@ -1896,13 +2834,42 @@ function menuRows(){
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
     rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
     rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
-    rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
-    const vm = document.getElementById("vascSel").value;
-    rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm],
-                on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
-    rows.push({ label: "Organelle reports", on: ORG.on, act: () => setOrganelles(!ORG.on) });
+    rows.push({ label: "Organelle reports" + (ORG.kind !== "all" ? ": " + ORG.kind.replace(/_/g, " ") : ""), on: ORG.on, act: () => setOrganelles(!ORG.on) });
+    if (ORG.on){
+      /* Step through the kinds actually in the box, from the panel's chooser. */
+      const ok = [...document.getElementById("orgKind").options].map(o => o.value);
+      rows.push({ label: "   Kind: " + (ORG.kind === "all" ? "all" : ORG.kind.replace(/_/g, " ")) + "  ▸",
+                  act: () => { ORG.kind = ok[(ok.indexOf(ORG.kind) + 1) % ok.length] || "all"; setOrganelles(true); } });
+    }
+    rows.push({ label: "Nucleus → centriole vectors", on: VEC.cent, act: () => setVectors("cent", !VEC.cent) });
+    rows.push({ label: "Cilium base → tip vectors", on: VEC.cil, act: () => setVectors("cil", !VEC.cil) });
     rows.push({ label: "Traced structures", on: TRC.on, act: () => setTraced(!TRC.on) });
+    {
+      const tv = [...document.getElementById("trcType").options].map(o => o.value), kv = [...document.getElementById("trcKind").options].map(o => o.value);
+      const cyc = (key, list) => { TRC[key] = list[(list.indexOf(TRC[key]) + 1) % list.length] || "all"; trcFilters(); if (TRC.on) drawTraced(); };
+      rows.push({ label: "   Cell type: " + (TRC.type === "all" ? "all" : TRC.type) + "  ▸", act: () => cyc("type", tv) });
+      rows.push({ label: "   Kind: " + (TRC.kind === "all" ? "all" : trcKindName(TRC.kind)) + "  ▸", act: () => cyc("kind", kv) });
+      rows.push({ label: "   + Add the cells with these tracings", act: addTracedCells });
+    }
     rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
+  } else if (t === "Map"){
+    /* Where the cells are: the layers, the V1 column, the visual areas and the vessels (2026-10-14). */
+    rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
+    rows.push({ label: "V1 column: " + ({ off: "off", outline: "outline", cells: "outline + its cells" })[V1COL.mode] + "  ▸",
+                on: V1COL.mode !== "off", act: () => setV1Col(({ off: "outline", outline: "cells", cells: "off" })[V1COL.mode]) });
+    if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
+    rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
+    const vm = document.getElementById("vascSel").value;
+    rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
+                on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
+    rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
+                on: SKEL.mode !== "off", act: () => setSkel(({ off: "box", box: "whole", whole: "off" })[SKEL.mode]) });
+    if (SKEL.mode !== "off"){
+      SKEL_GROUPS.forEach(g => rows.push({ label: g.name, swatch: g.color, on: SKEL.groups.has(g.key),
+        act: () => { SKEL.groups.has(g.key) ? SKEL.groups.delete(g.key) : SKEL.groups.add(g.key); buildSkel(); } }));
+      rows.push({ label: "Capillaries: " + ({ act: "order from arteriole", cvt: "order from venule", plain: "one colour" })[SKEL.cap] + "  ▸",
+                  act: () => { SKEL.cap = ({ act: "cvt", cvt: "plain", plain: "act" })[SKEL.cap]; buildSkel(); } });
+    }
   } else if (t === "Tools"){
     rows.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
     rows.push({ label: "Synapses fire the next cell", on: document.getElementById("stimMode").value === "fire",
@@ -1973,6 +2940,7 @@ function menuRows(){
       rows.push({ label: "Room-sized", act: () => setSize(6) });
       rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
       rows.push({ label: "Reset position", act: resetStage });
+      rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : ""), act: () => saveScene(true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
@@ -2124,8 +3092,9 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint };   // for testing from the console
-if (CELLS.length) loadAll();
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+if (SCENE_ID) openScene(SCENE_ID);
+else if (CELLS.length) loadAll();
 </script>
 </body>
 </html>
