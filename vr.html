@@ -655,19 +655,65 @@ function surfaceAt(L, arr, x, z){
   const a = arr[j*W + i], b = arr[j*W + i + 1], c = arr[(j+1)*W + i], d = arr[(j+1)*W + i + 1];
   return (a*(1-u) + b*u) * (1-v) + (c*(1-u) + d*u) * v;
 }
+/* THE LAYER COLOURS ARE THE JUMP TAB'S (2026-10-14, Søren: "the cortical layers in VR should have a
+   slight color, to match the layer colors in the layer model") -- ujump.html's LAYER_COLORS used by
+   renderLayerDiagram(), plus its leptomeninges and white-matter bands. Each band is painted on the
+   four WALLS of the box around the cells, like the cut face of a layer cake, so the colour says which
+   layer you are in without a tinted fog over the cells themselves. The boundaries stay as faint
+   sheets with rims, and each band is named at its own colour. */
+const LAYER_TINT = { "Leptomeninges": "#3a3f4a", "Layer 1": "#8ecae6", "Layer 2/3": "#219ebc", "Layer 4": "#2a9d8f",
+                     "Layer 5a": "#fb8500", "Layer 5b": "#d62828", "Layer 6a": "#6a4c93", "Layer 6b": "#4d3579",
+                     "White matter": "#c9c9c9" };
+let WALL_SIDE = THREE.BackSide;
 async function buildLayers(){
   if (LAYERS.group){ content.remove(LAYERS.group); LAYERS.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); LAYERS.group = null; }
   if (!document.getElementById("layerBtn").classList.contains("on") || !CELL_BOX) return;
   const ds = dsOfCells(); if (!ds.layers) return;
   let L; try { L = await loadLayers(ds); } catch (e){ return; }
   const b = regionBox(), N = 24, grp = new THREE.Group();
-  const frac = [0].concat(L.layers.map(l => l[2] / L.refThickUm));     // pia, then each layer's bottom
-  const name = k => k === 0 ? "Pia" : (k === frac.length - 1 ? "White matter" : L.layers[k-1][0] + " | " + L.layers[k][0]);
   const yAt = (f, x, z) => { const p = surfaceAt(L, L.pia, x, z), w = surfaceAt(L, L.wm, x, z); return p + f * (w - p); };
+  /* Leptomeninges and white matter as 150 µm bands either side, as in the Jump tab's diagram;
+     in fractions of the local thickness that is −150/thick and 1 + 150/thick, taken at the box centre. */
+  const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+  const thick = Math.max(1, surfaceAt(L, L.wm, cx, cz) - surfaceAt(L, L.pia, cx, cz));
+  const bands = [["Leptomeninges", -150 / thick, 0]]
+    .concat(L.layers.map(l => [l[0], l[1] / L.refThickUm, l[2] / L.refThickUm]))
+    .concat([["White matter", 1, 1 + 150 / thick]]);
   const ext = Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
-  frac.forEach((f, k) => {
-    const P = [], I = [];
-    let near = false;
+  const clampY = y => Math.min(b.max.y, Math.max(b.min.y, y));
+  /* The four walls, each walked along its length in N steps. */
+  const walls = [
+    t => [b.min.x + (b.max.x - b.min.x) * t, b.min.z], t => [b.max.x, b.min.z + (b.max.z - b.min.z) * t],
+    t => [b.max.x - (b.max.x - b.min.x) * t, b.max.z], t => [b.min.x, b.max.z - (b.max.z - b.min.z) * t]];
+  for (const [nm, f0, f1] of bands){
+    const col = LAYER_TINT[nm] || "#8b949e";
+    const P = [], I = []; let any = false;
+    for (const w of walls){
+      const base = P.length / 3;
+      for (let i = 0; i <= N; i++){
+        const [x, z] = w(i / N), y0 = yAt(f0, x, z), y1 = yAt(f1, x, z);
+        if (Math.max(y0, y1) > b.min.y && Math.min(y0, y1) < b.max.y) any = true;
+        P.push(x, clampY(y0), z, x, clampY(y1), z);
+      }
+      for (let i = 0; i < N; i++){ const a = base + i * 2; I.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    if (!any) continue;
+    const wall = new THREE.Mesh(geometryFrom(new Float32Array(P), new Uint32Array(I)),
+      /* ONE-SIDED, facing inwards: from outside the box you see only the FAR walls, a coloured
+         backdrop behind the cells, never a tinted pane in front of them. Step inside and all four
+         surround you. */
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.3, side: WALL_SIDE, depthWrite: false }));
+    wall.renderOrder = 1; grp.add(wall);
+    /* The band's name, in its colour, on the corner nearest the start of the first wall, at mid-depth. */
+    const ym = clampY(yAt((f0 + f1) / 2, b.max.x, b.min.z));
+    const lab = textSprite([nm], { fit: true, border: col });
+    const h = ext * 0.05; lab.scale.set(h * lab.userData.aspect, h, 1);
+    lab.position.set(b.max.x, ym, b.min.z); grp.add(lab);
+  }
+  /* The boundaries themselves: faint sheets across the box, tinted with the band below, with rims. */
+  const fr = [0].concat(L.layers.map(l => l[2] / L.refThickUm));
+  fr.forEach((f, k) => {
+    const P = [], I = []; let near = false;
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++){
       const x = b.min.x + (b.max.x - b.min.x) * i / N, z = b.min.z + (b.max.z - b.min.z) * j / N, y = yAt(f, x, z);
       if (y >= b.min.y && y <= b.max.y) near = true;
@@ -675,24 +721,17 @@ async function buildLayers(){
     }
     if (!near) return;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){ const a = j*(N+1) + i; I.push(a, a + N + 1, a + 1, a + N + 1, a + N + 2, a + 1); }
-    const edge = (k === 0 || k === frac.length - 1);
+    const below = k < L.layers.length ? LAYER_TINT[L.layers[k][0]] : LAYER_TINT["White matter"];
     const sheet = new THREE.Mesh(geometryFrom(new Float32Array(P), new Uint32Array(I)),
-      new THREE.MeshBasicMaterial({ color: edge ? 0xe6edf3 : 0xc9d1d9, transparent: true, opacity: edge ? 0.10 : 0.06,
-                                    side: THREE.DoubleSide, depthWrite: false }));
+      new THREE.MeshBasicMaterial({ color: below || "#c9d1d9", transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }));
     sheet.renderOrder = 3; grp.add(sheet);
-    /* The sheet's rim, so a boundary seen edge-on is still a line. */
     const rim = [];
     for (let i = 0; i <= N; i++) rim.push(P[i*3], P[i*3+1], P[i*3+2]);
     for (let j = 1; j <= N; j++) rim.push(P[(j*(N+1)+N)*3], P[(j*(N+1)+N)*3+1], P[(j*(N+1)+N)*3+2]);
     for (let i = N - 1; i >= 0; i--) rim.push(P[(N*(N+1)+i)*3], P[(N*(N+1)+i)*3+1], P[(N*(N+1)+i)*3+2]);
     for (let j = N - 1; j >= 0; j--) rim.push(P[(j*(N+1))*3], P[(j*(N+1))*3+1], P[(j*(N+1))*3+2]);
-    const line = new THREE.Line(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(rim, 3)),
-      new THREE.LineBasicMaterial({ color: edge ? 0xe6edf3 : 0x8b949e, transparent: true, opacity: 0.6 }));
-    grp.add(line);
-    const lab = textSprite([name(k)], { width: 1 });
-    lab.scale.multiplyScalar(ext * 0.28);
-    lab.position.set(b.max.x, yAt(f, b.max.x, b.min.z), b.min.z);
-    grp.add(lab);
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(rim, 3)),
+      new THREE.LineBasicMaterial({ color: 0xc9d1d9, transparent: true, opacity: 0.55 })));
   });
   LAYERS.group = grp; content.add(grp);
 }
@@ -2085,7 +2124,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
