@@ -147,17 +147,51 @@ UJ.tools = (function(){
         bb: { xmin: 0, xmax: 655360, ymin: 0, ymax: 655360, zmin: 0, zmax: 32880 },
         em: "precomputed://s3://open-neurodata/lee/lee16/image" }] },
 
+    /* ── H01's BOX, AND WHERE IT COMES FROM ────────────────────────────────  2026-10-14
+       Søren, on an ηJump post whose coordinate stayed plain text: *"It doesn\u2019t work in
+       hJump"*. This entry had `volumes: []` because I looked for the extent in hjump.html, which
+       computes it at run time from the volume\u2019s own info and keeps no constant.
+
+       It was in emhjumpcheck.js all along, under "THE VOLUME\u2019S REAL SHAPE, read through the
+       JSON API on 2026-09-21": 4nm_raw\u2019s finest level is 1,031,784 \u00d7 712,800 \u00d7 5,293 at
+       4\u00d74\u00d733 nm, which is 4,127 \u00d7 2,851 \u00d7 175 \u00b5m \u2014 and the H01 paper describes about
+       4 \u00d7 3 mm of temporal cortex 150 \u00b5m thick, so the box agrees with the publication as
+       well as with the bucket. toolscheck.js recomputes it from that check\u2019s own fixture.
+
+       jsonApi: gs://h01-release sends NO CORS headers. hjump.html calls
+       UJ.segread.useJsonApi("h01-release") at load for itself; a reader in another tool has never
+       heard of it, so the name travels with the volume and core/empreview.js says it. */
     { key: "hjump", label: "ηJump", dataset: "H01 — human temporal cortex",
       page: "hjump.html", dark: "#ffb454", light: "#9a3412",
       emWindow: { lo: 29, hi: 212 },
       res: [8, 8, 33], viewer: "https://h01-dot-neuroglancer-demo.appspot.com/",
-      volumes: [] },
+      volumes: [{ key: "h01", label: "H01",
+        bb: { xmin: 0, xmax: 4127136, ymin: 0, ymax: 2851200, zmin: 0, zmax: 174669 },
+        jsonApi: "h01-release",
+        em: "precomputed://gs://h01-release/data/20210601/4nm_raw",
+        /* c3 is uint64 compressed_segmentation, flat and sharded — the format core/segread.js
+           indexes at a point, so the two 3D buttons work here. No nuclei volume exists. */
+        seg: "precomputed://gs://h01-release/data/20210601/c3" }] },
 
+    /* ── AND βJUMP'S, THE SAME WAY ─────────────────────────────────────────  2026-10-14
+       embjumpcheck.js, "THE VOLUME'S REAL SHAPE, read from its info through the JSON API on
+       2026-09-20/21": em_clahe's finest level is 57,344 × 55,296 × 864 at 8×8×30 nm, which is
+       459 × 442 × 26 µm. Its box is the SERVED VOLUME, not bjump.html's TISSUE_BOX_VOX — that
+       one is the sub-volume the Hoechst detector was run over, and the imagery extends past it,
+       so using it would refuse coordinates that are really there.
+
+       gs://vclem-xh sends no CORS headers either; same JSON API, same reason. */
     { key: "bjump", label: "βJump", dataset: "Alzheimer's vCLEM — hippocampal CA1",
       page: "bjump.html", dark: "#ff6b81", light: "#a4133c",
       emWindow: { lo: 10, hi: 244 },
       res: [8, 8, 30], viewer: "https://neuroglancer-demo.appspot.com/",
-      volumes: [] },
+      volumes: [{ key: "vclem-ca1", label: "Alzheimer's vCLEM CA1",
+        bb: { xmin: 0, xmax: 458752, ymin: 0, ymax: 442368, zmin: 0, zmax: 25920 },
+        jsonApi: "vclem-xh",
+        em: "precomputed://gs://vclem-xh/alzheimers/em_clahe",
+        /* secgan16 is sharded compressed_segmentation and its ids are this page's own cells.
+           The Hoechst blobs are not a segmentation, so there is still no `nuc`. */
+        seg: "precomputed://gs://vclem-xh/alzheimers/segmentation_secgan_16nm" }] },
 
     /* NO emWindow: ωJump's sixty-three volumes include two uint16 blocks whose tissue is a
        band 2,000 counts wide at 33,000, and a single pair of numbers for "ωJump" would be a
@@ -324,6 +358,10 @@ UJ.tools = (function(){
                   : "this volume publishes no segmentation";
     return { res: t.res.slice(), em: v.em || "",
              seg: readable(v.seg), nuc: readable(v.nuc),
+             /* THE BUCKET THAT ANSWERS NOTHING WITHOUT THE JSON API. A page names its own at
+                load; a reader in another tool has never heard of it, and without this an ηJump
+                post would draw in ηJump and fail everywhere else. 2026-10-14. */
+             jsonApi: v.jsonApi || "",
              /* The scales this volume lists and does not serve — see the entry it comes from. */
              skipScales: (v.skipScales || []).slice(),
              /* Said out loud where the two 3D buttons are withheld, so the gap reads as an answer

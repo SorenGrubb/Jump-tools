@@ -645,6 +645,39 @@ console.log("\n...and a host that brings a decoder gets those levels back");
   E.configure({ em: "precomputed://https://example/em", res: [4, 4, 40] });
 }
 
+/* ── A VOLUME THAT ANSWERED WITH SOMETHING ELSE ────────────────────────  2026-10-14
+   Søren, from a phone, on a πJump post: "the EM could not be read here: undefined is not an
+   object (evaluating 'info.scales.filter')". That is this module's realScales() meeting something
+   that is not a precomputed info — and the TypeError names a PROPERTY, so the screenshot could not
+   be diagnosed: not which volume, not what URL, not what came back.
+
+   Three things answer 200 and are not an info: a GCS error document, a Zarr header reached through
+   the wrong branch, and an info whose scales are under another name. They are told apart by the
+   top-level keys, so that is what the refusal prints. */
+console.log("\nand a volume that did not answer with an info says so");
+{
+  sandbox.INFO_FOR = { "https://example/odd": { kind: "storage#object", name: "info", size: "412" } };
+  E.configure({ em: "precomputed://https://example/odd", res: [4, 4, 40] });
+  let msg = "";
+  try { await E.scaleAt(0, true); } catch (e){ msg = String(e && e.message || e); }
+  ok(/did not answer with a precomputed info/.test(msg),
+     "it refuses with a sentence rather than a TypeError about a property", msg.slice(0, 60));
+  ok(msg.indexOf("https://example/odd") >= 0,
+     "...naming the volume it asked, which the old message never did — on a page with a tracing "
+     + "pad, a cell card and a Discussion all reading EM, that is the whole question",
+     (msg.match(/https:\/\/\S+/) || ["none"])[0]);
+  ok(/kind, name, size/.test(msg),
+     "...and what came back instead, which is what tells a GCS error document from a Zarr header",
+     (msg.match(/\{[^}]*\}/) || ["none"])[0]);
+  ok(!/undefined is not an object|Cannot read propert/.test(msg),
+     "...and nothing of the TypeError survives", msg.slice(0, 40));
+
+  sandbox.INFO_FOR = null;
+  E.configure({ em: "precomputed://https://example/em", res: [4, 4, 40] });
+  const back = await E.scaleAt(0, true);
+  ok(!!(back && back.scale), "and a real volume is unaffected by any of it", back && back.scale.key);
+}
+
 console.log(fails ? "\n" + fails + " FAILED" : "\nall good");
 process.exit(fails ? 1 : 0);
 

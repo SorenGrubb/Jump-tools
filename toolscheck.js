@@ -54,16 +54,61 @@ ok(T.label("zjump") === "zjump",
 ok(T.hostFor("zjump") === null, "...but it is given no host, so nothing of it is linkified");
 ok(T.boxed("zjump") === false, "...and boxed() says so");
 
-console.log("\nthe three without a verified box get no host at all");
-["hjump", "bjump", "wjump"].forEach(k => {
-  ok(T.hostFor(k) === null,
-     T.label(k) + " has no host: its extent is read from the volume at run time, or it serves "
-     + "sixty-three volumes, so there is no constant here to resolve against", String(T.hostFor(k)));
-  ok(T.boxed(k) === false, "...and boxed() agrees, which is what the forum reads", String(T.boxed(k)));
+/* ── ONE TOOL WITHOUT A BOX, AND IT IS THE ONE THAT CANNOT HAVE ONE ──────────────────────────
+   ηJump and βJump were here until 2026-10-14 — Søren, from a phone: *"It doesn't work in hJump"*,
+   of a coordinate that stayed plain text. Their extents were never missing; they were in
+   emhjumpcheck.js and embjumpcheck.js, read off the buckets when the tracing card was ported. ωJump
+   is the one that stays: sixty-three volumes, and a single box would be false for sixty-two. */
+console.log("\nonly ωJump has no box, and only because it has sixty-three");
+ok(T.hostFor("wjump") === null,
+   "ωJump has no host: a box for \"ωJump\" would be a false statement about whichever of its "
+   + "volumes you were not looking at", String(T.hostFor("wjump")));
+ok(T.boxed("wjump") === false, "...and boxed() agrees, which is what the forum reads",
+   String(T.boxed("wjump")));
+["hjump", "bjump"].forEach(k => {
+  ok(T.boxed(k) === true,
+     T.label(k) + " HAS one now, so a coordinate in its posts is a link and the EM draws",
+     String(T.boxed(k)));
+});
+
+/* ── AND THOSE TWO BOXES ARE THE SHAPES THE CHECKS READ OFF THE BUCKETS ──────────────────────
+   Not retyped here from a screenshot: recomputed from the fixtures those two checks still use, so
+   if either volume is ever re-read and the fixture changes, this fails rather than drifting. */
+console.log("\nand the two newest boxes are the volumes' own published shapes");
+[["hjump", "emhjumpcheck.js", /\[\s*4\s*,\s*33\s*,\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/, [4, 4, 33]],
+ ["bjump", "embjumpcheck.js", /resolution:\s*\[8,\s*8,\s*30\],\s*size:\s*\[(\d+),\s*(\d+),\s*(\d+)\]/, [8, 8, 30]]
+].forEach(([k, file, re, res]) => {
+  let src = "";
+  try { src = fs.readFileSync(path.join(__dirname, file), "utf8"); } catch (e){ src = ""; }
+  const m = re.exec(src);
+  if (!m){ console.log("  --   " + file + ": its fixture could not be read"); return; }
+  const want = [0, 1, 2].map(i => Number(m[i + 1]) * res[i]);
+  const bb = T.byKey(k).volumes[0].bb;
+  ok(bb.xmax === want[0] && bb.ymax === want[1] && bb.zmax === want[2],
+     T.label(k) + "'s box is its finest level's size × its resolution, from " + file,
+     [bb.xmax, bb.ymax, bb.zmax].join(" × ") + " nm, wanted " + want.join(" × "));
+  ok(bb.xmin === 0 && bb.ymin === 0 && bb.zmin === 0,
+     "...starting at the origin, as that info's voxel_offset does", JSON.stringify(bb).slice(0, 48));
+});
+
+/* ── AND THE BUCKET THAT NEEDS THE JSON API TRAVELS WITH IT ──────────────────────────────────
+   gs://h01-release and gs://vclem-xh send no CORS headers. Each page names its own at load; a
+   reader in ANOTHER tool never has, and without this an ηJump post would draw in ηJump and fail
+   everywhere else — exactly the asymmetry this registry exists to remove. */
+console.log("\nand a bucket with no CORS headers is named by the volume, not by the page");
+[["hjump", "h01-release"], ["bjump", "vclem-xh"]].forEach(([k, bucket]) => {
+  ok(T.emHostFor(k).jsonApi === bucket,
+     T.label(k) + "'s host carries " + bucket + ", so any tool can read it",
+     T.emHostFor(k).jsonApi || "nothing");
+});
+["ujump", "djump", "pjump", "ljump", "xjump"].forEach(k => {
+  ok(T.emHostFor(k).jsonApi === "",
+     T.label(k) + " needs none, and says so rather than naming a bucket it does not need",
+     JSON.stringify(T.emHostFor(k).jsonApi));
 });
 
 console.log("\nand the five with one hand back a host core/jumplink.js can use");
-["ujump", "djump", "pjump", "ljump", "xjump"].forEach(k => {
+["ujump", "djump", "pjump", "ljump", "hjump", "bjump", "xjump"].forEach(k => {
   const h = T.hostFor(k);
   const shaped = !!(h && h.resNm && h.resNm.length === 3 && h.volumes && h.volumes.length
                     && h.dim && h.dim.x && h.dim.y && h.dim.z
@@ -166,7 +211,7 @@ T.all().forEach(t => {
 });
 
 console.log("\nand a host for the picture is built out of the same entry");
-["ujump", "djump", "pjump", "ljump", "xjump"].forEach(k => {
+["ujump", "djump", "pjump", "ljump", "hjump", "bjump", "xjump"].forEach(k => {
   const h = T.emHostFor(k);
   ok(!!(h && h.em && h.res && h.window && typeof h.viewerUrl === "function"),
      T.label(k) + "'s preview host has imagery, a frame and a window",
@@ -178,11 +223,10 @@ console.log("\nand a host for the picture is built out of the same entry");
    βJump have imagery and no verified box — so nothing in their posts becomes a link, so there is
    never anything to click, so the picture is moot. They would be drawable the day the registry
    learns their extents, which their own pages compute at run time from the volume's info. */
-["hjump", "bjump", "wjump"].forEach(k => {
-  ok(T.emHostFor(k) === null,
-     T.label(k) + " has no preview host — not for want of imagery, but because without a box "
-     + "nothing in its posts becomes a link to click in the first place", String(T.emHostFor(k)));
-});
+ok(T.emHostFor("wjump") === null,
+   "ωJump has no preview host either — not for want of imagery, but because without a box "
+   + "nothing in its posts becomes a link to click in the first place",
+   String(T.emHostFor("wjump")));
 /* ── AND THE READER IS HANDED ONLY WHAT IT CAN READ ──────────────────────────────────────────
    Søren, with the Discussion's EM drawn in δJump: *"in the discussion it gives me an error"* —
    “the segmentation could not be configured”. V1DD's segmentation is graphene://middleauth+ and

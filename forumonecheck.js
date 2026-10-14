@@ -90,7 +90,7 @@ const DJ = [109743, 79665, 8811];
     const author = (UJ.jumplink.scan(text, { host: h }) || [])[0] || null;
     const url = UJ.jumplink.url(author ? [author] : [], { host: h });
     return { readerVol: reader ? reader.volume : "", authorVol: author ? author.volume : "",
-             url: url || "", unboxed: UJ.tools.hostFor("hjump") };
+             url: url || "", unboxed: UJ.tools.hostFor("wjump") };
   }, { DJ });
   ok(resolved.readerVol === "minnie35",
      "read against THIS page, δJump's volume centre is a place in minnie35 — the bug, demonstrated "
@@ -102,6 +102,10 @@ const DJ = [109743, 79665, 8811];
      "...and the viewer link carries V1DD's imagery, not minnie65's — otherwise the link would "
      + "open the right coordinates over the wrong tissue",
      resolved.url ? resolved.url.slice(0, 120) : "no url");
+  /* ωJump, since 2026-10-14: ηJump and βJump got their boxes out of emhjumpcheck.js and
+     embjumpcheck.js, where the volumes' real shapes had been sitting since the tracing card was
+     ported. ωJump keeps none, because one box for sixty-three volumes would be false for
+     sixty-two of them — and the rule is unchanged, only the list of who it applies to. */
   ok(resolved.unboxed === null,
      "a tool with no verified extent is handed no host at all, so its coordinates stay as typed "
      + "text rather than resolving against the reader", String(resolved.unboxed));
@@ -118,8 +122,9 @@ const DJ = [109743, 79665, 8811];
         timestamp: "2026-10-11T00:00:00Z", replyTo: "" },
       { postId: "d1", scope: "tools", kind: "finding", title: "A V1DD capillary", body: body,
         tool: "djump", authorName: "C", timestamp: "2026-10-12T00:00:00Z", replyTo: "" },
-      { postId: "h1", scope: "tools", kind: "finding", title: "An H01 place", body: body,
-        tool: "hjump", authorName: "D", timestamp: "2026-10-13T00:00:00Z", replyTo: "" }
+      { postId: "h1", scope: "tools", kind: "finding", title: "From ωJump", body: body,
+        tool: "wjump", volume: "jrc_mus-liver", authorName: "D",
+        timestamp: "2026-10-13T00:00:00Z", replyTo: "" }
     ], false);
     UJ.forum.render();
     const host = document.getElementById("forumCard");
@@ -177,7 +182,7 @@ const DJ = [109743, 79665, 8811];
      + "theirs", open.title || "no title");
   ok(/δJump/.test(open.badge), "...under a badge saying who wrote it", open.badge || "none");
 
-  console.log("\nand a post from a tool with no box linkifies nothing");
+  console.log("\nand a post from the one tool with no box linkifies nothing");
   const unboxed = await p.evaluate(() => {
     UJ.forum._open("h1");
     const body = document.querySelector("#forumCard .forumbody");
@@ -185,9 +190,9 @@ const DJ = [109743, 79665, 8811];
              text: body ? body.textContent.trim() : "" };
   });
   ok(unboxed.links === 0,
-     "ηJump reads its extent from the volume at run time, so there is no box here to resolve "
-     + "against — and the numbers stay as the numbers somebody typed rather than becoming a link "
-     + "to minnie35", unboxed.links + " links");
+     "ωJump serves sixty-three volumes and the registry holds a box for none of them, so the "
+     + "numbers in its posts stay numbers rather than becoming a link to minnie35",
+     unboxed.links + " links");
   ok(/109743/.test(unboxed.text), "...and are still there to read and copy",
      unboxed.text.slice(0, 60));
 

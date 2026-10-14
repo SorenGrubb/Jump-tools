@@ -367,6 +367,15 @@ async function open(hostEl, pos, opts){
        the mip, keeping it shifted every level by one and this preview read four times the pixels
        it meant to. The hazard runs both ways — whichever of the pad and this configures the
        reader first wins — so the full set is passed rather than the two fields this used to. */
+    /* ── A BUCKET THAT SENDS NO CORS HEADERS ───────────────────────────────────────  2026-10-14
+       gs://h01-release and gs://vclem-xh refuse the browser's ordinary public URL; Google's JSON
+       API serves the same bytes with the headers, and core/segread.js routes a named bucket
+       through it. Each page names its own at load — but this preview may be drawing ANOTHER
+       tool's volume, and this page has never heard of that tool's bucket. Module-wide and
+       idempotent, so saying it again costs nothing. */
+    if (cfg.jsonApi && UJ.segread && UJ.segread.useJsonApi){
+      try { UJ.segread.useJsonApi(cfg.jsonApi); } catch (_ja){}
+    }
     var mine = { em: cfg.em, res: cfg.res, skipScales: cfg.skipScales || [] };
     var draw = function(){
       return UJ.emtiles.drawSection(cv, {

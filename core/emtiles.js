@@ -203,6 +203,24 @@ UJ.emtiles = (function(){
     return (CFG && CFG.decoders && CFG.decoders[enc]) || null;
   }
   function realScales(info){
+    /* ── WHAT CAME BACK, AND FROM WHERE ────────────────────────────────────────────  2026-10-14
+       Søren, from a phone: "the EM could not be read here: undefined is not an object (evaluating
+       'info.scales.filter')". A TypeError from this line is the end of the trail: it does not say
+       which volume was asked, what URL it was asked at, or what it answered — and the three
+       plausible causes (a GCS error document served 200, a Zarr header reached through the wrong
+       branch, an info whose scales are under another name) are told apart by exactly that.
+
+       The top-level keys, because that is the smallest thing that distinguishes them. Nothing in
+       a precomputed info is anybody's private data, and the base is already in the page's own
+       source — this is making a failure readable, not exposing anything. */
+    if (!info || !info.scales || typeof info.scales.filter !== "function"){
+      var saw = (info && typeof info === "object")
+        ? ("it answered with { " + Object.keys(info).slice(0, 8).join(", ") + " }")
+        : ("it answered with " + (typeof info) + " " + String(info).slice(0, 40));
+      throw new Error("the volume at " + ((CFG && CFG.em) || "(nothing configured)")
+                    + " did not answer with a precomputed info \u2014 " + saw
+                    + ". Its /info is what every scale, chunk and mip here is read from.");
+    }
     var skip = (CFG && CFG.skipScales) || [];
     var kept = info.scales.filter(function(s){
       return skip.indexOf(s.key) < 0 && canRead(String(s.encoding || "raw"));
