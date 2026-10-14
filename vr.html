@@ -1171,6 +1171,7 @@ document.getElementById("scaleBtn").addEventListener("click", () => setScaleBar(
 const ORG = { on: false, data: null, group: null, loading: false, kind: "all" };
 const ORG_PALETTE = ["#56d4c8","#f778ba","#a5e075","#d2a8ff","#ffb3c7","#e3d24f","#9fd8a8","#ff8f5a","#b0bec5","#ffd38a"];
 const ORG_FIXED = { centriole: "#ffd21a", cilium: "#ff5bd0" };
+const ORG_RAD = 0.2;          // µm, the radius of a reported organelle's ball
 /* Where a nucleus is, by its id: the loaded mesh, else the nucleus table near a point. */
 const NUC_AT = {};
 async function nucleusCentre(nid, near){
@@ -1211,7 +1212,10 @@ async function setOrganelles(v){
   const allKinds = {}; inBox.forEach(x => { const k = x.o.kind || "organelle"; allKinds[k] = (allKinds[k] || 0) + 1; });
   fillSelect("orgKind", "All reported kinds", Object.keys(allKinds).sort().map(k => [k, k.replace(/_/g, " ") + " (" + allKinds[k] + ")"]), ORG.kind);
   const kinds = {}, grp = new THREE.Group(), mats = {};
-  const ext = b.getSize(new THREE.Vector3()).length(), rad = Math.max(0.25, ext * 0.004);
+  /* A FIXED size in µm, not a share of the box (2026-10-14, Søren: "The organelles spheres are also
+     too big compared with the size of the cell and its organelles"). 0.4 µm across is about a
+     centriole pair, small beside a 5–10 µm nucleus, and stays the same however much is loaded. */
+  const ext = b.getSize(new THREE.Vector3()).length(), rad = ORG_RAD;
   let n = 0;
   for (const { o, a, z } of inBox){
     const k = o.kind || "organelle";
@@ -1247,7 +1251,7 @@ document.getElementById("orgKind").addEventListener("change", e => { ORG.kind = 
 /* ── 5b. THE VECTORS: nucleus → centriole, cilium base → tip ────────────────  2026-10-14
    Søren: "the vector between the nucleus and centrioles should be shown as 3D arrows. We should have
    the same from primary cilium base to tip." Filter-and-show's two vector layers, as solid arrows:
-   a shaft from the nucleus (or cilium base) and a cone at the centriole (or tip), the head 30 % of the
+   a shaft from the nucleus (or cilium base) and a cone at the centriole (or tip), the head 25 % of the
    length as in µJump's vecArrowAnns. Two sources, both drawn, as there:
    · Søren's own verified dataset (core/vr_vectors_microns.json, src/build_vr_vectors.js) -- the
      arrow starts at the nucleus table's position for that nucleus;
@@ -1267,15 +1271,18 @@ async function loadReports(){
   ORG.data = ((await r.json()) || {}).organelles || [];
   return ORG.data;
 }
-function vectorArrow(a, b, col, shaftR){
+/* The arrow SCALES WITH ITS OWN LENGTH (2026-10-14, Søren: the vectors "look like large balls with
+   hats … the 3D arrows should scale with the distance from nucleus to centriole or base to tip of
+   cilium"). Shaft 4 % of the length across (0.06–0.5 µm), head 25 % long and 18 % wide, no ball at
+   the start -- a 6 µm nucleus→centriole vector is a slim 6 µm arrow, a 2 µm cilium a small one. */
+function vectorArrow(a, b, col){
   const d = b.clone().sub(a), L = d.length(); if (L < 0.05) return null;
-  const head = L * 0.3, headR = Math.max(head * 0.45, shaftR * 2.2), g = new THREE.Group();
+  const shaftR = Math.min(0.5, Math.max(0.06, L * 0.04)), head = L * 0.25, headR = Math.max(shaftR * 2.2, L * 0.09), g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.4, roughness: 0.4 });
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, L - head, 12), mat);
   shaft.position.y = (L - head) / 2; g.add(shaft);
   const cone = new THREE.Mesh(new THREE.ConeGeometry(headR, head, 18), mat);
   cone.position.y = L - head / 2; g.add(cone);
-  const foot = new THREE.Mesh(new THREE.SphereGeometry(shaftR * 1.6, 12, 8), mat); g.add(foot);   // where it starts
   g.position.copy(a); g.quaternion.setFromUnitVectors(_Y, d.normalize());
   return g;
 }
@@ -1313,9 +1320,9 @@ async function buildVectors(){
       const p = P(o.pointA), q = P(o.pointB); if (p && q && inBox(p, q)) list.push([p, q, "#ff5bd0"]);
     }
   }
-  const grp = new THREE.Group(), ext = b.getSize(new THREE.Vector3()).length(), shaftR = Math.max(0.12, ext * 0.0012);
+  const grp = new THREE.Group();
   let nc = 0, nl = 0;
-  for (const [p, q, col] of list){ const a = vectorArrow(p, q, col, shaftR); if (a){ grp.add(a); col === "#ffd21a" ? nc++ : nl++; } }
+  for (const [p, q, col] of list){ const a = vectorArrow(p, q, col); if (a){ grp.add(a); col === "#ffd21a" ? nc++ : nl++; } }
   if (token !== VEC_TOKEN){ disposeGroup(grp); return; }
   VEC.group = grp; content.add(grp);
   ctxNote.textContent = (VEC.cent ? nc + " nucleus → centriole vector" + (nc === 1 ? "" : "s") : "")
