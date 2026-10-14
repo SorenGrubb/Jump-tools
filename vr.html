@@ -115,6 +115,14 @@
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
   </div>
+  <div class="ctl" id="sprayRow">
+    <button id="sprayBtn" title="Paint on the cells and vessels to point things out to others: drag with the mouse, or hold the right trigger in VR">🎨 Spray</button>
+    <span id="spraySw" style="display:flex;gap:4px;align-items:center"></span>
+    <button id="sprayGlow" title="Paint that glows">Glow</button>
+    <button id="sprayErase" title="Remove paint">Eraser</button>
+    <select id="spraySize" title="Nozzle size"><option value="s">fine</option><option value="m" selected>medium</option><option value="l">wide</option></select>
+    <button id="sprayWipe" title="Remove all paint">Wipe</button>
+  </div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
@@ -352,16 +360,23 @@ function geometryFrom(positions, indices){
    the clock is slowed down. 1e9 means "never". */
 const AP_UNI = { apNow: { value: -1e9 }, apCol: { value: new THREE.Color(1.0, 0.97, 0.75) },
                  epspCol: { value: new THREE.Color(1.0, 0.55, 0.15) }, ipspCol: { value: new THREE.Color(0.75, 0.35, 1.0) },
-                 apBand: { value: 0.08 }, pspLambda: { value: 120.0 } };
+                 apBand: { value: 0.08 }, pspLambda: { value: 120.0 }, sprayTime: { value: 0 } };
 function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.pspInh = m.userData.pspInh || (m.userData.pspInh = { value: 0 });
-    sh.vertexShader = "attribute float apT;\nattribute float pspT;\nattribute float pspD;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\n"
-      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vPspT = pspT; vPspD = pspD;");
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float pspLambda;\nuniform float pspInh;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\n"
-      + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+    sh.vertexShader = "attribute float apT;\nattribute float pspT;\nattribute float pspD;\nattribute vec4 paint;\nattribute float paintGlow;\nvarying float vGlow;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\nvarying vec4 vPaint;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vPspT = pspT; vPspD = pspD; vPaint = paint; vGlow = paintGlow;");
+    /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
+       that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
+       across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
+       grow a glowing rim where it fell from 1 to 0 through 0.5. */
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float pspLambda;\nuniform float pspInh;\nuniform float sprayTime;\nvarying float vGlow;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\nvarying vec4 vPaint;\n"
+      + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
+        if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        if (vPaint.a > 0.5) totalEmissiveRadiance += vPaint.rgb * vGlow * (1.1 + 0.45 * sin(sprayTime * 3.5));
         {
           float a = apNow - vApT;                 // ms since the spike reached this point
           if (a >= 0.0 && a < 1.5){
@@ -384,6 +399,8 @@ function cellMaterial(colour){
 function addActivityAttributes(g){
   const n = g.attributes.position.count;
   for (const k of ["apT", "pspT", "pspD"]) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
+  g.setAttribute("paint", new THREE.BufferAttribute(new Uint8Array(n * 4), 4, true));
+  g.setAttribute("paintGlow", new THREE.BufferAttribute(new Uint8Array(n), 1, true));
 }
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
@@ -551,8 +568,8 @@ async function buildVessels(){
   /* OPAQUE. Søren, after the first session in the headset: "The vasculature should not be
      transparent, that confuses more than it helps." In VR you can lean round a vessel, which is
      what see-through was standing in for on a flat screen. */
-  VASC.mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: "#b03a48", roughness: 0.6,
-    side: THREE.DoubleSide }));
+  addActivityAttributes(g);                         // so the spray can paint vessels too
+  VASC.mesh = new THREE.Mesh(g, cellMaterial("#b03a48"));
   VASC.mesh.renderOrder = 2; VASC.mesh.userData.context = true;
   VASC.tris = idx.length / 3;
   content.add(VASC.mesh); applyClip();
@@ -882,6 +899,7 @@ function clearMeasure(){ MEAS.items.forEach(dropMeasure); MEAS.items = []; MEAS.
 function setMeasure(v){
   MEAS.on = v; document.getElementById("measBtn").classList.toggle("on", v);
   if (v && typeof STIM !== "undefined" && STIM.on) setStim(false);
+  if (v && typeof SPRAY !== "undefined" && SPRAY.on) setSpray(false);
   if (v && (CUT.mode === "hand" || CUT.mode === "frozen")) setCut("off");    // both want the right trigger
   if (!v){ MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); }
   MENU.dirty = true;
@@ -1409,12 +1427,129 @@ function stimFrame(dt){
 }
 function setStim(v){
   STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
-  if (v){ if (MEAS.on) setMeasure(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
+  if (v){ if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
   MENU.dirty = true;
 }
 document.getElementById("stimBtn").addEventListener("click", () => setStim(!STIM.on));
 document.getElementById("colourSel").addEventListener("change", e => setColourMode(e.target.value));
 document.getElementById("stimReset").addEventListener("click", resetActivity);
+
+/* ── 9. THE SPRAY CAN ───────────────────────────────────────────────────────  2026-10-14
+   Søren: *"a spraycan that I can use to mark parts of the cells when I am showing the dataset to
+   others. In different colors. Also, there should be a spray that glows."*
+
+   Paint lives ON the mesh: a per-vertex colour (the `paint` attribute every cell and vessel mesh now
+   carries), so it stays exactly where it was sprayed however the cells are turned, cut or resized.
+   Hold the right trigger (or drag the mouse) and every vertex within the nozzle of where the ray
+   meets a surface takes the colour. The nozzle is a size in the ROOM -- fine 6 mm, medium 15 mm,
+   wide 35 mm -- so zooming in paints finer detail and zooming out paints broad strokes, the way a
+   real can behaves when you step closer.
+
+   Finding the vertices under the nozzle fast enough to do it every frame: each mesh gets a 2 µm
+   grid of its vertices the first time it is sprayed; a spray stroke then looks only in the few
+   cells the nozzle overlaps. */
+const SPRAY_COLOURS = [["Yellow", "#ffe11a"], ["Magenta", "#ff3dbb"], ["Cyan", "#2de2e6"], ["Lime", "#8cff3a"],
+                       ["Orange", "#ff8a1f"], ["White", "#ffffff"], ["Red", "#ff3b3b"]];
+const SPRAY = { on: false, colour: "#ffe11a", glow: false, erase: false, size: "m", mouse: false, time: 0, tip: null };
+const SPRAY_M = { s: 0.006, m: 0.015, l: 0.035 };
+const GRID = 2;
+function sprayGrid(mesh){
+  if (mesh.userData.grid) return mesh.userData.grid;
+  const P = mesh.geometry.attributes.position.array, g = new Map();
+  for (let v = 0, n = P.length / 3; v < n; v++){
+    const k = Math.floor(P[v*3] / GRID) + "," + Math.floor(P[v*3+1] / GRID) + "," + Math.floor(P[v*3+2] / GRID);
+    let a = g.get(k); if (!a){ a = []; g.set(k, a); } a.push(v);
+  }
+  return (mesh.userData.grid = g);
+}
+function sprayTargets(){
+  const t = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh);
+  if (VASC.mesh && VASC.mesh.visible) t.push(VASC.mesh);
+  return t;
+}
+const _sc = new THREE.Color();
+function sprayAt(origin, dir){
+  _mr.ray.origin.copy(origin); _mr.ray.direction.copy(dir);
+  const hit = _mr.intersectObjects(sprayTargets(), false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0)[0];
+  if (!hit) return false;
+  const mesh = hit.object, a = mesh.geometry.attributes.paint, gl = mesh.geometry.attributes.paintGlow; if (!a) return false;
+  const p = content.worldToLocal(hit.point.clone()), r = SPRAY_M[SPRAY.size] / stage.scale.x, r2 = r * r;
+  const P = mesh.geometry.attributes.position.array, g = sprayGrid(mesh), n = Math.ceil(r / GRID);
+  const cx = Math.floor(p.x / GRID), cy = Math.floor(p.y / GRID), cz = Math.floor(p.z / GRID);
+  _sc.set(SPRAY.colour);
+  const R = Math.round(_sc.r * 255), G_ = Math.round(_sc.g * 255), B = Math.round(_sc.b * 255), A = SPRAY.erase ? 0 : 255, GL = SPRAY.glow && !SPRAY.erase ? 255 : 0;
+  let touched = 0;
+  for (let dx = -n; dx <= n; dx++) for (let dy = -n; dy <= n; dy++) for (let dz = -n; dz <= n; dz++){
+    const list = g.get((cx + dx) + "," + (cy + dy) + "," + (cz + dz)); if (!list) continue;
+    for (const v of list){
+      const ex = P[v*3] - p.x, ey = P[v*3+1] - p.y, ez = P[v*3+2] - p.z;
+      if (ex*ex + ey*ey + ez*ez > r2) continue;
+      a.array[v*4] = R; a.array[v*4+1] = G_; a.array[v*4+2] = B; a.array[v*4+3] = A; if (gl) gl.array[v] = GL; touched++;
+    }
+  }
+  if (touched){ a.needsUpdate = true; if (gl) gl.needsUpdate = true; }
+  return true;
+}
+function wipePaint(){
+  for (const m of sprayTargets().concat(CELLS.filter(c => c.mesh).map(c => c.mesh))){
+    const a = m.geometry.attributes.paint; if (a){ a.array.fill(0); a.needsUpdate = true; }
+    const gl = m.geometry.attributes.paintGlow; if (gl){ gl.array.fill(0); gl.needsUpdate = true; }
+  }
+  MENU.dirty = true;
+}
+function sprayTip(){
+  if (!SPRAY.tip){
+    SPRAY.tip = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.03, 16, 1, true), new THREE.MeshBasicMaterial({ color: SPRAY.colour, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+    SPRAY.tip.rotation.x = Math.PI / 2; SPRAY.tip.position.set(0, 0, -0.02);
+  }
+  return SPRAY.tip;
+}
+function syncSprayUI(){
+  document.getElementById("sprayBtn").classList.toggle("on", SPRAY.on);
+  document.getElementById("sprayGlow").classList.toggle("on", SPRAY.glow);
+  document.getElementById("sprayErase").classList.toggle("on", SPRAY.erase);
+  document.getElementById("spraySize").value = SPRAY.size;
+  document.querySelectorAll("#spraySw button").forEach(b => b.style.outline = (b.dataset.c === SPRAY.colour && !SPRAY.erase) ? "2px solid #e6edf3" : "none");
+  /* The can on the right hand: its colour, or grey for the eraser. */
+  const t = sprayTip(); t.material.color.set(SPRAY.erase ? "#6e7681" : SPRAY.colour);
+  const rh = rightHand();
+  if (SPRAY.on && rh){ rh.ctl.add(t); } else if (t.parent) t.parent.remove(t);
+  hands.forEach(h => { h.ray.material.color.set(SPRAY.on && h === rh ? (SPRAY.erase ? "#6e7681" : SPRAY.colour) : 0x8b949e); });
+  MENU.dirty = true;
+}
+function setSpray(v){
+  SPRAY.on = v;
+  if (v){ if (STIM.on) setStim(false); if (MEAS.on) setMeasure(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); }
+  controls.enabled = !v;               // on a flat screen a drag paints instead of turning the view
+  syncSprayUI();
+  if (v) ctxNote.textContent = "Spray: " + (renderer.xr.isPresenting ? "hold the right trigger" : "drag on a cell") + " to paint. Turn Spray off to move the view again.";
+}
+function sprayFrame(dt){
+  SPRAY.time += dt; AP_UNI.sprayTime.value = SPRAY.time;
+  if (!SPRAY.on) return;
+  for (const h of hands){
+    if (!h.spraying) continue;
+    tmpM.identity().extractRotation(h.ctl.matrixWorld);
+    sprayAt(new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld), new THREE.Vector3(0, 0, -1).applyMatrix4(tmpM));
+  }
+  if (SPRAY.mouse && SPRAY.mouseNdc){ _mr.setFromCamera(SPRAY.mouseNdc, camera); sprayAt(_mr.ray.origin.clone(), _mr.ray.direction.clone()); }
+}
+/* Panel: swatches, and the mouse. */
+SPRAY_COLOURS.forEach(([name, hex]) => {
+  const b = document.createElement("button"); b.title = name; b.dataset.c = hex;
+  b.style.cssText = "width:22px;height:22px;padding:0;border-radius:50%;background:" + hex;
+  b.addEventListener("click", () => { SPRAY.colour = hex; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); });
+  document.getElementById("spraySw").appendChild(b);
+});
+document.getElementById("sprayBtn").addEventListener("click", () => setSpray(!SPRAY.on));
+document.getElementById("sprayGlow").addEventListener("click", () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); });
+document.getElementById("sprayErase").addEventListener("click", () => { SPRAY.erase = !SPRAY.erase; syncSprayUI(); });
+document.getElementById("spraySize").addEventListener("change", e => { SPRAY.size = e.target.value; syncSprayUI(); });
+document.getElementById("sprayWipe").addEventListener("click", wipePaint);
+const ndcOf = e => new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+renderer.domElement.addEventListener("pointerdown", e => { if (SPRAY.on){ SPRAY.mouse = true; SPRAY.mouseNdc = ndcOf(e); } });
+renderer.domElement.addEventListener("pointermove", e => { if (SPRAY.mouse) SPRAY.mouseNdc = ndcOf(e); });
+addEventListener("pointerup", () => { SPRAY.mouse = false; });
 
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
@@ -1521,9 +1656,11 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {} };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
+  ctl.addEventListener("selectend", () => { h.spraying = false; });
   ctl.addEventListener("selectstart", () => {
     const mh = menuHit(h);
     if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
+    if (SPRAY.on && h.source && h.source.handedness === "right"){ h.spraying = true; return; }
     if (STIM.on && h.source && h.source.handedness === "right"){ stimulateWithRay(rayOf(h)); return; }
     if (MEAS.on && h.source && h.source.handedness === "right"){ measureWithRay(rayOf(h)); return; }
     if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
@@ -1649,7 +1786,7 @@ function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
 const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: null,
                dirty: true, tab: 0, cellPage: 0, help: false };
 const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26;
-const TABS = ["Show", "Tools", "EM", "Cells", "View"];
+const TABS = ["Show", "Tools", "Spray", "EM", "Cells", "View"];
 function menuRows(){
   const rows = [];
   const t = TABS[MENU.tab];
@@ -1678,6 +1815,14 @@ function menuRows(){
     rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
     rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
     rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
+  } else if (t === "Spray"){
+    rows.push({ label: "Spray can (hold the right trigger)", on: SPRAY.on, act: () => setSpray(!SPRAY.on) });
+    SPRAY_COLOURS.forEach(([name, hex]) => rows.push({ label: name, swatch: hex, picked: SPRAY.colour === hex && !SPRAY.erase,
+      act: () => { SPRAY.colour = hex; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); } }));
+    rows.push({ label: "Glowing paint", on: SPRAY.glow, act: () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); } });
+    rows.push({ label: "Eraser", on: SPRAY.erase, act: () => { SPRAY.erase = !SPRAY.erase; if (!SPRAY.on) setSpray(true); syncSprayUI(); } });
+    rows.push({ label: "Nozzle: " + ({ s: "fine", m: "medium", l: "wide" })[SPRAY.size] + "  ▸", act: () => { SPRAY.size = ({ s: "m", m: "l", l: "s" })[SPRAY.size]; syncSprayUI(); } });
+    rows.push({ label: "Wipe all paint", act: wipePaint });
   } else if (t === "EM"){
     rows.push({ label: EM.mesh ? "Move it to the picked cell" : "Show the EM section", on: !!EM.mesh || EM.loading, act: () => showEM() });
     if (EM.mesh || EM.loading){
@@ -1845,6 +1990,7 @@ renderer.setAnimationLoop(() => {
   scaleBarFrame();
   measureFrame();
   stimFrame(dt);
+  sprayFrame(dt);
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
@@ -1857,7 +2003,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>
