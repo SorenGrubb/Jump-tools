@@ -51,9 +51,20 @@ Run: python3 src/core_blenderexport.py
 import io
 import json
 import os
+import re
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NB_PATH = os.path.join(HERE, "blender", "ujump_blender_scene.ipynb")
+# WHERE THE NOTEBOOK ACTUALLY IS. This read `HERE/blender/...`, which has never existed in either
+# tree: make_colab_notebook.py writes the notebook into the blender-export folder BESIDE the site
+# repository, not inside it. Candidates in order, and a named failure rather than a traceback with
+# one path in it, because the next person to move the folder should be told both. 2026-10-14.
+NB_CANDIDATES = [os.path.join(HERE, os.pardir, "blender-export", "ujump_blender_scene.ipynb"),
+                 os.path.join(HERE, "blender", "ujump_blender_scene.ipynb")]
+NB_PATH = next((p for p in NB_CANDIDATES if os.path.exists(p)), None)
+if NB_PATH is None:
+    raise SystemExit("no ujump_blender_scene.ipynb; looked in:\n  "
+                     + "\n  ".join(os.path.abspath(p) for p in NB_CANDIDATES)
+                     + "\nRun make_colab_notebook.py in blender-export/ first.")
 OUT = os.path.join(HERE, "core", "blenderexport.js")
 
 nb = json.load(io.open(NB_PATH, encoding="utf-8"))
@@ -334,6 +345,19 @@ UJ.blender = (function(){
     lines.push("EM_MAX_SECTIONS = 120     # frames in each sweep");
     lines.push("EM_MAX_MB       = 400     # over the wire, uncompressed uint8");
     lines.push("OVERLAY_OPACITY = 0.35");
+    /* ── A SWEEP, OR A BLOCK ──────────────────────────────────────────────────  2026-10-14
+       Søren, pointing at a WEBKNOSSOS animation: "the limit to region download shows a box of
+       tissue like this with pale segmentations and then animates by removing layers from the top
+       and revealing the 3D structure." That is the second tick on the region-box panel.
+
+       'block' costs four more PNGs -- the box's cut faces, one strip of pixels per section -- and
+       turns on the pale wash, which is what makes a cut face read as tissue: a wall is mostly
+       segments nobody selected, and with only the matched cells painted it would be grey noise.
+       The wash needs the segmentation, so with it off this falls back to a plain sweep rather
+       than writing walls nothing can be read from. */
+    var blockStyle = opts.emStyle === "block" && inc.seg !== false;
+    lines.push("EM_STYLE        = " + pyStr(blockStyle ? "block" : "sweep"));
+    lines.push("EM_WASH_OPACITY = 0.35    # every OTHER segment, pale, under the matched cells");
     lines.push("");
     /* ── EVERY NAME THE OTHER CELLS READ ──────────────────────────────────────────────────
        This cell REPLACES the notebook's own params cell, so anything the later cells need and
@@ -492,6 +516,36 @@ UJ.blender = (function(){
 })();
 ''' % NB_JSON
 
-io.open(OUT, "w", encoding="utf-8").write(JS)
-print("wrote %s\n  %d notebook cells embedded, %.0f KB"
-      % (OUT, len(nb["cells"]), len(JS) / 1024.0))
+# ── THE NOTEBOOK IS REPLACED; THE FILE AROUND IT IS NOT ───────────────────────────  2026-10-14
+# This used to write JS over whatever was there. That is correct exactly once -- the first time --
+# and destructive every time after, because core/blenderexport.js is PATCHED IN PLACE by the
+# src/ generators that came later: the per-box tracing filter (2026-10-07), the traced-vasculature
+# tick and its fetch (2026-10-09), and the colour rules re-applied into the embedded notebook
+# itself. The template below has none of them and never grew them, so a rebuild after an edit to
+# em_fetch.py silently reverted three weeks of work in the file it was rebuilding. It cost an hour
+# to notice and the only reason it was noticed is that the vessel tick vanished from a diff.
+#
+# So: when the file already exists, ONLY the NB_SOURCE literal is replaced. Everything outside it
+# -- the module's own JavaScript, every later patch, the params cell the panel writes -- is left
+# exactly as it stands. The full template is used only to create the file from nothing.
+#
+# The practical consequence, worth knowing before editing either: the template is STALE, and the
+# live file is the one that ships. Changing the module's JavaScript means editing the live file
+# (through a src/ generator, as everything else here does), not this template.
+NEW_NB = 'const NB_SOURCE = %s;' % NB_JSON
+if os.path.exists(OUT):
+    old = io.open(OUT, encoding="utf-8").read()
+    m = re.search(r'const NB_SOURCE = "(?:[^"\\]|\\.)*";', old, re.S)
+    if not m:
+        raise SystemExit("%s exists but has no NB_SOURCE literal to replace. Move it aside to "
+                         "rebuild it from the template." % OUT)
+    out = old[:m.start()] + NEW_NB + old[m.end():]
+    io.open(OUT, "w", encoding="utf-8").write(out)
+    print("re-embedded the notebook in %s\n  %d cells, %.0f KB; the %.0f KB of module code "
+          "around it is untouched"
+          % (OUT, len(nb["cells"]), len(NB_JSON) / 1024.0, (len(out) - len(NB_JSON)) / 1024.0))
+else:
+    io.open(OUT, "w", encoding="utf-8").write(JS)
+    print("wrote %s FROM THE TEMPLATE -- there was no file to patch, so every later change to "
+          "this module is missing from it\n  %d notebook cells embedded, %.0f KB"
+          % (OUT, len(nb["cells"]), len(JS) / 1024.0))

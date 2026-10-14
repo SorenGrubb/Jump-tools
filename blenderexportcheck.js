@@ -7,7 +7,7 @@
    notebook and runs happily against the TEST cells and the TEST box. Somebody would only find out
    after paying for a Colab run.
 
-   So this check compares the generated notebook against blender/ujump_blender_scene.ipynb cell by
+   So this check compares the generated notebook against ../blender-export/ujump_blender_scene.ipynb cell by
    cell, and insists that exactly one differs.
 
    Run: node blenderexportcheck.js
@@ -49,11 +49,23 @@ console.log("--- the surface ---");
   ok("UJ.blender." + n + " is callable", typeof B[n] === "function"));
 
 const nb = B.buildNotebook(OPTS);
-const ref = JSON.parse(fs.readFileSync("blender/ujump_blender_scene.ipynb", "utf8"));
+/* WHERE THE NOTEBOOK IS. This read "blender/ujump_blender_scene.ipynb", a folder that has never
+   existed in either tree -- make_colab_notebook.py writes it into the blender-export folder BESIDE
+   this repository -- so this check has thrown ENOENT on every attempt to run it rather than
+   asserting anything. Same fix as src/core_blenderexport.py's. 2026-10-14. */
+const NB_CANDIDATES = ["../blender-export/ujump_blender_scene.ipynb",
+                       "blender/ujump_blender_scene.ipynb"]
+  .map(p => require("path").join(__dirname, p));
+const NB_REF = NB_CANDIDATES.find(p => fs.existsSync(p));
+if (!NB_REF){
+  console.log("no ujump_blender_scene.ipynb; looked in:\n  " + NB_CANDIDATES.join("\n  "));
+  process.exit(1);
+}
+const ref = JSON.parse(fs.readFileSync(NB_REF, "utf8"));
 
 console.log("\n--- it is the tested notebook ---");
 ok("same number of cells", nb.cells.length === ref.cells.length,
-   nb.cells.length + " vs " + ref.cells.length + " in blender/ujump_blender_scene.ipynb");
+   nb.cells.length + " vs " + ref.cells.length + " in " + require("path").basename(NB_REF) + "");
 
 /* Jupyter's `source` is an array of lines here and a single string in the generator's output, so
    compare the joined text -- the difference is a serialisation convention, not content. */
@@ -62,13 +74,33 @@ const differing = [];
 for (let i = 0; i < Math.min(nb.cells.length, ref.cells.length); i++){
   if (text(nb.cells[i]) !== text(ref.cells[i])) differing.push(i);
 }
-ok("exactly one cell differs from it", differing.length === 1,
-   differing.length ? "cells " + differing.join(", ") : "none differ, which means the panel's "
-   + "values were NOT substituted");
-ok("...and it is the one tagged params",
-   differing.length === 1 && nb.cells[differing[0]].metadata
-   && nb.cells[differing[0]].metadata.ujump === "params",
-   differing.length === 1 ? JSON.stringify(nb.cells[differing[0]].metadata) : "n/a");
+/* ── "ONE CELL" IS NOW FIVE, AND THE OTHER FOUR ARE NAMED ────────────────────────  2026-10-14
+   The design is still "carry the notebook verbatim, replace the params cell", and that is what
+   the first assertion below says. What changed in September is that the embedded copy is also
+   PATCHED after it is embedded: src/the_blender_export_colours_by_kind.py rewrites four of its
+   cells -- the colour policy, the scene builder that reads it, the traced-structures cell and the
+   manifest -- because those rules were worked out on the notebook that ships rather than on the
+   blender-export sources, and they are re-applied after every rebuild.
+
+   This check could not see any of that: it read a path that has never existed (see NB_REF above)
+   and threw before asserting anything, so it has been dead since the day that work landed. With
+   the path fixed it fails honestly, which is worth having -- and the useful property to assert is
+   no longer "one cell" but "these five and no others". A sixth means a patch landed somewhere
+   nobody recorded, and that is exactly the drift this file exists to catch. */
+const PATCHED = {
+  "colour_policy.py": "the colour rules themselves",
+  "blend_scene.py": "the scene builder that asks for them",
+  "the traced structures": "section 4b, which colours by kind",
+  "the manifest": "which carries the kind through to Blender"
+};
+const paramsAt = nb.cells.findIndex(c => c.metadata && c.metadata.ujump === "params");
+ok("the params cell is one of the cells that differ", differing.indexOf(paramsAt) >= 0,
+   differing.length ? "cells " + differing.join(", ") + ", params is " + paramsAt
+   : "none differ, which means the panel's values were NOT substituted");
+ok("...and the only others are the four the colour generator re-applies",
+   differing.length === 1 + Object.keys(PATCHED).length,
+   differing.length - 1 + " besides params, expected " + Object.keys(PATCHED).length
+   + " -- see src/the_blender_export_colours_by_kind.py");
 
 /* The four embedded modules are the point of shipping the notebook whole. */
 ["blend_scene.py", "glb_write.py", "em_plan.py", "em_fetch.py"].forEach(m => {
@@ -91,7 +123,7 @@ ok("every line of it is a real line, not one giant string",
    times. This is the same idea pointed at the replacement, where the mistakes actually happen. */
 console.log("\n--- the page's params cell drops no name the notebook's own defines ---");
 {
-  const shipped = JSON.parse(fs.readFileSync("blender/ujump_blender_scene.ipynb", "utf8"));
+  const shipped = JSON.parse(fs.readFileSync(NB_REF, "utf8"));
   const own = text(shipped.cells.find(c => c.metadata && c.metadata.ujump === "params"));
   const mine = text(nb.cells.find(c => c.metadata && c.metadata.ujump === "params"));
   const assigned = (src) => {
@@ -167,7 +199,12 @@ ok("a missing nucleus id is Python None, not the string 'undefined'",
    nonuc.split("\n").filter(l => l.indexOf("root_id") >= 0)[0]);
 
 console.log("\n--- the download ---");
-const name = B.downloadNotebook(OPTS);
+/* AWAITED. downloadNotebook became async on 2026-10-09, when it grew a fetch of its own -- the
+   traced vessels the tick asks for -- and this line went on comparing a Promise to a string, so
+   both assertions failed with "[object Promise]". Nobody saw it, because the whole file threw on
+   a missing path before it got here. 2026-10-14. */
+(async function(){
+const name = await B.downloadNotebook(OPTS);
 ok("it names the file after the dataset and the box", name === "minnie65_Box_2_blender.ipynb", name);
 ok("...and it made a blob to save", saved.length === 1, saved.length + " blob(s)");
 ok("the notebook's own colab name matches",
@@ -183,9 +220,11 @@ console.log("\nwrote /tmp/panel_notebook.ipynb  ->  python3 blender/notebookchec
 
 /* STALENESS IS ALREADY COVERED, and worth saying so rather than checking twice: buildNotebook
    parses the embedded copy, so if core/blenderexport.js were regenerated from an older notebook
-   -- or not regenerated at all -- the "exactly one cell differs" check above would see many
-   differences, not one, and fail with the cell numbers. Re-run python3 src/core_blenderexport.py
-   after editing the notebook or any of the four Python modules it embeds. */
+   -- or not regenerated at all -- the cell-by-cell comparison above would see more differences
+   than the five it allows for, and fail with the cell numbers. Re-run python3
+   src/core_blenderexport.py after editing the notebook or any of the Python modules it embeds,
+   and then src/the_blender_export_colours_by_kind.py, which re-applies the four. */
 
 console.log("\n" + (bad ? "*** " + bad + " FAILED ***" : "RESULT: ALL CHECKS PASSED"));
 process.exit(bad ? 1 : 0);
+})();

@@ -451,7 +451,7 @@ code{font-family:var(--mono);color:var(--accent)}a.ref{color:var(--accent);font-
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 09:57</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 10:49</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -4039,6 +4039,7 @@ function regionRowHtml(k){
          region-box panels with five copies of one control is how the last four corrections
          reached some pages and not others. */
       +((window.UJ&&UJ.blender&&UJ.blender.vesselTickHtml)?UJ.blender.vesselTickHtml():"")
+      +((window.UJ&&UJ.blender&&UJ.blender.blockTickHtml)?UJ.blender.blockTickHtml():"")
       +'<span style="flex:1"></span>'
       +'<label style="font-size:11px;color:var(--mut);display:flex;align-items:center;gap:3px;cursor:pointer" title="Write the Blender-scene notebook instead of the EM/segmentation one: a .blend and a .glb, with the cells as 3D models and the EM sections sweeping through them. The three ticks to the left still say what goes in."><input type="checkbox" class="colab-blender">Blender file</label>'
     +'</div>'
@@ -4087,6 +4088,7 @@ function addRegionBox(){
       const sync=function(){
         /* TRACED VASCULATURE, 2026-10-09: Blender-only, like every 3D tick on this row. */
         if(window.UJ&&UJ.blender&&UJ.blender.vesselTickSync)UJ.blender.vesselTickSync(row,bl.checked);
+        if(window.UJ&&UJ.blender&&UJ.blender.blockTickSync)UJ.blender.blockTickSync(row,bl.checked);
         help.style.display=bl.checked?"":"none";
       };
       bl.addEventListener("change",sync); sync();
@@ -4146,6 +4148,7 @@ function addRegionBox(){
       if(_ves&&_ves.error){ alert(_ves.error); return; }
       UJ.blender.downloadNotebook({
         vessels:_ves,
+        emStyle:(window.UJ&&UJ.blender&&UJ.blender.blockStyleFrom)?UJ.blender.blockStyleFrom(row):"sweep",
         datasetId:UJ.cfg.id,datasetLabel:UJ.cfg.label,
         emSource:UJ.cfg.em.emSource,segSource:UJ.cfg.em.segSource,
         nucSource:"",          /* H01 publishes no nucleus segmentation */

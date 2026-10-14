@@ -733,7 +733,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 09:57</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 10:49</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -13025,6 +13025,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
          region-box panels with five copies of one control is how the last four corrections
          reached some pages and not others. */
       +((window.UJ&&UJ.blender&&UJ.blender.vesselTickHtml)?UJ.blender.vesselTickHtml():"")
+      +((window.UJ&&UJ.blender&&UJ.blender.blockTickHtml)?UJ.blender.blockTickHtml():"")
       +'<span style="flex:1"></span>'
       +'<label style="font-size:11px;color:var(--mut);display:flex;align-items:center;gap:3px;cursor:pointer" title="Write the Blender-scene notebook instead of the EM/segmentation one: a .blend and a .glb, with the cells as 3D models and the EM sections sweeping through them. The ticks to the left still say what goes in."><input type="checkbox" class="colab-blender">Blender file</label>'
       +'</div>'
@@ -13069,6 +13070,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
         /* TRACED VASCULATURE, 2026-10-09: Blender-only, for the same reason the rest of this
            closure's ticks are. The one line each panel adds. */
         if(window.UJ&&UJ.blender&&UJ.blender.vesselTickSync)UJ.blender.vesselTickSync(row,bl.checked);
+        if(window.UJ&&UJ.blender&&UJ.blender.blockTickSync)UJ.blender.blockTickSync(row,bl.checked);
         help.style.display=bl.checked?"":"none";
         const show=!!(UJ.cfg.em&&UJ.cfg.em.segCaveAuth&&haveToken());
         if(cavLab)cavLab.style.display=show?"flex":"none";
@@ -13135,6 +13137,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
         if(_ves&&_ves.error){ alert(_ves.error); return; }
         UJ.blender.downloadNotebook({
           vessels:_ves,
+          emStyle:(window.UJ&&UJ.blender&&UJ.blender.blockStyleFrom)?UJ.blender.blockStyleFrom(row):"sweep",
           datasetId:UJ.cfg.id,datasetLabel:UJ.cfg.label,
           emSource:UJ.cfg.em.emSource,segSource:UJ.cfg.em.segSource,
           /* THE ONE DATASET IN THE FAMILY THAT NEEDS THIS. V1DD's segmentation is a live CAVE

@@ -43,9 +43,21 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def edit_text(P, pairs):
+    """A pair may carry a fourth item: a SHORTER marker that means "this change is already in,
+    whatever it has been rewritten into since".
+
+    This file is re-run after every rebuild of core/blenderexport.js, which is how its patches
+    survive (the rebuild replaces the embedded notebook and nothing else). "Already in" was tested
+    by looking for the whole replacement text -- and a change of this one's that was REWRITTEN
+    later, by src/a_per_box_notebook_is_that_box.py in October, no longer matched itself. So on
+    the next re-run it was applied a second time and the file ended up with the September filter
+    AND the October one, one after the other, both operating on the same list. Spotted in a diff
+    against the shipped file; it would not have raised anything. 2026-10-14."""
     s = io.open(P, encoding="utf-8").read(); b = s
-    for name, old, new in pairs:
-        if new in s: print("  already there: " + name); continue
+    for pair in pairs:
+        name, old, new = pair[0], pair[1], pair[2]
+        mark = pair[3] if len(pair) > 3 else new
+        if mark in s: print("  already there: " + name); continue
         assert s.count(old) == 1, "%s: %d" % (name, s.count(old))
         s = s.replace(old, new, 1); print("  ok: " + name)
     if s != b: io.open(P, "w", encoding="utf-8").write(s)
@@ -102,7 +114,10 @@ edit_text(BE, [
       if (!n) return false;
       var x = sx / n * R[0], y = sy / n * R[1], z = sz / n * R[2];
       return x >= b.xmin && x <= b.xmax && y >= b.ymin && y <= b.ymax && z >= b.zmin && z <= b.zmax;
-    });'''),
+    });''',
+  # The marker: the filter's own heading, which the October rewrite kept. Matching on the whole
+  # block above applied it a second time beside the rewrite. See edit_text's docstring.
+  u"AND ONLY THE ONES THAT BELONG HERE"),
  (u"...and no colour per tracing: the notebook decides",
   u'''                   + (t.color ? ", 'color': " + pyStr(t.color) : "")
                    + (t.nucleus_id ? ", 'nucleus_id': " + pyStr(String(t.nucleus_id)) : "")''',

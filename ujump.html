@@ -637,7 +637,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 09:57</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 10:49</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -13624,6 +13624,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
          region-box panels with five copies of one control is how the last four corrections
          reached some pages and not others. */
       +((window.UJ&&UJ.blender&&UJ.blender.vesselTickHtml)?UJ.blender.vesselTickHtml():"")
+      +((window.UJ&&UJ.blender&&UJ.blender.blockTickHtml)?UJ.blender.blockTickHtml():"")
       +'<span style="flex:1"></span>'
       +'<label style="font-size:11px;color:var(--mut);display:flex;align-items:center;gap:3px;cursor:pointer" title="Write the Blender-scene notebook instead of the EM/segmentation one: a .blend and a .glb, with the cells and nuclei as 3D models, the EM sections sweeping through them and the matched cells painted on those sections. The four ticks to the left still say what goes in."><input type="checkbox" class="colab-blender">Blender file</label>'
       +'</div>'
@@ -13649,6 +13650,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
         /* TRACED VASCULATURE, 2026-10-09: Blender-only, for the same reason the rest of this
            closure's ticks are. The one line each panel adds. */
         if(window.UJ&&UJ.blender&&UJ.blender.vesselTickSync)UJ.blender.vesselTickSync(row,bl.checked);
+        if(window.UJ&&UJ.blender&&UJ.blender.blockTickSync)UJ.blender.blockTickSync(row,bl.checked);
         nu.disabled=!bl.checked;
         lab.style.opacity=bl.checked?"":"0.45";
         lab.title=bl.checked
@@ -13817,6 +13819,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
         if(_ves&&_ves.error){ alert(_ves.error); return; }
         UJ.blender.downloadNotebook({
           vessels:_ves,
+          emStyle:(window.UJ&&UJ.blender&&UJ.blender.blockStyleFrom)?UJ.blender.blockStyleFrom(row):"sweep",
           datasetId:UJ.cfg.id,datasetLabel:UJ.cfg.label,
           emSource:UJ.cfg.em.emSource,segSource:UJ.cfg.em.segSource,nucSource:UJ.cfg.em.nucSource,
           /* Without this the Vasculature tick is inert: core/blenderexport.js lets the SOURCE

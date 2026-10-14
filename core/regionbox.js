@@ -313,6 +313,7 @@ UJ.regionbox = (function(){
         /* TRACED VASCULATURE (2026-10-09) -- see the same insertion in the four hand-written
            panels. The markup is core/blenderexport.js's, so there is one control. */
         + ((window.UJ && UJ.blender && UJ.blender.vesselTickHtml) ? UJ.blender.vesselTickHtml() : "")
+        + ((window.UJ && UJ.blender && UJ.blender.blockTickHtml) ? UJ.blender.blockTickHtml() : "")
         + (can.blender ? '<span style="flex:1"></span>'
              + optTick("colab-blender", "Blender file", false,
                  "Write the Blender-scene notebook instead of the EM/segmentation one: a .blend and a .glb, with the cells as 3D models and the EM sections sweeping through them. The ticks to the left still say what goes in.") : "")
@@ -361,6 +362,7 @@ UJ.regionbox = (function(){
           var on = bl.checked;
           /* TRACED VASCULATURE, 2026-10-09: Blender-only, like the two ticks below. */
           if (UJ.blender && UJ.blender.vesselTickSync) UJ.blender.vesselTickSync(row, on);
+          if (UJ.blender && UJ.blender.blockTickSync) UJ.blender.blockTickSync(row, on);
           if (help) help.style.display = on ? "" : "none";
           [["colab-nuclei", nu], ["colab-vasc", va]].forEach(function(pair){
             var el = pair[1]; if (!el) return;
@@ -468,6 +470,9 @@ UJ.regionbox = (function(){
         if (_ves && _ves.error){ alert(_ves.error); return; }
         UJ.blender.downloadNotebook({
           vessels: _ves,
+          /* Sweep or block -- see src/a_block_of_tissue_that_peels.py. */
+          emStyle: (window.UJ && UJ.blender && UJ.blender.blockStyleFrom)
+                   ? UJ.blender.blockStyleFrom(row) : "sweep",
           datasetId: UJ.cfg.id, datasetLabel: UJ.cfg.label,
           emSource: UJ.cfg.em.emSource, segSource: UJ.cfg.em.segSource,
           nucSource: UJ.cfg.em.nucSource || "",
