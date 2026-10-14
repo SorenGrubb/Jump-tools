@@ -28,6 +28,14 @@
   .row{display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line)}
   .row .sw{width:12px;height:12px;border-radius:3px;flex:none}
   .row div{flex:1;min-width:0}
+  .grp{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+  .grp .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .grp div{flex:1;min-width:0}
+  .grp b{display:block;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp small{display:block;color:var(--mut);font-size:11px}
+  .grp .err{color:#f0883e}
+  .grp .car{width:12px;color:var(--mut);flex:none}
+  .row.sub{padding-left:20px;border-top:1px dashed #21262d}
   .row b{display:block;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
   .row small{display:block;color:var(--mut);font:11px ui-monospace,monospace}
   .row .st{font-size:11px;color:var(--mut)}
@@ -330,19 +338,73 @@ function renderList(){
   subEl.textContent = CELLS.length + " cell" + (CELLS.length > 1 ? "s" : "")
     + (OF > CELLS.length ? " · evenly spread through " + OF.toLocaleString() + " filter matches"
        : (FROM_LINK ? " · from link" : " · from this browser's collection"));
-  listEl.innerHTML = CELLS.map(c =>
-    `<div class="row"><span class="sw" style="background:${c.colour}"></span><div>
-       <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}">${esc(c.label)} <span style="font-weight:400;color:${EI_COL[cellClass(c)]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cellClass(c)]}</span></b>
-       <small>${esc(c.root)}</small><span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
-       <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
+  /* GROUPED BY CELL TYPE, COLLAPSED (2026-10-14, Søren: "organise under cell type and have them
+     collapsed by default"). A group's header carries what you need without opening it: its colour,
+     E/I, how many cells, how many are loaded or failed, and one box that shows or hides them all.
+     The group of the picked cell opens by itself, so picking in the headset finds its row here. */
+  const groups = cellGroups();
+  /* Only the picked cell's group opens by itself, and it closes again when the pick moves on --
+     unless you opened it yourself. */
+  const autoKey = SELECTED >= 0 && CELLS[SELECTED] ? groupKey(CELLS[SELECTED]) : null;
+  if (AUTO_OPEN && AUTO_OPEN !== autoKey){ OPEN_GROUPS.delete(AUTO_OPEN); AUTO_OPEN = null; }
+  if (autoKey && !OPEN_GROUPS.has(autoKey)){ OPEN_GROUPS.add(autoKey); AUTO_OPEN = autoKey; }
+  listEl.innerHTML = groups.map(g => {
+    const open = OPEN_GROUPS.has(g.key), n = g.cells.length;
+    const shown = g.cells.filter(c => !c.hidden).length, loaded = g.cells.filter(c => c.mesh).length, bad = g.cells.filter(c => c.err).length;
+    const cls = cellClass(g.cells[0]);
+    const head = `<div class="grp" data-grp="${esc(g.key)}">
+        <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
+        <div><b>${esc(g.name)} <span style="font-weight:400;color:${EI_COL[cls]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cls]}</span></b>
+        <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
+        <input type="checkbox" data-gvis="${esc(g.key)}" ${shown === n ? "checked" : ""} title="Show / hide all ${n}"></div>`;
+    if (!open) return head;
+    return head + g.cells.map(c =>
+      `<div class="row sub"><span class="sw" style="background:${c.colour}"></span><div>
+         <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
+         <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
+         <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
+  }).join("");
+  /* A group box is half-ticked when some of its cells are hidden. */
+  listEl.querySelectorAll("[data-gvis]").forEach(el => {
+    const g = groups.find(x => x.key === el.dataset.gvis), shown = g.cells.filter(c => !c.hidden).length;
+    el.indeterminate = shown > 0 && shown < g.cells.length;
+  });
+}
+const OPEN_GROUPS = new Set();
+let AUTO_OPEN = null;
+/* Group by the MICrONS type CODE when the label carries one -- "L2/3 pyramidal neuron (23P)" from
+   µJump and "L2/3 pyramidal (23P, MICrONS prediction)" from the neighbour finder are one group --
+   and otherwise by the name, ignoring case. The group is shown under its shortest name. */
+function typeCode(c){ const m = String(c.label || "").match(/\(([A-Za-z0-9\-\/]{1,8})(?:[,)])/); return m ? m[1] : ""; }
+function groupKey(c){
+  const code = typeCode(c);
+  return code ? code : (String(c.label || "Cell").replace(/\s*\(.*$/, "").trim().toLowerCase() || "cell");
+}
+function groupName(cells){
+  const stems = cells.map(c => String(c.label || "Cell").replace(/\s*\(.*$/, "").trim() || "Cell").sort((a, b) => a.length - b.length);
+  const code = typeCode(cells[0]);
+  return stems[0] + (code ? " (" + code + ")" : "");
+}
+function cellGroups(){
+  const by = new Map();
+  for (const c of CELLS){ const k = groupKey(c); if (!by.has(k)) by.set(k, []); by.get(k).push(c); }
+  /* Excitatory first, then inhibitory, then glia, then the rest; within each, the biggest group first. */
+  const order = { exc: 0, inh: 1, glia: 2, unknown: 3 };
+  return [...by.entries()].map(([key, cells]) => ({ key, cells, name: groupName(cells) }))
+    .sort((a, b) => (order[cellClass(a.cells[0])] - order[cellClass(b.cells[0])]) || (b.cells.length - a.cells.length) || a.key.localeCompare(b.key));
 }
 listEl.addEventListener("click", e => {
+  if (e.target.closest("input")) return;
   const p = e.target.closest("[data-pick]");
-  if (p){ const i = +p.dataset.pick; select(SELECTED === i ? -1 : i); }
+  if (p){ const i = +p.dataset.pick; select(SELECTED === i ? -1 : i); return; }
+  const g = e.target.closest("[data-grp]");
+  if (g){ const k = g.dataset.grp; if (AUTO_OPEN === k) AUTO_OPEN = null; OPEN_GROUPS.has(k) ? OPEN_GROUPS.delete(k) : OPEN_GROUPS.add(k); renderList(); }
 });
 listEl.addEventListener("change", e => {
+  const gv = e.target.closest("[data-gvis]");
+  if (gv){ CELLS.filter(c => groupKey(c) === gv.dataset.gvis).forEach(c => c.hidden = !gv.checked); renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true; return; }
   const v = e.target.closest("[data-vis]"); if (!v) return;
-  const c = CELLS[+v.dataset.vis]; c.hidden = !v.checked; applyLook();
+  const c = CELLS[+v.dataset.vis]; c.hidden = !v.checked; renderList(); applyLook();
 });
 
 function geometryFrom(positions, indices){
@@ -1579,12 +1641,12 @@ function applyLook(){
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
-function select(i){ SELECTED = i; applyLook(); }
+function select(i){ SELECTED = i; applyLook(); renderList(); }
 
 document.getElementById("detail").addEventListener("change", loadAll);
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
 document.getElementById("nucBtn").addEventListener("click", () => setNuclei(!SHOW_NUC));
-function syncVisChecks(){ listEl.querySelectorAll("[data-vis]").forEach(el => { el.checked = !CELLS[+el.dataset.vis].hidden; }); }
+function syncVisChecks(){ renderList(); }
 const glassBtn = document.getElementById("glassBtn");
 function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("on", SEE_THROUGH); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true; }
 glassBtn.addEventListener("click", toggleGlass);
@@ -1834,13 +1896,33 @@ function menuRows(){
       rows.push({ label: "Hide the EM section", act: hideEM });
     }
   } else if (t === "Cells"){
-    /* Seven to a page, so the palette never grows past a hand's width of height. */
-    const per = 7, pages = Math.max(1, Math.ceil(CELLS.length / per));
-    MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
-    CELLS.slice(MENU.cellPage * per, MENU.cellPage * per + per).forEach(c => rows.push({
-      label: c.label, swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
-      act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); } }));
-    if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
+    /* Two levels, like the panel: the cell TYPES first (one row each, showing how many are visible),
+       and a type opened to its cells. Seven to a page either way, so the palette never grows past
+       a hand's width of height. */
+    const groups = cellGroups(), per = 7;
+    const g = MENU.cellGroup && groups.find(x => x.key === MENU.cellGroup);
+    if (!g){
+      MENU.cellGroup = null;
+      const pages = Math.max(1, Math.ceil(groups.length / per));
+      MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
+      groups.slice(MENU.cellPage * per, MENU.cellPage * per + per).forEach(gr => {
+        const shown = gr.cells.filter(c => !c.hidden).length;
+        rows.push({ label: gr.name + "  (" + (shown < gr.cells.length ? shown + "/" : "") + gr.cells.length + ")  ▸", swatch: gr.cells[0].colour,
+                    picked: gr.cells.some(c => c.i === SELECTED), act: () => { MENU.cellGroup = gr.key; MENU.cellPage = 0; } });
+      });
+      if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
+    } else {
+      const allShown = g.cells.every(c => !c.hidden);
+      rows.push({ label: "◂ All types", act: () => { MENU.cellGroup = null; MENU.cellPage = 0; } });
+      rows.push({ label: "All " + g.cells.length + " " + g.name, on: allShown, swatch: g.cells[0].colour,
+                  act: () => { g.cells.forEach(c => c.hidden = allShown); syncVisChecks(); applyLook(); } });
+      const pages = Math.max(1, Math.ceil(g.cells.length / (per - 2)));
+      MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
+      g.cells.slice(MENU.cellPage * (per - 2), MENU.cellPage * (per - 2) + per - 2).forEach(c => rows.push({
+        label: (c.err ? "⚠ " : "") + (c.root || c.label), swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
+        act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); } }));
+      if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
+    }
   } else if (t === "View"){
     if (MENU.help){
       ["Right trigger: pick / use a tool", "Grip: grab · both grips: resize", "Right stick: turn · zoom",
