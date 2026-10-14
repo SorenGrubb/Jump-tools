@@ -152,6 +152,8 @@
   <div class="ctl">
     <button id="cvecBtn" title="3D arrows from each nucleus to its centriole — Søren's verified dataset and the community reports, as Filter-and-show's &quot;Nucleus-to-centriole vector&quot; layer">Nucleus → centriole vectors</button>
     <button id="lvecBtn" title="3D arrows along each primary cilium from base to tip — verified and reported">Cilium base → tip vectors</button>
+    <select id="vecType" title="Only the vectors of cells of this type (the verified type, or the cell's own label when it is here, else the MICrONS prediction)"><option value="all">All cell types</option></select>
+    <select id="vecCol" title="Colour the arrows by their cell's type, or by what they are (centriole yellow, cilium pink)"><option value="type">Colour: by cell type</option><option value="kind">Colour: centriole / cilium</option></select>
   </div>
   <div class="ctl">
     <button id="stimBtn" title="Click (or in VR: right trigger) on a cell to start an action potential there and watch it spread — and cross synapses to the other cells here">⚡ Stimulate</button>
@@ -1173,7 +1175,9 @@ const ORG_PALETTE = ["#56d4c8","#f778ba","#a5e075","#d2a8ff","#ffb3c7","#e3d24f"
 const ORG_FIXED = { centriole: "#ffd21a", cilium: "#ff5bd0" };
 const ORG_RAD = 0.2;          // µm, the radius of a reported organelle's ball
 /* Where a nucleus is, by its id: the loaded mesh, else the nucleus table near a point. */
-const NUC_AT = {};
+const NUC_AT = {}, NUC_TYPE = {};
+/* A cell-type name in one spelling, so the verified "Microglia" and the table's "microglia" meet. */
+function typeName(t){ t = String(t || "").replace(/\s*\(.*$/, "").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unclassified"; }
 async function nucleusCentre(nid, near){
   nid = String(nid || ""); if (!nid) return null;
   /* The nucleus table's position first -- where µJump anchors its vectors -- and the loaded
@@ -1186,9 +1190,10 @@ async function nucleusCentre(nid, near){
     const I = await nucIndex(ds), T = I.tileUm, tx = Math.floor(near.x / T), tz = Math.floor(near.z / T);
     for (let dx = -1; dx <= 1 && !NUC_AT[nid]; dx++) for (let dz = -1; dz <= 1 && !NUC_AT[nid]; dz++){
       const r = (await nucTile(ds, (tx + dx) + "_" + (tz + dz))).find(q => String(q[4]) === nid);
-      if (r) NUC_AT[nid] = new THREE.Vector3(r[0], r[1], r[2]);
+      if (r){ NUC_AT[nid] = new THREE.Vector3(r[0], r[1], r[2]); const code = I.types[r[3]] || ""; NUC_TYPE[nid] = typeName((I.labels && I.labels[code]) || code); }
     }
   } catch (e){}
+  if (c) NUC_TYPE[nid] = typeName(c.label);       // a cell here carries its own (possibly corrected) type
   return NUC_AT[nid] || (c ? nucCentreOf(c) : null);
 }
 const _Y = new THREE.Vector3(0, 1, 0);
@@ -1258,7 +1263,17 @@ document.getElementById("orgKind").addEventListener("change", e => { ORG.kind = 
    · the community reports (?allOrganelles=1, shared with section 5) -- a centriole's arrow starts at
      its nucleus's table position, or the loaded nucleus mesh's centre when the table has none.
    Every vector with either end inside the box around the cells is drawn. Off by default. */
-const VEC = { cent: false, cil: false, data: null, loading: null, group: null };
+const VEC = { cent: false, cil: false, data: null, loading: null, group: null, type: "all", colour: "type" };
+/* CELL TYPE (2026-10-14, Søren: "the nucleus to centriole vectors and the primary cilia should be
+   differentiated based on the cell type. So, maybe we can choose cell type of those also"). Each
+   vector carries its cell's type: the verified type for Søren's own data, and for a report the type
+   of the cell when it is here (so a µJump correction counts), else the nucleus table's prediction.
+   Arrows are coloured by type (a fixed bright palette, the same type always the same colour, with a
+   legend), or by kind (centriole yellow, cilium pink); one type can be chosen on its own (vecType). */
+const VEC_PAL = ["#ffd21a", "#ff5bd0", "#4dd0ff", "#7dff6a", "#ff8a3d", "#b28dff", "#ff4f5e", "#3dffc8",
+                 "#f5f5f5", "#c6ff3d", "#ff9ec7", "#6aa8ff", "#ffb84d", "#9dffe0", "#e07bff", "#bfbfbf"];
+const VEC_TYPE_COL = {};
+function vecTypeColour(t){ if (!(t in VEC_TYPE_COL)) VEC_TYPE_COL[t] = VEC_PAL[Object.keys(VEC_TYPE_COL).length % VEC_PAL.length]; return VEC_TYPE_COL[t]; }
 async function loadVectors(){
   if (VEC.data) return VEC.data;
   if (!VEC.loading) VEC.loading = fetch(dsOfCells().vectors).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
@@ -1302,36 +1317,66 @@ async function buildVectors(){
   if (token !== VEC_TOKEN) return;
   const b = regionBox(), V = (x, y, z) => new THREE.Vector3(x, y, z);
   const P = s => { const a = String(s || "").split(",").map(Number); return a.length === 3 && a.every(isFinite) ? V(a[0] * res[0] / 1000, a[1] * res[1] / 1000, a[2] * res[2] / 1000) : null; };
-  const list = [];        // [from, to, colour]
+  const list = [];        // [from, to, kind, type]
   const inBox = (p, q) => b.containsPoint(p) || b.containsPoint(q);
+  const T = own.types || [];
   if (VEC.cent){
-    own.cent.forEach(r => { const p = V(r[1], r[2], r[3]), q = V(r[4], r[5], r[6]); if (inBox(p, q)) list.push([p, q, "#ffd21a"]); });
+    own.cent.forEach(r => { const p = V(r[2], r[3], r[4]), q = V(r[5], r[6], r[7]); if (inBox(p, q)) list.push([p, q, "cent", typeName(T[r[1]])]); });
     for (const o of reps){
       if (o.kind !== "centriole") continue;
       const q = P(o.pointA); if (!q || !b.containsPoint(q)) continue;
       const p = await nucleusCentre(o.nucleusId, q); if (token !== VEC_TOKEN) return;
-      if (p) list.push([p, q, "#ffd21a"]);
+      if (p) list.push([p, q, "cent", NUC_TYPE[String(o.nucleusId)] || "Unclassified"]);
     }
   }
   if (VEC.cil){
-    own.cil.forEach(r => { const p = V(r[1], r[2], r[3]), q = V(r[4], r[5], r[6]); if (inBox(p, q)) list.push([p, q, "#ff5bd0"]); });
+    own.cil.forEach(r => { const p = V(r[2], r[3], r[4]), q = V(r[5], r[6], r[7]); if (inBox(p, q)) list.push([p, q, "cil", typeName(T[r[1]])]); });
     for (const o of reps){
       if (o.kind !== "cilium") continue;
-      const p = P(o.pointA), q = P(o.pointB); if (p && q && inBox(p, q)) list.push([p, q, "#ff5bd0"]);
+      const p = P(o.pointA), q = P(o.pointB); if (!(p && q && inBox(p, q))) continue;
+      await nucleusCentre(o.nucleusId, p); if (token !== VEC_TOKEN) return;      // for its cell type
+      list.push([p, q, "cil", NUC_TYPE[String(o.nucleusId)] || "Unclassified"]);
     }
   }
-  const grp = new THREE.Group();
+  /* The type chooser: every type with vectors here, whatever is chosen. */
+  const counts = {};
+  list.forEach(x => { counts[x[3]] = (counts[x[3]] || 0) + 1; });
+  const types = Object.keys(counts).sort();
+  types.forEach(vecTypeColour);
+  fillSelect("vecType", "All cell types", types.map(t => [t, t + " (" + counts[t] + ")"]), VEC.type);
+  VEC.types = types;
+  const grp = new THREE.Group(), shown = {};
   let nc = 0, nl = 0;
-  for (const [p, q, col] of list){ const a = vectorArrow(p, q, col); if (a){ grp.add(a); col === "#ffd21a" ? nc++ : nl++; } }
+  for (const [p, q, kind, type] of list){
+    if (VEC.type !== "all" && type !== VEC.type) continue;
+    const col = VEC.colour === "kind" ? (kind === "cent" ? "#ffd21a" : "#ff5bd0") : vecTypeColour(type);
+    const a = vectorArrow(p, q, col); if (!a) continue;
+    grp.add(a); kind === "cent" ? nc++ : nl++; shown[type] = (shown[type] || 0) + 1;
+  }
+  /* A legend at the box's corner, each type in its colour. */
+  const st = Object.keys(shown).sort();
+  if (st.length){
+    const lines = ["Vectors" + (VEC.cent && VEC.cil ? ": nucleus → centriole, cilium base → tip" : VEC.cent ? ": nucleus → centriole" : ": cilium base → tip")];
+    const cols = [null];
+    if (VEC.colour === "kind"){ if (nc){ lines.push("centriole vectors ×" + nc); cols.push("#ffd21a"); } if (nl){ lines.push("cilium vectors ×" + nl); cols.push("#ff5bd0"); } }
+    else st.forEach(t => { lines.push("■ " + t + "  ×" + shown[t]); cols.push(vecTypeColour(t)); });
+    const leg = textSprite(lines, { width: 1, colors: cols });
+    leg.scale.multiplyScalar(b.getSize(new THREE.Vector3()).length() * 0.2);
+    leg.position.set(b.min.x, b.max.y, b.max.z); grp.add(leg);
+  }
   if (token !== VEC_TOKEN){ disposeGroup(grp); return; }
   VEC.group = grp; content.add(grp);
   ctxNote.textContent = (VEC.cent ? nc + " nucleus → centriole vector" + (nc === 1 ? "" : "s") : "")
     + (VEC.cent && VEC.cil ? " · " : "") + (VEC.cil ? nl + " cilium base → tip vector" + (nl === 1 ? "" : "s") : "")
+    + (VEC.type !== "all" ? " in " + VEC.type.toLowerCase() + "s" : " in " + st.length + " cell type" + (st.length === 1 ? "" : "s"))
     + " around these cells (verified + reported).";
+  MENU.dirty = true;
 }
 function setVectors(which, v){ VEC[which] = v; buildVectors(); }
 document.getElementById("cvecBtn").addEventListener("click", () => setVectors("cent", !VEC.cent));
 document.getElementById("lvecBtn").addEventListener("click", () => setVectors("cil", !VEC.cil));
+document.getElementById("vecType").addEventListener("change", e => { VEC.type = e.target.value; buildVectors(); });
+document.getElementById("vecCol").addEventListener("change", e => { VEC.colour = e.target.value; buildVectors(); });
 
 /* ── 6. BRING IN THE NEIGHBOURS ────────────────────────────────────────────  2026-10-13
    The cells nearest the picked one, fetched while you stand there. Positions, predicted types and
@@ -2069,7 +2114,7 @@ function captureScene(){
     v: 1, savedAt: new Date().toISOString(),
     cells: CELLS.map(c => ({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden })),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
-          colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
+          colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
           selected: SELECTED, stimMode: document.getElementById("stimMode").value,
           v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap } },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -2212,6 +2257,8 @@ async function applyScene(sc){
   if (u.trcType) TRC.type = u.trcType;
   if (u.trcKind) TRC.kind = u.trcKind;
   if (u.org) setOrganelles(true);
+  if (u.vtype) VEC.type = u.vtype;
+  if (u.vcol) VEC.colour = u.vcol;
   if (u.cvec || u.lvec){ VEC.cent = !!u.cvec; VEC.cil = !!u.lvec; buildVectors(); }
   if (u.traced) setTraced(true);
   if (u.v1 && u.v1 !== "off") setV1Col(u.v1);
@@ -2660,7 +2707,7 @@ function textSprite(lines, opts = {}){
   g.beginPath(); g.roundRect(3, 3, W - 6, H - 6, 28); g.fill(); g.stroke();
   lines.forEach((l, k) => {
     g.font = (k === 0 ? "600 " : "") + (k === 0 ? 50 : 40) + "px system-ui, sans-serif";
-    g.fillStyle = k === 0 ? "#e6edf3" : "#8b949e";
+    g.fillStyle = (opts.colors && opts.colors[k]) || (k === 0 ? "#e6edf3" : "#8b949e");
     g.fillText(l, pad, pad + lh * k + 48, W - pad * 2);
   });
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
@@ -2850,6 +2897,14 @@ function menuRows(){
     }
     rows.push({ label: "Nucleus → centriole vectors", on: VEC.cent, act: () => setVectors("cent", !VEC.cent) });
     rows.push({ label: "Cilium base → tip vectors", on: VEC.cil, act: () => setVectors("cil", !VEC.cil) });
+    if (VEC.cent || VEC.cil){
+      const vt = ["all"].concat(VEC.types || []);
+      rows.push({ label: "   Vectors of: " + (VEC.type === "all" ? "all cell types" : VEC.type) + "  ▸",
+                  swatch: VEC.type !== "all" && VEC.colour === "type" ? vecTypeColour(VEC.type) : undefined,
+                  act: () => { VEC.type = vt[(vt.indexOf(VEC.type) + 1) % vt.length] || "all"; buildVectors(); } });
+      rows.push({ label: "   Colour: " + (VEC.colour === "type" ? "by cell type" : "centriole / cilium") + "  ▸",
+                  act: () => { VEC.colour = VEC.colour === "type" ? "kind" : "type"; buildVectors(); } });
+    }
     rows.push({ label: "Traced structures", on: TRC.on, act: () => setTraced(!TRC.on) });
     {
       const tv = [...document.getElementById("trcType").options].map(o => o.value), kv = [...document.getElementById("trcKind").options].map(o => o.value);

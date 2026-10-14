@@ -10,8 +10,10 @@
      nucleus table's own position for that nucleus (NX/NY/NZ), exactly as buildFilterViewerState does;
    · standalone verified points (Img35 / out-of-region) -- ST_X/Y/Z with ST_CENT* and ST_CIL*.
 
-   Rows, in µm (one decimal):  cent: [nucleusId or "", from x,y,z, to x,y,z]
-                               cil:  [nucleusId or "", base x,y,z, tip x,y,z]
+   Rows, in µm (one decimal):  cent: [nucleusId or "", type, from x,y,z, to x,y,z]
+                               cil:  [nucleusId or "", type, base x,y,z, tip x,y,z]
+   `type` indexes `types`, the verified cell type (OWN_TYPE_NAMES) -- 2026-10-14, Søren: the vectors
+   "should be differentiated based on the cell type".
 
    ujump.html is loaded in headless Chromium with all network requests refused.
    Usage: node src/build_vr_vectors.js ujump.html core/vr_vectors_microns.json */
@@ -27,21 +29,23 @@ let pw; try { pw = require("playwright"); } catch (e){ pw = require("/opt/npm-to
   const r = await p.evaluate(() => {
     const um = (v, k) => Math.round(v * [UJ_RX, UJ_RY, UJ_RZ][k] / 100) / 10;
     const P = v => [um(v[0], 0), um(v[1], 1), um(v[2], 2)];
-    const cent = [], cil = [];
+    const cent = [], cil = [], types = [], ti = name => { let k = types.indexOf(name); if (k < 0){ k = types.length; types.push(name); } return k; };
     for (let i = 0; i < NX.length; i++){
       const own = ownOverride(i); if (!own) continue;
       const nid = typeof NID !== "undefined" ? String(NID[i]) : "";
-      if (own.centriole) cent.push([nid, ...P([NX[i], NY[i], NZ[i]]), ...P(own.centriole)]);
-      if (own.cilium) cil.push([nid, ...P(own.cilium[0]), ...P(own.cilium[1])]);
+      const t = ti(own.type || "Unclassified");
+      if (own.centriole) cent.push([nid, t, ...P([NX[i], NY[i], NZ[i]]), ...P(own.centriole)]);
+      if (own.cilium) cil.push([nid, t, ...P(own.cilium[0]), ...P(own.cilium[1])]);
     }
     for (let i = 0; i < ST_N; i++){
-      if (ST_HASCENT[i]) cent.push(["", ...P([ST_X[i], ST_Y[i], ST_Z[i]]), ...P([ST_CENTX[i], ST_CENTY[i], ST_CENTZ[i]])]);
-      if (ST_HASCIL[i]) cil.push(["", ...P([ST_CILSX[i], ST_CILSY[i], ST_CILSZ[i]]), ...P([ST_CILEX[i], ST_CILEY[i], ST_CILEZ[i]])]);
+      const t = ti(OWN_TYPE_NAMES[ST_TYPE[i]] || "Unclassified");
+      if (ST_HASCENT[i]) cent.push(["", t, ...P([ST_X[i], ST_Y[i], ST_Z[i]]), ...P([ST_CENTX[i], ST_CENTY[i], ST_CENTZ[i]])]);
+      if (ST_HASCIL[i]) cil.push(["", t, ...P([ST_CILSX[i], ST_CILSY[i], ST_CILSZ[i]]), ...P([ST_CILEX[i], ST_CILEY[i], ST_CILEZ[i]])]);
     }
-    return { cent, cil };
+    return { cent, cil, types };
   });
   await b.close();
-  const out = { source: "ujump.html own verified dataset (ownOverride + STANDALONE), as Filter-and-show's vector layers", unit: "um", cent: r.cent, cil: r.cil };
+  const out = { source: "ujump.html own verified dataset (ownOverride + STANDALONE), as Filter-and-show's vector layers", unit: "um", types: r.types, cent: r.cent, cil: r.cil };
   fs.writeFileSync(dst, JSON.stringify(out));
-  console.log("centriole vectors", r.cent.length, "cilium vectors", r.cil.length, "bytes", fs.statSync(dst).size, "e.g.", JSON.stringify(r.cent[0]), JSON.stringify(r.cil[0]));
+  console.log("types", r.types.join(", "), "· centriole vectors", r.cent.length, "cilium vectors", r.cil.length, "bytes", fs.statSync(dst).size, "e.g.", JSON.stringify(r.cent[0]), JSON.stringify(r.cil[0]));
 })();
