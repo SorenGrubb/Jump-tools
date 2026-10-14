@@ -192,30 +192,49 @@ const DJ = [109743, 79665, 8811];
      unboxed.text.slice(0, 60));
 
   /* ── 3. CLICKING ONE DOES NOT DRAW THE WRONG TISSUE ───────────────────────────────────────── */
-  console.log("\nclicking a foreign coordinate offers its own volume, not this one's");
+  /* ── CLICKING A FOREIGN COORDINATE DRAWS THE RIGHT TISSUE ───────────────  2026-10-13
+     This section used to assert that NOTHING was drawn, and that was right while the only way to
+     draw was with this page's own reader: a picture of minnie65 captioned with a V1DD coordinate
+     is the worst of both. Søren then asked for the other half — *"I would also like that the
+     dJump coordinate can open EM ... in uJump"* — so now it IS drawn, from δJump's own imagery,
+     through core/emtiles.js's withConfig(). What is asserted is therefore not "nothing happened"
+     but WHOSE VOLUME: the host handed to the preview must be V1DD's, never this page's. */
+  console.log("\nclicking a foreign coordinate draws THAT tool's tissue, not this one's");
   const clicked = await p.evaluate(async () => {
-    let drew = 0;
+    const seen = [];
     const real = UJ.empreview.open;
-    UJ.empreview.open = function(){ drew++; };
+    /* Returns undefined on purpose: core/forum.js uses this return value, and a module that
+       assumes a promise would throw rather than merely skip its caption. */
+    UJ.empreview.open = function(el, pos, o){ seen.push(o && o.host ? o.host : null); };
     UJ.forum._open("d1");
     const host = document.getElementById("forumCard");
     const a = host.querySelector(".forumbody a[data-jl]");
     if (a) a.click();
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 250));
     const slot = host.querySelector(".forumprev");
-    const out = { drew: drew, html: slot ? slot.innerHTML : "",
+    const out = { drew: seen.length, host: seen[0] || null,
+                  html: slot ? slot.innerHTML : "",
                   href: (slot && slot.querySelector("a")) ? slot.querySelector("a").href : "" };
     UJ.empreview.open = real;
     return out;
   });
-  ok(clicked.drew === 0,
-     "this page's EM is NOT drawn under somebody else's coordinate: the imagery here is minnie65, "
-     + "and a picture of minnie65 captioned with a V1DD coordinate is the worst of both",
-     clicked.drew + " previews drawn");
+  ok(clicked.drew === 1, "the tissue IS drawn now", clicked.drew + " previews drawn");
+  ok(!!clicked.host && /v1dd_imagery/.test(clicked.host.em || ""),
+     "...from δJump's own imagery, which is the whole point — this page's reader is pointed at "
+     + "minnie65 and is handed back afterwards",
+     clicked.host ? (clicked.host.em || "").slice(0, 60) : "no host given");
+  ok(!!clicked.host && clicked.host.foreign === true && clicked.host.own !== true,
+     "...marked foreign, so core/empreview.js withholds the cell lookup and the two 3D buttons: "
+     + "core/segpaint.js is a singleton too and the mesh store is this page's",
+     clicked.host ? ("foreign " + clicked.host.foreign + ", own " + clicked.host.own) : "none");
+  ok((clicked.host && (clicked.host.skipScales || []).indexOf("placeholder") >= 0),
+     "...and carries V1DD's dead 4.85 nm scale, or every mip shifts by one and the preview reads "
+     + "four times the pixels it meant to",
+     clicked.host ? JSON.stringify(clicked.host.skipScales) : "none");
   ok(/V1DD|δJump/.test(clicked.html),
-     "...the line says which volume and which tool it belongs to", clicked.html.slice(0, 160));
+     "...with a line under it saying whose volume it is", clicked.html.slice(0, 160));
   ok(/v1dd_imagery/.test(decodeURIComponent(clicked.href || "")),
-     "...and the link opens that volume",
+     "...and a link into that tool's own viewer",
      (clicked.href || "none").slice(0, 110));
 
   /* ── 5. A NEW POST GOES TO THE SHARED STREAM ──────────────────────────────────────────────── */

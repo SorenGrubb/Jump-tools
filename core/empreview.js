@@ -135,7 +135,7 @@ function boxHtml(pos, cfg){
           λJump is image only, and the Eyewire-style volumes behind other tools may be too. A
           button whose single possible outcome is "there is no segmentation here" is a worse
           answer than no button: it offers something and then explains that it was never there. */
-       + ((cfg && cfg.seg)
+       + (canFindCell(cfg)
           ? '<button type="button" class="hist-chip emp-cell" title="Looks up the cell whose '
             + 'segmentation covers this exact point, fetches its mesh and draws it beside the EM. '
             + 'The mesh is megabytes, so it is only fetched when you press this.">The cell here in '
@@ -160,10 +160,52 @@ function boxHtml(pos, cfg){
    it from the cytoplasm without turning the search into a volume read. Out in a distal process
    there is genuinely no nucleus nearby, and this says so rather than naming one 40 µm away. */
 var NUC_NEAR_NM = 4000;
+/* ── OR THE PAGE'S OWN TABLE, WHERE THE SEGMENTATION CANNOT BE ASKED ───────────  2026-10-13
+   V1DD's segmentation is graphene://middleauth+ and core/segread.js refuses one on purpose, so
+   on δJump the question above has no answer — and yet the page knows it: its cell card reads the
+   nearest nucleus out of its own table and shows that cell's root id. "Show in 3D" has always
+   worked there for exactly this reason.
+
+   window.emPreviewCellAt(posVox) -> { root, nuc, nucFrom } | null, defined by a page that has a
+   nucleus table and no readable segmentation. One more optional hook beside emPreviewHost().
+
+   IT IS THE WEAKER ANSWER AND IT SAYS SO. resolveAt names the cell the point is INSIDE; a table
+   names the cell whose nucleus is NEAREST, and out in a process those are different cells. So it
+   is asked ONLY where the strong answer is impossible, and whatever it puts in `nucFrom` is
+   printed beside the ids.
+
+   AND ONLY ABOUT THIS PAGE'S OWN VOLUME: cfg.own, set by core/forum.js for the tool it is running
+   in. Asked about somebody else's coordinate this table would name a cell in the wrong tissue. */
+function pageCellAt(cfg){
+  if (!cfg || cfg.foreign || cfg.seg || !cfg.own) return null;
+  return (typeof window.emPreviewCellAt === "function") ? window.emPreviewCellAt : null;
+}
+/* Whether a cell can be named here AT ALL, by either route. The two 3D buttons are drawn only
+   when it can; before 2026-10-13 they were drawn always and δJump's answered "the segmentation
+   could not be configured", which is a button apologising for having been offered. */
+/* FOREIGN IS ALWAYS NO. The EM above can be borrowed for one draw; a cell lookup cannot, because
+   core/segread.js is a singleton too and the mesh behind "The cell here in 3D" comes from UJ.mesh,
+   configured for THIS page's volume. A cross-tool mesh needs each tool's mesh store in
+   core/tools.js, which is its own piece of work. Until then the picture says so. */
+function canFindCell(cfg){
+  if (cfg && cfg.foreign) return false;
+  return !!(cfg && (cfg.seg || pageCellAt(cfg)));
+}
 var AT = {};
 async function cellAt(pos, cfg, note){
   var key = pos.join(",");
   if (AT[key]) return AT[key];
+  var ask = pageCellAt(cfg);
+  if (ask){
+    note && note("looking up the cell here\u2026");
+    var hit = null;
+    try { hit = await ask(pos.slice()); } catch (e){ hit = null; }
+    if (hit && (hit.root || hit.nuc))
+      return (AT[key] = { root: String(hit.root || ""), nuc: String(hit.nuc || ""),
+                          nucFrom: hit.nucFrom || "from this page's nucleus table" });
+    return { error: (hit && hit.why)
+                 || "no nucleus near enough to this point in this page's own table" };
+  }
   if (!UJ.segread) return { error: "the segmentation reader did not load" };
   if (!UJ.segread.configured || !UJ.segread.configured()){
     try { UJ.segread.configure({ seg: cfg.seg, nuc: cfg.nuc, res: cfg.res }); }
@@ -325,13 +367,26 @@ async function open(hostEl, pos, opts){
        the mip, keeping it shifted every level by one and this preview read four times the pixels
        it meant to. The hazard runs both ways — whichever of the pad and this configures the
        reader first wins — so the full set is passed rather than the two fields this used to. */
-    if (!UJ.emtiles.configured())
-      UJ.emtiles.configure({ em: cfg.em, res: cfg.res, skipScales: cfg.skipScales || [] });
-    var view = await UJ.emtiles.drawSection(cv, {
-      centre: pos, w: W, h: H, mip: MIP, zoom: 1, slabOk: true,
-      lo: (cfg.window || {}).lo, hi: (cfg.window || {}).hi, tighten: true,
-      onProgress: function(d, n){ note("reading the EM… " + d + "/" + n); }
-    });
+    var mine = { em: cfg.em, res: cfg.res, skipScales: cfg.skipScales || [] };
+    var draw = function(){
+      return UJ.emtiles.drawSection(cv, {
+        centre: pos, w: W, h: H, mip: MIP, zoom: 1, slabOk: true,
+        lo: (cfg.window || {}).lo, hi: (cfg.window || {}).hi, tighten: true,
+        onProgress: function(d, n){ note("reading the EM\u2026 " + d + "/" + n); }
+      });
+    };
+    /* ── WHOSE VOLUME IS THIS READER POINTED AT? ───────────────────────────────────  2026-10-13
+       Three cases, and only the third is new. Nothing configured: configure and draw, as before.
+       Configured at the volume we want: draw, as before. Configured at a DIFFERENT volume — a
+       post from another tool, in the shared Discussion — borrow the reader for this one draw and
+       give it back, because the tracing pad on this page is configured into the same module. */
+    var want = (UJ.segread && UJ.segread._httpBase) ? UJ.segread._httpBase(cfg.em) : cfg.em;
+    var now = (typeof UJ.emtiles.config === "function") ? UJ.emtiles.config() : null;
+    var view;
+    if (!UJ.emtiles.configured()){ UJ.emtiles.configure(mine); view = await draw(); }
+    else if (now && now.em !== want && typeof UJ.emtiles.withConfig === "function")
+      view = await UJ.emtiles.withConfig(mine, draw);
+    else view = await draw();
     /* ── AND THE SEGMENTATION, WHEN THE POST NAMED A CELL ──────────  2026-10-02
        Søren: "if a nucleus or root ID is written, then the EM should also show segmentation."
 
@@ -344,6 +399,10 @@ async function open(hostEl, pos, opts){
        that pair once. */
     var ids = (opts && opts.ids) || {};
     var root = String(ids.root || "").trim(), nuc = String(ids.nuc || "").trim();
+    /* NOT ON A BORROWED VOLUME. core/segpaint.js is a page-wide singleton like the reader above,
+       and the ids in a post from another tool are that tool's ids: painting them from this page's
+       configuration would colour in the wrong cell, which looks like data. 2026-10-13. */
+    if (cfg.foreign){ root = ""; nuc = ""; }
     if ((root || nuc) && UJ.segpaint){
       note("reading the segmentation…");
       try {

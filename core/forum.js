@@ -592,16 +592,57 @@ function wirePreviews(host){
             if (window.UJ && UJ.tools) lab = UJ.tools.label(btool);
             if (fh && UJ.jumplink) fu = UJ.jumplink.url([h], { host: fh }) || "";
           } catch (_fe){}
-          open = "";
-          if (canDraw) UJ.empreview.close(slot);
-          slot.innerHTML = "<p class='forumelsewhere' style='font-size:12px;color:var(--mut);"
-            + "margin:6px 0;line-height:1.5'>That is a place in <b>"
-            + esc(h.label || h.volume || "another volume") + "</b>, which is "
-            + esc(lab || btool) + "’s. The imagery on this page is a different block of tissue, "
-            + "so it is not drawn here. "
+          lab = lab || btool;
+          /* ── AND IT IS A CELL OR A PLACE, NOT ALWAYS A PLACE ──────────────────  2026-10-13
+             This said "a place in another volume" for everything, which is wrong twice on a root
+             id: an id is not a place, and "another volume" is the fallback for a hit with no
+             volume to name — which is EVERY id, because a bare number does not say where it is. */
+          var what = (h.kind === "root") ? ("segment <b>" + esc(h.id) + "</b>")
+                   : (h.kind === "nucleus") ? ("cell <b>" + esc(h.id) + "</b>")
+                   : ("a place in <b>" + esc(h.label || h.volume || "its volume") + "</b>");
+          var line = "<p class='forumelsewhere' style=\"font-size:12px;color:var(--mut);"
+            + "margin:6px 0;line-height:1.5\">That is " + what + ", in " + esc(lab)
+            + "\u2019s volume. "
             + (fu ? "<a href='" + esc(fu) + "' target='_blank' rel='noopener'>Open it in "
                     + "Neuroglancer</a>." : "")
             + "</p>";
+          /* ── DRAWN FROM THAT TOOL'S OWN IMAGERY ───────────────────────────────  2026-10-13
+             Søren: *"I would also like that the dJump coordinate can open EM ... in uJump."*
+             The EM comes from the registry's sources for THAT tool, read through
+             core/emtiles.js's withConfig(), which hands this page's reader back afterwards. No
+             segmentation and no 3D: those modules are singletons too and the mesh store is this
+             page's — core/empreview.js withholds the buttons for a foreign host and says why.
+             Only a coordinate can be drawn; a bare id has no place to centre on. */
+          var feh = null;
+          if (canDraw && h.voxel){
+            try {
+              if (window.UJ && UJ.tools && UJ.tools.emHostFor)
+                feh = UJ.tools.emHostFor(btool, h.voxel);
+            } catch (_fh){}
+          }
+          if (feh){
+            feh.foreign = true;
+            feh.noSegWhy = "this is " + lab + "\u2019s volume, borrowed to draw the tissue \u2014 "
+                         + "open it there to look the cell up";
+            var fkey = h.voxel.join(",") + "|" + btool;
+            if (open === fkey){ UJ.empreview.close(slot); open = ""; return; }
+            open = fkey;
+            /* Promise.resolve, NOT a bare .then(). core/empreview.js's open() is async today,
+               but this is the one call in the module whose return value is used, and a page or a
+               check that replaces open() with a plain function would otherwise throw here rather
+               than simply not appending a caption. Found by forumonecheck.js doing exactly that. */
+            Promise.resolve(UJ.empreview.open(slot, h.voxel, { host: feh }))
+              .then(function(){
+                var p = document.createElement("div");
+                p.innerHTML = line;
+                slot.appendChild(p.firstChild);
+              })
+              .catch(function(){ slot.innerHTML = line; });
+            return;
+          }
+          open = "";
+          if (canDraw) UJ.empreview.close(slot);
+          slot.innerHTML = line;
           return;
         }
         /* THE IDS ARE THE POST'S, not the link's. Søren: "if a nucleus or root ID is written, then
@@ -630,6 +671,10 @@ function wirePreviews(host){
           try {
             if (window.UJ && UJ.tools && UJ.tools.emHostFor)
               EMHOST = UJ.tools.emHostFor(TOOL, h.voxel) || null;
+            /* OURS, so core/empreview.js may ask this page's own nucleus table about a point it
+               cannot read the segmentation at. A host for somebody else's tool never carries
+               this: that table is about this volume. */
+            if (EMHOST) EMHOST.own = true;
           } catch (_eh){}
         }
         if (canDraw && !EMHOST && typeof window.emPreviewHost !== "function") canDraw = false;
@@ -700,6 +745,7 @@ function wireComposePreview(id){
     if (typeof window.emPreviewHost !== "function"){
       try {
         if (window.UJ && UJ.tools && UJ.tools.emHostFor) eh = UJ.tools.emHostFor(TOOL, at);
+        if (eh) eh.own = true;
       } catch (_eh){}
       if (!eh) return;
     }

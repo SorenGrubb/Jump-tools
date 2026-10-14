@@ -116,7 +116,7 @@ const otherWithBox = (key) =>
        (asked[0] || "").replace(/^.*\?/, "?").slice(0, 60));
 
     const mine = centreVox(key), other = otherWithBox(key), theirs = centreVox(other);
-    const got = await p.evaluate(({ mine, other, theirs, key }) => {
+    const got = await p.evaluate(async ({ mine, other, theirs, key }) => {
       /* A tool with no box still gets NUMBERS in its post — another tool's, in fact — because
          "stays as text" is only an assertion when there is something that could have become a
          link. An empty body would pass it by saying nothing. */
@@ -172,11 +172,30 @@ const otherWithBox = (key) =>
         const probe = document.createElement("div");
         document.body.appendChild(probe);
         const eh = (UJ.tools && UJ.tools.emHostFor) ? UJ.tools.emHostFor(key, mine) : null;
+        /* `own` is what core/forum.js marks the host it builds for the tool it is running in,
+           and it is what lets core/empreview.js ask this page's own nucleus table about a point
+           whose segmentation it cannot read. Set here too, or this probe would be testing a
+           host the forum never builds. */
+        if (eh) eh.own = true;
         try { UJ.empreview.open(probe, mine, eh ? { host: eh } : {}); } catch (_e){}
-        out.probeSeg = !!(eh && eh.seg);
+        out.probeSeg = !!(eh && (eh.seg
+                          || (eh.own && typeof window.emPreviewCellAt === "function")));
+        out.probeVia = (eh && eh.seg) ? "segmentation"
+                     : (typeof window.emPreviewCellAt === "function") ? "this page's own table"
+                     : "nothing";
         out.probeBtns = probe.querySelectorAll(".emp-cell, .emp-nuc").length;
         out.probeText = probe.textContent.replace(/\s+/g, " ").trim();
         probe.remove();
+        /* AND THE HOOK ANSWERS, asked about a nucleus's own coordinate — distance zero, so the
+           cap cannot be what is being tested. A button that appears and then finds nothing is
+           the failure this change was made to remove, not a new way to have it. */
+        if (typeof window.emPreviewCellAt === "function" && typeof NX !== "undefined" && NX.length){
+          try {
+            const hit = await window.emPreviewCellAt([NX[0], NY[0], NZ[0]]);
+            out.hook = hit ? { root: String(hit.root || ""), nuc: String(hit.nuc || ""),
+                               from: String(hit.nucFrom || hit.why || "") } : null;
+          } catch (e){ out.hook = { root: "", nuc: "", from: "threw: " + e.message }; }
+        }
       }
 
       /* A FOREIGN ONE DOES NEITHER, and that is the right answer: it writes the line offering
@@ -185,6 +204,12 @@ const otherWithBox = (key) =>
       UJ.forum._open("o1");
       const fa = document.querySelector("#forumCard .forumbody a[data-jl]");
       if (fa) fa.click();
+      /* WAITED FOR, because the line is appended UNDER the picture once the preview resolves —
+         and on a page that can draw, that is a real read of another tool's volume. Before
+         2026-10-13 the line replaced the slot synchronously and this needed no wait, which is
+         exactly the kind of timing a check quietly stops covering. */
+      for (let i = 0; i < 40 && !document.querySelector("#forumCard .forumelsewhere"); i++)
+        await new Promise(r => setTimeout(r, 100));
       const line = document.querySelector("#forumCard .forumelsewhere");
       out.offered = !!line;
       out.offeredHref = (line && line.querySelector("a")) ? line.querySelector("a").href : "";
@@ -223,12 +248,18 @@ const otherWithBox = (key) =>
       if (got.probeBtns !== undefined){
         ok(got.probeSeg ? got.probeBtns === 2 : got.probeBtns === 0,
            got.probeSeg
-             ? "...and the picture offers the two 3D buttons, because this volume's segmentation "
-               + "is one core/segread.js can index"
-             : "...and the picture offers NO 3D buttons, because this volume's segmentation is "
-               + "not one core/segread.js can index — the button Søren pressed answered “the "
+             ? "...and the picture offers the two 3D buttons, because this page can name the cell "
+               + "at a point — by reading the segmentation, or from its own nucleus table where "
+               + "the segmentation cannot be indexed"
+             : "...and the picture offers NO 3D buttons, because this page cannot name the cell "
+               + "at a point by either route — the button Søren pressed answered “the "
                + "segmentation could not be configured”",
-           got.probeBtns + " buttons");
+           got.probeBtns + " buttons, via " + got.probeVia);
+        if (got.hook !== undefined)
+          ok(!!(got.hook && got.hook.root && /0\.0 µm|table/.test(got.hook.from)),
+             "...and this page's own table names the cell at one of its own nuclei — a button "
+             + "that appears and then finds nothing would be the old failure wearing a new hat",
+             got.hook ? (got.hook.root + " · " + got.hook.from) : "answered null");
         ok(got.probeSeg || /No cell lookup here/.test(got.probeText),
            got.probeSeg ? "...and says nothing about a lookup it can do"
                         : "...and says WHY, so the gap reads as an answer rather than as "

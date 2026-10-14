@@ -65,6 +65,10 @@
     <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
     <button id="resetBtn" title="Put the collection back in front of you">Reset view</button>
+    <select id="colourSel" title="Colour the cells by their type, or by excitatory (amber) / inhibitory (lavender) / non-neuronal (green)">
+      <option value="type">Colour: by type</option>
+      <option value="ei">Colour: excitatory / inhibitory</option>
+    </select>
   </div>
   <div class="ctl">
     <button id="layerBtn" class="on" title="Cortical layer boundaries from µJump's traced pia and white-matter surfaces, divided in Ledderose's proportions — the same model the Jump tab's layer estimate uses">Layers</button>
@@ -98,6 +102,18 @@
     <button id="nbBtn" title="Add the 3 cells whose nuclei are nearest the picked cell's (MICrONS predictions)">+3 neighbours</button>
     <button id="trcBtn" title="Structures traced by hand in µJump's tracing pad (lysosomes, whole cells, …), on these cells and inside the box around them">Traced</button>
     <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells">Organelles</button>
+  </div>
+  <div class="ctl">
+    <button id="stimBtn" title="Click (or in VR: right trigger) on a cell to start an action potential there and watch it spread — and cross synapses to the other cells here">⚡ Stimulate</button>
+    <select id="stimMode" title="What a synapse does when the action potential reaches it">
+      <option value="fire">Synapses: fire the next cell</option>
+      <option value="psp">Synapses: show the PSP only</option>
+    </select>
+    <button id="stimReset" title="Stop and clear all activity">Reset</button>
+  </div>
+  <div class="ctl" id="caveRow" style="display:none">
+    <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
+    <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
   </div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
@@ -208,7 +224,36 @@ function colourFor(label){
   if (!typeColour[t]) typeColour[t] = PALETTE[Object.keys(typeColour).length % PALETTE.length];
   return typeColour[t];
 }
-CELLS.forEach(c => { c.colour = colourFor(c.label); });
+CELLS.forEach(c => { c.colour = c.typeColour = colourFor(c.label); });
+
+/* ── EXCITATORY, INHIBITORY OR NOT A NEURON ─────────────────────────────────  2026-10-14
+   Søren: "make it differentiate between excitatory neurons and inhibitory neurons and between
+   input and output synapses". The class is read from the cell's own label -- the MICrONS type code
+   when there is one (23P, 4P, 5P-*, 6P-* excitatory; BC, MC, BPC, NGC inhibitory; the AIBS
+   metamodel's classes), otherwise the words -- so a type a person has corrected in µJump carries
+   its correction here. Anything not recognised is "unknown" and is treated as excitatory for
+   firing, which is said wherever it matters. */
+const EI_COL = { exc: "#f0a742", inh: "#c79bf2", glia: "#9fd8a8", unknown: "#b0bec5" };
+const EI_NAME = { exc: "excitatory", inh: "inhibitory", glia: "non-neuronal", unknown: "unclassified" };
+function cellClass(c){
+  if (c.cls) return c.cls;
+  const l = String(c.label || "");
+  c.cls =
+    /\b(BC|MC|BPC|NGC)\b|basket|martinotti|bipolar|neurogliaform|chandelier|inhibitory|interneuron|\bsst\b|\bpvalb?\b|\bvip\b/i.test(l) ? "inh" :
+    /\b(2\/?3P|23P|4P|5P|6P)|pyramid|stellate|excitatory|\bIT\b|\bET\b|\bNP\b|\bCT\b/i.test(l) ? "exc" :
+    /astro|oligo|\bOPC\b|microglia|pericyte|endothel|smooth muscle|mural|glia|ependym/i.test(l) ? "glia" : "unknown";
+  return c.cls;
+}
+let COLOUR_MODE = "type";
+function setColourMode(mode){
+  COLOUR_MODE = mode;
+  document.getElementById("colourSel").value = mode;
+  for (const c of CELLS){
+    c.colour = mode === "ei" ? EI_COL[cellClass(c)] : c.typeColour;
+    if (c.mesh) c.mesh.material.color.set(c.colour);
+  }
+  renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
 
 function headsetLink(){
   const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
@@ -279,7 +324,7 @@ function renderList(){
        : (FROM_LINK ? " · from link" : " · from this browser's collection"));
   listEl.innerHTML = CELLS.map(c =>
     `<div class="row"><span class="sw" style="background:${c.colour}"></span><div>
-       <b data-pick="${c.i}" title="${esc(c.label)}">${esc(c.label)}</b>
+       <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}">${esc(c.label)} <span style="font-weight:400;color:${EI_COL[cellClass(c)]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cellClass(c)]}</span></b>
        <small>${esc(c.root)}</small><span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
        <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
 }
@@ -300,8 +345,45 @@ function geometryFrom(positions, indices){
   g.computeBoundingBox();
   return g;
 }
+/* Every cell material can glow with electrical activity (section 8, the stimulator). Three
+   per-vertex numbers carry it -- apT, when the action potential reaches this vertex; pspT, when a
+   synaptic potential does; pspD, how far this vertex is from the synapse that caused it -- and one
+   shared clock uniform says what time it is now. Everything is in REAL milliseconds and µm; only
+   the clock is slowed down. 1e9 means "never". */
+const AP_UNI = { apNow: { value: -1e9 }, apCol: { value: new THREE.Color(1.0, 0.97, 0.75) },
+                 epspCol: { value: new THREE.Color(1.0, 0.55, 0.15) }, ipspCol: { value: new THREE.Color(0.75, 0.35, 1.0) },
+                 apBand: { value: 0.08 }, pspLambda: { value: 120.0 } };
 function cellMaterial(colour){
-  return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
+  const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, AP_UNI);
+    sh.uniforms.pspInh = m.userData.pspInh || (m.userData.pspInh = { value: 0 });
+    sh.vertexShader = "attribute float apT;\nattribute float pspT;\nattribute float pspD;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vPspT = pspT; vPspD = pspD;");
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float pspLambda;\nuniform float pspInh;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\n"
+      + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        {
+          float a = apNow - vApT;                 // ms since the spike reached this point
+          if (a >= 0.0 && a < 1.5){
+            float spike = exp(-pow((a - apBand * 0.5) / apBand, 2.0));      // the travelling band
+            float tail = 0.18 * exp(-a / 0.5);                               // a faint wake behind it
+            totalEmissiveRadiance += apCol * (2.2 * spike + tail);
+            diffuseColor.rgb = mix(diffuseColor.rgb, apCol, 0.6 * spike);
+          }
+          float p = apNow - vPspT;
+          if (p >= 0.0 && p < 25.0){
+            float shape = (1.0 - exp(-p / 0.8)) * exp(-p / 4.0);             // rise ~1 ms, decay ~4 ms
+            float amp = exp(-vPspD / pspLambda);                             // fades along the dendrite
+            totalEmissiveRadiance += mix(epspCol, ipspCol, pspInh) * 2.5 * shape * amp;
+          }
+        }`);
+  };
+  m.customProgramCacheKey = () => "cell-ap";
+  return m;
+}
+function addActivityAttributes(g){
+  const n = g.attributes.position.count;
+  for (const k of ["apT", "pspT", "pspD"]) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
 }
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
@@ -317,7 +399,9 @@ async function loadOne(c, token, light){
       if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
     }, false, extras, light);
     if (token !== LOAD_TOKEN) return false;
+    c.extraUsed = extras; c.graph = null;
     const g = geometryFrom(geo.positions, geo.indices);
+    addActivityAttributes(g);
     const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
     mesh.userData.cell = c.i;
     content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
@@ -797,6 +881,7 @@ function dropMeasure(g){
 function clearMeasure(){ MEAS.items.forEach(dropMeasure); MEAS.items = []; MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); MENU.dirty = true; }
 function setMeasure(v){
   MEAS.on = v; document.getElementById("measBtn").classList.toggle("on", v);
+  if (v && typeof STIM !== "undefined" && STIM.on) setStim(false);
   if (v && (CUT.mode === "hand" || CUT.mode === "frozen")) setCut("off");    // both want the right trigger
   if (!v){ MEAS.a = null; if (MEAS.pending) MEAS.group.remove(MEAS.pending); }
   MENU.dirty = true;
@@ -807,6 +892,12 @@ document.getElementById("measClr").addEventListener("click", clearMeasure);
 let _down = null;
 renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointerup", e => {
+  if (STIM.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
+    const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    _mr.setFromCamera(ndc, camera);
+    stimulateWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() });
+    return;
+  }
   if (!MEAS.on || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
   const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   _mr.setFromCamera(ndc, camera);
@@ -964,6 +1055,7 @@ async function addNeighbours(k){
       + (r[3] ? (name.toLowerCase() === code.toLowerCase() ? " (MICrONS prediction)" : " (" + code + ", MICrONS prediction)") : "");
     const c = { i: CELLS.length, ds: c0.ds, root: String(r[5]), nuc: String(r[4]), label, extra: [],
                 colour: colourFor(label), neighbourOf: c0.i, dist: d, status: "waiting…" };
+    c.typeColour = c.colour; if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
     CELLS.push(c); added.push(c);
   }
   renderList(); MENU.dirty = true;
@@ -974,6 +1066,7 @@ async function addNeighbours(k){
     renderList(); updateTri(); applyLook(); MENU.dirty = true;
   }
   buildContext();
+  STIM.syn = null; if (STIM.on) loadSynapses();          // new cells, new possible synapses
   ctxNote.textContent = "Added " + added.length + " neighbour" + (added.length > 1 ? "s" : "") + " of " + c0.label + ": "
     + added.map(c => c.label.replace(/ \(.*$/, "") + " " + c.dist.toFixed(0) + " µm").join(", ");
 }
@@ -1063,6 +1156,266 @@ function drawTraced(){
 }
 document.getElementById("trcBtn").addEventListener("click", () => setTraced(!TRC.on));
 
+/* ── 8. THE STIMULATOR: an action potential, and what it does at synapses ───  2026-10-13
+   Søren: *"a tool that can start an action potential at the place you touch and see it spread. If
+   there are connected meshes, it should also spread to those meshes from their connections."*
+
+   WHAT IS REAL AND WHAT IS A CARTOON -- said here because a picture this convincing is easy to
+   over-read:
+   · REAL: the shape it travels over (the cell's own mesh), the path (shortest route ALONG the
+     membrane, not through space), and the synapses, which come from MICrONS's own synapse table
+     (synapses_pni_2 via CAVE, version 1300, the snapshot these meshes are) between the cells loaded
+     here -- with each synapse's true position, so the delay to reach it is the true path length.
+   · SCHEMATIC: one conduction speed everywhere (0.5 m/s, a typical unmyelinated value; no myelin,
+     no diameter dependence, no dendritic attenuation of the spike); the spike drawn as a narrow band
+     rather than its true ~0.5 mm wavelength so it can be seen; synaptic delay 0.5 ms; and in "fire
+     the next cell" mode a single synapse is allowed to make the next cell fire, which real synapses
+     almost never do alone. "Show the PSP only" is the honest version: the postsynaptic cell lights up
+     around the synapse -- orange if the presynaptic cell is excitatory, purple if inhibitory, by its
+     predicted type -- fading with distance, and fires nothing.
+   · Time is slowed down 5000x and shown in real milliseconds.
+
+   HOW: each cell's mesh becomes a graph -- its triangles' edges, plus a weld of vertices that sit at
+   the same place in different Draco fragments, without which the wave would stop at every chunk
+   seam. One multi-source Dijkstra then gives every vertex its arrival time; the shader does the
+   rest from one clock uniform, so nothing per-vertex happens per frame. */
+const STIM = { on: false, now: 0, running: false, slow: 5000, speed: 500 /* µm per ms = 0.5 m/s */,
+               syn: null, synLoading: false, events: [], markers: null, hud: null };
+const SYN_DELAY = 0.5, FIRE_LAG = 1.0;
+
+function cellGraph(c){
+  if (c.graph) return c.graph;
+  const g = c.mesh.geometry, P = g.attributes.position.array, I = g.index.array, n = P.length / 3;
+  /* Weld: vertices within 0.05 µm are one node. Draco fragments meet at chunk faces with the same
+     quantised coordinates, so this joins them without merging anything that is really separate. */
+  const q = 0.05, key = new Map(), node = new Int32Array(n);
+  let m = 0;
+  for (let v = 0; v < n; v++){
+    const k = Math.round(P[v*3] / q) + "," + Math.round(P[v*3+1] / q) + "," + Math.round(P[v*3+2] / q);
+    let id = key.get(k); if (id === undefined){ id = m++; key.set(k, id); }
+    node[v] = id;
+  }
+  const pos = new Float32Array(m * 3);
+  for (let v = 0; v < n; v++){ const id = node[v]; pos[id*3] = P[v*3]; pos[id*3+1] = P[v*3+1]; pos[id*3+2] = P[v*3+2]; }
+  /* Edges as CSR: count, then fill. Each triangle gives three; duplicates are harmless here. */
+  const deg = new Int32Array(m + 1);
+  for (let t = 0; t < I.length; t += 3){ const a = node[I[t]], b = node[I[t+1]], d = node[I[t+2]]; deg[a] += 2; deg[b] += 2; deg[d] += 2; }
+  const off = new Int32Array(m + 1); for (let i = 0; i < m; i++) off[i+1] = off[i] + deg[i];
+  const nb = new Int32Array(off[m]), w = new Float32Array(off[m]), fill = off.slice(0, m);
+  const put = (a, b) => { const k = fill[a]++; nb[k] = b; w[k] = Math.hypot(pos[a*3]-pos[b*3], pos[a*3+1]-pos[b*3+1], pos[a*3+2]-pos[b*3+2]); };
+  for (let t = 0; t < I.length; t += 3){ const a = node[I[t]], b = node[I[t+1]], d = node[I[t+2]]; put(a, b); put(b, a); put(b, d); put(d, b); put(a, d); put(d, a); }
+  c.graph = { node, pos, off, nb, w, m };
+  return c.graph;
+}
+/* Multi-source Dijkstra on the welded graph. sources: [{node, t0}] with t0 in ms; returns arrival
+   time (ms) per NODE, and the distance (µm) to whichever source got there first. */
+function arrival(G, sources){
+  /* Float64, not Float32: the heap holds doubles, and a time stored back as float32 compares as
+     SMALLER than the same time in the heap, so "t > T[v]" skipped every node after the first. */
+  const T = new Float64Array(G.m).fill(1e9), D = new Float64Array(G.m).fill(1e9);
+  const heap = []; // [time, node]
+  const push = (t, v) => { heap.push([t, v]); let i = heap.length - 1; while (i){ const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let i = 0; for (;;){ const l = 2*i+1, r = l+1; let s = i; if (l < heap.length && heap[l][0] < heap[s][0]) s = l; if (r < heap.length && heap[r][0] < heap[s][0]) s = r; if (s === i) break; [heap[s], heap[i]] = [heap[i], heap[s]]; i = s; } } return top; };
+  for (const s of sources){ if (s.t0 < T[s.node]){ T[s.node] = s.t0; D[s.node] = 0; push(s.t0, s.node); } }
+  while (heap.length){
+    const [t, v] = pop(); if (t > T[v]) continue;
+    for (let k = G.off[v]; k < G.off[v+1]; k++){
+      const u = G.nb[k], tt = t + G.w[k] / STIM.speed;
+      if (tt < T[u]){ T[u] = tt; D[u] = D[v] + G.w[k]; push(tt, u); }
+    }
+  }
+  return { T, D };
+}
+function nearestNode(G, p){
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < G.m; i++){ const dx = G.pos[i*3]-p.x, dy = G.pos[i*3+1]-p.y, dz = G.pos[i*3+2]-p.z, d = dx*dx+dy*dy+dz*dz; if (d < bd){ bd = d; best = i; } }
+  return { node: best, dist: Math.sqrt(bd) };
+}
+function writeAttr(c, name, perNode){
+  const a = c.mesh.geometry.attributes[name], node = c.graph.node;
+  for (let v = 0; v < node.length; v++) a.array[v] = perNode[node[v]];
+  a.needsUpdate = true;
+}
+
+/* ── synapses among the loaded cells, from CAVE ── */
+function caveToken(){ try { return (localStorage.getItem("cave_token") || "").replace(/^["']|["']$/g, "").trim(); } catch (e){ return ""; } }
+async function loadSynapses(){
+  if (STIM.syn || STIM.synLoading) return STIM.syn;
+  const tok = caveToken();
+  if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one µJump's connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it."; return null; }
+  /* Every root this collection draws, including proposed fragments, mapped back to its cell. */
+  const rootToCell = new Map();
+  for (const c of CELLS){ if (!c.mesh) continue; [c.root].concat(c.extraUsed || c.extra || []).filter(Boolean).forEach(r => rootToCell.set(String(r), c.i)); }
+  const roots = [...rootToCell.keys()];
+  if (roots.length < 2){ STIM.syn = []; return STIM.syn; }
+  STIM.synLoading = true; ctxNote.textContent = "Synapses: asking CAVE for the synapses among these " + CELLS.length + " cells…";
+  try {
+    /* Root ids are > 2^53, so the list is written as raw digits, never through a JS number. */
+    const raw = '{"filter_in_dict":{"synapses_pni_2":{"pre_pt_root_id":[' + roots.join(",") + '],"post_pt_root_id":[' + roots.join(",") + ']}}}';
+    const r = await fetch("https://minnie.microns-daf.com/materialize/api/v3/datastack/minnie65_public/version/1300/table/synapses_pni_2/query?return_pyarrow=false",
+      { method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json", "Accept": "application/json" }, body: raw });
+    if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 160));
+    const txt = (await r.text()).replace(/([:\[,]\s*)(-?\d{16,})(\s*[,\]\}])/g, '$1"$2"$3');
+    let j = JSON.parse(txt), rows = [];
+    if (Array.isArray(j)) rows = j;
+    else { const ks = Object.keys(j), f = j[ks[0]]; const n = Array.isArray(f) ? f.length : Object.keys(f || {}).length;
+           for (let i = 0; i < n; i++){ const o = {}; ks.forEach(k => o[k] = Array.isArray(j[k]) ? j[k][i] : j[k][String(i)]); rows.push(o); } }
+    STIM.syn = rows.map(o => ({ pre: rootToCell.get(String(o.pre_pt_root_id)), post: rootToCell.get(String(o.post_pt_root_id)),
+                                p: new THREE.Vector3(+o.ctr_pt_position_x * 4 / 1000, +o.ctr_pt_position_y * 4 / 1000, +o.ctr_pt_position_z * 40 / 1000),
+                                size: +o.size || 0 }))
+      .filter(x => x.pre != null && x.post != null && x.pre !== x.post && isFinite(x.p.x));
+    drawSynapses();
+    ctxNote.textContent = STIM.syn.length ? "Synapses: " + STIM.syn.length + " among these cells (MICrONS synapses_pni_2, v1300)."
+                                          : "Synapses: none between these cells — activity will stay in the cell you touch. Try “+3 neighbours”.";
+  } catch (e){ STIM.syn = null; ctxNote.textContent = "Synapses could not be read from CAVE: " + (e.message || e); }
+  STIM.synLoading = false;
+  return STIM.syn;
+}
+/* SYNAPSE MARKERS. Shape says what the synapse IS, colour says what it is TO YOU:
+   · shape -- a ball when the presynaptic cell is excitatory, a cube when it is inhibitory (Gray's
+     type I / type II, in the only vocabulary a marker has);
+   · colour -- when a cell is picked: its INPUTS cyan and its OUTPUTS pink, µJump's own connectivity
+     colours (input #00b7ff, output #ff4fa3), and synapses that do not touch it dimmed; when nothing
+     is picked: amber for excitatory and lavender for inhibitory, the same pair as the PSP glow. */
+const SYN_COL = { in: 0x00b7ff, out: 0xff4fa3, exc: 0xf0a742, inh: 0xc79bf2, other: 0x6e7681 };
+function drawSynapses(){
+  if (STIM.markers){ content.remove(STIM.markers); STIM.markers = null; }
+  if (!STIM.syn || !STIM.syn.length) return;
+  const grp = new THREE.Group(), ext = CELL_BOX ? CELL_BOX.getSize(new THREE.Vector3()).length() : 100;
+  const r = Math.max(0.3, ext * 0.003);
+  const ball = new THREE.SphereGeometry(r, 12, 8), cube = new THREE.BoxGeometry(r * 1.6, r * 1.6, r * 1.6);
+  STIM.syn.forEach(s => {
+    s.cls = cellClass(CELLS[s.pre]) === "inh" ? "inh" : "exc";
+    const m = new THREE.Mesh(s.cls === "inh" ? cube : ball, new THREE.MeshBasicMaterial({ color: SYN_COL[s.cls], transparent: true, opacity: 0.9 }));
+    m.position.copy(s.p); s.marker = m; grp.add(m);
+  });
+  STIM.markers = grp; content.add(grp);
+  colourSynapses();
+}
+function colourSynapses(){
+  if (!STIM.syn) return;
+  const sel = SELECTED;
+  let nin = 0, nout = 0, ine = 0, ini = 0, oute = 0, outi = 0;
+  for (const s of STIM.syn){
+    if (!s.marker) continue;
+    let col, op = 0.9;
+    if (sel < 0) col = SYN_COL[s.cls];
+    else if (s.post === sel){ col = SYN_COL.in; nin++; s.cls === "inh" ? ini++ : ine++; }
+    else if (s.pre === sel){ col = SYN_COL.out; nout++; s.cls === "inh" ? outi++ : oute++; }
+    else { col = SYN_COL.other; op = 0.35; }
+    s.marker.material.color.setHex(col); s.marker.material.opacity = op;
+  }
+  if (sel >= 0 && STIM.syn.length){
+    const c = CELLS[sel];
+    STIM.synNote = c.label + " (" + EI_NAME[cellClass(c)] + "): " + nin + " input" + (nin === 1 ? "" : "s") + " (" + ine + " E, " + ini + " I) and "
+      + nout + " output" + (nout === 1 ? "" : "s") + " among the loaded cells. Cyan = in, pink = out; ball = excitatory, cube = inhibitory.";
+    ctxNote.textContent = STIM.synNote;
+  }
+}
+document.getElementById("caveSave").addEventListener("click", () => {
+  const t = document.getElementById("caveTok").value.trim();
+  try { if (t) localStorage.setItem("cave_token", t); } catch (e){}
+  document.getElementById("caveRow").style.display = "none"; STIM.syn = null; loadSynapses();
+});
+
+/* ── firing ── */
+function resetActivity(){
+  STIM.events = []; STIM.now = 0; STIM.running = false; AP_UNI.apNow.value = -1e9;
+  for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
+    for (const k of ["apT", "pspT", "pspD"]){ const a = c.mesh.geometry.attributes[k]; a.array.fill(1e9); a.needsUpdate = true; }
+    c.fired = false; c.pspSources = []; c.apLast = 0; }
+  if (STIM.syn) STIM.syn.forEach(s => { s.done = false; if (s.marker) s.marker.scale.setScalar(1); });
+  MENU.dirty = true;
+}
+function fireCell(c, node, t0){
+  const G = cellGraph(c);
+  const { T } = arrival(G, [{ node, t0 }]);
+  c.fired = true;
+  let last = 0; for (let i = 0; i < T.length; i++) if (T[i] < 1e8 && T[i] > last) last = T[i];
+  c.apLast = last;
+  writeAttr(c, "apT", T);
+  /* Every synapse this cell makes, scheduled at the moment the spike reaches it. */
+  if (STIM.syn) for (const s of STIM.syn){
+    if (s.pre !== c.i || s.done) continue;
+    const near = nearestNode(G, s.p);
+    if (near.dist > 3) continue;                         // the synapse is not on this mesh
+    s.tPre = T[near.node]; if (s.tPre >= 1e8) continue;
+    STIM.events.push({ t: s.tPre + SYN_DELAY, syn: s });
+  }
+  STIM.events.sort((a, b) => a.t - b.t);
+}
+function deliver(s){
+  s.done = true;
+  const c = CELLS[s.post]; if (!c || !c.mesh) return;
+  const G = cellGraph(c), near = nearestNode(G, s.p);
+  if (near.dist > 3) return;
+  const pre = CELLS[s.pre], inh = cellClass(pre) === "inh";
+  /* An inhibitory input holds the cell back for ~5 ms: a firing it was about to do is cancelled,
+     and none starts in that window -- the simplest honest picture of shunting inhibition. */
+  if (inh) c.inhibUntil = STIM.now + 5;
+  /* The synaptic potential: from every synapse that has arrived so far on this cell. */
+  c.pspSources = (c.pspSources || []).concat([{ node: near.node, t0: STIM.now }]);
+  const { T, D } = arrival(G, c.pspSources.map(x => ({ node: x.node, t0: x.t0 })));
+  /* PSPs spread passively, much faster than a spike walks; draw them as arriving with the onset. */
+  writeAttr(c, "pspT", D.map(d => d < 1e8 ? STIM.now + d / (STIM.speed * 4) : 1e9));
+  writeAttr(c, "pspD", D);
+  c.mesh.material.userData.pspInh && (c.mesh.material.userData.pspInh.value = inh ? 1 : 0);
+  if (s.marker) s.marker.scale.setScalar(2.2);
+  if (document.getElementById("stimMode").value === "fire" && !inh && !c.fired && cellClass(c) !== "glia")
+    STIM.events.push({ t: STIM.now + FIRE_LAG, fire: c, node: near.node }), STIM.events.sort((a, b) => a.t - b.t);
+}
+function stimulateWithRay(r){
+  _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
+  const targets = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh);
+  const hit = _mr.intersectObjects(targets, false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0)[0];
+  if (!hit){ ctxNote.textContent = "Stimulate: point at a cell."; return; }
+  const c = CELLS[hit.object.userData.cell];
+  if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
+  const local = content.worldToLocal(hit.point.clone());
+  if (!STIM.running) resetActivity();
+  const G = cellGraph(c), near = nearestNode(G, local);
+  fireCell(c, near.node, STIM.now);
+  STIM.running = true;
+  ctxNote.textContent = "⚡ Spike started on " + c.label + " (" + EI_NAME[cellClass(c)] + (cellClass(c) === "unknown" ? ", treated as excitatory" : "")
+    + ") — spreading at 0.5 m/s, shown 5000× slower." + (STIM.syn && STIM.syn.some(x => x.pre === c.i) ? " Its " + STIM.syn.filter(x => x.pre === c.i).length + " output synapses will " + (cellClass(c) === "inh" ? "inhibit" : "excite") + " their targets." : "");
+}
+function stimFrame(dt){
+  if (!STIM.running) return;
+  STIM.now += dt * 1000 / STIM.slow;
+  AP_UNI.apNow.value = STIM.now;
+  while (STIM.events.length && STIM.events[0].t <= STIM.now){
+    const e = STIM.events.shift();
+    if (e.syn) deliver(e.syn);
+    else if (e.fire && !e.fire.fired){
+      if ((e.fire.inhibUntil || -1) >= e.t){ ctxNote.textContent = "✋ " + e.fire.label + " was about to fire but an inhibitory input held it back."; continue; }
+      fireCell(e.fire, e.node, e.t);
+    }
+  }
+  if (STIM.syn) STIM.syn.forEach(s => { if (s.marker && s.marker.scale.x > 1) s.marker.scale.setScalar(Math.max(1, s.marker.scale.x - dt * 0.8)); });
+  /* A clock in real time, next to the scale bar. */
+  if (!STIM.hud){ STIM.hud = { last: "" }; }
+  const txt = "t = " + STIM.now.toFixed(1) + " ms  (5000× slower)";
+  if (txt !== STIM.hud.last){
+    STIM.hud.last = txt;
+    if (STIM.hud.spr){ scene.remove(STIM.hud.spr); STIM.hud.spr.material.map.dispose(); STIM.hud.spr.material.dispose(); }
+    STIM.hud.spr = textSprite([txt], { fit: true, border: "#ffe11a" });
+    STIM.hud.spr.scale.set(0.02 * STIM.hud.spr.userData.aspect, 0.02, 1);
+    scene.add(STIM.hud.spr);
+  }
+  if (SBAR.group) STIM.hud.spr.position.copy(SBAR.group.position).add(new THREE.Vector3(0, -0.035, 0));
+  /* Stop the clock a while after the last thing happened. */
+  const lastAp = Math.max(0, ...CELLS.map(c => c.apLast || 0));
+  if (!STIM.events.length && STIM.now > lastAp + 30){ STIM.running = false; }
+}
+function setStim(v){
+  STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
+  if (v){ if (MEAS.on) setMeasure(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
+  MENU.dirty = true;
+}
+document.getElementById("stimBtn").addEventListener("click", () => setStim(!STIM.on));
+document.getElementById("colourSel").addEventListener("change", e => setColourMode(e.target.value));
+document.getElementById("stimReset").addEventListener("click", resetActivity);
+
 /* ── look: selection, see-through, visibility ─────────────────────────────── */
 function applyLook(){
   for (const c of CELLS){
@@ -1089,6 +1442,7 @@ function applyLook(){
   for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
   applyClip();
   updateTri(); updateLabel();
+  if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
 function select(i){ SELECTED = i; applyLook(); }
 
@@ -1170,6 +1524,7 @@ const hands = [0, 1].map(k => {
   ctl.addEventListener("selectstart", () => {
     const mh = menuHit(h);
     if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
+    if (STIM.on && h.source && h.source.handedness === "right"){ stimulateWithRay(rayOf(h)); return; }
     if (MEAS.on && h.source && h.source.handedness === "right"){ measureWithRay(rayOf(h)); return; }
     if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
       setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
@@ -1301,6 +1656,7 @@ function menuRows(){
   if (t === "Show"){
     const allShown = CELLS.every(c => !c.hidden);
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
+    rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
     rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
     rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
     const vm = document.getElementById("vascSel").value;
@@ -1310,6 +1666,10 @@ function menuRows(){
     rows.push({ label: "Traced structures", on: TRC.on, act: () => setTraced(!TRC.on) });
     rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
   } else if (t === "Tools"){
+    rows.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
+    rows.push({ label: "Synapses fire the next cell", on: document.getElementById("stimMode").value === "fire",
+                act: () => { const el = document.getElementById("stimMode"); el.value = el.value === "fire" ? "psp" : "fire"; } });
+    rows.push({ label: "Reset activity", act: resetActivity });
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
@@ -1484,6 +1844,7 @@ renderer.setAnimationLoop(() => {
   cutFrame();
   scaleBarFrame();
   measureFrame();
+  stimFrame(dt);
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
@@ -1496,7 +1857,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses };   // for testing from the console
 if (CELLS.length) loadAll();
 </script>
 </body>

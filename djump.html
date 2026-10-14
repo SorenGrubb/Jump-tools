@@ -733,7 +733,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 20:46</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-13 21:33</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -4354,6 +4354,33 @@ function toVoxels(x,y,z){if(unit==="voxel")return[x,y,z];if(unit==="nm")return[x
 function round(n){return Math.abs(n-Math.round(n))<1e-6?Math.round(n):+n.toFixed(1);}
 
 function nearest(vx,vy,vz){let b=-1,bd=Infinity;for(let i=0;i<N;i++){const dx=(vx-NX[i])*UJ_RX,dy=(vy-NY[i])*UJ_RY,dz=(vz-NZ[i])*UJ_RZ,d=dx*dx+dy*dy+dz*dz;if(d<bd){bd=d;b=i;}}return{i:b,dist:Math.sqrt(bd)};}
+
+/* ── WHICH CELL IS AT THIS POINT, WITHOUT READING THE SEGMENTATION ─────  2026-10-13
+   core/empreview.js asks this when it has no segmentation it can index — which is δJump's
+   permanent situation, because V1DD's is graphene://middleauth+ and core/segread.js refuses one
+   rather than hand back supervoxel ids. See src/a_page_may_know_the_cell_without_reading_it.py.
+
+   THIS IS THE CELL CARD'S OWN ANSWER, through the same nearest() and the same rootId() the panel
+   two cards up already prints as "nearest nucleus at voxel … · 0.00 µm from query". Not a
+   second opinion: a cell this page can find by clicking is a cell the Discussion can draw.
+
+   AND THE SAME 5 µm CAP, FAR_NUCLEUS_THRESH_NM, which this tool has used since July for exactly
+   this question. Past it there is genuinely no detected nucleus near the point, and saying so is
+   better than naming one 40 µm away and calling it the cell here. */
+window.emPreviewCellAt=function(vox){
+  try{
+    if(typeof nearest!=="function"||typeof N==="undefined"||!N)return null;
+    const r=nearest(vox[0],vox[1],vox[2]);
+    if(!r||r.i<0)return null;
+    const cap=(typeof FAR_NUCLEUS_THRESH_NM!=="undefined")?FAR_NUCLEUS_THRESH_NM:5000;
+    if(r.dist>cap)
+      return {why:"the nearest detected nucleus is "+(r.dist/1000).toFixed(1)+" \u00b5m away, past "
+                 +"this tool's "+(cap/1000)+" \u00b5m limit \u2014 too far to call it the cell here"};
+    const root=rootId(r.i);
+    return {root:root||"",nuc:String(NID[r.i]||""),
+            nucFrom:"nearest nucleus in this tool's table, "+(r.dist/1000).toFixed(1)+" \u00b5m away"};
+  }catch(e){ return null; }
+};
 function kNearest(cx,cy,cz,k,excl){const best=[];for(let i=0;i<N;i++){if(i===excl)continue;const dx=(cx-NX[i])*UJ_RX,dy=(cy-NY[i])*UJ_RY,dz=(cz-NZ[i])*UJ_RZ,d=dx*dx+dy*dy+dz*dz;if(best.length<k){best.push({i,d});best.sort((a,b)=>a.d-b.d);}else if(d<best[k-1].d){best[k-1]={i,d};best.sort((a,b)=>a.d-b.d);}}return best.map(o=>({i:o.i,dist:Math.sqrt(o.d)}));}
 function inRegion(vx,vy,vz){const m=20000,nx=vx*UJ_RX,ny=vy*UJ_RY,nz=vz*UJ_RZ;return nx>=BB.xmin-m&&nx<=BB.xmax+m&&ny>=BB.ymin-m&&ny<=BB.ymax+m&&nz>=BB.zmin-m&&nz<=BB.zmax+m;}
 function distToBB(pos){var nx=pos[0]*UJ_RX,ny=pos[1]*UJ_RY,nz=pos[2]*UJ_RZ;return Math.min(nx-BB.xmin,BB.xmax-nx,ny-BB.ymin,BB.ymax-ny,nz-BB.zmin,BB.zmax-nz);}

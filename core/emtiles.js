@@ -213,6 +213,38 @@ UJ.emtiles = (function(){
     return kept.length ? kept : info.scales;
   }
   function configured(){ return !!CFG; }
+  /* A COPY, so a caller holding it cannot change what this module is doing by editing what it was
+     handed. Null before configure(), like configured() says. */
+  function config(){
+    if (!CFG) return null;
+    var o = {}; for (var k in CFG) o[k] = CFG[k];
+    return o;
+  }
+  /* ── DRAWING A VOLUME THIS PAGE IS NOT CONFIGURED FOR ──────────────────────────  2026-10-13
+     Søren: *"I would also like that the dJump coordinate can open EM ... in uJump."*  A post in
+     the shared Discussion may name a place in another tool's volume, and that volume's imagery is
+     perfectly readable — it is read every day by the tool that owns it. What is not shareable is
+     THIS module: one CFG per page, and the tracing pad is configured into it.
+
+     So the swap is here, where CFG lives, and it is always undone:
+
+       await UJ.emtiles.withConfig({em, res, skipScales}, function(){ return drawSection(...); });
+
+     THE CAVEAT, STATED RATHER THAN HIDDEN: this is not concurrency-safe. A pad redrawing DURING
+     the await would read the borrowed volume. The alternative is threading a source through every
+     call site of a module all eight tools share, which is a much larger change to a much more
+     load-bearing file; this one is eight lines and reverses itself. If a second caller ever wants
+     it at the same time, that is the moment to pay for the bigger version.
+
+     RESTORED BY ASSIGNMENT, not by re-running configure(): configure() normalises `em` through
+     _httpBase and re-reads the page's fields, so round-tripping a config through it is a second
+     chance to change it. The object that was there goes back exactly as it was. */
+  async function withConfig(cfg, fn){
+    var prev = CFG;
+    configure(cfg);
+    try { return await fn(); }
+    finally { CFG = prev; }
+  }
 
   /* ── WHAT THIS VOLUME SERVES THAT NOTHING CONFIGURED CAN READ ──────────────  2026-10-03
      realScales() drops those levels, and once they are dropped nothing downstream can tell whether
@@ -486,6 +518,7 @@ UJ.emtiles = (function(){
   }
 
   return { configure: configure, configured: configured,
+           config: config, withConfig: withConfig,
            unreadableEncodings: unreadableEncodings, drawSection: drawSection,
            scaleAt: scaleAt, sectionScales: sectionScales, _toScale: toScale, _toTool: toTool,
            _decodeChunk: decodeChunk };

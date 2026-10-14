@@ -128,7 +128,7 @@ try{var _t=localStorage.getItem("ujump_theme");
     <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
     <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
     does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-13 20:46</span></p>
+    &mdash; reload with ctrl-shift-R.">build 2026-10-13 21:33</span></p>
   </div>
   <div style="text-align:right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
@@ -8949,6 +8949,38 @@ UJ.emtiles = (function(){
     return kept.length ? kept : info.scales;
   }
   function configured(){ return !!CFG; }
+  /* A COPY, so a caller holding it cannot change what this module is doing by editing what it was
+     handed. Null before configure(), like configured() says. */
+  function config(){
+    if (!CFG) return null;
+    var o = {}; for (var k in CFG) o[k] = CFG[k];
+    return o;
+  }
+  /* ── DRAWING A VOLUME THIS PAGE IS NOT CONFIGURED FOR ──────────────────────────  2026-10-13
+     Søren: *"I would also like that the dJump coordinate can open EM ... in uJump."*  A post in
+     the shared Discussion may name a place in another tool's volume, and that volume's imagery is
+     perfectly readable — it is read every day by the tool that owns it. What is not shareable is
+     THIS module: one CFG per page, and the tracing pad is configured into it.
+
+     So the swap is here, where CFG lives, and it is always undone:
+
+       await UJ.emtiles.withConfig({em, res, skipScales}, function(){ return drawSection(...); });
+
+     THE CAVEAT, STATED RATHER THAN HIDDEN: this is not concurrency-safe. A pad redrawing DURING
+     the await would read the borrowed volume. The alternative is threading a source through every
+     call site of a module all eight tools share, which is a much larger change to a much more
+     load-bearing file; this one is eight lines and reverses itself. If a second caller ever wants
+     it at the same time, that is the moment to pay for the bigger version.
+
+     RESTORED BY ASSIGNMENT, not by re-running configure(): configure() normalises `em` through
+     _httpBase and re-reads the page's fields, so round-tripping a config through it is a second
+     chance to change it. The object that was there goes back exactly as it was. */
+  async function withConfig(cfg, fn){
+    var prev = CFG;
+    configure(cfg);
+    try { return await fn(); }
+    finally { CFG = prev; }
+  }
 
   /* ── WHAT THIS VOLUME SERVES THAT NOTHING CONFIGURED CAN READ ──────────────  2026-10-03
      realScales() drops those levels, and once they are dropped nothing downstream can tell whether
@@ -9222,6 +9254,7 @@ UJ.emtiles = (function(){
   }
 
   return { configure: configure, configured: configured,
+           config: config, withConfig: withConfig,
            unreadableEncodings: unreadableEncodings, drawSection: drawSection,
            scaleAt: scaleAt, sectionScales: sectionScales, _toScale: toScale, _toTool: toTool,
            _decodeChunk: decodeChunk };
@@ -27180,16 +27213,57 @@ function wirePreviews(host){
             if (window.UJ && UJ.tools) lab = UJ.tools.label(btool);
             if (fh && UJ.jumplink) fu = UJ.jumplink.url([h], { host: fh }) || "";
           } catch (_fe){}
-          open = "";
-          if (canDraw) UJ.empreview.close(slot);
-          slot.innerHTML = "<p class='forumelsewhere' style='font-size:12px;color:var(--mut);"
-            + "margin:6px 0;line-height:1.5'>That is a place in <b>"
-            + esc(h.label || h.volume || "another volume") + "</b>, which is "
-            + esc(lab || btool) + "’s. The imagery on this page is a different block of tissue, "
-            + "so it is not drawn here. "
+          lab = lab || btool;
+          /* ── AND IT IS A CELL OR A PLACE, NOT ALWAYS A PLACE ──────────────────  2026-10-13
+             This said "a place in another volume" for everything, which is wrong twice on a root
+             id: an id is not a place, and "another volume" is the fallback for a hit with no
+             volume to name — which is EVERY id, because a bare number does not say where it is. */
+          var what = (h.kind === "root") ? ("segment <b>" + esc(h.id) + "</b>")
+                   : (h.kind === "nucleus") ? ("cell <b>" + esc(h.id) + "</b>")
+                   : ("a place in <b>" + esc(h.label || h.volume || "its volume") + "</b>");
+          var line = "<p class='forumelsewhere' style=\"font-size:12px;color:var(--mut);"
+            + "margin:6px 0;line-height:1.5\">That is " + what + ", in " + esc(lab)
+            + "\u2019s volume. "
             + (fu ? "<a href='" + esc(fu) + "' target='_blank' rel='noopener'>Open it in "
                     + "Neuroglancer</a>." : "")
             + "</p>";
+          /* ── DRAWN FROM THAT TOOL'S OWN IMAGERY ───────────────────────────────  2026-10-13
+             Søren: *"I would also like that the dJump coordinate can open EM ... in uJump."*
+             The EM comes from the registry's sources for THAT tool, read through
+             core/emtiles.js's withConfig(), which hands this page's reader back afterwards. No
+             segmentation and no 3D: those modules are singletons too and the mesh store is this
+             page's — core/empreview.js withholds the buttons for a foreign host and says why.
+             Only a coordinate can be drawn; a bare id has no place to centre on. */
+          var feh = null;
+          if (canDraw && h.voxel){
+            try {
+              if (window.UJ && UJ.tools && UJ.tools.emHostFor)
+                feh = UJ.tools.emHostFor(btool, h.voxel);
+            } catch (_fh){}
+          }
+          if (feh){
+            feh.foreign = true;
+            feh.noSegWhy = "this is " + lab + "\u2019s volume, borrowed to draw the tissue \u2014 "
+                         + "open it there to look the cell up";
+            var fkey = h.voxel.join(",") + "|" + btool;
+            if (open === fkey){ UJ.empreview.close(slot); open = ""; return; }
+            open = fkey;
+            /* Promise.resolve, NOT a bare .then(). core/empreview.js's open() is async today,
+               but this is the one call in the module whose return value is used, and a page or a
+               check that replaces open() with a plain function would otherwise throw here rather
+               than simply not appending a caption. Found by forumonecheck.js doing exactly that. */
+            Promise.resolve(UJ.empreview.open(slot, h.voxel, { host: feh }))
+              .then(function(){
+                var p = document.createElement("div");
+                p.innerHTML = line;
+                slot.appendChild(p.firstChild);
+              })
+              .catch(function(){ slot.innerHTML = line; });
+            return;
+          }
+          open = "";
+          if (canDraw) UJ.empreview.close(slot);
+          slot.innerHTML = line;
           return;
         }
         /* THE IDS ARE THE POST'S, not the link's. Søren: "if a nucleus or root ID is written, then
@@ -27218,6 +27292,10 @@ function wirePreviews(host){
           try {
             if (window.UJ && UJ.tools && UJ.tools.emHostFor)
               EMHOST = UJ.tools.emHostFor(TOOL, h.voxel) || null;
+            /* OURS, so core/empreview.js may ask this page's own nucleus table about a point it
+               cannot read the segmentation at. A host for somebody else's tool never carries
+               this: that table is about this volume. */
+            if (EMHOST) EMHOST.own = true;
           } catch (_eh){}
         }
         if (canDraw && !EMHOST && typeof window.emPreviewHost !== "function") canDraw = false;
@@ -27288,6 +27366,7 @@ function wireComposePreview(id){
     if (typeof window.emPreviewHost !== "function"){
       try {
         if (window.UJ && UJ.tools && UJ.tools.emHostFor) eh = UJ.tools.emHostFor(TOOL, at);
+        if (eh) eh.own = true;
       } catch (_eh){}
       if (!eh) return;
     }
