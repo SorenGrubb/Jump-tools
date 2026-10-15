@@ -55,11 +55,31 @@
   .help b{color:var(--fg)}
   #hide{position:absolute;right:10px;top:8px;border:0;padding:2px 6px}
   #show{position:fixed;left:12px;top:12px;z-index:5;display:none}
+  #keysCard{position:fixed;right:12px;bottom:12px;z-index:5;background:rgba(22,27,34,.9);border:1px solid var(--line);
+    border-radius:10px;padding:9px 12px;font-size:12px;color:var(--mut);line-height:1.6;cursor:pointer;user-select:none}
+  #keysCard b{color:var(--fg)}
+  #keysCard kbd{display:inline-block;min-width:16px;text-align:center;padding:0 4px;margin:0 1px;border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:4px;font:600 11px ui-monospace,monospace;color:var(--fg);background:#0d1117}
+  #keysCard .grid{display:grid;grid-template-columns:auto auto;gap:2px 10px;align-items:center}
+  #keysCard.min .grid{display:none}
+  #keysCard.min .t::after{content:" ▸"}
 </style>
 </head>
 <body>
 <div id="view"></div>
 <button id="show">☰ Cells</button>
+<div id="keysCard" title="Click (or press H) to fold this away">
+  <div class="t"><b>Keys</b></div>
+  <div class="grid">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>walk</span>
+    <span><kbd>Q</kbd><kbd>E</kbd></span><span>down · up</span>
+    <span><kbd>Shift</kbd> / <kbd>Ctrl</kbd></span><span>×3 faster · ×¼ slower</span>
+    <span>Right click</span><span>fly to that point</span>
+    <span>Left drag</span><span>turn</span>
+    <span>Right drag · scroll</span><span>pan · zoom</span>
+    <span><kbd>H</kbd></span><span>hide this</span>
+  </div>
+</div>
 <div id="panel">
   <button id="hide" title="Hide panel">✕</button>
   <h1>🥽 VR collection</h1>
@@ -180,10 +200,10 @@
   <div id="vrslot"></div>
   <div class="ctl"><button id="copyBtn">Copy headset link</button></div>
   <div class="help">
-    <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan. Click a cell name to pick it.<br>
+    <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan, <b>right-click to fly to a point</b>. <b>Keys:</b> W A S D walk, Q E down / up. Click a cell name to pick it.<br>
     <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
-    A = see-through · B = reset · X = only the picked cell · <b>Y = palette</b> on your left hand (tabs Show · Map · Tools · Spray · EM · Cells · View; point the right controller and pull the trigger).
+    A = see-through · B = reset · X = only the picked cell · <b>press the right stick in = fly to where it points</b> · <b>Y = palette</b> on your left hand (tabs Show · Map · Tools · Spray · EM · Cells · View; point the right controller and pull the trigger).
     With the cut in your hand, the right trigger freezes it in place and frees it again.
     With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
@@ -1110,6 +1130,7 @@ document.getElementById("measClr").addEventListener("click", clearMeasure);
 let _down = null;
 renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointerup", e => {
+  if (e.button !== 0) return;                       // the right button flies (section 13)
   if (STIM.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
     const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     _mr.setFromCamera(ndc, camera);
@@ -2065,7 +2086,7 @@ document.getElementById("sprayErase").addEventListener("click", () => { SPRAY.er
 document.getElementById("spraySize").addEventListener("change", e => { SPRAY.size = e.target.value; syncSprayUI(); });
 document.getElementById("sprayWipe").addEventListener("click", wipePaint);
 const ndcOf = e => new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-renderer.domElement.addEventListener("pointerdown", e => { if (SPRAY.on){ SPRAY.mouse = true; SPRAY.mouseNdc = ndcOf(e); } });
+renderer.domElement.addEventListener("pointerdown", e => { if (SPRAY.on && e.button === 0){ SPRAY.mouse = true; SPRAY.mouseNdc = ndcOf(e); } });
 renderer.domElement.addEventListener("pointermove", e => { if (SPRAY.mouse) SPRAY.mouseNdc = ndcOf(e); });
 addEventListener("pointerup", () => { SPRAY.mouse = false; });
 
@@ -2855,7 +2876,10 @@ function sticks(dt){
     const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed), b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);
     if (b4 && !h.prevBtn[4]){ if (left) toggleIsolate(); else toggleGlass(); }
     if (b5 && !h.prevBtn[5]){ if (left) toggleMenu(); else { resetStage(); } }
-    h.prevBtn[4] = b4; h.prevBtn[5] = b5;
+    /* buttons[3] = pressing the thumbstick in. Right: fly to where the ray points (section 13). */
+    const b3 = !!(gp.buttons[3] && gp.buttons[3].pressed);
+    if (b3 && !h.prevBtn[3] && !left) flyWithHand(h);
+    h.prevBtn[4] = b4; h.prevBtn[5] = b5; h.prevBtn[3] = b3;
   }
 }
 
@@ -2993,7 +3017,7 @@ function menuRows(){
     }
   } else if (t === "View"){
     if (MENU.help){
-      ["Right trigger: pick / use a tool", "Grip: grab · both grips: resize", "Right stick: turn · zoom",
+      ["Right trigger: pick / use a tool", "Grip: grab · both grips: resize", "Right stick: turn · zoom · press: fly",
        "Left stick: tilt · flick = next cell", "A see-through · B reset", "X only picked · Y palette"]
         .forEach(l => rows.push({ label: l, note: true }));
       rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
@@ -3130,12 +3154,156 @@ document.getElementById("vrslot").appendChild(vrBtn);
   document.getElementById("vrslot").appendChild(n);
 })();
 
+/* ── 13. GETTING ABOUT: fly to a point, walk with the keys ───────────────────  2026-10-15
+   Søren: "We need a way to teleport to a location in the computer version and the immersive VR
+   version. I suggest using right click on the mouse to teleport. Suggest a button on the VR
+   controllers. It would be fine if it does not happen instantly but that you fly to the position
+   fast. … walk around freely in the computer version using wasd and then use q and e to go up and
+   down relative to the view. There could be a small figure showing the hotkeys in the corner."
+
+   FLY TO. Whatever solid thing is under the mouse (right click) or at the end of the right
+   controller's ray (press the right thumbstick) -- a cell, a nucleus, a vessel, the EM, a tracing,
+   a skeleton, an arrow -- is flown to in 0.7 s, eased in and out. Faint sheets (layer and area walls,
+   box fills) are looked through, not landed on. Nothing hit, nothing happens.
+   · On the PC the CAMERA travels: it ends a short way short of the point, looking at it, and the
+     point becomes the centre the mouse turns about. The stand-off is a fifth of the distance it
+     started from (2–25 cm), so a far click brings you close and a near one closer still.
+   · In the headset the WORLD travels the other way, as it does when you grab it: the point comes to
+     30 cm in front of your eyes, at eye height. Your body never moves, which is kinder to a
+     stomach than sliding the viewpoint.
+   A right-DRAG still pans, as before; only a right click without movement flies.
+
+   WALK (PC only). W/S forward and back along the view, A/D sideways, Q/E down and up along the
+   view's own up -- the camera and the point it turns about move together, so turning with the
+   mouse afterwards still turns about what is in front of you. Keys typed into a field are left alone.
+
+   THE SPEED IS THE DATASET'S (Søren: "a speed that makes sense for the size of the dataset, so that
+   it is not impossibly fast and you miss your target, and not so slow that it is not useful").
+   The yardstick is the collection as it stands in the room now -- its fitted size times how much it
+   has been enlarged -- so a tabletop collection and the same one blown up to walk inside move at
+   the same pace through the TISSUE:
+   · the pace is the headset's right-stick zoom, which Søren finds right: that zoom changes the size
+     by e^1.2 per second, i.e. you close in on what is in front of you at 1.2 × its distance per
+     second -- so walking moves at 1.2 × the distance to the point the view turns about;
+   · bounded by the collection: never faster than half of it per second, never slower than a
+     sixtieth, so a far-off turning point cannot send you through the tissue in a blink;
+   · it eases in over the first ⅓ s of a key press, so a tap is a small step, not a jump;
+   · Shift ×3, Ctrl ×¼. */
+const FLY = { on: false };
+function easeInOut(t){ return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+/* What a fly-to may land on: visible meshes in the collection that are not near-transparent. */
+function flyTargets(){
+  const out = [];
+  content.traverseVisible(o => {
+    if (!o.isMesh || !o.material) return;
+    const m = o.material;
+    if (m.transparent && m.opacity < 0.2 && !(o.userData && o.userData.cell != null)) return;
+    out.push(o);
+  });
+  return out;
+}
+const _fr = new THREE.Raycaster();
+function flyHit(origin, dir){
+  _fr.ray.origin.copy(origin); _fr.ray.direction.copy(dir).normalize();
+  const hits = _fr.intersectObjects(flyTargets(), false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0);
+  return hits.length ? hits[0].point.clone() : null;
+}
+function flyTo(P){
+  if (!P) return false;
+  if (renderer.xr.isPresenting){
+    const cam = renderer.xr.getCamera(), head = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
+    const fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+    const goal = head.clone().addScaledVector(fw, 0.3);
+    FLY.mode = "stage"; FLY.from = stage.position.clone(); FLY.to = stage.position.clone().add(goal.sub(P));
+  } else {
+    const C = camera.position, d = C.distanceTo(P), s = THREE.MathUtils.clamp(d * 0.2, 0.02, 0.25);
+    FLY.mode = "camera";
+    FLY.from = C.clone(); FLY.fromT = controls.target.clone();
+    FLY.to = P.clone().add(C.clone().sub(P).normalize().multiplyScalar(s)); FLY.toT = P.clone();
+  }
+  FLY.t = 0; FLY.dur = 0.7; FLY.on = true; USER_MOVED = true;
+  return true;
+}
+function flyFrame(dt){
+  if (!FLY.on) return;
+  FLY.t = Math.min(1, FLY.t + dt / FLY.dur);
+  const k = easeInOut(FLY.t);
+  if (FLY.mode === "stage") stage.position.lerpVectors(FLY.from, FLY.to, k);
+  else { camera.position.lerpVectors(FLY.from, FLY.to, k); controls.target.lerpVectors(FLY.fromT, FLY.toT, k); }
+  if (FLY.t >= 1) FLY.on = false;
+}
+/* Right click, without dragging. */
+let _rdown = null;
+renderer.domElement.addEventListener("pointerdown", e => { if (e.button === 2) _rdown = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (e.button !== 2 || !_rdown) return;
+  const moved = Math.hypot(e.clientX - _rdown[0], e.clientY - _rdown[1]); _rdown = null;
+  if (moved > 4) return;                                     // that was a pan
+  const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  _fr.setFromCamera(ndc, camera);
+  if (!flyTo(flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()))) ctxNote.textContent = "Fly to: nothing solid under the mouse there.";
+});
+renderer.domElement.addEventListener("contextmenu", e => e.preventDefault());
+/* In the headset: press the right thumbstick to fly to where the right ray points. */
+function flyWithHand(h){
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  const o = new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld), d = new THREE.Vector3(0, 0, -1).applyMatrix4(tmpM);
+  const P = flyHit(o, d);
+  if (P) flyTo(P);
+  else if (h.source && h.source.gamepad && h.source.gamepad.hapticActuators && h.source.gamepad.hapticActuators[0])
+    try { h.source.gamepad.hapticActuators[0].pulse(0.3, 60); } catch (e){}
+}
+
+/* The keys. */
+const KEYS = new Set();
+function typing(){ const a = document.activeElement; return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable); }
+addEventListener("keydown", e => {
+  if (typing() || e.metaKey) return;
+  const k = e.key.toLowerCase();
+  if ("wasdqe".includes(k) && k.length === 1){ KEYS.add(k); FLY.on = false; e.preventDefault(); }
+  if (k === "shift") KEYS.add("shift"); if (k === "control") KEYS.add("ctrl");
+  if (k === "h" && !e.ctrlKey){ toggleKeysCard(); }
+});
+addEventListener("keyup", e => { const k = e.key.toLowerCase(); KEYS.delete(k); if (![..."wasdqe"].some(x => KEYS.has(x))) KEYS.held = 0; if (k === "shift") KEYS.delete("shift"); if (k === "control") KEYS.delete("ctrl"); });
+addEventListener("blur", () => KEYS.clear());
+const _kf = new THREE.Vector3(), _kr = new THREE.Vector3(), _ku = new THREE.Vector3(), _mv = new THREE.Vector3();
+function keysFrame(dt){
+  if (renderer.xr.isPresenting || !KEYS.size || typing()) return;
+  camera.getWorldDirection(_kf);
+  _ku.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  _kr.crossVectors(_kf, _ku).normalize();
+  _mv.set(0, 0, 0);
+  if (KEYS.has("w")) _mv.add(_kf); if (KEYS.has("s")) _mv.sub(_kf);
+  if (KEYS.has("d")) _mv.add(_kr); if (KEYS.has("a")) _mv.sub(_kr);
+  if (KEYS.has("e")) _mv.add(_ku); if (KEYS.has("q")) _mv.sub(_ku);
+  if (_mv.lengthSq() < 1e-9) return;
+  const coll = TABLE_SIZE * stage.scale.x / FIT_SCALE;                 // the collection's size in the room, m
+  const near = camera.position.distanceTo(controls.target);
+  const base = THREE.MathUtils.clamp(1.2 * near, coll / 60, coll / 2);
+  KEYS.held = (KEYS.held || 0) + dt;
+  const ramp = Math.min(1, 0.25 + KEYS.held * 2.25);
+  const speed = base * ramp * (KEYS.has("shift") ? 3 : 1) * (KEYS.has("ctrl") ? 0.25 : 1);
+  _mv.normalize().multiplyScalar(speed * dt);
+  camera.position.add(_mv); controls.target.add(_mv);
+  USER_MOVED = true;
+}
+/* The little card in the corner. */
+function toggleKeysCard(force){
+  const c = document.getElementById("keysCard"), open = force != null ? force : c.classList.contains("min");
+  c.classList.toggle("min", !open);
+  try { localStorage.setItem("vr_keys_card", open ? "1" : "0"); } catch (e){}
+}
+document.getElementById("keysCard").addEventListener("click", () => toggleKeysCard());
+try { if (localStorage.getItem("vr_keys_card") === "0") toggleKeysCard(false); } catch (e){}
+renderer.xr.addEventListener("sessionstart", () => { FLY.on = false; KEYS.clear(); });
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
+  flyFrame(dt);
   if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); menuFrame(); }
-  else controls.update();
+  else { keysFrame(dt); controls.update(); }
   placeLabel();
   cutFrame();
   scaleBarFrame();
@@ -3154,7 +3322,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
