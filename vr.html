@@ -2025,13 +2025,64 @@ function cellGraph(c){
   const nb = new Int32Array(off[m]), w = new Float32Array(off[m]), fill = off.slice(0, m);
   const put = (a, b) => { const k = fill[a]++; nb[k] = b; w[k] = Math.hypot(pos[a*3]-pos[b*3], pos[a*3+1]-pos[b*3+1], pos[a*3+2]-pos[b*3+2]); };
   for (let t = 0; t < I.length; t += 3){ const a = node[I[t]], b = node[I[t+1]], d = node[I[t+2]]; put(a, b); put(b, a); put(b, d); put(d, b); put(a, d); put(d, a); }
-  c.graph = { node, pos, off, nb, w, m };
+  c.graph = bridgeGaps({ node, pos, off, nb, w, m }, c);
   /* A new graph (a reload at another detail) makes cached node numbers stale. */
   c.somaNode = null; c.apNodeT = null; c.dCache = null; c.slots = []; c.sites = []; c.dspk = []; c._vmNode = null;
   if (c.electrodes) c.electrodes.forEach(e => { if (e.tag && STIM.tags){ STIM.tags.remove(e.tag); e.tag.material.map.dispose(); e.tag.material.dispose(); } });
   c.electrodes = [];
   if (STIM.syn) STIM.syn.forEach(x => { if (x.pre === c.i) x.node = null; if (x.post === c.i) x.postNode = null; });
   return c.graph;
+}
+/* BRIDGING MESH GAPS (2026-10-15). Søren's receiving cells showed dendritic spikes at the synapse
+   but a soma that never moved from −70 mV: the potential could not get there. A cell mesh is often
+   several pieces -- a thin neck that lost its triangles at light detail, a fragment from another
+   root id, a piece inside the soma next to the nucleus -- and on the graph a piece that touches
+   nothing is unreachable, so neither a synaptic potential nor a spike crosses it. Membrane in the
+   tissue is continuous; the gaps are the mesh's. Every piece is joined to the nearest node of
+   another piece when that node is within 10 µm (one edge, its true length). Pieces of fewer than 8
+   nodes are left alone (debris). What could not be joined is reported on the console. */
+function bridgeGaps(G, c){
+  const { pos, off, nb, m } = G, comp = new Int32Array(m).fill(-1), sizes = [];
+  for (let s = 0; s < m; s++){
+    if (comp[s] >= 0) continue;
+    const id = sizes.length, st = [s]; comp[s] = id; let n = 0;
+    while (st.length){ const v = st.pop(); n++; for (let k = off[v]; k < off[v+1]; k++){ const u = nb[k]; if (comp[u] < 0){ comp[u] = id; st.push(u); } } }
+    sizes.push(n);
+  }
+  G.comp = comp; G.nComp = sizes.length;
+  if (sizes.length < 2) return G;
+  const MAXD = 10, CELL = MAXD, grid = new Map(), key = (x, y, z) => x + "," + y + "," + z;
+  for (let v = 0; v < m; v++){ const k = key(Math.floor(pos[v*3] / CELL), Math.floor(pos[v*3+1] / CELL), Math.floor(pos[v*3+2] / CELL)); let a = grid.get(k); if (!a){ a = []; grid.set(k, a); } a.push(v); }
+  const members = sizes.map(() => []); for (let v = 0; v < m; v++) members[comp[v]].push(v);
+  const extra = [];
+  let joined = 0, left = 0;
+  members.forEach((list, id) => {
+    if (sizes[id] < 8) return;
+    let best = Infinity, bv = -1, bu = -1;
+    /* Sample at most 400 nodes of the piece: enough to find where it comes closest. */
+    const step = Math.max(1, Math.floor(list.length / 400));
+    for (let i = 0; i < list.length; i += step){
+      const v = list[i], gx = Math.floor(pos[v*3] / CELL), gy = Math.floor(pos[v*3+1] / CELL), gz = Math.floor(pos[v*3+2] / CELL);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+        const a = grid.get(key(gx + dx, gy + dy, gz + dz)); if (!a) continue;
+        for (const u of a){ if (comp[u] === id) continue;
+          const d = Math.hypot(pos[v*3]-pos[u*3], pos[v*3+1]-pos[u*3+1], pos[v*3+2]-pos[u*3+2]);
+          if (d < best){ best = d; bv = v; bu = u; } }
+      }
+    }
+    if (bv >= 0 && best <= MAXD){ extra.push([bv, bu, best]); joined++; } else left++;
+  });
+  if (!extra.length){ console.info("[vr] " + (c && c.label) + ": mesh is " + sizes.length + " pieces; none within " + MAXD + " µm of another"); return G; }
+  /* Rebuild the CSR with the bridges added both ways. */
+  const deg = new Int32Array(m);
+  for (let v = 0; v < m; v++) deg[v] = off[v+1] - off[v];
+  extra.forEach(([a, b]) => { deg[a]++; deg[b]++; });
+  const off2 = new Int32Array(m + 1); for (let i = 0; i < m; i++) off2[i+1] = off2[i] + deg[i];
+  const nb2 = new Int32Array(off2[m]), w2 = new Float32Array(off2[m]), fill = off2.slice(0, m);
+  for (let v = 0; v < m; v++) for (let k = off[v]; k < off[v+1]; k++){ const j = fill[v]++; nb2[j] = nb[k]; w2[j] = G.w[k]; }
+  extra.forEach(([a, b, d]) => { let j = fill[a]++; nb2[j] = b; w2[j] = d; j = fill[b]++; nb2[j] = a; w2[j] = d; });
+  console.info("[vr] " + (c && c.label) + ": mesh was " + sizes.length + " pieces; " + joined + " joined across gaps ≤ " + MAXD + " µm" + (left ? ", " + left + " too far or too small" : ""));
+  return Object.assign(G, { off: off2, nb: nb2, w: w2, bridges: extra.length });
 }
 /* Multi-source Dijkstra on the welded graph. sources: [{node, t0}] with t0 in ms; returns arrival
    time (ms) per NODE, and the distance (µm) to whichever source got there first. */
@@ -2227,7 +2278,12 @@ function distFrom(c, node){
   c.dCache = c.dCache || new Map();
   let D = c.dCache.get(node);
   if (!D){
-    D = Float32Array.from(arrival(cellGraph(c), [{ node, t0: 0 }]).D);
+    const G = cellGraph(c);
+    D = Float32Array.from(arrival(G, [{ node, t0: 0 }]).D);
+    /* Still unreachable after bridging: the straight-line distance × 1.5 (a typical dendritic
+       path is longer than the straight line), so a potential is never silently cut off. */
+    const P = G.pos, x = P[node*3], y = P[node*3+1], z = P[node*3+2];
+    for (let i = 0; i < D.length; i++) if (D[i] >= 1e8) D[i] = 1.5 * Math.hypot(P[i*3]-x, P[i*3+1]-y, P[i*3+2]-z);
     D.att = D.map(d => d < 1e8 ? Math.exp(-d / VM.lambda) : 0);        // cable attenuation, once per site
     if (c.dCache.size >= 24) c.dCache.delete(c.dCache.keys().next().value);
     c.dCache.set(node, D);
@@ -2321,11 +2377,30 @@ function resetActivity(){
   MENU.dirty = true;
 }
 /* The spike's starting point when a cell is driven over threshold: the membrane nearest the nucleus. */
+/* The membrane nearest the nucleus, but on the cell's main body: a small piece inside the soma
+   (common next to the nucleus) would otherwise be "the soma" and hear nothing. */
+function somaNear(G, p){
+  const near = nearestNode(G, p); if (!G.comp) return near.node;
+  /* Re-label pieces after bridging: anything reachable from the biggest piece counts as main. */
+  if (!G.main){
+    const seen = new Uint8Array(G.m), cnt = new Map(); let big = 0, bigN = -1;
+    for (let v = 0; v < G.m; v++){ const k = G.comp[v]; cnt.set(k, (cnt.get(k) || 0) + 1); }
+    cnt.forEach((n, k) => { if (n > bigN){ bigN = n; big = k; } });
+    let s0 = -1; for (let v = 0; v < G.m; v++) if (G.comp[v] === big){ s0 = v; break; }
+    const st = [s0]; seen[s0] = 1;
+    while (st.length){ const v = st.pop(); for (let k = G.off[v]; k < G.off[v+1]; k++){ const u = G.nb[k]; if (!seen[u]){ seen[u] = 1; st.push(u); } } }
+    G.main = seen;
+  }
+  if (G.main[near.node]) return near.node;
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < G.m; i++){ if (!G.main[i]) continue; const d = (G.pos[i*3]-p.x) ** 2 + (G.pos[i*3+1]-p.y) ** 2 + (G.pos[i*3+2]-p.z) ** 2; if (d < bd){ bd = d; best = i; } }
+  return best >= 0 ? best : near.node;
+}
 function somaNode(c, fallback){
   const G = cellGraph(c);
   if (c.somaNode == null){
     const p = c.nucMesh ? nucCentreOf(c) : null;
-    c.somaNode = p ? nearestNode(G, p).node : -1;
+    c.somaNode = p ? somaNear(G, p) : -1;
   }
   return c.somaNode >= 0 ? c.somaNode : fallback;
 }
@@ -2537,7 +2612,7 @@ function drawPlot(c){
     for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > vHi && !(tr.soma[i - 1] > vHi) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
   }
   /* legend */
-  const items = [["soma", "#f0f6fc"]].concat((c.sites || []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP"), SITE_COL[s.kind]]),
+  const items = [["soma", "#f0f6fc"]].concat((c.sites || []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP") + (soma >= 0 ? " · " + Math.round(distFrom(c, s.node)[soma]) + " µm" : ""), SITE_COL[s.kind]]),
                                              (c.electrodes || []).map(e => ["📍" + "abc"[e.k], ELEC_COL[e.k]]));
   g.font = "24px system-ui, sans-serif"; let lx = L + 6;
   items.forEach(([t, col]) => { const wd = g.measureText(t).width; if (lx + wd > W - R) return; g.fillStyle = col; g.fillText(t, lx, T + 22); lx += wd + 16; });
@@ -2998,7 +3073,7 @@ function captureScene(){
 function previewJpeg(){
   if (renderer.xr.isPresenting) return "";
   try {
-    renderer.render(scene, camera);
+    renderer.render(scene, camera); renderLogo();
     const src = renderer.domElement, w = 480, h = Math.round(w * src.height / src.width);
     const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
     cv.getContext("2d").drawImage(src, 0, 0, w, h);
@@ -3964,7 +4039,8 @@ function menuRows(){
 }
 function drawMenu(){
   MENU.rows = menuRows();
-  const H = MENU_PAD * 2 + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H;
+  const FOOT_H = 96;                                    // the tool's logo (section 17)
+  const H = MENU_PAD * 2 + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H + FOOT_H;
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
   const cv = MENU.canvas, g = MENU.ctx;
   if (cv.width !== MENU_W || cv.height !== H){
@@ -4003,6 +4079,10 @@ function drawMenu(){
     g.fillText(r.label, x, y + 50, MENU_W - x - 30);
   });
   if (!MENU.rows.length){ g.fillStyle = "#8b949e"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
+  /* Footer: a rule, the tool's logo and grubblab.com. */
+  g.strokeStyle = "#30363d"; g.lineWidth = 3; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
+  const lw = drawLogo(g, 36, H - FOOT_H + 14, 54, false);
+  g.fillStyle = "#8b949e"; g.font = "600 30px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("VR · grubblab.com", MENU_W - 40, H - FOOT_H + 62); g.textAlign = "left";
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
   if (!MENU.mesh){
@@ -4422,6 +4502,69 @@ document.getElementById("recBtn").addEventListener("click", () => REC.on ? stopR
 renderer.xr.addEventListener("sessionstart", () => stopRecording());
 addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); recSize(s === "1080" ? [1920, 1080] : [1280, 720]); } });
 
+
+/* ── 17. THE TOOL'S LOGO ──────────────────────────────────────────────────────  2026-10-15
+   Søren: "We should have the tool logo on the VR screen when in PC mode all the time in the top
+   right corner, also in the videos. When in VR the logo should be somewhere in the Palette."
+   The logo is the tool's own -- the Greek letter in the tool's accent colour, "Jump" in white and
+   the small ↗, as the h1.logo of ujump.html / hjump.html / … draws it -- chosen by the dataset the
+   collected cells come from, with grubblab.com under it.
+   · PC: drawn INTO the canvas (a second, orthographic pass after the scene), not as a page element,
+     so the recorder's canvas.captureStream films it and the forum preview carries it. Its size is a
+     share of the canvas height, so a 1080p movie and a small window look the same.
+   · Headset: a footer strip on the palette. Not in the view itself -- a logo fixed to the eyes is
+     uncomfortable in VR. */
+const LOGO_TOOLS = { microns: ["µ", "#27e0b3"], hjump: ["η", "#27e0b3"], bjump: ["β", "#27e0b3"], v1dd: ["δ", "#b388ff"],
+                     ljump: ["λ", "#27e0b3"], pinky100: ["π", "#f78ad4"], wjump: ["ω", "#fbbf24"], xjump: ["χ", "#4ade80"], cb2: ["χ", "#4ade80"] };
+function logoTool(){ return LOGO_TOOLS[(CELLS[0] || {}).ds] || LOGO_TOOLS.microns; }
+/* Draws the logo with its top-left at (x, y), the big letters `size` px tall; returns its width. */
+function drawLogo(g, x, y, size, url){
+  const [greek, accent] = logoTool(), font = '800 ' + size + 'px "Segoe UI", system-ui, -apple-system, sans-serif';
+  g.save(); g.textBaseline = "alphabetic"; g.textAlign = "left";
+  const base = y + size * 0.86;
+  g.font = 'italic ' + font; g.fillStyle = accent; g.fillText(greek, x, base + size * 0.03);
+  let w = g.measureText(greek).width + size * 0.02;
+  g.font = font; g.fillStyle = "#e6edf3"; g.fillText("Jump", x + w, base); w += g.measureText("Jump").width;
+  g.font = '700 ' + Math.round(size * 0.5) + 'px "Segoe UI", system-ui, sans-serif'; g.fillStyle = accent;
+  g.fillText("↗", x + w + size * 0.1, base - size * 0.22); w += size * 0.1 + g.measureText("↗").width;
+  if (url){ g.font = '600 ' + Math.round(size * 0.3) + 'px system-ui, sans-serif'; g.fillStyle = "#8b949e"; g.fillText("grubblab.com", x + size * 0.04, y + size * 1.32); }
+  g.restore();
+  return w;
+}
+const LOGO = { key: "", tex: null, mesh: null, scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1), aspect: 1 };
+function logoTexture(){
+  const key = logoTool().join();
+  if (LOGO.tex && LOGO.key === key) return LOGO.tex;
+  const size = 96, pad = 22, cv = document.createElement("canvas"), m = cv.getContext("2d");
+  cv.width = 800; cv.height = 200;
+  const W = Math.ceil(drawLogo(m, 0, 0, size, true) + pad * 2), H = Math.ceil(size * 1.45 + pad * 2);   // measured by drawing once
+  cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  g.fillStyle = "rgba(13,17,23,0.55)"; g.beginPath(); g.roundRect(0, 0, W, H, 26); g.fill();
+  const w = drawLogo(g, pad, pad, size, true);
+  if (LOGO.tex) LOGO.tex.dispose();
+  LOGO.tex = new THREE.CanvasTexture(cv); LOGO.tex.colorSpace = THREE.SRGBColorSpace; LOGO.key = key; LOGO.aspect = W / H;
+  if (LOGO.mesh) LOGO.mesh.material.map = LOGO.tex, LOGO.mesh.material.needsUpdate = true;
+  return LOGO.tex;
+}
+const _ls = new THREE.Vector2();
+/* The second pass: top right, about 7 % of the canvas height. */
+function renderLogo(){
+  if (renderer.xr.isPresenting) return;
+  const tex = logoTexture();
+  if (!LOGO.mesh){
+    LOGO.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    LOGO.scene.add(LOGO.mesh);
+  }
+  renderer.getSize(_ls);
+  const W = _ls.x, H = _ls.y, h = Math.max(34, H * 0.075), w = h * LOGO.aspect, m = Math.max(8, H * 0.018);
+  LOGO.cam.left = 0; LOGO.cam.right = W; LOGO.cam.top = H; LOGO.cam.bottom = 0; LOGO.cam.updateProjectionMatrix();
+  LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(W - m - w / 2, H - m - h / 2, 0);
+  const ac = renderer.autoClear; renderer.autoClear = false;
+  renderer.render(LOGO.scene, LOGO.cam);
+  renderer.autoClear = ac;
+}
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
@@ -4436,6 +4579,7 @@ renderer.setAnimationLoop(() => {
   stimFrame(dt);
   sprayFrame(dt);
   renderer.render(scene, camera);
+  renderLogo();
 });
 addEventListener("resize", () => {
   if (typeof REC !== "undefined" && REC.on && REC.saved) return;      // a fixed-size recording keeps its size
