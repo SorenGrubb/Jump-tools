@@ -78,6 +78,9 @@
   .seg .segHead + button{border-left:1px solid var(--line)}
   .seg button.cur{background:var(--accent);color:#0d1117}
   .dep-off{display:none!important}
+  .stimOne{border:1px solid var(--line);background:transparent;padding:2px 4px;margin-right:6px;display:inline-flex;align-items:center;color:#ffe11a;flex:none}
+  .stimOne svg{width:15px;height:15px;display:block}
+  .stimOne:hover{background:#2d2a12}
   #lblBtn{position:absolute;right:44px;top:8px;border:0;padding:2px 7px;font-weight:600}
   .helpBox summary{cursor:pointer;color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px;margin-top:10px}
   #tri{font-size:12px;color:var(--mut);margin-top:6px}
@@ -741,6 +744,7 @@ function renderList(){
       `<div class="row sub"><span class="sw" style="background:${c.colour}"></span><div>
          <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
          <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
+         ${c.mesh && cellClass(c) !== "glia" ? `<button class="stimOne${window.__lastStim === c.i ? " on" : ""}" data-stim="${c.i}" title="Stimulate ${esc(c.root || c.label)} at its soma">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
          <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
   }).join("");
   /* A group box is half-ticked when some of its cells are hidden. */
@@ -774,6 +778,8 @@ function cellGroups(){
 }
 listEl.addEventListener("click", e => {
   if (e.target.closest("input")) return;
+  const sb = e.target.closest("[data-stim]");
+  if (sb){ stimulateCell(CELLS[+sb.dataset.stim]); return; }
   const p = e.target.closest("[data-pick]");
   if (p){ const i = +p.dataset.pick; select(SELECTED === i ? -1 : i); return; }
   const g = e.target.closest("[data-grp]");
@@ -2506,9 +2512,30 @@ function stimulateWithRay(r){
   const c = CELLS[hit.object.userData.cell];
   const local = content.worldToLocal(hit.point.clone());
   if (STIM.electrode){ placeElectrode(c, local); return; }
+  stimulateAt(c, nearestNode(cellGraph(c), local).node);
+}
+/* QUICK STIMULATION FROM THE LIST (2026-10-15, Søren: "Next to the cell names, there should also be
+   a stimulation button, so you can quickly stimulate different cells"). The ⚡ beside a cell (and
+   the right half of its row on the palette's Cells tab) fires it at its soma -- where a real
+   neuron starts its spike -- with the same refractory check as a touch. Stimulate is switched on
+   so the synapses are loaded. */
+async function stimulateCell(c){
+  if (!c || !c.mesh) return;
+  if (!STIM.on) setStim(true);
+  if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials."; return; }
+  /* The first press switches Stimulate on, which starts reading the synapses: wait for them, or the
+     first spike would have nowhere to go. */
+  if (!STIM.syn && caveToken()){
+    ctxNote.textContent = "Reading the synapses among these cells…";
+    for (let k = 0; k < 150 && (STIM.synLoading || !STIM.syn); k++){ if (!STIM.synLoading && !STIM.syn) await loadSynapses(); else await new Promise(r => setTimeout(r, 100)); if (!STIM.synLoading && !STIM.syn) break; }
+  }
+  stimulateAt(c, somaNode(c, 0));
+}
+function stimulateAt(c, node){
   if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
   if (!STIM.running) resetActivity();
-  const G = cellGraph(c), near = nearestNode(G, local);
+  const G = cellGraph(c), near = { node };
+  window.__lastStim = c.i; MENU.dirty = true;
   /* TOO SOON (2026-10-15, Søren: "if you stimulate them again too soon, there will be a warning that
      you stimulated while cells are in refractory period, wait xxx ms before next stimulation"). The
      wait is said in real milliseconds and in seconds at the spike slow-down. A spike still on its way
@@ -4039,7 +4066,9 @@ function menuRows(){
       MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
       g.cells.slice(MENU.cellPage * (per - 2), MENU.cellPage * (per - 2) + per - 2).forEach(c => rows.push({
         label: (c.err ? "⚠ " : "") + (c.root || c.label), swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
-        act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); } }));
+        act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); },
+        /* The right half fires the cell at its soma, like the ⚡ beside its name on the panel. */
+        ...(c.mesh && cellClass(c) !== "glia" ? { right: "⚡ fire", act2: () => stimulateCell(c) } : {}) }));
       if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
     }
   } else if (t === "View"){
@@ -4105,7 +4134,8 @@ function drawMenu(){
     }
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
     g.fillStyle = r.exit ? "#f0883e" : (r.note ? "#8b949e" : "#e6edf3"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
-    g.fillText(r.label, x, y + 50, MENU_W - x - 30);
+    g.fillText(r.label, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
+    if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
   if (!MENU.rows.length){ g.fillStyle = "#8b949e"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
   /* Footer: a rule, the tool's logo and grubblab.com. */
