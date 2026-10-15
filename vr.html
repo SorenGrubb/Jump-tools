@@ -63,6 +63,9 @@
   #keysCard .grid{display:grid;grid-template-columns:auto auto;gap:2px 10px;align-items:center}
   #keysCard.min .grid{display:none}
   #keysCard.min .t::after{content:" ▸"}
+  /* No keyboard-and-mouse figure on a phone or tablet: shown only where there is a fine pointer
+     (a mouse or trackpad). A tablet with a mouse attached still gets it. */
+  @media not all and (any-pointer: fine){ #keysCard{display:none} }
 </style>
 </head>
 <body>
@@ -2772,21 +2775,29 @@ const hands = [0, 1].map(k => {
   ctl.addEventListener("disconnected", () => { h.source = null; });
   ctl.addEventListener("selectend", () => { h.spraying = false; });
   ctl.addEventListener("selectstart", () => {
-    const mh = menuHit(h);
-    if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
-    if (SPRAY.on && h.source && h.source.handedness === "right"){ h.spraying = true; return; }
-    if (STIM.on && h.source && h.source.handedness === "right"){ stimulateWithRay(rayOf(h)); return; }
-    if (MEAS.on && h.source && h.source.handedness === "right"){ measureWithRay(rayOf(h)); return; }
-    if ((CUT.mode === "hand" || CUT.mode === "frozen") && h.source && h.source.handedness === "right"){
-      setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
-    }
-    pickWith(h);
+    /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
+       its pinch begins, so its select is acted on in the next frame (section 14). */
+    if (h.source && h.source.targetRayMode === "transient-pointer"){ h.pendingSelect = true; return; }
+    selectWith(h);
   });
   ctl.addEventListener("squeezestart", () => { h.squeezing = true; grabStart(); });
   ctl.addEventListener("squeezeend", () => { h.squeezing = false; grabStart(); });
   return h;
 });
 
+function selectWith(h){
+  const mh = menuHit(h);
+  if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
+  const tool = isToolHand(h);
+  if (FLY.trigger && tool){ flyWithHand(h); return; }
+  if (SPRAY.on && tool){ h.spraying = true; return; }
+  if (STIM.on && tool){ stimulateWithRay(rayOf(h)); return; }
+  if (MEAS.on && tool){ measureWithRay(rayOf(h)); return; }
+  if ((CUT.mode === "hand" || CUT.mode === "frozen") && tool){
+    setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
+  }
+  pickWith(h);
+}
 function pickWith(h){
   tmpM.identity().extractRotation(h.ctl.matrixWorld);
   raycaster.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld);
@@ -2873,13 +2884,21 @@ function sticks(dt){
       }
     }
     /* buttons[4] = A / X, buttons[5] = B / Y on Quest Touch controllers (xr-standard mapping). */
-    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed), b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);
+    const pr = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const b4 = pr(4), b5 = pr(5);
     if (b4 && !h.prevBtn[4]){ if (left) toggleIsolate(); else toggleGlass(); }
     if (b5 && !h.prevBtn[5]){ if (left) toggleMenu(); else { resetStage(); } }
-    /* buttons[3] = pressing the thumbstick in. Right: fly to where the ray points (section 13). */
-    const b3 = !!(gp.buttons[3] && gp.buttons[3].pressed);
-    if (b3 && !h.prevBtn[3] && !left) flyWithHand(h);
-    h.prevBtn[4] = b4; h.prevBtn[5] = b5; h.prevBtn[3] = b3;
+    /* buttons[3] = pressing the thumbstick in. Right: fly to where the ray points (section 13).
+       A controller with no thumbstick (HTC Vive wands: trigger, grip, touchpad) uses the touchpad
+       click, buttons[2], instead; and one with no Y button (Vive, the first Windows Mixed Reality
+       controllers) opens the palette with the LEFT stick or touchpad click -- section 14. On a
+       Quest the left stick click was unused and still is: Y opens the palette. */
+    const press = gp.buttons.length > 3 ? 3 : 2, bp = pr(press);
+    if (bp && !h.prevBtn.press){
+      if (!left) flyWithHand(h);
+      else if (gp.buttons.length <= 5) toggleMenu();
+    }
+    h.prevBtn[4] = b4; h.prevBtn[5] = b5; h.prevBtn.press = bp;
   }
 }
 
@@ -2968,6 +2987,7 @@ function menuRows(){
     rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
     rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
     rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
+    rows.push({ label: "Fly with the trigger / pinch", on: !!FLY.trigger, act: () => { FLY.trigger = !FLY.trigger; } });
     rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
   } else if (t === "Spray"){
     rows.push({ label: "Spray can (hold the right trigger)", on: SPRAY.on, act: () => setSpray(!SPRAY.on) });
@@ -3026,6 +3046,11 @@ function menuRows(){
       rows.push({ label: "Room-sized", act: () => setSize(6) });
       rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
       rows.push({ label: "Reset position", act: resetStage });
+      rows.push({ label: "◂ Turn 30° left   |   right ▸", act: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI / 6); USER_MOVED = true; },
+                  act2: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -Math.PI / 6); USER_MOVED = true; } });
+      rows.push({ label: "◂ Bigger ×1.5   |   smaller ▸", act: () => setSize(stage.scale.x / FIT_SCALE * 1.5),
+                  act2: () => setSize(stage.scale.x / FIT_SCALE / 1.5) });
+      if (INPUT.mode === "hands") rows.push({ label: "Bring the palette here", act: floatMenu });
       rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : ""), act: () => saveScene(true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
@@ -3086,6 +3111,9 @@ function drawMenu(){
 function leftHand(){ return hands.find(h => h.source && h.source.handedness === "left") || hands[0]; }
 function toggleMenu(){
   MENU.open = !MENU.open;
+  if (MENU.open && INPUT.mode === "hands"){ drawMenu(); floatMenu(); return; }
+  MENU.floating = false;
+  if (MENU.mesh) MENU.mesh.scale.setScalar(1);
   if (MENU.open){
     drawMenu();
     /* On the left grip: just above and in front of the controller, its foot at the hand, tilted
@@ -3100,7 +3128,7 @@ const _uv = new THREE.Raycaster();
 /* What the controller is pointing at on the palette: {tab} or {row}, or null. The palette's own
    hand is never the pointer -- you cannot point a hand at itself. */
 function menuHit(h){
-  if (!MENU.open || !MENU.mesh || h === leftHand()) return null;
+  if (!MENU.open || !MENU.mesh || (!MENU.floating && h === leftHand())) return null;
   tmpM.identity().extractRotation(h.ctl.matrixWorld);
   _uv.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld);
   _uv.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
@@ -3112,11 +3140,11 @@ function menuHit(h){
     return k >= 0 && k < TABS.length ? { tab: k } : { none: true };
   }
   const k = Math.floor((py - MENU_PAD - TAB_H - 10) / ROW_H);
-  return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? { row: k } : { none: true };
+  return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? (MENU.rows[k].act2 ? { row: k, half: px > MENU_W / 2 ? 1 : 0 } : { row: k }) : { none: true };
 }
 function menuAct(hit){
   if (hit.tab != null){ MENU.tab = hit.tab; MENU.help = false; }
-  else if (hit.row != null) MENU.rows[hit.row].act();
+  else if (hit.row != null){ const r = MENU.rows[hit.row]; (hit.half && r.act2 ? r.act2 : r.act)(); }
   MENU.dirty = true;
 }
 function menuFrame(){
@@ -3137,7 +3165,7 @@ renderer.xr.addEventListener("sessionend", () => {
 });
 
 /* ── the VR button ────────────────────────────────────────────────────────── */
-const vrBtn = VRButton.createButton(renderer);
+const vrBtn = VRButton.createButton(renderer, { optionalFeatures: ["hand-tracking"] });
 document.getElementById("vrslot").appendChild(vrBtn);
 /* "VR NOT SUPPORTED" means the browser HAS WebXR but no headset runtime answered. On a PC that is
    almost always the OpenXR runtime (Air Link / Link not set as active, or SteamVR holding it);
@@ -3147,10 +3175,12 @@ document.getElementById("vrslot").appendChild(vrBtn);
   try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported("immersive-vr")); } catch (e){}
   if (ok) return;
   const n = document.createElement("div"); n.className = "help";
-  n.innerHTML = "<b>No headset found by this browser.</b> Either open the <b>headset link</b> in the " +
-    "<b>Meta Quest Browser</b> inside the headset (simplest), or, on the PC with Air Link: in the " +
-    "<b>Meta Quest Link</b> app go to Settings → General → OpenXR Runtime → <b>Set Meta Quest Link as active</b>, " +
-    "start Air Link, then reload this page in Chrome or Edge.";
+  n.innerHTML = "<b>No headset found by this browser.</b> Either open the <b>headset link</b> in the headset's own browser " +
+    "(simplest: Meta Quest Browser, Pico Browser, Safari on Apple Vision Pro, Wolvic), or use a PC headset with Chrome or Edge " +
+    "and make its software the active <b>OpenXR runtime</b>: for a Quest with Air Link / Link, in the <b>Meta Quest Link</b> app " +
+    "Settings → General → OpenXR Runtime → <b>Set Meta Quest Link as active</b>; for Valve Index, HTC Vive and most others, in " +
+    "<b>SteamVR</b> Settings → OpenXR → <b>Set SteamVR as OpenXR runtime</b>; Windows Mixed Reality headsets do this themselves. " +
+    "Then reload this page.";
   document.getElementById("vrslot").appendChild(n);
 })();
 
@@ -3297,12 +3327,79 @@ document.getElementById("keysCard").addEventListener("click", () => toggleKeysCa
 try { if (localStorage.getItem("vr_keys_card") === "0") toggleKeysCard(false); } catch (e){}
 renderer.xr.addEventListener("sessionstart", () => { FLY.on = false; KEYS.clear(); });
 
+/* ── 14. OTHER HEADSETS ─────────────────────────────────────────────────────  2026-10-15
+   Søren: "make sure that the VR is compatible also with other common VR headset types … as long as
+   it does not affect the Quest 2 usability." Nothing below changes what a Quest's controllers do;
+   it adds fallbacks for what other headsets lack.
+
+   · FLOOR. The room is laid out on a 'local-floor' reference space (the floor at y = 0). A headset
+     that cannot give one gets 'local' (its origin at the head) shifted 1.6 m down, so the
+     collection still appears in front of you, not above your head.
+   · CONTROLLERS WITHOUT FACE BUTTONS OR STICKS (HTC Vive wands, the first Windows Mixed Reality
+     controllers): touchpads drive turning, tilting and resizing as the sticks do (they report on the
+     same axes); the right touchpad click flies; the left stick or touchpad click opens the palette
+     where there is no Y. A, B and X have palette rows already (Tools: see-through, only the picked
+     cell; View: reset).
+   · NO CONTROLLERS AT ALL (Apple Vision Pro, which points with look-and-pinch; Quest or Pico hand
+     tracking): the palette floats in front of you on the left instead of riding a hand, and is
+     reached by pointing and pinching like everything else; either hand can use the tools. The View
+     tab has turn and resize rows, and Tools has "Fly with the trigger / pinch", since there is no
+     stick to press and nothing to grab with.
+   · Valve Index, HP Reverb G2, Pico 4 and Quest Pro / 3 report the Quest's own button layout
+     (trigger 0, grip 1, stick 3, A/X 4, B/Y 5) and need none of this. */
+const INPUT = { mode: "pads" };
+function isToolHand(h){
+  if (!h.source) return false;
+  if (INPUT.mode === "hands") return h.source.handedness !== "left" || !hands.some(o => o !== h && o.source);
+  return h.source.handedness === "right" || (h.source.handedness === "none" && h === rightHand());
+}
+/* Controllers with buttons, or only hands / transient pointers? Decided from what is connected. */
+function inputFrame(){
+  const srcs = hands.map(h => h.source).filter(Boolean);
+  const pads = srcs.some(s => s.gamepad && s.gamepad.buttons && s.gamepad.buttons.length >= 2 && !s.hand && s.targetRayMode === "tracked-pointer");
+  const mode = srcs.length && !pads ? "hands" : "pads";
+  if (mode !== INPUT.mode){
+    INPUT.mode = mode;
+    if (mode === "hands"){ if (!MENU.open) toggleMenu(); else floatMenu(); }
+    else if (MENU.floating){ MENU.open = false; if (MENU.mesh && MENU.mesh.parent) MENU.mesh.parent.remove(MENU.mesh); MENU.floating = false; }
+    MENU.dirty = true;
+  }
+  for (const h of hands) if (h.pendingSelect){ h.pendingSelect = false; selectWith(h); }
+}
+/* The palette in the room: 55 cm ahead, a little to the left and below the eyes, facing you. */
+function floatMenu(){
+  if (!MENU.mesh) drawMenu();
+  const cam = renderer.xr.getCamera(), head = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
+  const fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+  const rt = new THREE.Vector3(-fw.z, 0, fw.x);
+  if (MENU.mesh.parent) MENU.mesh.parent.remove(MENU.mesh);
+  MENU.mesh.position.copy(head).addScaledVector(fw, 0.55).addScaledVector(rt, -0.28).add(new THREE.Vector3(0, -0.32, 0));
+  MENU.mesh.lookAt(head.x, MENU.mesh.position.y + 0.1, head.z);
+  MENU.mesh.scale.setScalar(1.6);
+  scene.add(MENU.mesh); MENU.floating = true; MENU.open = true;
+}
+/* No floor? Fall back to the head-centred space, lowered to where a floor would be. */
+const _setSession = renderer.xr.setSession.bind(renderer.xr);
+renderer.xr.setSession = async session => {
+  let floor = true;
+  try { if (session) await session.requestReferenceSpace("local-floor"); } catch (e){ floor = false; }
+  renderer.xr.setReferenceSpaceType(floor ? "local-floor" : "local");
+  await _setSession(session);
+  if (session && !floor){
+    try {
+      const base = await session.requestReferenceSpace("local");
+      renderer.xr.setReferenceSpace(base.getOffsetReferenceSpace(new XRRigidTransform({ x: 0, y: -1.6, z: 0 })));
+    } catch (e){}
+  }
+};
+renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false; });
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   flyFrame(dt);
-  if (renderer.xr.isPresenting){ sticks(dt); grabUpdate(); menuFrame(); }
+  if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
   else { keysFrame(dt); controls.update(); }
   placeLabel();
   cutFrame();
@@ -3322,7 +3419,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
