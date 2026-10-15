@@ -7187,7 +7187,7 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
                 somaDepthUm:somaDepth?somaDepth.depthUm:null
               });
             });
-            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";});
+            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";p.classification_system=(pi&&pi.classification_system)||"";});
             /* Not every partner has a nucleus detection at all (axon fragments, glial processes,
                and other non-somatic partner IDs simply aren't in nucleus_detection_v0), and not
                every nucleus has a type call, so some blanks are expected. But zero matches across
@@ -7263,7 +7263,7 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
             +'<div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap">'
             +'<button class="idbtn" id="connNgl" type="button">Open in Neuroglancer</button>'
             +'<button class="idbtn" id="connVR" type="button" title="Add this cell to your VR collection with every input (blue) and output (pink) synapse found, drawn on the cell in the VR viewer">+ VR: cell + synapses</button>'
-            +'<button class="idbtn" id="connVRp" type="button" title="Also add the strongest partners (up to '+VR_PARTNERS_PER_DIR+' per direction) as cells, labelled with their type">+ VR: also top partners</button>'
+            +'<button class="idbtn" id="connVRp" type="button" title="Also add the strongest partners as cells, labelled with their type: per direction the '+(VR_PARTNERS_PER_DIR/2)+' strongest excitatory and the '+(VR_PARTNERS_PER_DIR/2)+' strongest inhibitory partners (filled up from the other kind when one has too few)">+ VR: also top partners (E + I)</button>'
             +'<button class="idbtn" id="connXlsx" type="button">Download all connections (Excel)</button></div>'
             +'<div class="scroll" style="max-height:260px;overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr>'
             +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)">dir</th>'
@@ -7309,7 +7309,27 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
           const vrBtn1=rt.querySelector("#connVR"),vrBtn2=rt.querySelector("#connVRp");
           if(vrBtn1)vrBtn1.addEventListener("click",()=>vrAddFromTool([vrTarget()],vrBtn1));
           if(vrBtn2)vrBtn2.addEventListener("click",()=>{
-            const parts=["input","output"].flatMap(d=>shown.filter(p=>p.direction===d).slice(0,VR_PARTNERS_PER_DIR))
+            /* HALF EXCITATORY, HALF INHIBITORY (2026-10-15, Søren: "I added the top partners for VR,
+               that turned out to be only inhibitory cells, perhaps we could have a top partners half
+               inhibitory and half excitatory?"). Per direction: the strongest excitatory and the
+               strongest inhibitory partners, by synapse count, VR_PARTNERS_PER_DIR/2 of each; when
+               one kind has fewer, the other fills the remaining places. Partners without a type
+               (axon fragments, no nucleus) only fill places that are still empty. Chosen from every
+               partner the query found that passes the minimum-synapse setting, not only the ones
+               listed in Neuroglancer. */
+            const kindOf=p=>{const c=String(p.classification_system||"");return /inhib/i.test(c)?"I":/excit/i.test(c)?"E":"";};
+            const pool=(typeof allPartners!=="undefined"&&allPartners.length?allPartners.filter(p=>p.syn_count>=minSyn):shown).slice().sort((a,b)=>b.syn_count-a.syn_count);
+            const pick=d=>{
+              const ofDir=pool.filter(p=>p.direction===d),half=Math.floor(VR_PARTNERS_PER_DIR/2);
+              const E=ofDir.filter(p=>kindOf(p)==="E"),I=ofDir.filter(p=>kindOf(p)==="I");
+              let take=E.slice(0,half).concat(I.slice(0,half));
+              const rest=E.slice(half).concat(I.slice(half)).sort((a,b)=>b.syn_count-a.syn_count);
+              while(take.length<VR_PARTNERS_PER_DIR&&rest.length)take.push(rest.shift());
+              const untyped=ofDir.filter(p=>!kindOf(p));
+              while(take.length<VR_PARTNERS_PER_DIR&&untyped.length)take.push(untyped.shift());
+              return take;
+            };
+            const parts=["input","output"].filter(d=>dirs.includes(d)).flatMap(pick)
               .map(p=>({ds:vrDs(),root:String(p.partner),nuc:"",extra:[],label:vrPartnerLabel(p.cell_type,p.direction)}));
             vrAddFromTool([vrTarget()].concat(parts),vrBtn2);
           });
