@@ -188,13 +188,15 @@
       <option value="fire">Synapses: fire the next cell</option>
       <option value="psp">Synapses: show the PSP only</option>
     </select>
-    <select id="stimNeed" title="How many excitatory inputs must arrive within 5 ms before a cell fires. 1 is the cartoon (one synapse is enough); real cortical neurons usually need tens.">
-      <option value="1">Fires after 1 input</option>
-      <option value="2">Fires after 2 inputs in 5 ms</option>
-      <option value="3">Fires after 3 inputs in 5 ms</option>
-      <option value="5">Fires after 5 inputs in 5 ms</option>
+    <select id="stimGain" title="How big one synaptic potential is at its synapse. Realistic: +2 mV (excitatory) / −1.5 mV (inhibitory) — a cortical neuron then needs many coincident inputs. Teaching ×10: a few nearby inputs, or a cluster that triggers a dendritic spike, fire the cell. Cartoon ×30: one input is usually enough.">
+      <option value="10" selected>Input strength: Teaching ×10</option>
+      <option value="1">Input strength: Realistic ×1</option>
+      <option value="30">Input strength: Cartoon ×30</option>
     </select>
     <button id="stimReset" title="Stop and clear all activity">Reset</button>
+    <button id="plotBtn" class="on" title="A voltage plot above every cell the activity reaches: the soma against the −50 mV threshold, each synapse site (numbered on the cell), and your electrodes">📈 Voltage plots</button>
+    <button id="elecBtn" title="Click (or trigger) on a cell to record its membrane voltage at that spot — up to 3 per cell, shown in the cell's voltage plot">📍 Electrode</button>
+    <button id="elecClr" title="Remove all electrodes">Clear electrodes</button>
   </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
@@ -533,26 +535,25 @@ function geometryFrom(positions, indices){
   return g;
 }
 /* Every cell material can glow with electrical activity (section 8, the stimulator). Three
-   per-vertex numbers carry it -- apT, when the action potential reaches this vertex; pspT, when a
-   synaptic potential does; pspD, how far this vertex is from the synapse that caused it -- and one
-   shared clock uniform says what time it is now. Everything is in REAL milliseconds and µm; only
+   per-vertex numbers carry it -- apT, when the action potential reaches this vertex, and vm, how far
+   its membrane is from rest right now (mV, written a few times a second by the voltage model, v32)
+   -- and one shared clock uniform says what time it is now. Everything is in REAL milliseconds and µm; only
    the clock is slowed down. 1e9 means "never". */
 const AP_UNI = { apNow: { value: -1e9 }, apCol: { value: new THREE.Color(1.0, 0.97, 0.75) },
                  epspCol: { value: new THREE.Color(1.0, 0.55, 0.15) }, ipspCol: { value: new THREE.Color(0.75, 0.35, 1.0) },
-                 apBand: { value: 0.12 }, pspLambda: { value: 120.0 }, sprayTime: { value: 0 },
+                 apBand: { value: 0.12 }, sprayTime: { value: 0 },
                  apRef: { value: 3.0 }, refCol: { value: new THREE.Color(0.28, 0.42, 0.95) } };
 function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
-    sh.uniforms.pspInh = m.userData.pspInh || (m.userData.pspInh = { value: 0 });
-    sh.vertexShader = "attribute float apT;\nattribute float pspT;\nattribute float pspD;\nattribute vec4 paint;\nattribute float paintGlow;\nvarying float vGlow;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\nvarying vec4 vPaint;\n"
-      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vPspT = pspT; vPspD = pspD; vPaint = paint; vGlow = paintGlow;");
+    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
     /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float pspLambda;\nuniform float pspInh;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nvarying float vGlow;\nvarying float vApT;\nvarying float vPspT;\nvarying float vPspD;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
@@ -574,11 +575,19 @@ function cellMaterial(colour){
             diffuseColor.rgb = mix(diffuseColor.rgb, mix(diffuseColor.rgb * 0.35, refCol, 0.8), rk);
             totalEmissiveRadiance += refCol * 0.45 * rk;
           }
-          float p = apNow - vPspT;
-          if (p >= 0.0 && p < 25.0){
-            float shape = (1.0 - exp(-p / 0.8)) * exp(-p / 4.0);             // rise ~1 ms, decay ~4 ms
-            float amp = exp(-vPspD / pspLambda);                             // fades along the dendrite
-            totalEmissiveRadiance += mix(epspCol, ipspCol, pspInh) * 2.5 * shape * amp;
+          /* MEMBRANE VOLTAGE (v32): warm where depolarised -- orange, turning yellow as it nears the
+             20 mV that would fire the soma, yellow-white above 25 mV (a dendritic spike) -- and purple
+             where hyperpolarised. */
+          if (vVm > 0.2){
+            float e = clamp(vVm / 20.0, 0.0, 1.0), d = clamp((vVm - 25.0) / 15.0, 0.0, 1.0);
+            vec3 col = mix(mix(epspCol, vec3(1.0, 0.9, 0.25), e), vec3(1.0, 1.0, 0.85), d);
+            float k = clamp(vVm / 3.0, 0.0, 1.0) * (0.5 + 1.5 * e + 1.5 * d);
+            totalEmissiveRadiance += col * k;
+            diffuseColor.rgb = mix(diffuseColor.rgb, col, 0.35 * clamp(vVm / 6.0, 0.0, 1.0));
+          } else if (vVm < -0.2){
+            float k = clamp(-vVm / 10.0, 0.0, 1.0);
+            totalEmissiveRadiance += ipspCol * (0.3 + 1.4 * k) * clamp(-vVm / 1.5, 0.0, 1.0);
+            diffuseColor.rgb = mix(diffuseColor.rgb, ipspCol, 0.4 * k);
           }
         }`);
   };
@@ -587,7 +596,8 @@ function cellMaterial(colour){
 }
 function addActivityAttributes(g){
   const n = g.attributes.position.count;
-  for (const k of ["apT", "pspT", "pspD"]) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
+  g.setAttribute("apT", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
+  g.setAttribute("vm", new THREE.BufferAttribute(new Float32Array(n), 1));
   g.setAttribute("paint", new THREE.BufferAttribute(new Uint8Array(n * 4), 4, true));
   g.setAttribute("paintGlow", new THREE.BufferAttribute(new Uint8Array(n), 1, true));
 }
@@ -1757,7 +1767,9 @@ function cellGraph(c){
   for (let t = 0; t < I.length; t += 3){ const a = node[I[t]], b = node[I[t+1]], d = node[I[t+2]]; put(a, b); put(b, a); put(b, d); put(d, b); put(a, d); put(d, a); }
   c.graph = { node, pos, off, nb, w, m };
   /* A new graph (a reload at another detail) makes cached node numbers stale. */
-  c.somaNode = null; c.apNodeT = null;
+  c.somaNode = null; c.apNodeT = null; c.dCache = null; c.slots = []; c.sites = []; c.dspk = []; c._vmNode = null;
+  if (c.electrodes) c.electrodes.forEach(e => { if (e.tag && STIM.tags){ STIM.tags.remove(e.tag); e.tag.material.map.dispose(); e.tag.material.dispose(); } });
+  c.electrodes = [];
   if (STIM.syn) STIM.syn.forEach(x => { if (x.pre === c.i) x.node = null; if (x.post === c.i) x.postNode = null; });
   return c.graph;
 }
@@ -1878,29 +1890,177 @@ document.getElementById("caveSave").addEventListener("click", () => {
 /* ── firing ── */
 /* CELL TO CELL TO CELL (2026-10-15, Søren: "I would like that you can also see the action potential
    spreading within the receiving cell and that it can also elicit new action potentials in the cells
-   that it makes synapses with, so that you can have a spreading activity from cell to cell to cell
-   … we need to make it more clear that the glowing cells are in their refractory period.")
-   · A cell that is made to fire now fires the way a neuron does: the synaptic potential spreads to
-     the SOMA, the spike starts there (at the membrane nearest the nucleus) and runs out over the
-     whole cell -- dendrites and axon -- and every synapse that cell makes passes it on. Activity
-     travels cell → cell → cell for as long as there are connections.
-   · A cell can fire AGAIN once it has recovered. Behind every spike the membrane is refractory for
-     3 ms (painted a cool blue that drains away; the warm orange/purple glow is the synaptic
-     potential, not the refractory period). A new spike stops where the membrane is still
-     refractory, so a cell is never re-entered by its own wave.
-   · The threshold is chosen: one input is enough (the cartoon), or 2, 3 or 5 excitatory inputs within
-     5 ms (stimNeed). Inhibition still holds a cell back for 5 ms.
-   · A run is capped at 300 spikes so a recurrent loop cannot run forever; Reset stops everything. */
-const REF_MS = 3, EPSP_WINDOW = 5, MAX_SPIKES = 300;
+   that it makes synapses with … we need to make it more clear that the glowing cells are in their
+   refractory period.")
+   · A cell that is made to fire fires the way a neuron does: the spike starts at the SOMA (the
+     membrane nearest the nucleus) and runs out over the whole cell -- dendrites and axon -- and every
+     synapse that cell makes passes it on.
+   · Behind every spike the membrane is refractory for 3 ms (painted a cool blue that drains away). A
+     new spike stops where the membrane is still refractory.
+   · A run is capped at 300 spikes so a recurrent loop cannot run forever; Reset stops everything.
+
+   DENDRITIC INTEGRATION (v32, 2026-10-15, Søren: "It would be cool if the EPSP and IPSP only affected
+   the region around where the synapse is and then the signal faded out with distance from the
+   synapse, and then if more than one EPSP signal without more IPSP signals … nearby could elicit an
+   AP … show a figure with the EPSPs and the threshold for an AP for the individual regions near the
+   affected synapses"; then "Default is teaching. yes do dendritic spikes and shunting in first
+   version also, several plots one per cell.")
+   The old rule ("fires after N inputs in 5 ms") is gone. Every cell now has a membrane voltage:
+   · REST −70 mV, THRESHOLD −50 mV at the soma (the axon initial segment, in this cartoon the soma).
+   · Every synapse that arrives adds a synaptic potential AT ITS SITE: +2 mV (excitatory) or −1.5 mV
+     (inhibitory) in "Realistic"; ×10 in "Teaching" (the default) and ×30 in "Cartoon", where one
+     input is enough. It rises in ~1 ms and decays in ~15 ms (EPSP) or ~20 ms (IPSP), and it fades
+     with distance along the membrane, exp(−d / 150 µm) -- passive cable attenuation, one length
+     constant for the whole cell.
+   · The soma sums everything that reaches it. Crossing −50 mV fires a spike from the soma (unless the
+     soma is still refractory), followed by a −12 mV afterhyperpolarisation.
+   · SHUNTING: an inhibitory synapse also opens a conductance that short-circuits excitatory current
+     near it -- an EPSP whose site, or whose path to the soma, passes within ~40 µm of an active
+     inhibitory synapse is scaled down by up to 70 %, on top of the IPSP's own hyperpolarisation.
+   · DENDRITIC SPIKES: where clustered excitation depolarises a dendritic site by ≥ 25 mV, more than
+     40 µm from the soma, that branch fires a local regenerative spike (+35 mV at the site, ~8 ms,
+     then 20 ms refractory there) -- the nonlinearity that lets a few clustered inputs do what many
+     scattered ones cannot.
+   · The membrane shows it: warm orange → yellow where depolarised (bright yellow-white for a
+     dendritic spike), purple where hyperpolarised; the white band is still the action potential and
+     blue is still refractory.
+   · VOLTAGE PLOTS, one per cell the activity reaches, float above it: the soma trace against the
+     threshold, a trace per synapse site (numbered on the cell), and up to three electrodes the user
+     places with 📍.
+   All of this is schematic: one length constant, linear summation (except shunting and the dendritic
+   spike), no real morphology-dependent cable properties. Parameter ranges: Spruston 2008, Nat Rev
+   Neurosci 9:206 (doi 10.1038/nrn2286); Polsky, Mel & Schiller 2004, Nat Neurosci 7:621 (doi
+   10.1038/nn1253); Koch, Poggio & Torre 1983, PNAS 80:2799 (doi 10.1073/pnas.80.9.2799). */
+const REF_MS = 3, MAX_SPIKES = 300;
+const VM = { rest: -70, thr: -50, lambda: 150, ampE: 2, ampI: -1.5, tauRE: 1, tauDE: 15, tauRI: 1, tauDI: 20,
+             shuntD: 40, shuntK: 0.7, dspkV: 25, dspkMinD: 40, dspkAmp: 35, tauRD: 0.5, tauDD: 8, dspkRef: 20,
+             ahpAmp: -12, tauRA: 0.3, tauDA: 10, maxSlots: 16, window: 40, plotMax: 12, sites: 5, elecMax: 3 };
+const GAIN_NAME = { "1": "Realistic ×1", "10": "Teaching ×10", "30": "Cartoon ×30" };
+function stimGain(){ return +document.getElementById("stimGain").value || 10; }
+/* HOW FAR A SYNAPSE MAY BE FROM THE MESH (2026-10-15). The synapse point is in the cleft; at "light"
+   detail the mesh is simplified and thin axons lose vertices, so the nearest vertex can be several µm
+   away. 8 µm, tested only against the ONE cell the synapse table names, cannot attach it to the wrong
+   cell. */
+const SYN_TOL = 8;
+/* WHY NOTHING FIRED (2026-10-15, Søren: "I am not getting APs elicited in the cell that it makes
+   synapses with, is that because there are too few synapses? … that needs to be clear for the
+   user."). Every synapse that arrives, and every one that cannot, is counted per target cell, the
+   soma's highest voltage is kept, and when the run ends the user is told, cell by cell, what
+   happened and why. */
+function why(c){ STIM.why = STIM.why || {}; return STIM.why[c.i] || (STIM.why[c.i] = { epsp: 0, ipsp: 0, dspk: 0, fired: 0, peak: VM.rest, reasons: {} }); }
+function noteWhy(c, k){ const w = why(c); w.reasons[k] = (w.reasons[k] || 0) + 1; }
+
+/* ── the voltage model ── */
+/* Difference of exponentials, normalised so its peak is 1. */
+const _shapeNorm = new Map();
+function psShape(t, tr, td){
+  if (t <= 0) return 0;
+  const k = tr + "/" + td;
+  let n = _shapeNorm.get(k);
+  if (n == null){ const tp = tr * td / (td - tr) * Math.log(td / tr); n = Math.exp(-tp / td) - Math.exp(-tp / tr); _shapeNorm.set(k, n); }
+  return (Math.exp(-t / td) - Math.exp(-t / tr)) / n;
+}
+const PSP_V = () => STIM.speed * 4;            // passive spread, drawn as arriving with the onset (µm/ms)
+/* Distance (µm along the membrane) from one node to every node, cached per cell: a synapse site is
+   hit again and again in a recurrent run. */
+function distFrom(c, node){
+  c.dCache = c.dCache || new Map();
+  let D = c.dCache.get(node);
+  if (!D){
+    D = Float32Array.from(arrival(cellGraph(c), [{ node, t0: 0 }]).D);
+    D.att = D.map(d => d < 1e8 ? Math.exp(-d / VM.lambda) : 0);        // cable attenuation, once per site
+    if (c.dCache.size >= 24) c.dCache.delete(c.dCache.keys().next().value);
+    c.dCache.set(node, D);
+  }
+  return D;
+}
+function addSlot(c, node, t0, kind, amp){
+  const tr = { E: VM.tauRE, I: VM.tauRI, D: VM.tauRD, A: VM.tauRA }[kind], td = { E: VM.tauDE, I: VM.tauDI, D: VM.tauDD, A: VM.tauDA }[kind];
+  c.slots = (c.slots || []).filter(s => STIM.now - s.t0 < 6 * s.td);
+  if (c.slots.length >= VM.maxSlots) c.slots.shift();
+  const s = { node, t0, kind, amp, tr, td, D: distFrom(c, node) };
+  c.slots.push(s); STIM.active.add(c);
+  return s;
+}
+/* The conductance of an inhibitory slot right now at a node (0…1). */
+function gI(s, node, t){ return psShape(t - s.t0 - s.D[node] / PSP_V(), s.tr, s.td); }
+/* How much of an excitatory slot survives the inhibition near its site (and, for a read-out, near
+   the place it is read). */
+function shunt(c, e, t, node){
+  let f = 1;
+  for (const i of c.slots){
+    if (i.kind !== "I") continue;
+    const g = gI(i, e.node, t); if (g <= 0.001) continue;
+    const near = Math.max(Math.exp(-i.D[e.node] / VM.shuntD), node == null ? 0 : Math.exp(-i.D[node] / VM.shuntD));
+    f *= 1 - VM.shuntK * g * near;
+  }
+  return Math.max(0, f);
+}
+/* The membrane cannot be driven past the reversal potentials: summed depolarisation saturates toward
+   0 mV (the glutamate reversal), hyperpolarisation toward −85 mV (chloride / potassium). Without this
+   a recurrent loop in Cartoon ×30 summed to +100 mV. */
+function vmSat(x){ return x >= 0 ? 70 * (1 - Math.exp(-x / 70)) : -15 * (1 - Math.exp(x / 15)); }
+const mV = v => (v < 0 ? "−" : "") + Math.abs(v).toFixed(Math.abs(v) < 10 && v % 1 ? 1 : 0);
+/* Membrane voltage (mV) at one node at time t, without the action potential itself. */
+function vmAt(c, node, t){
+  let v = 0;
+  if (c.slots) for (const s of c.slots){
+    const d = s.D[node]; if (d >= 1e8) continue;
+    const sh = psShape(t - s.t0 - d / PSP_V(), s.tr, s.td); if (sh <= 0) continue;
+    v += s.amp * sh * Math.exp(-d / VM.lambda) * (s.kind === "E" || s.kind === "D" ? shunt(c, s, t, node) : 1);
+  }
+  return VM.rest + vmSat(v);
+}
+/* …and with the spike drawn in: up to +30 mV and back down in about a millisecond. */
+function vmShown(c, node, t){
+  const v = vmAt(c, node, t), ts = c.apNodeT ? c.apNodeT[node] : 1e9;
+  if (ts >= 1e8) return v;
+  const a = t - ts;
+  if (a < 0 || a >= 1) return v;
+  if (a < 0.25) return v + (30 - v) * (a / 0.25);
+  return 30 + (Math.min(v, -72) - 30) * ((a - 0.25) / 0.75);
+}
+/* Every vertex, for the colours: deviation from rest in mV (the afterhyperpolarisation is left out
+   -- it is a soma detail of the plot, not something to paint the whole cell purple with). */
+function writeVm(c){
+  const G = cellGraph(c), t = STIM.now, out = c._vmNode || (c._vmNode = new Float32Array(G.m));
+  out.fill(0);
+  const live = (c.slots || []).filter(s => s.kind !== "A");
+  for (const s of live){
+    const amp = s.amp * (s.kind === "E" || s.kind === "D" ? shunt(c, s, t) : 1), base = t - s.t0, vs = PSP_V();
+    if (psShape(base, s.tr, s.td) < 0.003 && base > 1) continue;
+    const att = s.D.att;
+    if (base > 2){
+      /* Past the first 2 ms the spread delay (≤ 0.5 ms across a millimetre) no longer changes the
+         shape: one number for the whole cell, scaled by distance -- a multiply-add per vertex. */
+      const a = amp * psShape(base, s.tr, s.td);
+      for (let n = 0; n < G.m; n++) out[n] += a * att[n];
+    } else for (let n = 0; n < G.m; n++){
+      const d = s.D[n]; if (d >= 1e8) continue;
+      const sh = psShape(base - d / vs, s.tr, s.td); if (sh <= 0) continue;
+      out[n] += amp * sh * att[n];
+    }
+  }
+  for (let n = 0; n < G.m; n++) if (out[n] !== 0) out[n] = vmSat(out[n]);
+  writeAttr(c, "vm", out);
+  c.vmLive = live.length > 0;
+}
+function clearVm(c){ const a = c.mesh && c.mesh.geometry.attributes.vm; if (a){ a.array.fill(0); a.needsUpdate = true; } c.vmLive = false; }
+
 function resetActivity(){
+  if (STIM.warn){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
   STIM.events = []; STIM.now = 0; STIM.running = false; STIM.spikes = 0; AP_UNI.apNow.value = -1e9;
+  STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
-    for (const k of ["apT", "pspT", "pspD"]){ const a = c.mesh.geometry.attributes[k]; a.array.fill(1e9); a.needsUpdate = true; }
-    c.apNodeT = null; c.pspSources = []; c.apLast = 0; c.epsps = []; c.pendingFire = false; c.inhibUntil = -1; c.nFired = 0; }
+    const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
+  clearSiteTags();
+  CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
+  syncPlots(true);
   MENU.dirty = true;
 }
-/* The spike's starting point when a synapse makes a cell fire: the membrane nearest the nucleus. */
+/* The spike's starting point when a cell is driven over threshold: the membrane nearest the nucleus. */
 function somaNode(c, fallback){
   const G = cellGraph(c);
   if (c.somaNode == null){
@@ -1918,59 +2078,78 @@ function fireCell(c, node, t0){
   let last = 0; for (let i = 0; i < T.length; i++) if (T[i] < 1e8 && T[i] >= t0 && T[i] > last) last = T[i];
   c.apLast = Math.max(c.apLast || 0, last);
   writeAttr(c, "apT", T);
+  STIM.active.add(c);
+  /* The afterhyperpolarisation at the soma, once the spike has been there. */
+  const soma = somaNode(c, node);
+  if (T[soma] < 1e8) addSlot(c, soma, T[soma] + 0.8, "A", VM.ahpAmp);
   /* Every synapse this cell makes, scheduled at the moment THIS spike reaches it. */
   if (STIM.syn) for (const s of STIM.syn){
     if (s.pre !== c.i) continue;
-    if (s.node == null){ const near = nearestNode(G, s.p); s.node = near.dist <= 3 ? near.node : -1; }
-    if (s.node < 0) continue;                             // the synapse is not on this mesh
+    if (s.node == null){ const near = nearestNode(G, s.p); s.node = near.dist <= SYN_TOL ? near.node : -1; }
+    if (s.node < 0){ STIM.offPre = (STIM.offPre || 0) + 1; continue; }     // the synapse is not on this mesh
     const tPre = T[s.node]; if (tPre >= 1e8 || tPre < t0) continue;   // not reached by this spike
     STIM.events.push({ t: tPre + SYN_DELAY, syn: s });
   }
   STIM.events.sort((a, b) => a.t - b.t);
 }
-function deliver(s){
+/* A synapse arrives: a synaptic potential starts at its site on the postsynaptic cell. Whether the
+   cell fires is decided by the voltage, frame by frame, in checkCell. */
+function deliver(s, t){
   const c = CELLS[s.post]; if (!c || !c.mesh) return;
   const G = cellGraph(c);
-  if (s.postNode == null){ const near = nearestNode(G, s.p); s.postNode = near.dist <= 3 ? near.node : -1; }
-  if (s.postNode < 0) return;
-  const pre = CELLS[s.pre], inh = cellClass(pre) === "inh";
-  /* An inhibitory input holds the cell back for ~5 ms: a firing it was about to do is cancelled,
-     and none starts in that window -- the simplest honest picture of shunting inhibition. */
-  if (inh) c.inhibUntil = STIM.now + 5;
-  /* The synaptic potential: from every synapse that has arrived in the last 25 ms. */
-  c.pspSources = (c.pspSources || []).filter(x => STIM.now - x.t0 < 25).concat([{ node: s.postNode, t0: STIM.now }]);
-  const { D } = arrival(G, c.pspSources.map(x => ({ node: x.node, t0: x.t0 })));
-  /* PSPs spread passively, much faster than a spike walks; draw them as arriving with the onset. */
-  writeAttr(c, "pspT", D.map(d => d < 1e8 ? STIM.now + d / (STIM.speed * 4) : 1e9));
-  writeAttr(c, "pspD", D);
-  c.mesh.material.userData.pspInh && (c.mesh.material.userData.pspInh.value = inh ? 1 : 0);
+  if (s.postNode == null){ const near = nearestNode(G, s.p); s.postNode = near.dist <= SYN_TOL ? near.node : -1; }
+  if (s.postNode < 0){ noteWhy(c, "off"); return; }
+  const inh = cellClass(CELLS[s.pre]) === "inh";
   if (s.marker) s.marker.scale.setScalar(2.2);
-  if (document.getElementById("stimMode").value !== "fire" || inh || cellClass(c) === "glia" || c.pendingFire) return;
-  /* Summation: enough excitatory inputs inside the window, and the soma not still refractory. */
-  c.epsps = (c.epsps || []).filter(t => STIM.now - t < EPSP_WINDOW).concat([STIM.now]);
-  const need = +document.getElementById("stimNeed").value || 1;
-  if (c.epsps.length < need) return;
+  const w = why(c); inh ? w.ipsp++ : w.epsp++;
+  if (cellClass(c) === "glia"){ noteWhy(c, "glia"); return; }
+  addSlot(c, s.postNode, t, inh ? "I" : "E", (inh ? VM.ampI : VM.ampE) * stimGain());
+  addSite(c, s.postNode, inh ? "I" : "E");
+  if (document.getElementById("stimMode").value !== "fire") noteWhy(c, "psp");
+}
+/* Per frame, per cell with live potentials: dendritic spikes where a site is driven hard enough,
+   and an action potential when the soma crosses threshold. */
+function checkCell(c, t){
+  if (document.getElementById("stimMode").value !== "fire" || cellClass(c) === "glia" || !c.slots || !c.slots.length) return;
+  const soma = somaNode(c, -1);
+  /* Dendritic spikes: at each excitatory site far enough from the soma that is not still refractory. */
+  c.dspk = (c.dspk || []).filter(d => t - d.t < VM.dspkRef);
+  for (const e of c.slots){
+    if (e.kind !== "E" || t - e.t0 > 3 * e.td) continue;
+    if (soma >= 0 && e.D[soma] < VM.dspkMinD) continue;
+    if (c.dspk.some(d => d.D[e.node] < 30)) continue;
+    if (vmAt(c, e.node, t) - VM.rest < VM.dspkV) continue;
+    const s = addSlot(c, e.node, t, "D", VM.dspkAmp);
+    c.dspk.push({ t, D: s.D }); why(c).dspk++;
+    addSite(c, e.node, "D");
+    ctxNote.textContent = "⚡ Dendritic spike on " + c.label + " — clustered excitation pushed that branch past its own threshold.";
+  }
+  if (soma < 0) return;
+  const v = vmAt(c, soma, t), w = why(c);
+  if (v > w.peak) w.peak = v;
+  if (v < VM.thr){ c.refrNoted = false; return; }
+  if (c.pendingFire) return;
+  if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS){ if (!c.refrNoted){ noteWhy(c, "refr"); c.refrNoted = true; } return; }
+  if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS + 1) return;
   if ((STIM.spikes || 0) >= MAX_SPIKES){ ctxNote.textContent = "⚡ " + MAX_SPIKES + " spikes in this run — stopping new ones here. Press Reset to start again."; return; }
-  const soma = somaNode(c, s.postNode);
-  const tSoma = STIM.now + (D[soma] < 1e8 ? D[soma] / (STIM.speed * 4) : 0) + FIRE_LAG;
-  if (c.apNodeT && c.apNodeT[soma] < 1e8 && tSoma < c.apNodeT[soma] + REF_MS) return;   // soma still refractory
-  c.pendingFire = true; c.epsps = [];
-  STIM.events.push({ t: tSoma, fire: c, node: soma }); STIM.events.sort((a, b) => a.t - b.t);
+  fireCell(c, soma, t); w.fired++;
+  ctxNote.textContent = "⚡ " + c.label + " reached threshold (" + mV(v) + " mV ≥ " + mV(VM.thr) + ") and fired" + (c.nFired > 1 ? " (" + c.nFired + "×)" : "") + " — spike " + STIM.spikes + " in this run.";
 }
 function stimulateWithRay(r){
   _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
   const targets = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh);
   const hit = _mr.intersectObjects(targets, false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0)[0];
-  if (!hit){ ctxNote.textContent = "Stimulate: point at a cell."; return; }
+  if (!hit){ ctxNote.textContent = STIM.electrode ? "Electrode: point at a cell." : "Stimulate: point at a cell."; return; }
   const c = CELLS[hit.object.userData.cell];
-  if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
   const local = content.worldToLocal(hit.point.clone());
+  if (STIM.electrode){ placeElectrode(c, local); return; }
+  if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
   if (!STIM.running) resetActivity();
   const G = cellGraph(c), near = nearestNode(G, local);
   /* TOO SOON (2026-10-15, Søren: "if you stimulate them again too soon, there will be a warning that
      you stimulated while cells are in refractory period, wait xxx ms before next stimulation"). The
-     wait is said in real milliseconds and in seconds at the current slow-down. */
-  /* A spike still on its way to this spot counts too: the membrane is about to be busy. */
+     wait is said in real milliseconds and in seconds at the spike slow-down. A spike still on its way
+     to this spot counts too: the membrane is about to be busy. */
   const waitAt = n => c.apNodeT && c.apNodeT[n] < 1e8 ? Math.max(0, c.apNodeT[n] + REF_MS - STIM.now) : 0;
   const say = ms => ms.toFixed(1) + " ms (about " + Math.ceil(ms * STIM.slow / 1000) + " s at this speed)";
   const w0 = waitAt(near.node);
@@ -1978,68 +2157,335 @@ function stimulateWithRay(r){
     ctxNote.textContent = "⚠ Too soon: " + c.label + " is in its refractory period here (blue) and cannot fire yet — wait " + say(w0) + " before stimulating it again.";
     flashWarn(ctxNote.textContent); return;
   }
-  /* The touched spot has recovered, but other parts may not have: say so, the spike will stop there. */
   let wMax = 0; if (c.apNodeT) for (let i = 0; i < c.apNodeT.length; i++){ const w = waitAt(i); if (w > wMax) wMax = w; }
+  if (STIM.started == null) STIM.started = c.i;
   fireCell(c, near.node, STIM.now);
   if (wMax > 0) setTimeout(() => { ctxNote.textContent = "⚠ Parts of " + c.label + " are still refractory (blue): the new spike stops there. Wait " + say(wMax) + " for the whole cell to recover."; flashWarn(ctxNote.textContent); }, 0);
   STIM.running = true;
   ctxNote.textContent = "⚡ Spike started on " + c.label + " (" + EI_NAME[cellClass(c)] + (cellClass(c) === "unknown" ? ", treated as excitatory" : "")
-    + ") — spreading at 0.5 m/s, shown 5000× slower." + (STIM.syn && STIM.syn.some(x => x.pre === c.i) ? " Its " + STIM.syn.filter(x => x.pre === c.i).length + " output synapses will " + (cellClass(c) === "inh" ? "inhibit" : "excite") + " their targets." : "");
+    + ") — spreading at 0.5 m/s, shown 5000× slower." + (STIM.syn && STIM.syn.some(x => x.pre === c.i) ? " Its " + STIM.syn.filter(x => x.pre === c.i).length + " output synapses will " + (cellClass(c) === "inh" ? "inhibit" : "excite") + " their targets (" + GAIN_NAME[String(stimGain())] + ")." : "");
 }
-/* A warning that is seen in the headset as well as on the panel: a red-bordered card under the clock
-   for four seconds. */
-function flashWarn(text){
-  if (STIM.warn){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); }
-  const words = text.split(" "), lines = [""];
-  words.forEach(w => { if ((lines[lines.length - 1] + " " + w).length > 48) lines.push(w); else lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim(); });
-  STIM.warn = textSprite(lines, { fit: true, border: "#f85149", colors: lines.map(() => "#ffd7d5") });
-  const h = 0.016 * lines.length; STIM.warn.scale.set(h * STIM.warn.userData.aspect, h, 1);
-  const base = SBAR.group ? SBAR.group.position : stage.position;
-  STIM.warn.position.copy(base).add(new THREE.Vector3(0, -0.13, 0));
-  scene.add(STIM.warn); STIM.warnUntil = performance.now() + 4000;
+
+/* ── synapse sites and electrodes on a cell ── */
+const SITE_COL = { E: "#ff9a3c", I: "#b67cff", D: "#fff27a" };
+const ELEC_COL = ["#3fe0d0", "#9cff57", "#ffffff"];
+function addSite(c, node, kind){
+  c.sites = c.sites || [];
+  const near = c.sites.find(s => distFrom(c, s.node)[node] < 5);
+  if (near){ if (kind === "D") near.kind = "D"; return; }
+  if (c.sites.length >= VM.sites) return;
+  c.sites.push({ node, kind, n: c.sites.length + 1 });
+  if (STIM.plots) addSiteTag(c, c.sites[c.sites.length - 1], SITE_COL[kind], String(c.sites.length));
 }
-function stimFrame(dt){
-  if (STIM.warn && performance.now() > STIM.warnUntil){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
-  if (!STIM.running) return;
-  STIM.now += dt * 1000 / STIM.slow;
-  AP_UNI.apNow.value = STIM.now;
-  while (STIM.events.length && STIM.events[0].t <= STIM.now){
-    const e = STIM.events.shift();
-    if (e.syn) deliver(e.syn);
-    else if (e.fire){
-      if ((e.fire.inhibUntil || -1) >= e.t){ e.fire.pendingFire = false; ctxNote.textContent = "✋ " + e.fire.label + " was about to fire but an inhibitory input held it back."; continue; }
-      fireCell(e.fire, e.node, e.t);
-      ctxNote.textContent = "⚡ " + e.fire.label + " fired" + (e.fire.nFired > 1 ? " (" + e.fire.nFired + "×)" : "") + " — spike " + STIM.spikes + " in this run.";
+function nodePos(c, node){ const P = cellGraph(c).pos; return new THREE.Vector3(P[node*3], P[node*3+1], P[node*3+2]); }
+function addSiteTag(c, site, col, txt){
+  STIM.tags = STIM.tags || new THREE.Group();
+  if (!STIM.tags.parent) scene.add(STIM.tags);
+  const spr = textSprite([txt], { fit: true, border: col, colors: [col] });
+  const h = 0.022; spr.scale.set(h * spr.userData.aspect, h, 1);
+  spr.userData.cell = c.i; spr.userData.node = site.node;
+  STIM.tags.add(spr);
+}
+function clearSiteTags(){
+  if (!STIM.tags) return;
+  STIM.tags.children.slice().forEach(s => { if (s.userData.elec) return; STIM.tags.remove(s); s.material.map.dispose(); s.material.dispose(); });
+}
+function placeTags(){
+  if (!STIM.tags) return;
+  STIM.tags.visible = !!STIM.plots;
+  for (const s of STIM.tags.children){ const c = CELLS[s.userData.cell]; if (!c || !c.graph){ s.visible = false; continue; }
+    s.visible = c.mesh.visible; s.position.copy(content.localToWorld(nodePos(c, s.userData.node))); }
+}
+function placeElectrode(c, local){
+  const G = cellGraph(c), node = nearestNode(G, local).node;
+  c.electrodes = c.electrodes || [];
+  if (c.electrodes.length >= VM.elecMax){
+    const old = c.electrodes.shift();
+    if (old.tag){ STIM.tags.remove(old.tag); old.tag.material.map.dispose(); old.tag.material.dispose(); }
+  }
+  const k = [0, 1, 2].find(j => !c.electrodes.some(e => e.k === j));
+  const e = { node, k };
+  c.electrodes.push(e);
+  addSiteTag(c, e, ELEC_COL[k], "📍" + "abc"[k]);
+  e.tag = STIM.tags.children[STIM.tags.children.length - 1]; e.tag.userData.elec = true;
+  STIM.active.add(c);
+  if (!STIM.plots) setPlots(true); else syncPlots();
+  ctxNote.textContent = "📍 Electrode " + "abc"[k] + " on " + c.label + " — its trace is in the cell's voltage plot. Up to " + VM.elecMax + " per cell; a fourth replaces the oldest.";
+}
+function clearElectrodes(){
+  CELLS.forEach(c => { (c.electrodes || []).forEach(e => { if (e.tag){ STIM.tags.remove(e.tag); e.tag.material.map.dispose(); e.tag.material.dispose(); } }); c.electrodes = []; });
+  syncPlots(true);
+}
+
+/* ── voltage plots: one per cell, floating above it ── */
+function sampleCell(c, t){
+  const tr = c.trace || (c.trace = { t: [], soma: [], site: [], el: [] });
+  if (tr.t.length && t - tr.t[tr.t.length - 1] < 0.04) return;
+  const soma = somaNode(c, -1);
+  tr.t.push(t);
+  tr.soma.push(soma >= 0 ? vmShown(c, soma, t) : null);
+  tr.site.push((c.sites || []).map(s => vmShown(c, s.node, t)));
+  tr.el.push((c.electrodes || []).map(e => vmShown(c, e.node, t)));
+  while (tr.t.length && tr.t[0] < t - VM.window - 2){ tr.t.shift(); tr.soma.shift(); tr.site.shift(); tr.el.shift(); }
+}
+function plotCells(){
+  return [...(STIM.active || [])].filter(c => c.mesh && cellClass(c) !== "glia" || (c.electrodes && c.electrodes.length)).slice(0, VM.plotMax);
+}
+function drawPlot(c){
+  const P = c.plot, g = P.ctx, W = P.cv.width, H = P.cv.height;
+  const L = 100, R = 16, T = 96, B = 40, pw = W - L - R, ph = H - T - B;
+  const vLo = -85, vHi = -10, x = t => L + pw * (1 - (STIM.now - t) / VM.window), y = v => T + ph * (1 - (Math.min(vHi, Math.max(vLo, v)) - vLo) / (vHi - vLo));
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = "rgba(13,17,23,0.9)"; g.strokeStyle = c.colour || "#30363d"; g.lineWidth = 6;
+  g.beginPath(); g.roundRect(3, 3, W - 6, H - 6, 22); g.fill(); g.stroke();
+  const soma = somaNode(c, -1), tr = c.trace;
+  const vNow = soma >= 0 ? vmAt(c, soma, STIM.now) : null;
+  g.font = "600 34px system-ui, sans-serif"; g.fillStyle = "#e6edf3";
+  g.fillText(shortName(c) + "  ·  " + GAIN_NAME[String(stimGain())], 22, 42, W - 44);
+  g.font = "30px system-ui, sans-serif";
+  if (vNow != null){
+    const need = VM.thr - vNow;
+    g.fillStyle = need <= 0 ? "#ffe11a" : "#c9d1d9";
+    g.fillText("Soma " + mV(vNow) + " mV · threshold " + mV(VM.thr) + " · " + (need <= 0 ? "at threshold" : "needs +" + need.toFixed(need < 10 ? 1 : 0) + " mV"), 22, 76, W - 44);
+  } else { g.fillStyle = "#8b949e"; g.fillText("No nucleus loaded — the soma is unknown", 22, 76); }
+  /* axes: rest and threshold */
+  g.font = "22px system-ui, sans-serif"; g.lineWidth = 2;
+  [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"], [-30, "#30363d", "−30"], [-80, "#30363d", "−80"]].forEach(([v, col, lab]) => {
+    g.strokeStyle = col; g.setLineDash(v === VM.thr ? [10, 8] : v === VM.rest ? [3, 6] : []);
+    g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke();
+    g.fillStyle = col === "#30363d" ? "#6e7681" : col; g.fillText(lab, 10, y(v) + 7);
+  });
+  g.setLineDash([]);
+  g.fillStyle = "#6e7681"; g.fillText("−" + VM.window + " ms", L, H - 12); g.fillText("now", W - R - 40, H - 12);
+  if (!tr || !tr.t.length){ g.strokeStyle = "#e6edf3"; g.lineWidth = 3; g.beginPath(); g.moveTo(L, y(VM.rest)); g.lineTo(W - R, y(VM.rest)); g.stroke(); }
+  else {
+    const line = (get, col, w) => {
+      g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
+      for (let i = 0; i < tr.t.length; i++){ const v = get(i); if (v == null || tr.t[i] < STIM.now - VM.window){ on = false; continue; }
+        const X = x(tr.t[i]), Y = y(v); on ? g.lineTo(X, Y) : g.moveTo(X, Y); on = true; }
+      g.stroke();
+    };
+    (c.sites || []).forEach((s, k) => line(i => tr.site[i][k], SITE_COL[s.kind], 2.5));
+    (c.electrodes || []).forEach((e, k) => line(i => tr.el[i][k], ELEC_COL[e.k], 2.5));
+    line(i => tr.soma[i], "#f0f6fc", 4.5);
+    /* spikes run off the top: say so */
+    g.fillStyle = "#fff6c8"; g.font = "600 20px system-ui, sans-serif";
+    for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > vHi && !(tr.soma[i - 1] > vHi) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
+  }
+  /* legend */
+  const items = [["soma", "#f0f6fc"]].concat((c.sites || []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP"), SITE_COL[s.kind]]),
+                                             (c.electrodes || []).map(e => ["📍" + "abc"[e.k], ELEC_COL[e.k]]));
+  g.font = "24px system-ui, sans-serif"; let lx = L + 6;
+  items.forEach(([t, col]) => { const wd = g.measureText(t).width; if (lx + wd > W - R) return; g.fillStyle = col; g.fillText(t, lx, T + 22); lx += wd + 16; });
+  P.tex.needsUpdate = true;
+}
+function makePlot(c){
+  const cv = document.createElement("canvas"); cv.width = 760; cv.height = 430;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  spr.renderOrder = 11;
+  /* A thin line from the plot down to its cell, in the cell's colour. */
+  const lg = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+  const lead = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: c.colour || "#8b949e", transparent: true, opacity: 0.8, depthTest: false }));
+  lead.renderOrder = 10; lead.frustumCulled = false;
+  c.plot = { cv, ctx: cv.getContext("2d"), tex, spr, lead, last: 0, anchor: new THREE.Vector3() };
+  scene.add(spr, lead);
+}
+function dropPlot(c){ if (!c.plot) return; scene.remove(c.plot.spr, c.plot.lead); c.plot.tex.dispose(); c.plot.spr.material.dispose(); c.plot.lead.geometry.dispose(); c.plot.lead.material.dispose(); c.plot = null; }
+/* WHERE THE PLOTS GO. Each starts just above its cell; plots that would cover one another (as seen
+   from the eye) are pushed upward until they do not, and a leader line keeps each tied to its cell.
+   In the headset a plot is 22 cm wide, readable at arm's length; on a screen it is a fixed share of
+   the view, so it stays readable however far the camera is pulled back. */
+const _pb = new THREE.Box3(), _pq = new THREE.Quaternion(), _pr = new THREE.Vector3(), _pu = new THREE.Vector3(), _pe = new THREE.Vector3(), _pd = new THREE.Vector3();
+function placePlots(list){
+  const xr = renderer.xr.isPresenting, cam = xr ? renderer.xr.getCamera() : camera;
+  cam.getWorldQuaternion(_pq); cam.getWorldPosition(_pe);
+  _pr.set(1, 0, 0).applyQuaternion(_pq); _pu.set(0, 1, 0).applyQuaternion(_pq);
+  const tanH = Math.tan(THREE.MathUtils.degToRad((camera.fov || 50) / 2));
+  for (const c of list){
+    const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+    _pb.copy(g.boundingBox).applyMatrix4(c.mesh.matrixWorld);
+    const P = c.plot; P.anchor.set((_pb.min.x + _pb.max.x) / 2, _pb.max.y, (_pb.min.z + _pb.max.z) / 2);
+    const w = xr ? 0.22 : Math.max(0.05, 0.4 * _pe.distanceTo(P.anchor) * tanH * 760 / 430);
+    P.spr.scale.set(w, w * 430 / 760, 1);
+    P.spr.position.copy(P.anchor).addScaledVector(_pu, P.spr.scale.y / 2 + w * 0.06);
+  }
+  /* Lowest first; each later one moves past any it overlaps. */
+  const order = list.slice().sort((a, b) => _pd.subVectors(a.plot.spr.position, b.plot.spr.position).dot(_pu));
+  for (let i = 0; i < order.length; i++){
+    const A = order[i].plot.spr;
+    for (let pass = 0; pass < order.length; pass++){
+      let moved = false;
+      for (let j = 0; j < i; j++){
+        const B = order[j].plot.spr; _pd.subVectors(A.position, B.position);
+        const dx = _pd.dot(_pr), dy = _pd.dot(_pu), hw = (A.scale.x + B.scale.x) / 2, hh = (A.scale.y + B.scale.y) / 2;
+        if (Math.abs(dx) < hw * 1.03 && Math.abs(dy) < hh * 1.04){
+          /* The smaller way out: sideways (away from the other plot) or up. Side by side first keeps
+             a row of plots on screen instead of a tower climbing out of it. */
+          const side = hw * 1.03 - Math.abs(dx), up = hh * 1.04 - dy;
+          if (side < up) A.position.addScaledVector(_pr, dx >= 0 ? side : -side); else A.position.addScaledVector(_pu, up);
+          moved = true;
+        }
+      }
+      if (!moved) break;
     }
   }
+  for (const c of list){
+    const P = c.plot, a = P.lead.geometry.attributes.position;
+    _pd.copy(P.spr.position).addScaledVector(_pu, -P.spr.scale.y / 2);
+    a.setXYZ(0, P.anchor.x, P.anchor.y, P.anchor.z); a.setXYZ(1, _pd.x, _pd.y, _pd.z); a.needsUpdate = true;
+  }
+}
+function syncPlots(force){
+  const want = new Set(STIM.plots ? plotCells() : []);
+  CELLS.forEach(c => { if (c.plot && !want.has(c)) dropPlot(c); });
+  want.forEach(c => { if (!c.plot) makePlot(c); if (force) drawPlot(c); });
+}
+function plotsFrame(){
+  if (!STIM.plots) return;
+  const now = performance.now();
+  if (!STIM._plotSync || now - STIM._plotSync > 300){ STIM._plotSync = now; syncPlots(); }
+  const list = CELLS.filter(c => c.plot && c.mesh);
+  list.forEach(c => { c.plot.spr.visible = c.plot.lead.visible = !!c.mesh.visible; });
+  placePlots(list.filter(c => c.mesh.visible));
+  list.forEach(c => {
+    if (now - c.plot.last > 110 && (STIM.running || !c.plot.drawn)){ c.plot.last = now; c.plot.drawn = true; drawPlot(c); } });
+  placeTags();
+}
+function setPlots(v){
+  STIM.plots = v; document.getElementById("plotBtn").classList.toggle("on", v);
+  if (STIM.tags){
+    if (!v) clearSiteTags();
+    else CELLS.forEach(c => (c.sites || []).forEach(s => addSiteTag(c, s, SITE_COL[s.kind], String(s.n))));
+  }
+  syncPlots(true); placeTags(); MENU.dirty = true;
+}
+function setElectrode(v){
+  STIM.electrode = v; document.getElementById("elecBtn").classList.toggle("on", v);
+  if (v && !STIM.on) setStim(true);
+  ctxNote.textContent = v ? "📍 Electrode: click (or trigger) on a cell to record from that spot. Turn 📍 off to stimulate again." : "📍 Electrode off — clicks stimulate.";
+  MENU.dirty = true;
+}
+
+/* At the end of a run: what happened to every cell that the activity reached, and why the ones that
+   did not fire did not -- in voltages. Panel note plus a card in the room (seen in the headset). */
+function runSummary(){
+  const mode = document.getElementById("stimMode").value, gain = stimGain();
+  const st = STIM.started != null ? CELLS[STIM.started] : null;
+  const lines = [];
+  if (!STIM.syn) lines.push("No synapses loaded — activity can only stay in the cell you touch (needs a CAVE token).");
+  else if (st){
+    const outs = STIM.syn.filter(x => x.pre === st.i), on = outs.filter(x => x.node != null && x.node >= 0).length;
+    if (!outs.length) lines.push(shortName(st) + " makes no synapses onto the other loaded cells — nothing can be passed on. Try “+3 neighbours” or cells from its Connectivity list.");
+    else if (outs.length && !on) lines.push(shortName(st) + "'s " + outs.length + " output synapse" + (outs.length > 1 ? "s are" : " is") + " not on its loaded mesh — try Detail: full.");
+  }
+  if (STIM.offPre) lines.push(STIM.offPre + " synapse arrival" + (STIM.offPre === 1 ? " was" : "s were") + " skipped because the synapse lies more than " + SYN_TOL + " µm from the presynaptic mesh — try Detail: full.");
+  const R = { glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
+  for (const k in (STIM.why || {})){
+    const c = CELLS[k], w = STIM.why[k]; if (!c || (!w.epsp && !w.ipsp && !w.fired && !Object.keys(w.reasons).length)) continue;
+    const ins = (w.epsp ? w.epsp + " EPSP" + (w.epsp === 1 ? "" : "s") : "") + (w.ipsp ? (w.epsp ? ", " : "") + w.ipsp + " IPSP" + (w.ipsp === 1 ? "" : "s") : "")
+              + (w.dspk ? ", " + w.dspk + " dendritic spike" + (w.dspk === 1 ? "" : "s") : "");
+    if (w.fired){ lines.push("✓ " + shortName(c) + " fired " + w.fired + "× (" + ins + ")"); continue; }
+    let msg = "✗ " + shortName(c) + ": " + ins;
+    if (w.reasons.glia || w.reasons.off || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
+    else if (w.reasons.psp) msg += " — PSP-only mode: synapses never fire the next cell.";
+    else {
+      const short = VM.thr - w.peak;
+      msg += " — soma peaked at " + mV(w.peak) + " mV, " + short.toFixed(short < 10 ? 1 : 0) + " mV short of the " + mV(VM.thr) + " mV threshold.";
+      if (w.ipsp) msg += " Inhibition pulled it down.";
+      msg += gain < 10 ? " Realistic inputs are small: a cortical neuron needs many coincident ones. Try Teaching ×10, or add cells with more connections."
+           : gain < 30 ? " Inputs far from the soma fade on the way; more inputs, or inputs clustered on one branch (a dendritic spike), would do it."
+           : " Try adding cells with more connections.";
+    }
+    if (w.reasons.refr) msg += " (Reached threshold while still refractory.)";
+    lines.push(msg);
+  }
+  if (!lines.length) return;
+  const head = "Run finished: " + (STIM.spikes || 0) + " spike" + (STIM.spikes === 1 ? "" : "s") + " · " + GAIN_NAME[String(gain)] + (mode === "psp" ? " (PSP-only mode: synapses never fire the next cell)" : "");
+  ctxNote.innerHTML = "<b>" + esc(head) + "</b><br>" + lines.map(esc).join("<br>");
+  flashWarn([head].concat(lines), 12000, "#e3b341");
+}
+function shortName(c){ return String(c.label || "Cell").replace(/\s*\(.*$/, "") + (c.root ? " …" + String(c.root).slice(-4) : ""); }
+/* A warning that is seen in the headset as well as on the panel: a bordered card under the clock. */
+function flashWarn(text, ms, border){
+  if (STIM.warn){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); }
+  /* One string, or one entry per paragraph; each is wrapped at ~48 characters. */
+  const lines = [];
+  (Array.isArray(text) ? text : [text]).forEach(par => {
+    lines.push("");
+    String(par).split(" ").forEach(w => { if ((lines[lines.length - 1] + " " + w).length > 48) lines.push(w); else lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim(); });
+  });
+  STIM.warn = textSprite(lines.slice(0, 16), { fit: true, border: border || "#f85149", colors: lines.map(() => border ? "#f5e6c4" : "#ffd7d5") });
+  const h = 0.016 * Math.min(16, lines.length); STIM.warn.scale.set(h * STIM.warn.userData.aspect, h, 1);
+  const base = SBAR.group ? SBAR.group.position : stage.position;
+  STIM.warn.position.copy(base).add(new THREE.Vector3(0, -0.125 - h / 2, 0));     // top edge just under the clock
+  scene.add(STIM.warn); STIM.warnUntil = performance.now() + (ms || 4000);
+}
+/* THE CLOCK RUNS AT TWO SPEEDS. A spike crosses a cell in a few ms and is shown 5000× slower so the
+   band can be followed; synaptic potentials last tens of ms, which at 5000× would take minutes, so
+   between spikes the clock eases to 500× slower. The clock card always says which. */
+STIM.slowIdle = 500;
+function stimFrame(dt){
+  if (STIM.warn && performance.now() > STIM.warnUntil){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
+  plotsFrame();
+  if (STIM.warn && STIM.hud && STIM.hud.spr && STIM.hud.spr.parent) STIM.warn.position.copy(STIM.hud.spr.position).add(new THREE.Vector3(0, -STIM.hud.spr.scale.y / 2 - 0.006 - STIM.warn.scale.y / 2, 0));
+  if (!STIM.running) return;
+  STIM.active = STIM.active || new Set();
+  const lastAp = Math.max(0, ...CELLS.map(c => c.apLast || 0));
+  const busy = STIM.now < lastAp + 0.3 || (STIM.events.length && STIM.events[0].t < STIM.now + 0.6);
+  const target = Math.log(busy ? STIM.slow : Math.min(STIM.slow, STIM.slowIdle));
+  STIM.slowLog = STIM.slowLog == null ? target : STIM.slowLog + (target - STIM.slowLog) * Math.min(1, dt * (busy ? 12 : 2));
+  const slow = Math.exp(STIM.slowLog);
+  /* Small sub-steps so a threshold crossing or a dendritic spike is caught when it happens. */
+  const step = dt * 1000 / slow, n = Math.max(1, Math.ceil(step / 0.05));
+  for (let k = 0; k < n; k++){
+    STIM.now += step / n;
+    while (STIM.events.length && STIM.events[0].t <= STIM.now){ const e = STIM.events.shift(); if (e.syn) deliver(e.syn, e.t); }
+    for (const c of STIM.active){ checkCell(c, STIM.now); sampleCell(c, STIM.now); }
+  }
+  AP_UNI.apNow.value = STIM.now;
+  /* Membrane colours, a few times a second. */
+  const pnow = performance.now();
+  if (!STIM._vmAt || pnow - STIM._vmAt > 120){ STIM._vmAt = pnow; for (const c of STIM.active) if (c.mesh && ((c.slots && c.slots.length) || c.vmLive)) writeVm(c); }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker && s.marker.scale.x > 1) s.marker.scale.setScalar(Math.max(1, s.marker.scale.x - dt * 0.8)); });
   /* A clock in real time, next to the scale bar. */
   if (!STIM.hud){ STIM.hud = { last: "" }; }
-  const txt = "t = " + STIM.now.toFixed(1) + " ms  (5000× slower) · " + (STIM.spikes || 0) + " spike" + (STIM.spikes === 1 ? "" : "s");
+  const txt = "t = " + STIM.now.toFixed(1) + " ms  (" + (Math.round(slow / 50) * 50) + "× slower) · " + (STIM.spikes || 0) + " spike" + (STIM.spikes === 1 ? "" : "s");
   if (txt !== STIM.hud.last){
     STIM.hud.last = txt;
     if (STIM.hud.spr){ scene.remove(STIM.hud.spr); STIM.hud.spr.material.map.dispose(); STIM.hud.spr.material.dispose(); }
     /* The clock is also the legend: what each colour on the cells means. */
     STIM.hud.spr = textSprite([txt, "white band — action potential", "blue — refractory, cannot fire (" + REF_MS + " ms)",
-                               "orange glow — EPSP · purple glow — IPSP"],
-                              { fit: true, border: "#ffe11a", colors: [null, "#fff6c8", "#6f8cff", "#f0a742"] });
-    const h = 0.02 * 4 * 0.75;
+                               "orange → yellow — depolarised (EPSP)", "purple — hyperpolarised (IPSP)", "bright yellow-white — dendritic spike"],
+                              { fit: true, border: "#ffe11a", colors: [null, "#fff6c8", "#6f8cff", "#f0a742", "#b67cff", "#fff27a"] });
+    const h = 0.02 * 6 * 0.75;
     STIM.hud.spr.scale.set(h * STIM.hud.spr.userData.aspect, h, 1);
     scene.add(STIM.hud.spr);
   }
-  if (SBAR.group) STIM.hud.spr.position.copy(SBAR.group.position).add(new THREE.Vector3(0, -0.06, 0));
-  /* Stop the clock a while after the last thing happened. */
-  const lastAp = Math.max(0, ...CELLS.map(c => c.apLast || 0));
-  if (!STIM.events.length && STIM.now > lastAp + 30){ STIM.running = false; }
+  if (SBAR.group) STIM.hud.spr.position.copy(SBAR.group.position).add(new THREE.Vector3(0, -0.075, 0));
+  /* Stop the clock once nothing is travelling and every membrane is back near rest. */
+  if (!STIM.events.length && STIM.now > lastAp + REF_MS){
+    let quiet = true;
+    for (const c of STIM.active){
+      if (!c.slots || !c.slots.length) continue;
+      if (c.slots.some(s => STIM.now - s.t0 < 2 * s.td)){ quiet = false; break; }
+    }
+    if (quiet){ STIM.running = false; for (const c of STIM.active) if (c.vmLive) writeVm(c); CELLS.forEach(c => c.plot && drawPlot(c)); runSummary(); }
+  }
 }
 function setStim(v){
   STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
   if (v){ if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
+  else if (STIM.electrode) setElectrode(false);
   MENU.dirty = true;
 }
 document.getElementById("stimBtn").addEventListener("click", () => setStim(!STIM.on));
 document.getElementById("colourSel").addEventListener("change", e => setColourMode(e.target.value));
 document.getElementById("stimReset").addEventListener("click", resetActivity);
+document.getElementById("plotBtn").addEventListener("click", () => setPlots(!STIM.plots));
+document.getElementById("elecBtn").addEventListener("click", () => setElectrode(!STIM.electrode));
+document.getElementById("elecClr").addEventListener("click", clearElectrodes);
+STIM.plots = true; STIM.active = new Set();
 
 /* ── 9. THE SPRAY CAN ───────────────────────────────────────────────────────  2026-10-14
    Søren: *"a spraycan that I can use to mark parts of the cells when I am showing the dataset to
@@ -2249,7 +2695,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value,
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots,
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap } },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
        after it opened is centred and fitted on fewer cells than it holds, and recomputing either
@@ -2359,6 +2805,8 @@ async function openScene(id){
   const u = sc.ui || {};
   if (u.detail) document.getElementById("detail").value = u.detail;
   if (u.stimMode) document.getElementById("stimMode").value = u.stimMode;
+  if (u.stimGain && GAIN_NAME[u.stimGain]) document.getElementById("stimGain").value = u.stimGain;
+  if (u.plots === false) setPlots(false);
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -3156,8 +3604,10 @@ function menuRows(){
     rows.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
     rows.push({ label: "Synapses fire the next cell", on: document.getElementById("stimMode").value === "fire",
                 act: () => { const el = document.getElementById("stimMode"); el.value = el.value === "fire" ? "psp" : "fire"; } });
-    rows.push({ label: "Fires after " + document.getElementById("stimNeed").value + " input" + (document.getElementById("stimNeed").value === "1" ? "" : "s in 5 ms") + "  ▸",
-                act: () => { const el = document.getElementById("stimNeed"); el.value = ({ "1": "2", "2": "3", "3": "5", "5": "1" })[el.value]; } });
+    rows.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸",
+                act: () => { const el = document.getElementById("stimGain"); el.value = ({ "10": "1", "1": "30", "30": "10" })[el.value]; } });
+    rows.push({ label: "📈 Voltage plots", on: !!STIM.plots, act: () => setPlots(!STIM.plots) });
+    rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     rows.push({ label: "Reset activity", act: resetActivity });
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
@@ -3724,7 +4174,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
