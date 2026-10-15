@@ -672,6 +672,15 @@ view.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d1117);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.01, 200);
+/* A mouse position as the camera sees it, measured against the CANVAS, not the window (2026-10-15,
+   Søren: "When recording the video where I click is not where it stimulates, I have to click a bit
+   to the right"). While a movie is recorded at 1920×1080 or 1280×720 the canvas is letterboxed --
+   smaller than the window and moved in from its edges -- so window coordinates missed by the
+   letterbox margin. Every click, right-click fly, spray stroke and hover goes through this. */
+function canvasNdc(e){
+  const r = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+}
 camera.position.set(0, 1.45, 0.25);
 
 scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x30281e, 1.6));
@@ -1453,13 +1462,13 @@ renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e
 renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 0) return;                       // the right button flies (section 13)
   if (STIM.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
-    const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    const ndc = canvasNdc(e);
     _mr.setFromCamera(ndc, camera);
     stimulateWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() });
     return;
   }
   if (!MEAS.on || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
-  const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  const ndc = canvasNdc(e);
   _mr.setFromCamera(ndc, camera);
   measureWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone(),
                    tip: _mr.ray.origin.clone().addScaledVector(_mr.ray.direction, camera.position.distanceTo(stage.position)) });
@@ -3081,7 +3090,7 @@ document.getElementById("sprayGlow").addEventListener("click", () => { SPRAY.glo
 document.getElementById("sprayErase").addEventListener("click", () => { SPRAY.erase = !SPRAY.erase; syncSprayUI(); });
 document.getElementById("spraySize").addEventListener("change", e => { SPRAY.size = e.target.value; syncSprayUI(); });
 document.getElementById("sprayWipe").addEventListener("click", wipePaint);
-const ndcOf = e => new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+const ndcOf = e => canvasNdc(e);
 renderer.domElement.addEventListener("pointerdown", e => { if (SPRAY.on && e.button === 0){ SPRAY.mouse = true; SPRAY.mouseNdc = ndcOf(e); } });
 renderer.domElement.addEventListener("pointermove", e => { if (SPRAY.mouse) SPRAY.mouseNdc = ndcOf(e); });
 addEventListener("pointerup", () => { SPRAY.mouse = false; });
@@ -4348,7 +4357,7 @@ renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 2 || !_rdown) return;
   const moved = Math.hypot(e.clientX - _rdown[0], e.clientY - _rdown[1]); _rdown = null;
   if (moved > 4) return;                                     // that was a pan
-  const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  const ndc = canvasNdc(e);
   _fr.setFromCamera(ndc, camera);
   if (!flyTo(flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()))) ctxNote.textContent = "Fly to: nothing solid under the mouse there.";
 });
