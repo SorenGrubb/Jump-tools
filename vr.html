@@ -2267,7 +2267,7 @@ document.getElementById("caveSave").addEventListener("click", () => {
 const REF_MS = 3, MAX_SPIKES = 300;
 const VM = { rest: -70, thr: -50, lambda: 150, ampE: 2, ampI: -1.5, tauRE: 1, tauDE: 15, tauRI: 1, tauDI: 20,
              shuntD: 40, shuntK: 0.7, dspkV: 25, dspkMinD: 40, dspkAmp: 35, tauRD: 0.5, tauDD: 8, dspkRef: 20,
-             ahpAmp: -12, tauRA: 0.3, tauDA: 10, relRef: 20, relRefTau: 3, adaptStep: 4, adaptTau: 120, adaptMax: 20, maxSlots: 16, window: 40, plotMax: 12, sites: 5, elecMax: 3 };
+             ahpAmp: -12, tauRA: 0.3, tauDA: 10, blockV: -25, relRef: 20, relRefTau: 3, adaptStep: 4, adaptTau: 120, adaptMax: 20, maxSlots: 16, window: 40, plotMax: 12, sites: 5, elecMax: 3 };
 const GAIN_NAME = { "1": "Realistic ×1", "10": "Teaching ×10", "30": "Cartoon ×30" };
 function stimGain(){ return +document.getElementById("stimGain").value || 10; }
 /* HOW FAR A SYNAPSE MAY BE FROM THE MESH (2026-10-15). The synapse point is in the cleft; at "light"
@@ -2400,7 +2400,7 @@ function resetActivity(){
   STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
     const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
-    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
   clearSiteTags();
   CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
@@ -2529,7 +2529,12 @@ function checkCell(c, t){
   if (soma < 0) return;
   const v = vmAt(c, soma, t), w = why(c);
   if (v > w.peak) w.peak = v;
-  if (v < thrNow(c, soma, t)){ c.refrNoted = false; return; }
+  if (v < thrNow(c, soma, t)){ c.refrNoted = false; c.blocked = false; return; }
+  /* DEPOLARISATION BLOCK (v44). A soma held above about −25 mV cannot fire: the sodium channels
+     that make the spike stay inactivated until the membrane repolarises. Without this the model
+     went on firing from −5 mV in Cartoon ×30 with many inputs -- something a neuron cannot do. */
+  if (v > VM.blockV){ if (!c.blocked){ c.blocked = true; noteWhy(c, "block"); ctxNote.textContent = "⛔ " + c.label + " is held at " + mV(v) + " mV — depolarisation block: its sodium channels stay inactivated and it cannot fire until it repolarises."; } return; }
+  c.blocked = false;
   if (c.pendingFire) return;
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS){ if (!c.refrNoted){ noteWhy(c, "refr"); c.refrNoted = true; } return; }
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS + 1) return;
@@ -2661,7 +2666,14 @@ function plotCells(){
 function drawPlot(c){
   const P = c.plot, g = P.ctx, W = P.cv.width, H = P.cv.height;
   const L = 100, R = 16, T = 96, B = 40, pw = W - L - R, ph = H - T - B;
-  const vLo = -85, vHi = -10, x = t => L + pw * (1 - (STIM.now - t) / VM.window), y = v => T + ph * (1 - (Math.min(vHi, Math.max(vLo, v)) - vLo) / (vHi - vLo));
+  /* THE TOP OF THE PLOT (v44, Søren: "it starts capping its AP… Why?"). It was fixed at −10 mV, so
+     a 2 mV EPSP stayed visible -- and every spike (to +30 mV) was cut off flat at the top. Now the
+     top follows what is in the window: −10 mV while there are only synaptic potentials, up to
+     +40 mV as soon as a spike or anything above −15 mV is in view, so spikes are drawn whole. */
+  let vMax = -Infinity;
+  if (c.trace) for (let i = 0; i < c.trace.t.length; i++){ if (c.trace.t[i] < STIM.now - VM.window) continue;
+    vMax = Math.max(vMax, c.trace.soma[i] == null ? -Infinity : c.trace.soma[i], ...c.trace.site[i], ...c.trace.el[i]); }
+  const vLo = -85, vHi = vMax > -15 ? 40 : -10, x = t => L + pw * (1 - (STIM.now - t) / VM.window), y = v => T + ph * (1 - (Math.min(vHi, Math.max(vLo, v)) - vLo) / (vHi - vLo));
   g.clearRect(0, 0, W, H);
   g.fillStyle = "rgba(13,17,23,0.9)"; g.strokeStyle = c.colour || "#30363d"; g.lineWidth = 6;
   g.beginPath(); g.roundRect(3, 3, W - 6, H - 6, 22); g.fill(); g.stroke();
@@ -2678,7 +2690,7 @@ function drawPlot(c){
   if (c.somaSrc === "est"){ g.fillStyle = "#f0883e"; g.font = "22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("soma estimated — nucleus not loaded", W - R - 6, T + 22); g.textAlign = "left"; }
   /* axes: rest and threshold */
   g.font = "22px system-ui, sans-serif"; g.lineWidth = 2;
-  [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"], [-30, "#30363d", "−30"], [-80, "#30363d", "−80"]].forEach(([v, col, lab]) => {
+  [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"], [-30, "#30363d", "−30"], [-80, "#30363d", "−80"]].concat(vHi > 0 ? [[0, "#30363d", "0"], [VM.blockV, "#f85149", "block"]] : []).forEach(([v, col, lab]) => {
     g.strokeStyle = col; g.setLineDash(v === VM.thr ? [10, 8] : v === VM.rest ? [3, 6] : []);
     g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke();
     g.fillStyle = col === "#30363d" ? "#6e7681" : col; g.fillText(lab, 10, y(v) + 7);
@@ -2698,7 +2710,8 @@ function drawPlot(c){
     line(i => tr.soma[i], "#f0f6fc", 4.5);
     /* spikes run off the top: say so */
     g.fillStyle = "#fff6c8"; g.font = "600 20px system-ui, sans-serif";
-    for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > vHi && !(tr.soma[i - 1] > vHi) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
+    for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > 10 && !(tr.soma[i - 1] > 10) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
+    if (c.blocked){ g.fillStyle = "#f85149"; g.font = "600 22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("depolarisation block — cannot fire", W - R - 6, H - 12 - 24); g.textAlign = "left"; }
   }
   /* legend */
   const items = [["soma", "#f0f6fc"]].concat((c.sites || []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP") + (soma >= 0 ? " · " + Math.round(distFrom(c, s.node)[soma]) + " µm" : ""), SITE_COL[s.kind]]),
@@ -2813,7 +2826,7 @@ function runSummary(){
     else if (outs.length && !on) lines.push(shortName(st) + "'s " + outs.length + " output synapse" + (outs.length > 1 ? "s are" : " is") + " not on its loaded mesh — try Detail: full.");
   }
   if (STIM.offPre) lines.push(STIM.offPre + " synapse arrival" + (STIM.offPre === 1 ? " was" : "s were") + " skipped because the synapse lies more than " + SYN_TOL + " µm from the presynaptic mesh — try Detail: full.");
-  const R = { hidden: "hidden, so it takes no part", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
+  const R = { block: "went into depolarisation block (held above −25 mV, so it could not fire)", hidden: "hidden, so it takes no part", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
   for (const k in (STIM.why || {})){
     const c = CELLS[k], w = STIM.why[k]; if (!c || (!w.epsp && !w.ipsp && !w.fired && !Object.keys(w.reasons).length)) continue;
     const ins = (w.epsp ? w.epsp + " EPSP" + (w.epsp === 1 ? "" : "s") : "") + (w.ipsp ? (w.epsp ? ", " : "") + w.ipsp + " IPSP" + (w.ipsp === 1 ? "" : "s") : "")
@@ -2822,7 +2835,8 @@ function runSummary(){
       /* A cell that fired again and again: name the loop that kept it going. */
       const loop = Object.keys(w.from || {}).filter(p => STIM.why[p] && STIM.why[p].from && STIM.why[p].from[k] && STIM.why[p].fired).map(p => CELLS[p]).filter(Boolean);
       lines.push("✓ " + shortName(c) + " fired " + w.fired + "× (" + ins + ")"
-        + (w.fired > 2 && loop.length ? " — in a loop with " + loop.slice(0, 3).map(shortName).join(", ") + ": each excites the other." : ""));
+        + (w.fired > 2 && loop.length ? " — in a loop with " + loop.slice(0, 3).map(shortName).join(", ") + ": each excites the other." : "")
+        + (w.reasons.block ? " Then it went into depolarisation block: held above −25 mV, it could not fire again until it repolarised." : ""));
       continue;
     }
     let msg = "✗ " + shortName(c) + ": " + ins;
@@ -2837,6 +2851,7 @@ function runSummary(){
            : " Try adding cells with more connections.";
     }
     if (w.reasons.refr) msg += " (Reached threshold while still refractory.)";
+    if (w.reasons.block) msg += " It went into depolarisation block (held above −25 mV).";
     lines.push(msg);
   }
   if (!lines.length) return;
