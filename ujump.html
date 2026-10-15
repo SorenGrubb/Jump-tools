@@ -7182,12 +7182,13 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
               const somaPos=nid&&somaPosByNuc.get(nid);
               const somaDepth=somaPos?estimateDepthGridded(somaPos[0],somaPos[1],somaPos[2]):null;
               partnerInfo.set(pid,{
+                nuc:nid||"",
                 cell_type:(info&&info.cell_type)||"",
                 classification_system:(info&&info.classification_system)||"",
                 somaDepthUm:somaDepth?somaDepth.depthUm:null
               });
             });
-            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";p.classification_system=(pi&&pi.classification_system)||"";});
+            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";p.classification_system=(pi&&pi.classification_system)||"";p.nuc=(pi&&pi.nuc)||"";});
             /* Not every partner has a nucleus detection at all (axon fragments, glial processes,
                and other non-somatic partner IDs simply aren't in nucleus_detection_v0), and not
                every nucleus has a type call, so some blanks are expected. But zero matches across
@@ -7330,7 +7331,10 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
               return take;
             };
             const parts=["input","output"].filter(d=>dirs.includes(d)).flatMap(pick)
-              .map(p=>({ds:vrDs(),root:String(p.partner),nuc:"",extra:[],label:vrPartnerLabel(p.cell_type,p.direction)}));
+              /* Each partner carries its nucleus id (from the nucleus_detection_v0 join above), so the
+                 viewer loads its nucleus too and starts its spikes at the real soma (2026-10-15, Søren:
+                 "Why are we only loading the nucleus of the target cell?"). */
+              .map(p=>({ds:vrDs(),root:String(p.partner),nuc:String(p.nuc||""),extra:[],label:vrPartnerLabel(p.cell_type,p.direction)}));
             vrAddFromTool([vrTarget()].concat(parts),vrBtn2);
           });
           const xlsxBtn=rt.querySelector("#connXlsx");
