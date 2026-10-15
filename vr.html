@@ -2258,7 +2258,7 @@ document.getElementById("caveSave").addEventListener("click", () => {
 const REF_MS = 3, MAX_SPIKES = 300;
 const VM = { rest: -70, thr: -50, lambda: 150, ampE: 2, ampI: -1.5, tauRE: 1, tauDE: 15, tauRI: 1, tauDI: 20,
              shuntD: 40, shuntK: 0.7, dspkV: 25, dspkMinD: 40, dspkAmp: 35, tauRD: 0.5, tauDD: 8, dspkRef: 20,
-             ahpAmp: -12, tauRA: 0.3, tauDA: 10, maxSlots: 16, window: 40, plotMax: 12, sites: 5, elecMax: 3 };
+             ahpAmp: -12, tauRA: 0.3, tauDA: 10, relRef: 20, relRefTau: 3, adaptStep: 4, adaptTau: 120, adaptMax: 20, maxSlots: 16, window: 40, plotMax: 12, sites: 5, elecMax: 3 };
 const GAIN_NAME = { "1": "Realistic ×1", "10": "Teaching ×10", "30": "Cartoon ×30" };
 function stimGain(){ return +document.getElementById("stimGain").value || 10; }
 /* HOW FAR A SYNAPSE MAY BE FROM THE MESH (2026-10-15). The synapse point is in the cleft; at "light"
@@ -2338,7 +2338,16 @@ function vmAt(c, node, t){
     const sh = psShape(t - s.t0 - d / PSP_V(), s.tr, s.td); if (sh <= 0) continue;
     v += s.amp * sh * Math.exp(-d / VM.lambda) * (s.kind === "E" || s.kind === "D" ? shunt(c, s, t, node) : 1);
   }
+  if (node === c.somaNode && c.adaptV) v -= adaptNow(c, t);
   return VM.rest + vmSat(v);
+}
+function adaptNow(c, t){ return c.adaptV ? c.adaptV * Math.exp(-Math.max(0, t - c.adaptT) / VM.adaptTau) : 0; }
+/* The threshold just after a spike: raised by 20 mV, falling back over ~3 ms (the RELATIVE
+   refractory period, v42). With the 3 ms absolute period alone, a cell held above −50 mV fired at
+   ~250 Hz without pause -- Søren's L5 ET cell "keeps exciting itself". */
+function thrNow(c, soma, t){
+  const ts = c.apNodeT && soma >= 0 ? c.apNodeT[soma] : 1e9;
+  return ts < 1e8 && t > ts ? VM.thr + VM.relRef * Math.exp(-(t - ts) / VM.relRefTau) : VM.thr;
 }
 /* …and with the spike drawn in: up to +30 mV and back down in about a millisecond. */
 function vmShown(c, node, t){
@@ -2382,7 +2391,7 @@ function resetActivity(){
   STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
     const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
-    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
   clearSiteTags();
   CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
@@ -2450,7 +2459,18 @@ function fireCell(c, node, t0){
   STIM.slowLog = Math.log(STIM.slow);
   /* The afterhyperpolarisation at the soma, once the spike has been there. */
   const soma = somaNode(c, node);
-  if (T[soma] < 1e8) addSlot(c, soma, T[soma] + 0.8, "A", VM.ahpAmp);
+  if (T[soma] < 1e8){
+    /* One afterhyperpolarisation at a time: a new spike replaces the old one rather than adding a
+       slot each time -- at high rates the AHP slots were pushing the synaptic inputs out of the
+       16 slots a cell has. */
+    c.slots = (c.slots || []).filter(s => s.kind !== "A");
+    addSlot(c, soma, T[soma] + 0.8, "A", VM.ahpAmp);
+    /* SPIKE-FREQUENCY ADAPTATION (v42): every spike adds a slow hyperpolarising current at the soma
+       (−4 mV, decaying over 120 ms, at most −20 mV), so a cell held above threshold fires fast at
+       first and then slower -- what cortical pyramidal cells do. */
+    const now0 = T[soma];
+    c.adaptV = Math.min(VM.adaptMax, adaptNow(c, now0) + VM.adaptStep); c.adaptT = now0;
+  }
   /* Every synapse this cell makes, scheduled at the moment THIS spike reaches it. */
   if (STIM.syn) for (const s of STIM.syn){
     if (s.pre !== c.i) continue;
@@ -2472,6 +2492,10 @@ function deliver(s, t){
   if (s.marker) s.marker.scale.setScalar(2.2);
   const w = why(c); inh ? w.ipsp++ : w.epsp++;
   if (cellClass(c) === "glia"){ noteWhy(c, "glia"); return; }
+  /* A cell you have hidden takes no part (v42): activity no longer runs through cells you cannot
+     see -- a hidden partner in a loop looked like a cell exciting itself. */
+  if (c.hidden){ noteWhy(c, "hidden"); return; }
+  w.from = w.from || {}; w.from[s.pre] = (w.from[s.pre] || 0) + 1;
   addSlot(c, s.postNode, t, inh ? "I" : "E", (inh ? VM.ampI : VM.ampE) * stimGain());
   addSite(c, s.postNode, inh ? "I" : "E");
   if (document.getElementById("stimMode").value !== "fire") noteWhy(c, "psp");
@@ -2496,7 +2520,7 @@ function checkCell(c, t){
   if (soma < 0) return;
   const v = vmAt(c, soma, t), w = why(c);
   if (v > w.peak) w.peak = v;
-  if (v < VM.thr){ c.refrNoted = false; return; }
+  if (v < thrNow(c, soma, t)){ c.refrNoted = false; return; }
   if (c.pendingFire) return;
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS){ if (!c.refrNoted){ noteWhy(c, "refr"); c.refrNoted = true; } return; }
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS + 1) return;
@@ -2780,12 +2804,18 @@ function runSummary(){
     else if (outs.length && !on) lines.push(shortName(st) + "'s " + outs.length + " output synapse" + (outs.length > 1 ? "s are" : " is") + " not on its loaded mesh — try Detail: full.");
   }
   if (STIM.offPre) lines.push(STIM.offPre + " synapse arrival" + (STIM.offPre === 1 ? " was" : "s were") + " skipped because the synapse lies more than " + SYN_TOL + " µm from the presynaptic mesh — try Detail: full.");
-  const R = { glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
+  const R = { hidden: "hidden, so it takes no part", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
   for (const k in (STIM.why || {})){
     const c = CELLS[k], w = STIM.why[k]; if (!c || (!w.epsp && !w.ipsp && !w.fired && !Object.keys(w.reasons).length)) continue;
     const ins = (w.epsp ? w.epsp + " EPSP" + (w.epsp === 1 ? "" : "s") : "") + (w.ipsp ? (w.epsp ? ", " : "") + w.ipsp + " IPSP" + (w.ipsp === 1 ? "" : "s") : "")
               + (w.dspk ? ", " + w.dspk + " dendritic spike" + (w.dspk === 1 ? "" : "s") : "");
-    if (w.fired){ lines.push("✓ " + shortName(c) + " fired " + w.fired + "× (" + ins + ")"); continue; }
+    if (w.fired){
+      /* A cell that fired again and again: name the loop that kept it going. */
+      const loop = Object.keys(w.from || {}).filter(p => STIM.why[p] && STIM.why[p].from && STIM.why[p].from[k] && STIM.why[p].fired).map(p => CELLS[p]).filter(Boolean);
+      lines.push("✓ " + shortName(c) + " fired " + w.fired + "× (" + ins + ")"
+        + (w.fired > 2 && loop.length ? " — in a loop with " + loop.slice(0, 3).map(shortName).join(", ") + ": each excites the other." : ""));
+      continue;
+    }
     let msg = "✗ " + shortName(c) + ": " + ins;
     if (w.reasons.glia || w.reasons.off || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
     else if (w.reasons.psp) msg += " — PSP-only mode: synapses never fire the next cell.";
