@@ -54,6 +54,32 @@
   select option,select optgroup{background-color:#161b22;color:#e6edf3}
   select option:checked{background-color:#2f81f7;color:#ffffff}
   select option:disabled{color:#8b949e}
+  /* Tabs and icons (2026-10-15, see the panel script after #panel). */
+  #tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:10px 0 2px}
+  #tabs button{flex:1;min-width:0;border:0;border-radius:6px 6px 0 0;padding:6px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;color:var(--mut);background:transparent}
+  #tabs button.cur{color:var(--fg);background:#161b22;box-shadow:inset 0 -2px 0 var(--accent)}
+  #tabs .tl{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  #tabs .dot{display:none;position:absolute;top:4px;right:calc(50% - 15px);width:7px;height:7px;border-radius:4px;background:#f0a742;box-shadow:0 0 0 2px #0d1117}
+  #tabs button.mode .dot{display:block}
+  .pane{display:none;padding-top:2px}.pane.cur{display:block}
+  .pane > .ctl{margin:8px 0}
+  .ic{display:inline-flex}.ic svg,.seg button svg{width:18px;height:18px;display:block}
+  button.ui{display:inline-flex;align-items:center;gap:5px}
+  button.ui .live{font-weight:600}
+  .lbl{font-size:12px}
+  body.nolbl .lbl{display:none}
+  body.nolbl button.ui{padding:5px 7px}
+  .segwrap{display:inline-flex}
+  .seg{display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg .segHead{display:inline-flex;align-items:center;gap:5px;padding:0 8px;color:var(--mut);font-size:12px}
+  .seg.active .segHead{color:var(--accent)}
+  .seg button{border:0;border-left:1px solid var(--line);border-radius:0;padding:5px 9px;display:inline-flex;align-items:center;gap:3px}
+  .seg .segHead + button,.seg button:first-child{border-left:0}
+  .seg .segHead + button{border-left:1px solid var(--line)}
+  .seg button.cur{background:var(--accent);color:#0d1117}
+  .dep-off{display:none!important}
+  #lblBtn{position:absolute;right:44px;top:8px;border:0;padding:2px 7px;font-weight:600}
+  .helpBox summary{cursor:pointer;color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px;margin-top:10px}
   #tri{font-size:12px;color:var(--mut);margin-top:6px}
   #tri.warn{color:#f0883e}
   #vrslot button{position:static!important;width:100%!important;margin:8px 0 0!important;padding:10px!important;
@@ -248,6 +274,230 @@
     With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
 </div>
+<script>
+/* ── THE PANEL AS TABS AND ICONS (2026-10-15) ──────────────────────────────────────────────────────
+   Søren: "We have way to much text in the menu. Suggest where we can replace with symbols instead
+   and how we can make it more intuitive." Then: the Structures symbol should be "a pyramid or a box
+   or something like that", not a DNA helix.
+   This script only rearranges and re-dresses the controls the viewer already has -- every button,
+   select and id stays, with its own listeners -- so nothing in the module below has to know:
+   · seven tabs, the same groups as the headset palette (View · Map · Structures · Activity · Tools ·
+     Spray · Share); one open at a time, remembered per browser;
+   · buttons become an icon plus a short label; "Aa" in the header hides the labels for icons only;
+     every control keeps its full tooltip;
+   · "X: off / a / b" dropdowns become rows of small segment buttons (the select stays, hidden, and
+     is changed and announced exactly as a user would);
+   · sub-options appear only while their parent is on (capillary colouring with skeletons, EM size
+     and ±5 µm with the EM section, the cut slider with a cut, filters with their layer, the
+     stimulator's options with Stimulate, the spray's with the spray can);
+   · a dot on a tab says a mode that changes what a click does is on in it (stimulate, electrode,
+     spray, measure, EM, cut, recording).
+   Icons are drawn here as inline SVG, not emoji, so they look the same on Windows and the Quest. */
+(function(){
+  const S = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+  const ICON = window.UI_ICON = {
+    eye: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    map: S('<path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>'),
+    cube: S('<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/>'),
+    bolt: S('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
+    wrench: S('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>'),
+    spray: S('<rect x="6" y="9" width="8" height="13" rx="1.5"/><path d="M8 9V6h4v3M12 4h2M17 3l2-1M17 5.5h3M17 8l2 1"/>'),
+    film: S('<rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10.5l6-3.5v10l-6-3.5z"/>'),
+    /* Detail as resolution (Søren: "like a star with few arms and one with many arms"). */
+    lowres: S('<path d="M12.0 2.5L14.4 8.8L21.0 9.1L15.8 13.2L17.6 19.7L12.0 16.0L6.4 19.7L8.2 13.2L3.0 9.1L9.6 8.8z"/>'),
+    hires: S('<path d="M12.0 2.5L13.4 5.9L16.1 3.4L15.9 7.1L19.4 6.1L17.7 9.3L21.3 9.9L18.3 12.0L21.3 14.1L17.7 14.7L19.4 17.9L15.9 16.9L16.1 20.6L13.4 18.1L12.0 21.5L10.6 18.1L7.9 20.6L8.1 16.9L4.6 17.9L6.3 14.7L2.7 14.1L5.7 12.0L2.7 9.9L6.3 9.3L4.6 6.1L8.1 7.1L7.9 3.4L10.6 5.9z" stroke-width="1.3"/>'),
+    mesh: S('<path d="M12 3l9.5 17h-19z"/><path d="M7.3 11.5h9.4M12 3v17M7.3 11.5L12 20l4.7-8.5"/>'),
+    nucleus: S('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6" fill="currentColor"/>'),
+    glass: S('<circle cx="12" cy="12" r="9" stroke-dasharray="3 2.6"/><circle cx="12" cy="12" r="3.6" stroke-dasharray="2 2"/>'),
+    reset: S('<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 3.5v4.8h4.8"/>'),
+    layers: S('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 16.5l9 5 9-5" opacity=".55"/>'),
+    vessel: S('<path d="M3 21c5-3 6-7 9-9.5S18 9 21 3" stroke-width="2.6"/><path d="M12 11.5c1 3.5 3.5 6.5 7 8.5" stroke-width="1.9"/>'),
+    column: S('<ellipse cx="12" cy="5" rx="6.5" ry="2.5"/><path d="M5.5 5v14M18.5 5v14"/><path d="M5.5 19a6.5 2.5 0 0 0 13 0"/>'),
+    rbox: S('<rect x="3.5" y="3.5" width="17" height="17" rx="1" stroke-dasharray="3 2.4"/>'),
+    areas: S('<path d="M3 4h8v8H3zM13 4h8v10h-8zM3 14h8v6H3zM13 16h8v4h-8z"/>'),
+    skel: S('<path d="M12 21v-8.5M12 12.5L5 4M12 12.5L19 4M8.3 8.5L4 10M15.7 8.5L20 10"/><circle cx="12" cy="21" r=".8" fill="currentColor"/>'),
+    em: S('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18" opacity=".45"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>'),
+    scissors: S('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/>'),
+    ruler: S('<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>'),
+    scalebar: S('<path d="M3 12h18M3 8v8M21 8v8"/>'),
+    neighbours: S('<circle cx="12" cy="13" r="3.5" fill="currentColor"/><circle cx="4.5" cy="6" r="2.2"/><circle cx="19.5" cy="6" r="2.2"/><circle cx="12" cy="21" r="1.8"/>'),
+    pen: S('<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>'),
+    organelle: S('<ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M5.5 12c1-3 2 3 3 0s2 3 3 0 2 3 3 0 2 3 3 0"/>'),
+    synapse: S('<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h2.5M13.5 12H16"/>'),
+    cvec: S('<circle cx="6" cy="18" r="3.2"/><path d="M8.3 15.7L19 5M19 5h-5.5M19 5v5.5"/>'),
+    lvec: S('<path d="M3 21h7"/><path d="M6.5 21c0-4 3-5 3-9s3.5-6 9.5-7.5"/><path d="M19 4.5l-4.5-.5M19 4.5l-1.5 4.2"/>'),
+    plot: S('<path d="M3 3v18h18"/><path d="M6 15l4-4 3 3 6-7"/>'),
+    pin: S('<path d="M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>'),
+    x: S('<path d="M6 6l12 12M18 6L6 18"/>'),
+    plus: S('<path d="M12 5v14M5 12h14"/>'),
+    sparkle: S('<path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M18 6l-3 3M9 15l-3 3"/>'),
+    eraser: S('<path d="M8 21h12M4 15l9-9 6 6-7 7H8z"/><path d="M9 10l6 6"/>'),
+    trash: S('<path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/>'),
+    rec: S('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4" fill="#f85149" stroke="none"/>'),
+    stop: S('<rect x="6" y="6" width="12" height="12" rx="1.5" fill="#f85149" stroke="none"/>'),
+    turntable: S('<ellipse cx="12" cy="17" rx="9" ry="3"/><path d="M12 14V4"/><path d="M18.5 13.2l2.3.6-.9 2.2"/>'),
+    camera: S('<rect x="2.5" y="7" width="19" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8 7l1.5-3h5L16 7"/>'),
+    headset: S('<path d="M2.5 9h19v6.5a2 2 0 0 1-2 2h-4.5l-2-2.2h-2l-2 2.2H4.5a2 2 0 0 1-2-2z"/><path d="M6 9V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>'),
+    save: S('<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5.5h8V3M8 21v-7h8v7"/>'),
+    up: S('<path d="M6 15l6-6 6 6"/>'),
+    down: S('<path d="M6 9l6 6 6-6"/>'),
+    off: S('<circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/>'),
+    around: S('<rect x="4.5" y="4.5" width="15" height="15" rx="1" stroke-dasharray="3 2.2"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'),
+    whole: S('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.5 3 3.5 15 0 18M12 3c-3.5 3-3.5 15 0 18"/>'),
+    view: S('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14" stroke-dasharray="2 2"/>'),
+    help: S('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/>')
+  };
+  const $ = id => document.getElementById(id);
+  const panel = $("panel"); if (!panel) return;
+
+  /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
+  const BTN = {
+    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], glassBtn: ["glass", "See-through"], resetBtn: ["reset", "Reset view"],
+    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"],
+    emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"],
+    measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
+    trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
+    cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"],
+    sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
+    recBtn: ["rec", "Record"], copyBtn: ["headset", "Headset link"]
+  };
+  for (const id in BTN){
+    const b = $(id); if (!b) continue;
+    const [ic, lbl, live] = BTN[id];
+    if (!b.title) b.title = b.textContent.trim();
+    b.innerHTML = '<span class="ic">' + ICON[ic] + '</span>' + (live ? '<span class="live">' + live + '</span>' : '') + (lbl ? '<span class="lbl">' + lbl + '</span>' : '');
+    b.classList.add("ui"); b._ui = true;
+  }
+  /* For the module's own updates (region-box count, recording timer, "Copied ✓"). */
+  window.uiSet = function(b, o){
+    if (!b) return;
+    if (!b._ui){ if (o.text != null) b.textContent = o.text; return; }
+    if (o.icon) b.querySelector(".ic").innerHTML = ICON[o.icon];
+    if ("lbl" in o){ let l = b.querySelector(".lbl"); if (!l){ l = document.createElement("span"); l.className = "lbl"; b.appendChild(l); } l.textContent = o.lbl; }
+    if ("live" in o){ let l = b.querySelector(".live"); if (!l){ l = document.createElement("span"); l.className = "live"; b.querySelector(".ic").after(l); } l.textContent = o.live || ""; l.style.display = o.live ? "" : "none"; }
+  };
+
+  /* Dropdowns that become segment buttons: [head icon, head label, {value: chip HTML}]. */
+  const dot = c => '<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' + c + '"></span>';
+  const SEG = {
+    detail: ["", "Detail", { light: ICON.lowres + '<span class="lbl">&nbsp;light</span>', full: ICON.hires + '<span class="lbl">&nbsp;full</span>' }],
+    colourSel: ["", "Colour", { type: dot("#f0a742") + dot("#3fb950") + dot("#58a6ff") + '<span class="lbl">&nbsp;type</span>', ei: '<b style="color:#f0a742">E</b>·<b style="color:#b67cff">I</b>' }],
+    vascSel: ["vessel", "Vessels", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
+    v1Sel: ["column", "V1 column", { off: ICON.off, outline: "outline", cells: "+ cells" }],
+    skelSel: ["skel", "Skeletons", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
+    capSel: ["", "Capillaries", { act: "ACT", cvt: "CVT", plain: "plain" }],
+    emSize: ["", "", { wide: "65 µm", close: "33 µm" }],
+    cutSel: ["scissors", "Cut", { off: ICON.off, desk: ICON.view, em: ICON.em }],
+    ptsDir: ["", "", { both: "in + out", in: "in", out: "out" }],
+    vecCol: ["", "Colour", { type: "by type", kind: "C / Ci" }],
+    stimMode: ["", "", { fire: "→ next cell", psp: "PSP only" }],
+    stimGain: ["", "Strength", { "1": "×1", "10": "×10", "30": "×30" }],
+    spraySize: ["", "", { s: dot("currentColor").replace("8px;height:8px", "5px;height:5px"), m: dot("currentColor"), l: dot("currentColor").replace(/8px/g, "13px").replace("4px", "7px") }],
+    recMode: ["", "", { free: ICON.camera, turn12: ICON.turntable + "12 s", turn24: ICON.turntable + "24 s" }],
+    recSize: ["", "", { "1080": "1080p", "720": "720p", window: "window" }]
+  };
+  const segs = [];
+  for (const id in SEG){
+    const sel = $(id); if (!sel) continue;
+    const [ic, lbl, opts] = SEG[id];
+    const wrap = document.createElement("span"); wrap.className = "segwrap";
+    const seg = document.createElement("span"); seg.className = "seg"; seg.title = sel.title || "";
+    if (ic || lbl) seg.insertAdjacentHTML("beforeend", '<span class="segHead">' + (ic ? '<span class="ic">' + ICON[ic] + '</span>' : "") + (lbl ? '<span class="lbl">' + lbl + '</span>' : "") + '</span>');
+    [...sel.options].forEach(o => {
+      if (!(o.value in opts)) return;
+      const b = document.createElement("button"); b.type = "button"; b.dataset.v = o.value; b.title = o.textContent; b.innerHTML = opts[o.value];
+      b.addEventListener("click", () => { if (sel.value === o.value) return; sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); sync(); });
+      seg.appendChild(b);
+    });
+    sel.before(wrap); wrap.append(sel, seg); sel.style.display = "none"; sel._wrap = wrap;
+    segs.push({ sel, seg });
+  }
+
+  /* The tabs: rows of ids; "#id" moves that whole element as one row. */
+  const TABS = [
+    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#caveRow"]]],
+    ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
+    ["spray", "spray", "Spray", [["#sprayRow"]]],
+    ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["copyBtn"]]]
+  ];
+  const oldRows = new Set();
+  const bar = document.createElement("div"); bar.id = "tabs";
+  const panes = document.createElement("div"); panes.id = "panes";
+  TABS.forEach(([key, ic, name, rows]) => {
+    const t = document.createElement("button"); t.type = "button"; t.dataset.tab = key; t.title = name;
+    t.innerHTML = '<span class="ic">' + ICON[ic] + '</span><span class="tl lbl">' + name + '</span><span class="dot"></span>';
+    t.addEventListener("click", () => openTab(key)); bar.appendChild(t);
+    const pane = document.createElement("div"); pane.className = "pane"; pane.dataset.tab = key;
+    rows.forEach(r => {
+      if (r.length === 1 && r[0][0] === "#"){ const el = $(r[0].slice(1)); if (el){ if (el.parentElement.classList.contains("ctl")) oldRows.add(el.parentElement); pane.appendChild(el); } return; }
+      const row = document.createElement("div"); row.className = "ctl";
+      r.forEach(id => { const el = $(id); if (!el) return; const m = el._wrap || el; if (m.parentElement && m.parentElement.classList.contains("ctl")) oldRows.add(m.parentElement); row.appendChild(m); });
+      pane.appendChild(row);
+    });
+    panes.appendChild(pane);
+  });
+  $("list").after(bar, panes);
+  oldRows.forEach(r => { if (!r.children.length && !r.closest(".pane")) r.remove(); });
+  /* The long help text folds away. */
+  const help = panel.querySelector(":scope > .help:last-of-type");
+  if (help){ const d = document.createElement("details"); d.className = "helpBox"; d.innerHTML = '<summary><span class="ic">' + ICON.help + '</span> Controls</summary>'; help.before(d); d.appendChild(help); }
+  /* Labels on or off. */
+  const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e){ return null; } };
+  const lb = document.createElement("button"); lb.id = "lblBtn"; lb.type = "button"; lb.textContent = "Aa"; lb.title = "Show or hide the text labels next to the icons";
+  const setLabels = on => { document.body.classList.toggle("nolbl", !on); lb.classList.toggle("on", on); ls("vr_labels", on ? "1" : "0"); };
+  lb.addEventListener("click", () => setLabels(document.body.classList.contains("nolbl")));
+  $("hide").before(lb); setLabels(ls("vr_labels") !== "0");
+
+  function openTab(key){
+    bar.querySelectorAll("button").forEach(b => b.classList.toggle("cur", b.dataset.tab === key));
+    panes.querySelectorAll(".pane").forEach(p => p.classList.toggle("cur", p.dataset.tab === key));
+    ls("vr_tab", key);
+  }
+  openTab(TABS.some(t => t[0] === ls("vr_tab")) ? ls("vr_tab") : "view");
+  window.uiOpenTab = openTab;
+
+  /* Sub-options shown only while their parent is on. */
+  const V = () => window.__vr || {};
+  const val = id => ($(id) || {}).value;
+  const DEP = {
+    capSel: () => val("skelSel") !== "off",
+    emSize: () => !!(V().EM && V().EM.mesh), emDn: () => !!(V().EM && V().EM.mesh), emUp: () => !!(V().EM && V().EM.mesh),
+    cutDepth: () => val("cutSel") !== "off",
+    measClr: () => !!(V().MEAS && (V().MEAS.on || (V().MEAS.items || []).length)),
+    trcType: () => !!(V().TRC && V().TRC.on), trcKind: () => !!(V().TRC && V().TRC.on), trcAdd: () => !!(V().TRC && V().TRC.on),
+    orgKind: () => !!(V().ORG && V().ORG.on),
+    ptsDir: () => !!(V().PTS && V().PTS.on),
+    vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
+    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on),
+    plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on),
+    spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
+    spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
+  };
+  /* A dot on a tab: a mode is on there that changes what a click does. */
+  const MODE = {
+    act: () => !!(V().STIM && V().STIM.on), spray: () => !!(V().SPRAY && V().SPRAY.on),
+    tools: () => !!((V().MEAS && V().MEAS.on) || (V().EM && V().EM.mesh) || val("cutSel") !== "off"),
+    share: () => !!(V().REC && V().REC.on)
+  };
+  function sync(){
+    segs.forEach(({ sel, seg }) => {
+      seg.querySelectorAll("button").forEach(b => b.classList.toggle("cur", b.dataset.v === sel.value));
+      seg.classList.toggle("active", sel.value !== "off" && [...sel.options].some(o => o.value === "off"));
+    });
+    for (const id in DEP){ const el = $(id); if (el) (el._wrap || el).classList.toggle("dep-off", !DEP[id]()); }
+    const eb = $("emBtn"); if (eb) eb.classList.toggle("on", !!(V().EM && V().EM.mesh));
+    bar.querySelectorAll("button").forEach(b => b.classList.toggle("mode", !!(MODE[b.dataset.tab] && MODE[b.dataset.tab]())));
+  }
+  window.uiSync = sync;
+  panel.addEventListener("click", () => setTimeout(sync, 0));
+  panel.addEventListener("change", () => setTimeout(sync, 0));
+  setInterval(sync, 400); sync();
+})();
+</script>
 
 <script>
 /* Per-dataset sources, keyed by the dataset id each collected cell carries (UJ.cfg.id of the
@@ -999,7 +1249,7 @@ function hideEM(){
   if (CUT.mode === "em") setCut("off");
   MENU.dirty = true; ctxNote.textContent = "";
 }
-document.getElementById("emBtn").addEventListener("click", () => showEM());
+document.getElementById("emBtn").addEventListener("click", () => EM.mesh ? hideEM() : showEM());   // a toggle since the icon panel
 document.getElementById("emUp").addEventListener("click", () => moveEM(5));
 document.getElementById("emDn").addEventListener("click", () => moveEM(-5));
 document.getElementById("emSize").addEventListener("change", () => { if (EM.mesh) showEM(EM.centre); });
@@ -2203,8 +2453,12 @@ function clearSiteTags(){
 function placeTags(){
   if (!STIM.tags) return;
   STIM.tags.visible = !!STIM.plots;
+  const xr = renderer.xr.isPresenting, tanH = Math.tan(THREE.MathUtils.degToRad((camera.fov || 50) / 2));
   for (const s of STIM.tags.children){ const c = CELLS[s.userData.cell]; if (!c || !c.graph){ s.visible = false; continue; }
-    s.visible = c.mesh.visible; s.position.copy(content.localToWorld(nodePos(c, s.userData.node))); }
+    s.visible = c.mesh.visible; s.position.copy(content.localToWorld(nodePos(c, s.userData.node)));
+    /* 2.2 cm in the headset; on a screen ~2 % of the view's height, so a tag never hides the cell. */
+    const h = xr ? 0.022 : 0.04 * camera.position.distanceTo(s.position) * tanH;
+    s.scale.set(h * s.userData.aspect, h, 1); }
 }
 function placeElectrode(c, local){
   const G = cellGraph(c), node = nearestNode(G, local).node;
@@ -2316,7 +2570,9 @@ function placePlots(list){
     const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
     _pb.copy(g.boundingBox).applyMatrix4(c.mesh.matrixWorld);
     const P = c.plot; P.anchor.set((_pb.min.x + _pb.max.x) / 2, _pb.max.y, (_pb.min.z + _pb.max.z) / 2);
-    const w = xr ? 0.22 : Math.max(0.05, 0.4 * _pe.distanceTo(P.anchor) * tanH * 760 / 430);
+    /* On a screen: about 11 % of the view's height each (Søren, 2026-10-15: "The AP windows are too
+       big on PC" at 20 %); the text stays legible at that size on a desktop monitor. */
+    const w = xr ? 0.22 : Math.max(0.03, 0.22 * _pe.distanceTo(P.anchor) * tanH * 760 / 430);
     P.spr.scale.set(w, w * 430 / 760, 1);
     P.spr.position.copy(P.anchor).addScaledVector(_pu, P.spr.scale.y / 2 + w * 0.06);
   }
@@ -2427,9 +2683,7 @@ function flashWarn(text, ms, border){
   });
   STIM.warn = textSprite(lines.slice(0, 16), { fit: true, border: border || "#f85149", colors: lines.map(() => border ? "#f5e6c4" : "#ffd7d5") });
   const h = 0.016 * Math.min(16, lines.length); STIM.warn.scale.set(h * STIM.warn.userData.aspect, h, 1);
-  const base = SBAR.group ? SBAR.group.position : stage.position;
-  STIM.warn.position.copy(base).add(new THREE.Vector3(0, -0.125 - h / 2, 0));     // top edge just under the clock
-  scene.add(STIM.warn); STIM.warnUntil = performance.now() + (ms || 4000);
+  scene.add(STIM.warn); stackCards();                                   // top edge just under the clock STIM.warnUntil = performance.now() + (ms || 4000);
 }
 /* THE CLOCK RUNS AT TWO SPEEDS. A spike crosses a cell in a few ms and is shown 5000× slower so the
    band can be followed; synaptic potentials last tens of ms, which at 5000× would take minutes, so
@@ -2437,8 +2691,11 @@ function flashWarn(text, ms, border){
 STIM.slowIdle = 500;
 function stimFrame(dt){
   if (STIM.warn && performance.now() > STIM.warnUntil){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
-  plotsFrame();
-  if (STIM.warn && STIM.hud && STIM.hud.spr && STIM.hud.spr.parent) STIM.warn.position.copy(STIM.hud.spr.position).add(new THREE.Vector3(0, -STIM.hud.spr.scale.y / 2 - 0.006 - STIM.warn.scale.y / 2, 0));
+  try { plotsFrame(); } catch (e){ console.warn("plots:", e); }
+  /* The clock card follows the scale bar every frame (not only while the clock runs), and any card
+     under it is stacked below the clock's bottom edge -- Søren saw the run summary drawn over the
+     clock on the PC once the run had stopped and the view had moved. */
+  stackCards();
   if (!STIM.running) return;
   STIM.active = STIM.active || new Set();
   const lastAp = Math.max(0, ...CELLS.map(c => c.apLast || 0));
@@ -2472,7 +2729,7 @@ function stimFrame(dt){
     STIM.hud.spr.scale.set(h * STIM.hud.spr.userData.aspect, h, 1);
     scene.add(STIM.hud.spr);
   }
-  if (SBAR.group) STIM.hud.spr.position.copy(SBAR.group.position).add(new THREE.Vector3(0, -0.075, 0));
+  stackCards();
   /* Stop the clock once nothing is travelling and every membrane is back near rest. */
   if (!STIM.events.length && STIM.now > lastAp + REF_MS){
     let quiet = true;
@@ -2482,6 +2739,13 @@ function stimFrame(dt){
     }
     if (quiet){ STIM.running = false; for (const c of STIM.active) if (c.vmLive) writeVm(c); CELLS.forEach(c => c.plot && drawPlot(c)); runSummary(); }
   }
+}
+function stackCards(){
+  const hud = STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null;
+  if (hud && SBAR.group) hud.position.copy(SBAR.group.position).add(new THREE.Vector3(0, -0.03 - hud.scale.y / 2, 0));
+  if (!STIM.warn) return;
+  if (hud) STIM.warn.position.copy(hud.position).add(new THREE.Vector3(0, -hud.scale.y / 2 - 0.008 - STIM.warn.scale.y / 2, 0));
+  else STIM.warn.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - STIM.warn.scale.y / 2, 0));
 }
 function setStim(v){
   STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
@@ -3207,7 +3471,7 @@ function buildRegionBoxes(){
   const btn = document.getElementById("rboxBtn");
   btn.style.display = RBOX.list.length ? "" : "none";
   btn.classList.toggle("on", RBOX.on);
-  btn.textContent = "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "");
+  window.uiSet(btn, { text: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : ""), lbl: RBOX.list.length > 1 ? "Region boxes (" + RBOX.list.length + ")" : "Region box" });
   MENU.dirty = true;
   if (!RBOX.on || !RBOX.list.length) return;
   const grp = new THREE.Group(), Yv = new THREE.Vector3(0, 1, 0);
@@ -3336,11 +3600,11 @@ function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("o
 glassBtn.addEventListener("click", toggleGlass);
 document.getElementById("resetBtn").addEventListener("click", () => { resetStage(); resetCamera(); });
 document.getElementById("copyBtn").addEventListener("click", e => {
-  const l = headsetLink();
+  const btn = e.currentTarget, l = headsetLink();
   if (hasPoints()) ctxNote.textContent = "Note: the headset link carries the cells but not their synapses and contact points — press 💾 Save scene and open the scene's link in the headset to take those too.";
   (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject())
-    .then(() => { e.target.textContent = "Copied ✓"; }, () => window.prompt("Copy this link:", l));
-  setTimeout(() => { e.target.textContent = "Copy headset link"; }, 2000);
+    .then(() => { window.uiSet(btn, { text: "Copied ✓", live: "✓" }); }, () => window.prompt("Copy this link:", l));
+  setTimeout(() => { window.uiSet(btn, { text: "Copy headset link", live: "" }); }, 2000);
 });
 document.getElementById("hide").addEventListener("click", () => { panel.style.display = "none"; show.style.display = "block"; });
 document.getElementById("show").addEventListener("click", () => { panel.style.display = "block"; show.style.display = "none"; });
@@ -4098,9 +4362,9 @@ function recSize(wh){
 }
 function recButton(){
   const b = document.getElementById("recBtn");
-  if (!REC.on){ b.textContent = "🎬 Record"; b.classList.remove("on"); return; }
-  const s = Math.floor((performance.now() - REC.t0) / 1000);
-  b.textContent = "⏹ Stop " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  if (!REC.on){ window.uiSet(b, { text: "🎬 Record", icon: "rec", lbl: "Record", live: "" }); b.classList.remove("on"); return; }
+  const s = Math.floor((performance.now() - REC.t0) / 1000), tm = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  window.uiSet(b, { text: "⏹ Stop " + tm, icon: "stop", lbl: "Stop", live: tm });
   b.classList.add("on");
 }
 function startRecording(){
