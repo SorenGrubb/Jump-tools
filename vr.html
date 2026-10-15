@@ -2396,11 +2396,28 @@ function somaNear(G, p){
   for (let i = 0; i < G.m; i++){ if (!G.main[i]) continue; const d = (G.pos[i*3]-p.x) ** 2 + (G.pos[i*3+1]-p.y) ** 2 + (G.pos[i*3+2]-p.z) ** 2; if (d < bd){ bd = d; best = i; } }
   return best >= 0 ? best : near.node;
 }
+/* THE SOMA (2026-10-15, Søren: "Shouldn't there be an action potential elicited if the membrane
+   potential near the soma reaches the threshold? We know where the nucleus is, therefore where the
+   soma is."). It is: the threshold is read at the membrane nearest the nucleus centre. Two gaps are
+   closed here. Before, a cell whose nucleus mesh had not arrived yet (or failed to load) was given
+   NO soma -- and that answer was cached, so the cell could never fire for the rest of the session.
+   Now the nucleus is used as soon as it is there, and until then the soma is estimated as the
+   densest part of the mesh (the cell body carries far more surface per µm³ than any neurite);
+   the plot says "soma estimated" while that is so. */
 function somaNode(c, fallback){
-  const G = cellGraph(c);
-  if (c.somaNode == null){
-    const p = c.nucMesh ? nucCentreOf(c) : null;
-    c.somaNode = p ? somaNear(G, p) : -1;
+  const G = cellGraph(c), src = c.nucMesh ? "nuc" : "est";
+  if (c.somaNode == null || c.somaSrc !== src){
+    if (src === "nuc") c.somaNode = somaNear(G, nucCentreOf(c));
+    else {
+      const CELL = 8, cnt = new Map(); let bestK = null, bestN = 0;
+      for (let i = 0; i < G.m; i++){
+        const k = Math.floor(G.pos[i*3] / CELL) + "," + Math.floor(G.pos[i*3+1] / CELL) + "," + Math.floor(G.pos[i*3+2] / CELL);
+        const n = (cnt.get(k) || 0) + 1; cnt.set(k, n); if (n > bestN){ bestN = n; bestK = k; }
+      }
+      const [gx, gy, gz] = bestK.split(",").map(Number);
+      c.somaNode = somaNear(G, new THREE.Vector3((gx + 0.5) * CELL, (gy + 0.5) * CELL, (gz + 0.5) * CELL));
+    }
+    c.somaSrc = src;
   }
   return c.somaNode >= 0 ? c.somaNode : fallback;
 }
@@ -2586,7 +2603,8 @@ function drawPlot(c){
     const need = VM.thr - vNow;
     g.fillStyle = need <= 0 ? "#ffe11a" : "#c9d1d9";
     g.fillText("Soma " + mV(vNow) + " mV · threshold " + mV(VM.thr) + " · " + (need <= 0 ? "at threshold" : "needs +" + need.toFixed(need < 10 ? 1 : 0) + " mV"), 22, 76, W - 44);
-  } else { g.fillStyle = "#8b949e"; g.fillText("No nucleus loaded — the soma is unknown", 22, 76); }
+  } else { g.fillStyle = "#8b949e"; g.fillText("No soma found on this mesh", 22, 76); }
+  if (c.somaSrc === "est"){ g.fillStyle = "#f0883e"; g.font = "22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("soma estimated — nucleus not loaded", W - R - 6, T + 22); g.textAlign = "left"; }
   /* axes: rest and threshold */
   g.font = "22px system-ui, sans-serif"; g.lineWidth = 2;
   [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"], [-30, "#30363d", "−30"], [-80, "#30363d", "−80"]].forEach(([v, col, lab]) => {
