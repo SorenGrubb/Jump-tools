@@ -820,6 +820,27 @@ function cellMaterial(colour){
         if (vPaint.a > 0.5) totalEmissiveRadiance += vPaint.rgb * vGlow * (1.1 + 0.45 * sin(sprayTime * 3.5));
         {
           float a = apNow - vApT;                 // ms since the spike reached this point
+          /* MEMBRANE VOLTAGE (v32): warm where depolarised -- orange, turning yellow as it nears the
+             20 mV that would fire the soma, saturated gold above 25 mV (a dendritic spike) -- and
+             purple where hyperpolarised.
+             v39 (Søren: the receiving cell was "just turning white"; he wants "the same action
+             potential animation as when stimulating running through that cell from the soma and out
+             … and a refractory period … indicated by color"): the voltage colour is drawn FIRST and
+             fades out wherever the spike or its refractory period is, so the white band and the blue
+             are never washed out by a depolarised cell; and a dendritic spike is gold, not near-white,
+             so it cannot be mistaken for the spike itself. */
+          float vmW = (a >= 0.0 && a < apRef + 0.5) ? 0.12 : 1.0;
+          if (vVm > 0.2){
+            float e = clamp(vVm / 20.0, 0.0, 1.0), d = clamp((vVm - 25.0) / 15.0, 0.0, 1.0);
+            vec3 col = mix(mix(epspCol, vec3(1.0, 0.85, 0.2), e), vec3(1.0, 0.72, 0.05), d);
+            float k = clamp(vVm / 3.0, 0.0, 1.0) * (0.4 + 0.9 * e + 0.5 * d) * vmW;
+            totalEmissiveRadiance += col * k;
+            diffuseColor.rgb = mix(diffuseColor.rgb, col, 0.3 * clamp(vVm / 6.0, 0.0, 1.0) * vmW);
+          } else if (vVm < -0.2){
+            float k = clamp(-vVm / 10.0, 0.0, 1.0);
+            totalEmissiveRadiance += ipspCol * (0.3 + 1.2 * k) * clamp(-vVm / 1.5, 0.0, 1.0) * vmW;
+            diffuseColor.rgb = mix(diffuseColor.rgb, ipspCol, 0.4 * k * vmW);
+          }
           if (a >= 0.0 && a < 1.5){
             float spike = exp(-pow((a - apBand * 0.5) / apBand, 2.0));      // the travelling band
             float tail = 0.18 * exp(-a / 0.5);                               // a faint wake behind it
@@ -834,20 +855,6 @@ function cellMaterial(colour){
             float rk = clamp(rr * 1.6, 0.0, 1.0);          // fully blue for the first ~40 %, then draining
             diffuseColor.rgb = mix(diffuseColor.rgb, mix(diffuseColor.rgb * 0.35, refCol, 0.8), rk);
             totalEmissiveRadiance += refCol * 0.45 * rk;
-          }
-          /* MEMBRANE VOLTAGE (v32): warm where depolarised -- orange, turning yellow as it nears the
-             20 mV that would fire the soma, yellow-white above 25 mV (a dendritic spike) -- and purple
-             where hyperpolarised. */
-          if (vVm > 0.2){
-            float e = clamp(vVm / 20.0, 0.0, 1.0), d = clamp((vVm - 25.0) / 15.0, 0.0, 1.0);
-            vec3 col = mix(mix(epspCol, vec3(1.0, 0.9, 0.25), e), vec3(1.0, 1.0, 0.85), d);
-            float k = clamp(vVm / 3.0, 0.0, 1.0) * (0.5 + 1.5 * e + 1.5 * d);
-            totalEmissiveRadiance += col * k;
-            diffuseColor.rgb = mix(diffuseColor.rgb, col, 0.35 * clamp(vVm / 6.0, 0.0, 1.0));
-          } else if (vVm < -0.2){
-            float k = clamp(-vVm / 10.0, 0.0, 1.0);
-            totalEmissiveRadiance += ipspCol * (0.3 + 1.4 * k) * clamp(-vVm / 1.5, 0.0, 1.0);
-            diffuseColor.rgb = mix(diffuseColor.rgb, ipspCol, 0.4 * k);
           }
         }`);
   };
@@ -2431,6 +2438,10 @@ function fireCell(c, node, t0){
   c.apLast = Math.max(c.apLast || 0, last);
   writeAttr(c, "apT", T);
   STIM.active.add(c);
+  /* A spike starts: the clock drops to the spike slow-down AT ONCE. Easing down from 500× let a
+     receiving cell's spike cross the whole cell in a fraction of a second, so the cell just flashed
+     white instead of showing the band running out from the soma (Søren, v39). */
+  STIM.slowLog = Math.log(STIM.slow);
   /* The afterhyperpolarisation at the soma, once the spike has been there. */
   const soma = somaNode(c, node);
   if (T[soma] < 1e8) addSlot(c, soma, T[soma] + 0.8, "A", VM.ahpAmp);
@@ -2519,7 +2530,7 @@ function stimulateWithRay(r){
 }
 
 /* ── synapse sites and electrodes on a cell ── */
-const SITE_COL = { E: "#ff9a3c", I: "#b67cff", D: "#fff27a" };
+const SITE_COL = { E: "#ff9a3c", I: "#b67cff", D: "#ffb80d" };
 const ELEC_COL = ["#3fe0d0", "#9cff57", "#ffffff"];
 function addSite(c, node, kind){
   c.sites = c.sites || [];
@@ -2816,8 +2827,8 @@ function stimFrame(dt){
     if (STIM.hud.spr){ scene.remove(STIM.hud.spr); STIM.hud.spr.material.map.dispose(); STIM.hud.spr.material.dispose(); }
     /* The clock is also the legend: what each colour on the cells means. */
     STIM.hud.spr = textSprite([txt, "white band — action potential", "blue — refractory, cannot fire (" + REF_MS + " ms)",
-                               "orange → yellow — depolarised (EPSP)", "purple — hyperpolarised (IPSP)", "bright yellow-white — dendritic spike"],
-                              { fit: true, border: "#ffe11a", colors: [null, "#fff6c8", "#6f8cff", "#f0a742", "#b67cff", "#fff27a"] });
+                               "orange → yellow — depolarised (EPSP)", "purple — hyperpolarised (IPSP)", "gold — dendritic spike"],
+                              { fit: true, border: "#ffe11a", colors: [null, "#fff6c8", "#6f8cff", "#f0a742", "#b67cff", "#ffb80d"] });
     const h = 0.02 * 6 * 0.75;
     STIM.hud.spr.scale.set(h * STIM.hud.spr.userData.aspect, h, 1);
     scene.add(STIM.hud.spr);
