@@ -15,6 +15,16 @@
    with Quest Link), and also accepts the list in its URL (#c=…) for the standalone headset, which
    has its own browser and therefore its own, empty, localStorage.
 
+   POINTS THAT TRAVEL WITH A CELL (2026-10-15, Søren: "In connectivity, there should be a +VR button
+   to add the target cell and the input and output synapses found to VR" -- and the same for
+   Astrocyte–synapse proximity and Cell contacts). An entry may carry
+     syn:   [[x, y, z, dir, partnerRoot, partnerType], …]   dir 0 = input, 1 = output
+     marks: [[x, y, z, kind, label], …]                      kind "contact" | "astro"
+   in tool voxels (4 × 4 × 40 nm), drawn by vr.html on that cell. merge() adds to an entry already in
+   the collection instead of refusing it, so pressing "+ VR" in Connectivity after the cell's own
+   "+ VR" puts the synapses on it. Points do not fit in the headset link; they travel in a saved
+   scene, which the tray says.
+
    WHAT IT DOES NOT DO
    Nothing here fetches a mesh. vr.html does that itself with core/mesh.js, so the collection is a
    list of ids, a few hundred bytes, not megabytes of geometry.                                    */
@@ -34,8 +44,10 @@ UJ.vrbasket = (function(){
     } catch (e){ return []; }
   }
   function save(list){
-    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e){}
+    var ok = true;
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e){ ok = false; }
     LISTENERS.forEach(function(f){ try { f(list); } catch (_e){} });
+    return ok;
   }
   function keyOf(d, root){ return d + ":" + root; }
   function has(root, d){
@@ -53,6 +65,39 @@ UJ.vrbasket = (function(){
     save(list); return list;
   }
   function clear(){ save([]); }
+  /* Add, or add TO: an entry already here keeps its label and gains the new extra root ids,
+     synapses and marks (no duplicates). Returns {ok, added, merged}; ok is false when the browser
+     refused to store it (localStorage is ~5 MB per site). */
+  var POINT_MAX = 20000;
+  function unionRows(a, b){
+    var seen = {}, out = [];
+    (a || []).concat(b || []).forEach(function(r){
+      var k = JSON.stringify(r); if (seen[k]) return; seen[k] = 1; out.push(r);
+    });
+    return out.slice(0, POINT_MAX);
+  }
+  function merge(entry){
+    var list = load(), k = keyOf(entry.ds, entry.root), old = null;
+    list.forEach(function(e){ if (keyOf(e.ds, e.root) === k) old = e; });
+    if (!old){
+      var e2 = Object.assign({ t: Date.now() }, entry);
+      if (e2.syn) e2.syn = e2.syn.slice(0, POINT_MAX);
+      if (e2.marks) e2.marks = e2.marks.slice(0, POINT_MAX);
+      list.push(e2);
+      return { ok: save(list), added: true, merged: false };
+    }
+    old.extra = unionRows(old.extra, entry.extra);
+    if (entry.syn) old.syn = unionRows(old.syn, entry.syn);
+    if (entry.marks) old.marks = unionRows(old.marks, entry.marks);
+    if (!old.nuc && entry.nuc) old.nuc = entry.nuc;
+    return { ok: save(list), added: false, merged: true };
+  }
+  /* Several at once (a cell and its partners), one write. */
+  function mergeAll(entries){
+    var r = { ok: true, added: 0, merged: 0 };
+    (entries || []).forEach(function(e){ var x = merge(e); r.ok = r.ok && x.ok; if (x.added) r.added++; if (x.merged) r.merged++; });
+    return r;
+  }
 
   /* The link vr.html understands. ds~root~nucleus~label, comma-separated, each part
      URI-encoded -- so a label with a comma or a tilde in it cannot break the list. */
@@ -162,8 +207,10 @@ UJ.vrbasket = (function(){
     if (!list.length){ tray.style.display = "none"; }
     var h = "<h4>VR collection</h4>";
     list.forEach(function(e){
+      var pts = (e.syn && e.syn.length ? " · " + e.syn.length + " synapses" : "") +
+                (e.marks && e.marks.length ? " · " + e.marks.length + " points" : "");
       h += "<div class='vrb-row'><div><b title='" + esc(e.label) + "'>" + esc(e.label || "Cell") + "</b>" +
-           "<small>" + esc(e.root) + (e.ds !== ds() ? " · " + esc(e.ds) : "") + "</small></div>" +
+           "<small>" + esc(e.root) + (e.ds !== ds() ? " · " + esc(e.ds) : "") + esc(pts) + "</small></div>" +
            "<button data-rm='" + esc(e.root) + "' data-ds='" + esc(e.ds) + "' title='Remove'>×</button></div>";
     });
     if (list.length > SOFT_MAX)
@@ -171,7 +218,10 @@ UJ.vrbasket = (function(){
     h += "<div class='vrb-acts'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +
          "<button data-act='copy'>Copy headset link</button><button data-act='clear'>Clear</button></div>" +
          "<div class='vrb-note'>On the PC with Quest Link: open the viewer and press <b>Enter VR</b>.<br>" +
-         "Standalone Quest: send yourself the headset link and open it in the Quest browser.</div>";
+         "Standalone Quest: send yourself the headset link and open it in the Quest browser.</div>" +
+         (list.some(function(e){ return (e.syn && e.syn.length) || (e.marks && e.marks.length); })
+           ? "<div class='vrb-note'>Synapses and contact points are too many for the headset link: open the viewer here, " +
+             "press <b>💾 Save scene</b>, and open the scene's link in the headset.</div>" : "");
     tray.innerHTML = h;
     syncButtons();
   }
@@ -243,5 +293,5 @@ UJ.vrbasket = (function(){
   }
 
   return { KEY: KEY, load: load, save: save, add: add, remove: remove, clear: clear, has: has,
-           linkFor: linkFor, sweep: sweep };
+           merge: merge, mergeAll: mergeAll, linkFor: linkFor, sweep: sweep };
 })();
