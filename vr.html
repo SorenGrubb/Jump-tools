@@ -2686,7 +2686,8 @@ function makePlot(c){
   c.plot = { cv, ctx: cv.getContext("2d"), tex, spr, lead, last: 0, anchor: new THREE.Vector3() };
   scene.add(spr, lead);
 }
-function dropPlot(c){ if (!c.plot) return; scene.remove(c.plot.spr, c.plot.lead); c.plot.tex.dispose(); c.plot.spr.material.dispose(); c.plot.lead.geometry.dispose(); c.plot.lead.material.dispose(); c.plot = null; }
+function dropPlot(c){ if (!c.plot) return; scene.remove(c.plot.spr, c.plot.lead);
+  if (c.plot.ov){ c.plot.ov.parent && c.plot.ov.parent.remove(c.plot.ov, c.plot.ovLine, c.plot.ovDot); c.plot.ov.material.dispose(); c.plot.ovLine.geometry.dispose(); c.plot.ovLine.material.dispose(); c.plot.ovDot.material.dispose(); } c.plot.tex.dispose(); c.plot.spr.material.dispose(); c.plot.lead.geometry.dispose(); c.plot.lead.material.dispose(); c.plot = null; }
 /* WHERE THE PLOTS GO. Each starts just above its cell; plots that would cover one another (as seen
    from the eye) are pushed upward until they do not, and a leader line keeps each tied to its cell.
    In the headset a plot is 22 cm wide, readable at arm's length; on a screen it is a fixed share of
@@ -2742,9 +2743,11 @@ function plotsFrame(){
   if (!STIM.plots) return;
   const now = performance.now();
   if (!STIM._plotSync || now - STIM._plotSync > 300){ STIM._plotSync = now; syncPlots(); }
-  const list = CELLS.filter(c => c.plot && c.mesh);
-  list.forEach(c => { c.plot.spr.visible = c.plot.lead.visible = !!c.mesh.visible; });
-  placePlots(list.filter(c => c.mesh.visible));
+  const list = CELLS.filter(c => c.plot && c.mesh), xr = renderer.xr.isPresenting;
+  /* In the headset each plot floats over its cell (placePlots); on a screen they sit around the
+     edges of the window (edgePlots, drawn in the overlay pass with the logo). */
+  list.forEach(c => { c.plot.spr.visible = c.plot.lead.visible = xr && !!c.mesh.visible; });
+  if (xr) placePlots(list.filter(c => c.mesh.visible));
   list.forEach(c => {
     if (now - c.plot.last > 110 && (STIM.running || !c.plot.drawn)){ c.plot.last = now; c.plot.drawn = true; drawPlot(c); } });
   placeTags();
@@ -4606,6 +4609,83 @@ function logoTexture(){
   if (LOGO.mesh) LOGO.mesh.material.map = LOGO.tex, LOGO.mesh.material.needsUpdate = true;
   return LOGO.tex;
 }
+
+/* PLOTS AROUND THE EDGES (2026-10-15, Søren: "Instead of flying around near the top of the window,
+   the plots should be spread around the edges, so that the neurons in the center are visible and it
+   can easier be seen which cell the plot belongs to"). On a screen the plots are laid out in fixed
+   slots -- a column down each side (the left one starting right of the panel, the right one under
+   the logo), then a row along the top and one along the bottom -- and each cell gets the free slot
+   closest to where its soma is on the screen, with a line in the cell's colour from the plot to a
+   dot on the soma. They are drawn in the same overlay pass as the logo, so movies carry them too.
+   The assignment holds while the view moves (plots that hop about are worse than crossed lines) and
+   is redone when the view comes to rest, when a plot comes or goes, or when the window changes. */
+const _ep = new THREE.Vector3();
+function edgePlots(W, H){
+  const list = CELLS.filter(c => c.plot && c.mesh);
+  if (!list.length) return;
+  const ph = Math.round(Math.min(200, Math.max(92, H * 0.14))), pw = Math.round(ph * 760 / 430), gap = 8, mg = 10;
+  /* Where the panel is (not in a movie: the panel is not filmed). */
+  let x0 = mg;
+  const pan = document.getElementById("panel");
+  if (!REC.on && pan && pan.getClientRects().length && getComputedStyle(pan).display !== "none"){ const r = pan.getBoundingClientRect(); if (r.width && r.left < W / 2) x0 = Math.max(x0, r.right + mg); }
+  const x1 = W - mg, logoH = (LOGO.mesh ? LOGO.mesh.scale.y : H * 0.075) + Math.max(8, H * 0.018) + gap;
+  /* The slots, best first. */
+  const slots = [];
+  /* …and below the "☰ Cells" button when the panel is folded away. */
+  let topL = mg; const sh = document.getElementById("show");
+  if (!REC.on && sh && sh.getClientRects().length && getComputedStyle(sh).display !== "none" && x0 === mg){ const r = sh.getBoundingClientRect(); topL = r.bottom + mg; }
+  for (let y = H - topL - ph / 2; y - ph / 2 >= mg; y -= ph + gap) slots.push({ x: x0 + pw / 2, y, pen: 0 });
+  for (let y = H - logoH - ph / 2; y - ph / 2 >= mg; y -= ph + gap) slots.push({ x: x1 - pw / 2, y, pen: 0 });
+  for (let x = x0 + pw * 1.5 + gap; x + pw / 2 <= x1 - pw - gap; x += pw + gap){
+    slots.push({ x, y: H - mg - ph / 2, pen: 0.12 * W });
+    slots.push({ x, y: mg + ph / 2, pen: 0.2 * W });
+  }
+  /* Each plot's anchor on the screen: its soma, or the middle of the cell. */
+  for (const c of list){
+    const P = c.plot, soma = somaNode(c, -1);
+    if (soma >= 0) _ep.copy(content.localToWorld(nodePos(c, soma)));
+    else { const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox(); g.boundingBox.getCenter(_ep); c.mesh.localToWorld(_ep); }
+    _ep.project(camera);
+    P.scr = { x: (_ep.x + 1) / 2 * W, y: (_ep.y + 1) / 2 * H, behind: _ep.z > 1 };
+  }
+  /* Re-assign only when something changed and the view is at rest. */
+  const key = W + "x" + H + ":" + x0 + ":" + topL + ":" + list.map(c => c.i).join(","), camKey = camera.matrixWorld.elements.map(v => v.toFixed(3)).join(",");
+  const now = performance.now();
+  if (camKey !== STIM._camKey){ STIM._camKey = camKey; STIM._camMoved = now; }
+  const rest = now - (STIM._camMoved || 0) > 400;
+  if (key !== STIM._edgeKey || (rest && !STIM._edgeRest)){
+    STIM._edgeKey = key;
+    const pairs = [];
+    list.forEach(c => slots.forEach((s, k) => pairs.push([Math.hypot(s.x - c.plot.scr.x, s.y - c.plot.scr.y) + s.pen, c, k])));
+    pairs.sort((a, b) => a[0] - b[0]);
+    const took = new Set(), done = new Set();
+    for (const [, c, k] of pairs){ if (done.has(c) || took.has(k)) continue; c.plot.slot = slots[k]; took.add(k); done.add(c); }
+    /* More plots than slots: the rest share the nearest ones. */
+    list.forEach(c => { if (!done.has(c)) c.plot.slot = slots.length ? slots[0] : { x: W / 2, y: H / 2 }; });
+  }
+  STIM._edgeRest = rest;
+  for (const c of list){
+    const P = c.plot, vis = !!c.mesh.visible;
+    if (!P.ov){
+      P.ov = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: P.tex, transparent: true, depthTest: false, depthWrite: false }));
+      const lg = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+      P.ovLine = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: c.colour || "#8b949e", transparent: true, opacity: 0.9, depthTest: false }));
+      P.ovDot = new THREE.Mesh(new THREE.CircleGeometry(1, 16), new THREE.MeshBasicMaterial({ color: c.colour || "#8b949e", depthTest: false }));
+      P.ovLine.frustumCulled = P.ovDot.frustumCulled = P.ov.frustumCulled = false;
+      LOGO.scene.add(P.ovLine, P.ovDot, P.ov);
+    }
+    const s = P.slot || { x: W / 2, y: H / 2 };
+    P.ov.visible = vis; P.ov.scale.set(pw, ph, 1); P.ov.position.set(s.x, s.y, 0);
+    const show = vis && !P.scr.behind;
+    P.ovLine.visible = P.ovDot.visible = show;
+    if (show){
+      /* From the plot's edge nearest the soma to the soma. */
+      const ex = Math.min(s.x + pw / 2, Math.max(s.x - pw / 2, P.scr.x)), ey = Math.min(s.y + ph / 2, Math.max(s.y - ph / 2, P.scr.y));
+      const a = P.ovLine.geometry.attributes.position; a.setXYZ(0, ex, ey, 0); a.setXYZ(1, P.scr.x, P.scr.y, 0); a.needsUpdate = true;
+      const r = Math.max(3, H * 0.005); P.ovDot.scale.set(r, r, 1); P.ovDot.position.set(P.scr.x, P.scr.y, 0);
+    }
+  }
+}
 const _ls = new THREE.Vector2();
 /* The second pass: top right, about 7 % of the canvas height. */
 function renderLogo(){
@@ -4619,6 +4699,7 @@ function renderLogo(){
   const W = _ls.x, H = _ls.y, h = Math.max(34, H * 0.075), w = h * LOGO.aspect, m = Math.max(8, H * 0.018);
   LOGO.cam.left = 0; LOGO.cam.right = W; LOGO.cam.top = H; LOGO.cam.bottom = 0; LOGO.cam.updateProjectionMatrix();
   LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(W - m - w / 2, H - m - h / 2, 0);
+  if (STIM.plots) edgePlots(W, H);
   const ac = renderer.autoClear; renderer.autoClear = false;
   renderer.render(LOGO.scene, LOGO.cam);
   renderer.autoClear = ac;
