@@ -76,7 +76,7 @@
   <div class="grid">
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>walk</span>
     <span><kbd>Q</kbd><kbd>E</kbd></span><span>down · up</span>
-    <span><kbd>Shift</kbd> / <kbd>Ctrl</kbd></span><span>×3 faster · ×¼ slower</span>
+    <span><kbd>Shift</kbd> / <kbd>Alt</kbd></span><span>×3 faster · ×¼ slower</span>
     <span>Right click</span><span>fly to that point</span>
     <span>Left drag</span><span>turn</span>
     <span>Right drag · scroll</span><span>pan · zoom</span>
@@ -198,6 +198,20 @@
     <select id="spraySize" title="Nozzle size"><option value="s">fine</option><option value="m" selected>medium</option><option value="l">wide</option></select>
     <button id="sprayWipe" title="Remove all paint">Wipe</button>
   </div>
+  <div class="ctl" id="recRow">
+    <button id="recBtn" title="Film the view and save the movie straight to your own computer — nothing is uploaded">🎬 Record</button>
+    <select id="recMode" title="Film what you do until you press Stop, or let the collection turn once round by itself">
+      <option value="free">What I do</option>
+      <option value="turn12">Turntable 360°, 12 s</option>
+      <option value="turn24">Turntable 360°, 24 s</option>
+    </select>
+    <select id="recSize" title="Movie size. A fixed size letterboxes the view while recording.">
+      <option value="1080">1920×1080</option>
+      <option value="720">1280×720</option>
+      <option value="window">Window size</option>
+    </select>
+  </div>
+  <div id="recOut" class="help" style="margin-top:0"></div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
@@ -208,6 +222,7 @@
     right stick = turn / zoom · left stick = tilt, flick sideways = next cell ·
     A = see-through · B = reset · X = only the picked cell · <b>press the right stick in = fly to where it points</b> · <b>Y = palette</b> on your left hand (tabs Show · Map · Tools · Spray · EM · Cells · View; point the right controller and pull the trigger).
     With the cut in your hand, the right trigger freezes it in place and frees it again.
+    <b>To film in the headset</b>, use its own recorder (Quest: Meta button → Camera → Record video); the movie lands in the headset's gallery.
     With Measure on, the right trigger (or a mouse click) sets the two ends of a measurement.
   </div>
 </div>
@@ -3038,7 +3053,8 @@ function menuRows(){
   } else if (t === "View"){
     if (MENU.help){
       ["Right trigger: pick / use a tool", "Grip: grab · both grips: resize", "Right stick: turn · zoom · press: fly",
-       "Left stick: tilt · flick = next cell", "A see-through · B reset", "X only picked · Y palette"]
+       "Left stick: tilt · flick = next cell", "A see-through · B reset", "X only picked · Y palette",
+       "Film: Meta button → Camera → Record video"]
         .forEach(l => rows.push({ label: l, note: true }));
       rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
     } else {
@@ -3218,7 +3234,10 @@ document.getElementById("vrslot").appendChild(vrBtn);
    · bounded by the collection: never faster than half of it per second, never slower than a
      sixtieth, so a far-off turning point cannot send you through the tissue in a blink;
    · it eases in over the first ⅓ s of a key press, so a tap is a small step, not a jump;
-   · Shift ×3, Ctrl ×¼. */
+   · Shift ×3, Alt ×¼ (2026-10-15: Alt, not Ctrl -- Ctrl+W closes the tab in Edge and Chrome, and
+     a page cannot stop it). Keys are read by their PLACE (e.code), not the letter they type, so Alt,
+     a Mac's Option or a Danish AltGr turning W into ∑ or E into € changes nothing; Alt+letter is kept
+     from opening the browser's menu, and a lone Alt from focusing it. */
 const FLY = { on: false };
 function easeInOut(t){ return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 /* What a fly-to may land on: visible meshes in the collection that are not near-transparent. */
@@ -3287,14 +3306,21 @@ function flyWithHand(h){
 /* The keys. */
 const KEYS = new Set();
 function typing(){ const a = document.activeElement; return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable); }
+const KEY_CODE = { KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d", KeyQ: "q", KeyE: "e" };
 addEventListener("keydown", e => {
-  if (typing() || e.metaKey) return;
-  const k = e.key.toLowerCase();
-  if ("wasdqe".includes(k) && k.length === 1){ KEYS.add(k); FLY.on = false; e.preventDefault(); }
-  if (k === "shift") KEYS.add("shift"); if (k === "control") KEYS.add("ctrl");
-  if (k === "h" && !e.ctrlKey){ toggleKeysCard(); }
+  if (typing() || e.metaKey || e.ctrlKey && !e.altKey) return;     // Ctrl shortcuts belong to the browser
+  const k = KEY_CODE[e.code];
+  if (k){ KEYS.add(k); FLY.on = false; e.preventDefault(); }
+  if (e.key === "Shift") KEYS.add("shift");
+  if (e.key === "Alt" || e.key === "AltGraph"){ KEYS.add("alt"); e.preventDefault(); }
+  if (e.code === "KeyH" && !e.altKey){ toggleKeysCard(); }
 });
-addEventListener("keyup", e => { const k = e.key.toLowerCase(); KEYS.delete(k); if (![..."wasdqe"].some(x => KEYS.has(x))) KEYS.held = 0; if (k === "shift") KEYS.delete("shift"); if (k === "control") KEYS.delete("ctrl"); });
+addEventListener("keyup", e => {
+  const k = KEY_CODE[e.code]; if (k) KEYS.delete(k);
+  if (![..."wasdqe"].some(x => KEYS.has(x))) KEYS.held = 0;
+  if (e.key === "Shift") KEYS.delete("shift");
+  if (e.key === "Alt" || e.key === "AltGraph"){ KEYS.delete("alt"); if (!typing()) e.preventDefault(); }   // no menu bar on release
+});
 addEventListener("blur", () => KEYS.clear());
 const _kf = new THREE.Vector3(), _kr = new THREE.Vector3(), _ku = new THREE.Vector3(), _mv = new THREE.Vector3();
 function keysFrame(dt){
@@ -3312,7 +3338,7 @@ function keysFrame(dt){
   const base = THREE.MathUtils.clamp(1.2 * near, coll / 60, coll / 2);
   KEYS.held = (KEYS.held || 0) + dt;
   const ramp = Math.min(1, 0.25 + KEYS.held * 2.25);
-  const speed = base * ramp * (KEYS.has("shift") ? 3 : 1) * (KEYS.has("ctrl") ? 0.25 : 1);
+  const speed = base * ramp * (KEYS.has("shift") ? 3 : 1) * (KEYS.has("alt") ? 0.25 : 1);
   _mv.normalize().multiplyScalar(speed * dt);
   camera.position.add(_mv); controls.target.add(_mv);
   USER_MOVED = true;
@@ -3394,11 +3420,125 @@ renderer.xr.setSession = async session => {
 };
 renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false; });
 
+/* ── 15. A MOVIE OF THE VIEW, straight to the user's own disk ────────────────  2026-10-15
+   Søren: "Is there a way that a user can generate a movie from the VR and download it immediately to
+   their own computer/headset without having to save it permanently on my Google drive?" -- yes, for
+   the PC view: the browser films its own canvas (canvas.captureStream + MediaRecorder) and hands the
+   finished file to the browser's download. Nothing is uploaded anywhere; the movie exists only in
+   this tab's memory until it is saved, and the memory is let go a minute later.
+
+   · Format: MP4 (H.264) where the browser can write it -- Chrome and Edge from 2024 -- because
+     PowerPoint plays it; otherwise WebM (VP9/VP8), which browsers and VLC play.
+   · Size: the window as it is, 1280×720 or 1920×1080. For a fixed size the drawing is resized and
+     the view letterboxed on screen while recording, so what you see is what is filmed; it is put
+     back afterwards.
+   · Two ways to film: "what I do" -- turn, walk (WASD), fly, stimulate, spray, until Stop -- or a
+     TURNTABLE: the collection turns once round its vertical axis in 12 or 24 s, then the recording
+     stops and saves by itself. A turntable ends exactly where it started.
+   · At most 5 minutes, so a forgotten recording cannot fill the computer's memory.
+   · In the headset a web page cannot film what is shown to the eyes, so the button says to use the
+     headset's own recorder (Quest: Meta button → Camera → Record video); the palette's help says so
+     too. */
+const REC = { on: false, rec: null, chunks: [], t0: 0, mode: "free", spin: null, saved: null, timer: null };
+function recMime(){
+  /* MP4 only when it is H.264 inside: a browser may accept plain "video/mp4" and write VP9 into it
+     (measured in Chromium 2026-10-15), which PowerPoint will not play. Otherwise an honest WebM. */
+  const c = ["video/mp4;codecs=avc1.640028", "video/mp4;codecs=avc1.4D401F", "video/mp4;codecs=avc1.42E01E", "video/mp4;codecs=avc1",
+             "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  if (typeof MediaRecorder === "undefined") return null;
+  return c.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (e){ return false; } }) || "";
+}
+function recFileName(ext){
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  const what = (document.getElementById("sceneTitle").value || SCENE.title || (CELLS.length + " cells")).trim()
+    .replace(/[^\w\-æøåÆØÅ ]+/g, "").replace(/\s+/g, "-").slice(0, 60) || "vr";
+  return "vr-" + what + "-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + "." + ext;
+}
+/* Letterbox the canvas to w×h for the recording; null puts it back. */
+function recSize(wh){
+  const el = renderer.domElement;
+  if (!wh){
+    REC.saved && renderer.setPixelRatio(REC.saved.pr);
+    renderer.setSize(innerWidth, innerHeight);
+    el.style.position = ""; el.style.left = el.style.top = "";
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    REC.saved = null; return;
+  }
+  REC.saved = { pr: renderer.getPixelRatio() };
+  const [w, h] = wh, k = Math.min(innerWidth / w, innerHeight / h);
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  el.style.width = Math.round(w * k) + "px"; el.style.height = Math.round(h * k) + "px";
+  el.style.position = "absolute"; el.style.left = Math.round((innerWidth - w * k) / 2) + "px"; el.style.top = Math.round((innerHeight - h * k) / 2) + "px";
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+function recButton(){
+  const b = document.getElementById("recBtn");
+  if (!REC.on){ b.textContent = "🎬 Record"; b.classList.remove("on"); return; }
+  const s = Math.floor((performance.now() - REC.t0) / 1000);
+  b.textContent = "⏹ Stop " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  b.classList.add("on");
+}
+function startRecording(){
+  const out = document.getElementById("recOut");
+  if (renderer.xr.isPresenting){ out.textContent = "In the headset, use its own recorder — on a Quest: Meta button → Camera → Record video."; return; }
+  const mime = recMime();
+  if (mime === null || !renderer.domElement.captureStream){ out.textContent = "This browser cannot record the view — try Chrome or Edge."; return; }
+  const size = document.getElementById("recSize").value, mode = document.getElementById("recMode").value;
+  if (size !== "window") recSize(size === "1080" ? [1920, 1080] : [1280, 720]);
+  const stream = renderer.domElement.captureStream(30);
+  const px = renderer.domElement.width * renderer.domElement.height;
+  let rec;
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: Math.round(Math.min(16e6, Math.max(4e6, px * 6))) }, mime ? { mimeType: mime } : {})); }
+  catch (e){ recSize(null); out.textContent = "Recording could not start: " + (e.message || e); return; }
+  REC.chunks = []; REC.rec = rec; REC.on = true; REC.t0 = performance.now(); REC.mode = mode;
+  rec.ondataavailable = e => { if (e.data && e.data.size) REC.chunks.push(e.data); };
+  rec.onstop = () => {
+    const type = rec.mimeType || mime || "video/webm", ext = /mp4/.test(type) ? "mp4" : "webm";
+    const blob = new Blob(REC.chunks, { type }); REC.chunks = [];
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = recFileName(ext); document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    out.innerHTML = "Saved to your downloads: <b>" + esc(a.download) + "</b> (" + (blob.size / 1e6).toFixed(1) + " MB, " + ext.toUpperCase() + "). Nothing was uploaded."
+      + (ext === "webm" ? " This browser cannot write MP4; WebM plays in browsers and VLC — for PowerPoint, record in an up-to-date Chrome or Edge." : "");
+    stream.getTracks().forEach(t => t.stop());
+  };
+  rec.start(1000);
+  if (mode !== "free"){
+    REC.spin = { dur: mode === "turn24" ? 24 : 12, t: 0, q0: stage.quaternion.clone() };
+    out.textContent = "Recording a turntable — " + REC.spin.dur + " s, it stops by itself.";
+  } else out.textContent = "Recording — move about as you like (W A S D, right-click to fly), then press Stop.";
+  REC.timer = setInterval(() => { recButton(); if (performance.now() - REC.t0 > 300000) stopRecording(); }, 250);
+  recButton();
+}
+function stopRecording(){
+  if (!REC.on) return;
+  REC.on = false; clearInterval(REC.timer);
+  if (REC.spin){ stage.quaternion.copy(REC.spin.q0); REC.spin = null; }
+  try { REC.rec.stop(); } catch (e){}
+  recSize(null); recButton();
+}
+/* The turntable turns about the vertical through the collection's centre, at an even pace. */
+const _UP = new THREE.Vector3(0, 1, 0), _qs = new THREE.Quaternion();
+function recFrame(dt){
+  /* The headset hint ("Trigger on a cell to pick it") stays out of the movie; a picked cell's
+     name stays in. */
+  if (label) label.visible = !(REC.on && SELECTED < 0);
+  if (!REC.on || !REC.spin) return;
+  const sp = REC.spin; sp.t += dt;
+  _qs.setFromAxisAngle(_UP, 2 * Math.PI * Math.min(1, sp.t / sp.dur));
+  stage.quaternion.copy(_qs).multiply(sp.q0);
+  if (sp.t >= sp.dur) stopRecording();
+}
+document.getElementById("recBtn").addEventListener("click", () => REC.on ? stopRecording() : startRecording());
+renderer.xr.addEventListener("sessionstart", () => stopRecording());
+addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); recSize(s === "1080" ? [1920, 1080] : [1280, 720]); } });
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
-  flyFrame(dt);
+  flyFrame(dt); recFrame(dt);
   if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
   else { keysFrame(dt); controls.update(); }
   placeLabel();
@@ -3410,6 +3550,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 addEventListener("resize", () => {
+  if (typeof REC !== "undefined" && REC.on && REC.saved) return;      // a fixed-size recording keeps its size
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
@@ -3419,7 +3560,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
