@@ -636,8 +636,13 @@ function cellClass(c){
   if (c.cls) return c.cls;
   const l = String(c.label || "");
   c.cls =
-    /\b(BC|MC|BPC|NGC)\b|basket|martinotti|bipolar|neurogliaform|chandelier|inhibitory|interneuron|\bsst\b|\bpvalb?\b|\bvip\b/i.test(l) ? "inh" :
-    /\b(2\/?3P|23P|4P|5P|6P)|pyramid|stellate|excitatory|\bIT\b|\bET\b|\bNP\b|\bCT\b/i.test(l) ? "exc" :
+    /* The fine MICrONS m-types too (2026-10-15, Søren: "Why does stimulating PTC elicit an AP in
+       the pyramidal cell?"). PTC, DTC, STC and ITC -- the inhibitory clusters of
+       aibs_metamodel_mtypes (proximal-, distal-, sparsely- and inhibitory-targeting) -- were not
+       recognised, so those cells were "unknown" and their synapses excited. Likewise the
+       excitatory m-types (L2a…L6tall-c, L5ET, L5NP, L6wm…) now count as excitatory. */
+    /\b(BC|MC|BPC|NGC|PTC|DTC|STC|ITC)\b|basket|martinotti|bipolar|neurogliaform|chandelier|inhibitory|interneuron|\bsst\b|\bpvalb?\b|\bvip\b|(proximal|distal|sparsely)[- ]targeting|inhibitory[- ]targeting/i.test(l) ? "inh" :
+    /\b(2\/?3P|23P|4P|5P|6P)|pyramid|stellate|excitatory|\bIT\b|\bET\b|\bNP\b|\bCT\b|\bL[2-6](?:[a-c]\b|ET|NP|IT|CT|tall|short|wm)/i.test(l) ? "exc" :
     /astro|oligo|\bOPC\b|microglia|pericyte|endothel|smooth muscle|mural|glia|ependym/i.test(l) ? "glia" : "unknown";
   return c.cls;
 }
