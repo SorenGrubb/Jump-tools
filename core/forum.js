@@ -440,6 +440,15 @@ function fillSceneCards(host){
         var img = document.createElement("img"); img.src = m.preview; img.alt = m.title || "VR scene";
         img.style.cssText = "width:100%;height:100%;object-fit:cover"; box.appendChild(img);
       }
+      /* A scene with a timeline can be watched as it was made (2026-10-16): vr.html opens it and
+         plays its story. `story` is the timeline's length in seconds, 0 or absent when it has none. */
+      if (m.story > 0 && !card.querySelector(".vrsc-play")){
+        var a = document.createElement("a");
+        a.className = "hist-chip vrsc-play"; a.target = "_blank"; a.rel = "noopener";
+        a.href = "vr.html#scene=" + encodeURIComponent(id) + "&play=1";
+        a.textContent = "▶ Play its story (" + Math.round(m.story) + " s)"; a.style.marginLeft = "6px";
+        card.querySelector(".hist-chip").after(a);
+      }
     };
     if (SCENE_META[id] && SCENE_META[id].then){ SCENE_META[id].then(paint); return; }
     if (SCENE_META[id]){ paint(SCENE_META[id]); return; }

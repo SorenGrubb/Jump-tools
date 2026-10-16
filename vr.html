@@ -78,6 +78,23 @@
   .seg .segHead + button{border-left:1px solid var(--line)}
   .seg button.cur{background:var(--accent);color:#0d1117}
   .dep-off{display:none!important}
+  #tlBar{position:fixed;right:8px;bottom:8px;z-index:6;background:rgba(13,17,23,.94);border:1px solid var(--line);border-radius:10px;padding:6px 8px 6px;color:var(--fg);font-size:12px}
+  #tlBar .tlRow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px}
+  #tlBar button{padding:3px 8px;font-size:12px}
+  #tlBar input[type=number]{width:52px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:5px;padding:2px 4px;font:inherit}
+  #tlBar select{padding:2px 6px;font-size:12px}
+  #tlBar .tlTime{font:12px ui-monospace,monospace;min-width:84px}
+  #tlBar .tlSep{width:1px;height:18px;background:var(--line)}
+  #tlBar .tlLab{color:var(--mut)}
+  #tlBar .tlEdit{min-height:24px;color:var(--mut)}
+  #tlBar .tlEdit b{color:var(--fg)}
+  #tlBar .tlHint{font-size:11px}
+  #tlThumb{display:none;position:absolute;bottom:100%;margin-bottom:6px;padding:3px;background:#0d1117;border:1px solid var(--line);border-radius:6px;pointer-events:none}
+  #tlThumb img{display:block;width:160px;border-radius:4px}
+  #tlBar select[multiple]{vertical-align:middle;min-width:140px}
+  #tlBar textarea{flex-basis:100%;min-height:38px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:13px system-ui,sans-serif;resize:vertical}
+  #tlCv{display:block;width:100%;height:162px;cursor:pointer;touch-action:none}
+  @media not all and (any-pointer: fine){ #tlBtn{display:none} }
   .stimOne{border:1px solid var(--line);background:transparent;padding:2px 4px;margin-right:6px;display:inline-flex;align-items:center;color:#ffe11a;flex:none}
   .stimOne svg{width:15px;height:15px;display:block}
   .stimOne:hover{background:#2d2a12}
@@ -236,6 +253,7 @@
     <button id="plotBtn" class="on" title="A voltage plot above every cell the activity reaches: the soma against the −50 mV threshold, each synapse site (numbered on the cell), and your electrodes">📈 Voltage plots</button>
     <button id="elecBtn" title="Click (or trigger) on a cell to record its membrane voltage at that spot — up to 3 per cell, shown in the cell's voltage plot">📍 Electrode</button>
     <button id="elecClr" title="Remove all electrodes">Clear electrodes</button>
+    <button id="traceCsv" title="Download every voltage trace of this run — soma, synapse sites and electrodes, every 0.1 ms — as a CSV for figures">⬇ Traces CSV</button>
   </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
@@ -278,7 +296,7 @@
   <div id="ctxNote" class="help" style="margin-top:0"></div>
   <div id="tri"></div>
   <div id="vrslot"></div>
-  <div class="ctl"><button id="copyBtn">Copy headset link</button></div>
+  <div class="ctl"><button id="tlBtn" title="A timeline along the bottom of the window: camera keys with smooth movement between them, view keys that switch layers, and timed stimuli — then play it or film it (PC only)">🎞 Timeline</button><button id="copyBtn">Copy headset link</button></div>
   <div class="help">
     <b>Mouse:</b> drag to turn, scroll to zoom, right-drag to pan, <b>right-click to fly to a point</b>. <b>Keys:</b> W A S D walk, Q E down / up. Click a cell name to pick it.<br>
     <b>In VR:</b> trigger = pick a cell · grip = grab and move · both grips = resize ·
@@ -360,6 +378,7 @@
     around: S('<rect x="4.5" y="4.5" width="15" height="15" rx="1" stroke-dasharray="3 2.2"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'),
     whole: S('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.5 3 3.5 15 0 18M12 3c-3.5 3-3.5 15 0 18"/>'),
     view: S('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14" stroke-dasharray="2 2"/>'),
+    timeline: S('<path d="M3 17h18"/><path d="M7 13l2 2-2 2-2-2z" fill="currentColor"/><rect x="12" y="13" width="4" height="4" fill="currentColor"/><path d="M19 12.5l-1.5 2.5h1.5l-1 2.5"/><path d="M3 6h18v4H3z"/>'),
     help: S('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/>')
   };
   const $ = id => document.getElementById(id);
@@ -373,9 +392,9 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
-    recBtn: ["rec", "Record"], copyBtn: ["headset", "Headset link"]
+    recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
   for (const id in BTN){
     const b = $(id); if (!b) continue;
@@ -436,10 +455,10 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset", "traceCsv"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
-    ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["copyBtn"]]]
+    ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
   ];
   const oldRows = new Set();
   const bar = document.createElement("div"); bar.id = "tabs";
@@ -490,7 +509,7 @@
     ptsDir: () => !!(V().PTS && V().PTS.on),
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
     stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on),
-    plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on),
+    plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on),
     spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
   };
@@ -2416,10 +2435,10 @@ function clearVm(c){ const a = c.mesh && c.mesh.geometry.attributes.vm; if (a){ 
 function resetActivity(){
   if (STIM.warn){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
   STIM.events = []; STIM.now = 0; STIM.running = false; STIM.spikes = 0; AP_UNI.apNow.value = -1e9;
-  STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
+  STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.logRows = 0; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
     const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
-    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.refrNoted = false; }
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.log = null; c.refrNoted = false; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
   clearSiteTags();
   CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
@@ -2678,6 +2697,34 @@ function sampleCell(c, t){
   tr.site.push((c.sites || []).map(s => vmShown(c, s.node, t)));
   tr.el.push((c.electrodes || []).map(e => vmShown(c, e.node, t)));
   while (tr.t.length && tr.t[0] < t - VM.window - 2){ tr.t.shift(); tr.soma.shift(); tr.site.shift(); tr.el.shift(); }
+  /* THE WHOLE RUN, for the CSV (2026-10-16): every 0.1 ms, every trace, with its name. */
+  if (!c.log) c.log = [];
+  if ((!c.log.length || t - c.log[c.log.length - 1][0] >= 0.1) && (STIM.logRows || 0) < 400000){
+    const row = [t, tr.soma[tr.soma.length - 1]];
+    (c.sites || []).forEach((sx, j) => row.push(["site " + sx.n + " " + ({ E: "EPSP", I: "IPSP", D: "dendritic spike" })[sx.kind] + (soma >= 0 ? " (" + Math.round(distFrom(c, sx.node)[soma]) + " um from soma)" : ""), tr.site[tr.site.length - 1][j]]));
+    (c.electrodes || []).forEach((e, j) => row.push(["electrode " + "abc"[e.k], tr.el[tr.el.length - 1][j]]));
+    c.log.push(row); STIM.logRows = (STIM.logRows || 0) + 1 + (c.sites || []).length + (c.electrodes || []).length;
+  }
+}
+/* VOLTAGE TRACES AS A CSV (2026-10-16, Søren: "Do all of them" -- export the traces for figures).
+   Long format, one row per sample: the run's time in ms, the cell, its root id, which trace, mV.
+   The action potential is included as drawn (to +30 mV). */
+function exportTraces(){
+  const rows = [["time_ms", "cell", "root_id", "cell_type", "trace", "mV"]];
+  for (const c of CELLS){
+    if (!c.log || !c.log.length) continue;
+    for (const r of c.log){
+      if (r[1] != null) rows.push([r[0].toFixed(2), shortName(c), c.root || "", c.label || "", "soma", r[1].toFixed(2)]);
+      for (let j = 2; j < r.length; j++) if (r[j][1] != null) rows.push([r[0].toFixed(2), shortName(c), c.root || "", c.label || "", r[j][0], r[j][1].toFixed(2)]);
+    }
+  }
+  if (rows.length < 2){ ctxNote.textContent = "No voltages recorded yet — stimulate a cell first (the plots record what they show)."; return; }
+  const q = v => /[",;\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  const csv = rows.map(r => r.map(q).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = recFileName("csv").replace(/^vr-/, "vr-traces-"); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  ctxNote.textContent = "Saved " + (rows.length - 1).toLocaleString() + " samples (every 0.1 ms) to your downloads: " + a.download + ". Columns: time_ms, cell, root_id, cell_type, trace, mV.";
 }
 function plotCells(){
   return [...(STIM.active || [])].filter(c => c.mesh && cellClass(c) !== "glia" || (c.electrodes && c.electrodes.length)).slice(0, VM.plotMax);
@@ -2966,6 +3013,7 @@ document.getElementById("stimReset").addEventListener("click", resetActivity);
 document.getElementById("plotBtn").addEventListener("click", () => setPlots(!STIM.plots));
 document.getElementById("elecBtn").addEventListener("click", () => setElectrode(!STIM.electrode));
 document.getElementById("elecClr").addEventListener("click", clearElectrodes);
+document.getElementById("traceCsv").addEventListener("click", exportTraces);
 STIM.plots = true; STIM.active = new Set();
 
 /* ── 9. THE SPRAY CAN ───────────────────────────────────────────────────────  2026-10-14
@@ -3172,6 +3220,7 @@ function captureScene(){
   const sel = document.getElementById("vascSel").value;
   const sc = {
     v: 1, savedAt: new Date().toISOString(),
+    timeline: (tlCount()) ? tlData() : undefined,
     cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden },
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
@@ -3226,7 +3275,8 @@ async function saveScene(fromVR){
     || SCENE.title || (CELLS.length + " cells · " + new Date().toLocaleDateString());
   const sc = captureScene(), json = JSON.stringify(sc), preview = previewJpeg();
   out.textContent = "Saving " + Math.round(json.length / 1024) + " kB…";
-  const body = { type: "vr_scene", credential: CRED, title, scene: json, preview, cells: CELLS.length, ds: "ujump" };
+  const body = { type: "vr_scene", credential: CRED, title, scene: json, preview, cells: CELLS.length, ds: "ujump",
+                 story: tlCount() ? Math.round(TL.dur) : 0 };      // the forum offers "▶ Play its story" when there is one
   if (SCENE.id && SCENE.mine) body.sceneId = SCENE.id;
   let d = null;
   try {
@@ -3340,6 +3390,13 @@ async function applyScene(sc){
       m.decompose(k.position, k.quaternion, k.scale); scene.add(k);
       CUT.mode = "frozen"; applyClip(); MENU.dirty = true;
     }
+  }
+  if (sc.timeline){ tlLoad(sc.timeline); tlSave(); }
+  /* PLAY ITS STORY (2026-10-16): a link from the forum ending &play=1 opens the timeline and plays
+     it once the cells are in -- a scene's story watched in anyone's browser, nothing downloaded. */
+  if (/[#&]play=1/.test(location.hash)){
+    if (sc.timeline && tlCount() && !renderer.xr.isPresenting){ setTimeline(true); tlSeek(0); setTimeout(() => tlPlay(), 1200); }
+    else ctxNote.textContent = "This scene has no timeline to play — it opened as it was saved.";
   }
   SCENE.pending = null;
   applyLook(); renderList();
@@ -4813,11 +4870,13 @@ function edgePlots(W, H){
   /* …and below the "☰ Cells" button when the panel is folded away. */
   let topL = mg; const sh = document.getElementById("show");
   if (!REC.on && sh && sh.getClientRects().length && getComputedStyle(sh).display !== "none" && x0 === mg){ const r = sh.getBoundingClientRect(); topL = r.bottom + mg; }
-  for (let y = H - topL - ph / 2; y - ph / 2 >= mg; y -= ph + gap) slots.push({ x: x0 + pw / 2, y, pen: 0 });
-  for (let y = H - logoH - ph / 2; y - ph / 2 >= mg; y -= ph + gap) slots.push({ x: x1 - pw / 2, y, pen: 0 });
+  /* …and above the timeline strip when it is open (not in a movie: it is not filmed). */
+  const bot = !REC.on && typeof TL !== "undefined" && TL.open ? (TL.height || 0) * (H / Math.max(1, innerHeight)) + mg : mg;
+  for (let y = H - topL - ph / 2; y - ph / 2 >= bot; y -= ph + gap) slots.push({ x: x0 + pw / 2, y, pen: 0 });
+  for (let y = H - logoH - ph / 2; y - ph / 2 >= bot; y -= ph + gap) slots.push({ x: x1 - pw / 2, y, pen: 0 });
   for (let x = x0 + pw * 1.5 + gap; x + pw / 2 <= x1 - pw - gap; x += pw + gap){
     slots.push({ x, y: H - mg - ph / 2, pen: 0.12 * W });
-    slots.push({ x, y: mg + ph / 2, pen: 0.2 * W });
+    slots.push({ x, y: bot + ph / 2, pen: 0.2 * W });
   }
   /* Each plot's anchor on the screen: its soma, or the middle of the cell. */
   for (const c of list){
@@ -4828,7 +4887,7 @@ function edgePlots(W, H){
     P.scr = { x: (_ep.x + 1) / 2 * W, y: (_ep.y + 1) / 2 * H, behind: _ep.z > 1 };
   }
   /* Re-assign only when something changed and the view is at rest. */
-  const key = W + "x" + H + ":" + x0 + ":" + topL + ":" + list.map(c => c.i).join(","), camKey = camera.matrixWorld.elements.map(v => v.toFixed(3)).join(",");
+  const key = W + "x" + H + ":" + x0 + ":" + topL + ":" + bot + ":" + list.map(c => c.i).join(","), camKey = camera.matrixWorld.elements.map(v => v.toFixed(3)).join(",");
   const now = performance.now();
   if (camKey !== STIM._camKey){ STIM._camKey = camKey; STIM._camMoved = now; }
   const rest = now - (STIM._camMoved || 0) > 400;
@@ -4865,6 +4924,55 @@ function edgePlots(W, H){
     }
   }
 }
+
+/* CAPTIONS (2026-10-16, Søren chose them first among the timeline suggestions). A caption key is a
+   text card shown from its time for its duration, fading in and out over 0.4 s, at the top, middle
+   or bottom, in three sizes (3.2 / 4.5 / 6.5 % of the picture's height). It is drawn in the overlay
+   pass with the logo, so it is in the movie, sharp at any size: the card is drawn for the canvas it
+   lands on. While the timeline is open it shows at the playhead, so it can be placed by eye; on
+   screen a bottom caption sits above the timeline strip, in the movie at the real bottom. */
+const CAPS = new Map();
+function capCard(k, H){
+  const px = Math.round(H * ({ s: 0.032, m: 0.045, l: 0.065 })[k.size || "m"]), key = k.text + "|" + px;
+  let c = CAPS.get(k.id);
+  if (c && c.key === key) return c;
+  const lines = String(k.text || "").split("\n");
+  const m = document.createElement("canvas").getContext("2d"); m.font = "600 " + px + "px system-ui, sans-serif";
+  const pad = Math.round(px * 0.6), lh = Math.round(px * 1.3);
+  const W = Math.ceil(Math.max(...lines.map(l => m.measureText(l).width)) + pad * 2), Hc = Math.ceil(lines.length * lh + pad * 1.4);
+  const cv = document.createElement("canvas"); cv.width = Math.max(4, W); cv.height = Math.max(4, Hc);
+  const g = cv.getContext("2d");
+  g.fillStyle = "rgba(13,17,23,0.72)"; g.beginPath(); g.roundRect(0, 0, cv.width, cv.height, Math.round(px * 0.4)); g.fill();
+  g.font = "600 " + px + "px system-ui, sans-serif"; g.fillStyle = "#f0f6fc"; g.textAlign = "center"; g.textBaseline = "middle";
+  lines.forEach((l, i) => g.fillText(l, cv.width / 2, pad * 0.7 + lh * (i + 0.5)));
+  if (c){ c.tex.dispose(); }
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  if (!c){
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+    mesh.frustumCulled = false; mesh.renderOrder = 20; LOGO.scene.add(mesh);
+    c = { mesh };
+  }
+  c.mesh.material.map = tex; c.mesh.material.needsUpdate = true;
+  Object.assign(c, { key, tex, w: cv.width, h: cv.height }); CAPS.set(k.id, c);
+  return c;
+}
+function capFrame(W, H){
+  const live = new Set();
+  if (typeof TL !== "undefined" && TL.open && TL.keys.cap.length){
+    const bot = !REC.on ? (TL.height || 0) * (H / Math.max(1, innerHeight)) : 0;
+    const pos = { top: 0, middle: 0, bottom: 0 };
+    for (const k of TL.keys.cap){
+      const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
+      const f = Math.min(1, a / 0.4, (k.dur - a) / 0.4);
+      const c = capCard(k, H); live.add(k.id);
+      const mg = H * 0.05, y = k.pos === "top" ? H - mg - c.h / 2 - pos.top : k.pos === "middle" ? H / 2 - pos.middle : bot + mg + c.h / 2 + pos.bottom;
+      pos[k.pos || "bottom"] += c.h + H * 0.012;                         // two at once stack instead of overlapping
+      c.mesh.visible = true; c.mesh.material.opacity = f;
+      c.mesh.scale.set(c.w, c.h, 1); c.mesh.position.set(W / 2, y, 0);
+    }
+  }
+  CAPS.forEach((c, id) => { if (!live.has(id)) c.mesh.visible = false; });
+}
 const _ls = new THREE.Vector2();
 /* The second pass: top right, about 7 % of the canvas height. */
 function renderLogo(){
@@ -4879,10 +4987,635 @@ function renderLogo(){
   LOGO.cam.left = 0; LOGO.cam.right = W; LOGO.cam.top = H; LOGO.cam.bottom = 0; LOGO.cam.updateProjectionMatrix();
   LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(W - m - w / 2, H - m - h / 2, 0);
   if (STIM.plots) edgePlots(W, H);
+  fxFrame(W, H); capFrame(W, H);
   const ac = renderer.autoClear; renderer.autoClear = false;
   renderer.render(LOGO.scene, LOGO.cam);
   renderer.autoClear = ac;
 }
+
+/* ── 18. THE TIMELINE ───────────────────────────────────────────────────────────  2026-10-16
+   Søren: "I would like if we could get a way to have a timeline in the PC version of the VR, where
+   we can put in keyframes with different camera positions and set a certain type of stimulation.
+   Between camera keyframes there should be a smooth animation. Also turning on different layers
+   should be keyframes."
+
+   A strip along the bottom of the window (PC only; 🎞 in the Share tab) with three lanes:
+   · CAMERA ◆ -- where the eye is, where it looks, and how the collection itself is turned and sized.
+     Between camera keys the view glides along a Catmull-Rom curve through all of them -- one
+     smooth path, no stop at each key -- easing in at the first and out at the last; the
+     collection's turn is slerped. Keys are as many seconds apart as you drag them.
+   · VIEW ■ -- what is shown: nuclei, see-through, layers, V1 column, areas, vessels, skeletons,
+     organelles, tracings, vectors, synapse points, scale bar, region boxes, plots, colour mode,
+     the picked cell and which cells are hidden. A view key switches everything to what it holds
+     when the playhead reaches it.
+   · STIMULUS ⚡ -- fire a cell at its soma, with an input strength (×1 / ×10 / ×30) and, if wanted,
+     a train of pulses at a chosen interval.
+   ▶ plays it; dragging on the ruler scrubs (camera and view follow, stimuli do not fire while
+   scrubbing); ⏺ films it from the start to the end with the recorder's size, shape and frame rate.
+   Because the timeline runs on the same clock as the frame-by-frame recorder, a filmed timeline is
+   exact: every key lands on its frame, whatever the computer did meanwhile.
+   The timeline is saved with the scene (💾 Save scene) and kept in this browser between visits. */
+const TL = { hist: [], hpos: -1, snap: true, showPath: true, thumbs: new Map(), open: false, dur: 20, t: 0, playing: false, keys: { cam: [], view: [], stim: [], cap: [], fx: [] }, sel: null, viewApplied: null, drag: null, rec: false, uid: 1 };
+const TL_LANES = [["cam", "Camera", "#58a6ff"], ["view", "View", "#3fb950"], ["stim", "Stimulus", "#ffe11a"], ["cap", "Caption", "#e6edf3"], ["fx", "Effect", "#d2a8ff"]];
+function tlCount(){ return Object.values(TL.keys).reduce((a, L) => a + L.length, 0); }
+function tlKey(lane, o){ return Object.assign({ id: TL.uid++, lane }, o); }
+/* What a view key holds -- read from the live state, so it is whatever the panel shows now. */
+function tlCaptureView(){
+  return { nuc: SHOW_NUC, glass: SEE_THROUGH, iso: ISOLATE, colour: COLOUR_MODE, layers: layersOn(),
+           vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, skel: SKEL.mode,
+           org: ORG.on, traced: TRC.on, cvec: VEC.cent, lvec: VEC.cil, pts: PTS.on, sbar: SBAR.on, rbox: RBOX.on,
+           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden) };
+}
+/* …and applied, changing only what differs (each layer rebuild is not free). */
+function tlApplyView(v){
+  if (!v) return;
+  if (v.nuc !== SHOW_NUC) setNuclei(v.nuc);
+  if (v.glass !== SEE_THROUGH) toggleGlass();
+  if (v.iso !== ISOLATE) toggleIsolate();
+  if (v.colour && v.colour !== COLOUR_MODE) setColourMode(v.colour);
+  if (v.layers !== layersOn()) setLayers(v.layers);
+  if (v.vessels && v.vessels !== document.getElementById("vascSel").value) setVessels(v.vessels);
+  if (v.v1 && v.v1 !== V1COL.mode) setV1Col(v.v1);
+  if (v.areas !== AREAS.on) setAreas(v.areas);
+  if (v.skel && v.skel !== SKEL.mode) setSkel(v.skel);
+  if (v.org !== ORG.on) setOrganelles(v.org);
+  if (v.traced !== TRC.on) setTraced(v.traced);
+  if (v.cvec !== VEC.cent || v.lvec !== VEC.cil){ VEC.cent = v.cvec; VEC.cil = v.lvec; buildVectors(); }
+  if (v.pts !== PTS.on) setPoints(v.pts);
+  if (v.sbar !== SBAR.on) setScaleBar(v.sbar);
+  if (v.rbox !== RBOX.on && RBOX.list.length) setRegionBoxes(v.rbox);
+  if (v.plots !== !!STIM.plots) setPlots(v.plots);
+  let hid = false;
+  (v.hidden || []).forEach((h, i) => { if (CELLS[i] && !!CELLS[i].hidden !== h){ CELLS[i].hidden = h; hid = true; } });
+  if (hid){ syncVisChecks(); applyLook(); renderList(); }
+  if (v.sel !== SELECTED && v.sel < CELLS.length) select(v.sel);
+  MENU.dirty = true;
+}
+function tlCaptureCam(){
+  return { p: camera.position.toArray(), tg: controls.target.toArray(),
+           sp: stage.position.toArray(), sq: stage.quaternion.toArray(), ss: stage.scale.x };
+}
+/* Catmull-Rom through the camera keys: position and target follow one smooth curve. */
+const _tc0 = new THREE.Vector3(), _tc1 = new THREE.Vector3(), _tc2 = new THREE.Vector3(), _tc3 = new THREE.Vector3(), _tq1 = new THREE.Quaternion(), _tq2 = new THREE.Quaternion();
+function crom(a, b, c, d, u, out){
+  const u2 = u * u, u3 = u2 * u;
+  return out.set(0, 0, 0)
+    .addScaledVector(a, -0.5 * u3 + u2 - 0.5 * u).addScaledVector(b, 1.5 * u3 - 2.5 * u2 + 1)
+    .addScaledVector(c, -1.5 * u3 + 2 * u2 + 0.5 * u).addScaledVector(d, 0.5 * u3 - 0.5 * u2);
+}
+/* ORBIT SEGMENTS (2026-10-16, the third of Søren's three: "continue with all 3"). A camera key may
+   carry an orbit: from that key the camera circles its target about the vertical -- 90° to 720°,
+   left or right, over a chosen number of seconds -- easing in and out, with the collection held
+   still. For the curve through the other keys an orbiting key counts twice: as itself at its start
+   and as its turned pose at the end of the orbit, so the camera flows into and out of the circle.
+   One key, one circle; no need to place a key every few degrees. */
+function tlCamList(){
+  const E = [];
+  for (const k of TL.keys.cam){
+    E.push({ t: k.t, k, rot: 0 });
+    if (k.orb && k.orb.deg) E.push({ t: k.t + k.orb.dur, k, rot: k.orb.deg * (k.orb.dir || 1) });
+  }
+  return E.sort((a, b) => a.t - b.t);
+}
+/* A pose: the key's own, or turned `rot` degrees about the vertical through its target. */
+const _tpv = new THREE.Vector3(), _tpy = new THREE.Vector3(0, 1, 0);
+function tlPose(e, extraRot){
+  const k = e.k, rot = (e.rot || 0) + (extraRot || 0);
+  if (!rot) return k;
+  _tpv.fromArray(k.p).sub(_tc3.fromArray(k.tg)).applyAxisAngle(_tpy, THREE.MathUtils.degToRad(rot)).add(_tc3);
+  return { p: _tpv.toArray(), tg: k.tg, sp: k.sp, sq: k.sq, ss: k.ss };
+}
+function tlCamAt(t){
+  const E = tlCamList(); if (!E.length) return null;
+  /* Inside an orbit: the circle itself. */
+  for (const k of TL.keys.cam){
+    if (!k.orb || !k.orb.deg || t <= k.t || t >= k.t + k.orb.dur) continue;
+    const u = (t - k.t) / k.orb.dur, ue = (1 - Math.cos(Math.PI * u)) / 2;
+    return { pose: tlPose({ k }, k.orb.deg * (k.orb.dir || 1) * ue) };
+  }
+  if (E.length === 1 || t <= E[0].t) return { pose: tlPose(E[0]) };
+  if (t >= E[E.length - 1].t) return { pose: tlPose(E[E.length - 1]) };
+  let i = 0; while (i < E.length - 2 && t > E[i + 1].t) i++;
+  const a = tlPose(E[Math.max(0, i - 1)]), b = tlPose(E[i]), c = tlPose(E[i + 1]), d = tlPose(E[Math.min(E.length - 1, i + 2)]);
+  let u = (t - E[i].t) / Math.max(1e-6, E[i + 1].t - E[i].t);
+  /* Ease in at the first key and out at the last; through the middle keys at an even pace. */
+  if (i === 0 && i + 1 === E.length - 1) u = u * u * (3 - 2 * u);
+  else if (i === 0) u = u * u * (2 - u);
+  else if (i + 1 === E.length - 1) u = u * (1 + u - u * u);
+  return { a, b, c, d, u };
+}
+function tlApplyCam(t){
+  const s = tlCamAt(t); if (!s) return;
+  if (s.pose){
+    const k = s.pose;
+    camera.position.fromArray(k.p); controls.target.fromArray(k.tg);
+    stage.position.fromArray(k.sp); stage.quaternion.fromArray(k.sq); stage.scale.setScalar(k.ss);
+  } else {
+    const P = f => crom(_tc0.fromArray(s.a[f]), _tc1.fromArray(s.b[f]), _tc2.fromArray(s.c[f]), _tc3.fromArray(s.d[f]), s.u, new THREE.Vector3());
+    camera.position.copy(P("p")); controls.target.copy(P("tg")); stage.position.copy(P("sp"));
+    _tq1.fromArray(s.b.sq); _tq2.fromArray(s.c.sq); stage.quaternion.copy(_tq1).slerp(_tq2, s.u);
+    stage.scale.setScalar(Math.exp(Math.log(s.b.ss) + (Math.log(s.c.ss) - Math.log(s.b.ss)) * s.u));
+  }
+  camera.lookAt(controls.target); USER_MOVED = true;
+}
+function tlApplyViewAt(t, playing){
+  let k = null; for (const v of TL.keys.view) if (v.t <= t + 1e-6) k = v;
+  if (k && TL.viewApplied !== k.id){
+    TL.viewApplied = k.id;
+    /* FADES (2026-10-16, the second of the three). Reached while playing, a view key with a fade
+       dissolves: the picture as it was is kept, the new view is switched on underneath, and the old
+       picture fades away over the chosen time -- one way that works for every kind of layer,
+       cells shown or hidden included. Scrubbing switches at once. */
+    if (playing && (k.fade || 0) > 0) tlSnapshot(k.fade);
+    tlApplyView(k.v);
+  }
+}
+const TLFX = { rt: null, mesh: null, black: null, until: 0, dur: 0, start: 0 };
+function tlSnapshot(dur){
+  const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+  if (!TLFX.rt || TLFX.rt.width !== sz.x || TLFX.rt.height !== sz.y){ if (TLFX.rt) TLFX.rt.dispose(); TLFX.rt = new THREE.WebGLRenderTarget(sz.x, sz.y); }
+  renderer.setRenderTarget(TLFX.rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  TLFX.start = TL.t; TLFX.dur = dur;
+}
+/* In the overlay pass, under the logo, plots and captions: the dissolve, then the fade to and from
+   black at the ends of the timeline (only while it plays, so editing never shows a black screen). */
+function fxFrame(W, H){
+  if (!TLFX.mesh){
+    TLFX.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+    TLFX.black = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthTest: false, depthWrite: false }));
+    TLFX.mesh.renderOrder = -10; TLFX.black.renderOrder = 15; TLFX.mesh.frustumCulled = TLFX.black.frustumCulled = false;
+    LOGO.scene.add(TLFX.mesh, TLFX.black);
+  }
+  const on = typeof TL !== "undefined" && TL.playing;
+  const a = on && TLFX.rt && TLFX.dur > 0 ? 1 - (TL.t - TLFX.start) / TLFX.dur : 0;
+  TLFX.mesh.visible = a > 0 && a <= 1;
+  if (TLFX.mesh.visible){ const mm = TLFX.mesh.material; if (mm.map !== TLFX.rt.texture){ mm.map = TLFX.rt.texture; mm.needsUpdate = true; } mm.opacity = a; TLFX.mesh.scale.set(W, H, 1); TLFX.mesh.position.set(W / 2, H / 2, 0); }
+  let b = 0;
+  if (on){
+    if ((TL.fadeIn || 0) > 0 && TL.t < TL.fadeIn) b = 1 - TL.t / TL.fadeIn;
+    if ((TL.fadeOut || 0) > 0 && TL.t > TL.dur - TL.fadeOut) b = Math.max(b, (TL.t - (TL.dur - TL.fadeOut)) / TL.fadeOut);
+  }
+  TLFX.black.visible = b > 0; TLFX.black.material.opacity = Math.min(1, b); TLFX.black.scale.set(W, H, 1); TLFX.black.position.set(W / 2, H / 2, 0);
+}
+function tlStimCells(k){ return Array.isArray(k.cells) && k.cells.length ? k.cells : [k.cell]; }
+function tlFireStim(k, ci){
+  const c = CELLS[ci == null ? k.cell : ci]; if (!c || !c.mesh) return;
+  if (k.gain && GAIN_NAME[k.gain]) document.getElementById("stimGain").value = k.gain;
+  if (k.mode) document.getElementById("stimMode").value = k.mode;
+  stimulateCell(c);
+}
+/* Per frame, before drawing. */
+function tlFrame(dt){
+  tlEffects();
+  if (!TL.playing) return;
+  const t0 = TL.t, t1 = Math.min(TL.dur, TL.t + dt);
+  TL.t = t1;
+  /* Stimuli in [t0, t1) fire this frame -- the end is open so no pulse fires twice. */
+  for (const k of TL.keys.stim){
+    const cs = tlStimCells(k);
+    for (let p = 0; p < Math.max(1, k.n || 1); p++) cs.forEach((ci, j) => {
+      const tp = k.t + p * (k.every || 0.5) + j * (k.stagger || 0);
+      if (tp >= t0 - 1e-9 && (tp < t1 || (t1 >= TL.dur && tp <= t1))) tlFireStim(k, ci);
+    });
+  }
+  tlApplyViewAt(TL.t, true); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlFollow(dt);
+  if (TL.t >= TL.dur) tlStop(true);
+  tlDraw();
+}
+function tlPlay(){
+  if (TL.t >= TL.dur - 1e-3) TL.t = 0;
+  TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.follow = null; controls.enabled = false;
+  tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
+}
+function tlStop(ended){
+  TL.playing = false; TL.frozen = false; TL.follow = null; controls.enabled = true; controls.update();
+  if (ended && TL.rec){ TL.rec = false; stopRecording(); }
+  tlSync();
+}
+async function tlRecord(){
+  if (REC.on) return;
+  TL.t = 0; tlApplyViewAt(0); tlApplyCam(0);
+  const mode = document.getElementById("recMode"); mode.value = "free";
+  await startRecording();
+  if (!REC.on) return;
+  TL.rec = true; tlPlay();
+}
+
+/* ── the timeline's extras (2026-10-16, Søren: "Do all of them") ──
+   SNAP while dragging: to other keys and the playhead when within 0.15 s, else to half seconds. */
+function tlSnapT(key, t){
+  if (!TL.snap) return Math.round(t * 10) / 10;
+  let best = Math.round(t * 2) / 2, bd = Math.abs(best - t) < 0.15 ? Math.abs(best - t) : 1e9;
+  const cands = [TL.t];
+  for (const l in TL.keys) for (const k of TL.keys[l]) if (k !== key){ cands.push(k.t); if (k.dur) cands.push(k.t + k.dur); if (k.orb && k.orb.dur) cands.push(k.t + k.orb.dur); }
+  for (const c of cands){ const d = Math.abs(c - t); if (d < 0.15 && d < bd){ bd = d; best = c; } }
+  return Math.max(0, Math.min(TL.dur, Math.round((bd < 1e9 ? best : t) * 100) / 100));
+}
+/* THUMBNAILS of what a camera key sees, kept by pose (they survive undo), shown on hover. */
+function tlThumbKey(k){ return (k.p || []).map(v => v.toFixed(3)).join(",") + "|" + (k.sq || []).map(v => v.toFixed(3)).join(","); }
+function tlThumb(k){
+  try {
+    const keep = { p: camera.position.clone(), t: controls.target.clone() };
+    renderer.render(scene, camera);
+    const src = renderer.domElement, w = 160, h = Math.round(w * src.height / src.width);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").drawImage(src, 0, 0, w, h);
+    TL.thumbs.set(tlThumbKey(k), cv.toDataURL("image/jpeg", 0.7));
+    camera.position.copy(keep.p); controls.target.copy(keep.t);
+  } catch (e){}
+}
+/* ELECTRODE KEYS: the electrodes as placed when the key was set; reached, they replace those placed. */
+function tlCaptureElectrodes(){ const out = []; CELLS.forEach((c, i) => (c.electrodes || []).forEach(e => out.push({ cell: i, node: e.node }))); return out; }
+function tlApplyElectrodesAt(t){
+  let k = null; for (const f of TL.keys.fx) if (f.kind === "electrodes" && f.t <= t + 1e-6) k = f;
+  if (!k || TL.elApplied === k.id) return;
+  TL.elApplied = k.id;
+  clearElectrodes();
+  for (const e of k.el || []){ const c = CELLS[e.cell]; if (c && c.mesh) placeElectrode(c, nodePos(c, e.node)); }
+}
+/* HIGHLIGHT (a cell glows, the rest dim) and FREEZE (the spike clock stands still), every frame. */
+function tlEffects(){
+  if (TL.pathObj) TL.pathObj.visible = TL.open && TL.showPath && !TL.playing && !REC.on && !renderer.xr.isPresenting;
+  let hl = null, hf = 0, frz = false;
+  if (TL.open) for (const k of TL.keys.fx){
+    if (!(k.dur > 0) || TL.t < k.t || TL.t >= k.t + k.dur) continue;
+    const f = Math.min(1, (TL.t - k.t) / 0.4, (k.t + k.dur - TL.t) / 0.4);
+    if (k.kind === "highlight" && f > hf){ hl = k; hf = f; }
+    if (k.kind === "freeze" && TL.playing) frz = true;
+  }
+  TL.frozen = frz;
+  if (hl){
+    CELLS.forEach((c, i) => {
+      if (!c.mesh) return;
+      const m = c.mesh.material;
+      if (i === hl.cell){ m.emissive.set(c.colour).multiplyScalar(0.6 * hf); m.emissiveIntensity = 1; m.opacity = 1; m.transparent = false; m.depthWrite = true; }
+      else { m.emissive.setRGB(0, 0, 0); m.transparent = true; m.opacity = 1 - (1 - (hl.dim != null ? hl.dim : 0.15)) * hf; m.depthWrite = hf < 0.5; }
+      m.needsUpdate = m.needsUpdate || !m._hl; m._hl = true;
+    });
+    TL.hlOn = true;
+  } else if (TL.hlOn){
+    TL.hlOn = false;
+    CELLS.forEach(c => { if (c.mesh){ c.mesh.material.emissive.setRGB(0, 0, 0); c.mesh.material._hl = false; c.mesh.material.needsUpdate = true; } });
+    applyLook();
+  }
+}
+/* FOLLOW THE SPIKE: while a follow effect runs, the camera looks at the front of the newest action
+   potential -- the membrane the band is passing right now -- and keeps its distance and direction,
+   gliding there smoothly; it blends in and out over 0.5 s, back to the camera keys. */
+const _tlFront = new THREE.Vector3(), _tlOff = new THREE.Vector3();
+function spikeFront(out){
+  let best = null, bestT = -1;
+  for (const c of CELLS){
+    if (!c.apNodeT || !c.graph || !(c.apLast > STIM.now - 0.05)) continue;
+    const T = c.apNodeT, P = c.graph.pos; let n = 0, x = 0, y = 0, z = 0, tmax = -1;
+    for (let i = 0; i < T.length; i++){ const a = STIM.now - T[i]; if (a >= 0 && a < 0.15){ n++; x += P[i*3]; y += P[i*3+1]; z += P[i*3+2]; if (T[i] > tmax) tmax = T[i]; } }
+    if (n && tmax > bestT){ bestT = tmax; best = [x / n, y / n, z / n]; }
+  }
+  if (!best) return null;
+  return content.localToWorld(out.set(best[0], best[1], best[2]));
+}
+function tlFollow(dt){
+  let k = null; for (const f of TL.keys.fx) if (f.kind === "follow" && TL.t >= f.t && TL.t < f.t + (f.dur || 0)) k = f;
+  if (!k){ TL.follow = null; return; }
+  const w = Math.min(1, (TL.t - k.t) / 0.5, (k.t + k.dur - TL.t) / 0.5);
+  if (!TL.follow || TL.follow.id !== k.id) TL.follow = { id: k.id, target: controls.target.clone(), off: camera.position.clone().sub(controls.target) };
+  const F = TL.follow;
+  if (spikeFront(_tlFront)) F.target.lerp(_tlFront, 1 - Math.exp(-dt * 5));
+  _tlOff.copy(F.target).add(F.off);
+  camera.position.lerp(_tlOff, w); controls.target.lerp(F.target, w); camera.lookAt(controls.target);
+}
+/* THE CAMERA PATH in the room: where the camera will go, dotted, with a dot per key. */
+function tlCamPosAt(t, out){
+  const s = tlCamAt(t); if (!s) return null;
+  if (s.pose) return out.fromArray(s.pose.p);
+  return crom(_tc0.fromArray(s.a.p), _tc1.fromArray(s.b.p), _tc2.fromArray(s.c.p), _tc3.fromArray(s.d.p), s.u, out);
+}
+function tlPathBuild(){
+  if (TL.pathObj){ scene.remove(TL.pathObj); TL.pathObj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); TL.pathObj = null; }
+  if (!TL.showPath || TL.keys.cam.length < 1) return;
+  const pts = [], v = new THREE.Vector3(), N = Math.min(600, Math.max(60, Math.round(TL.dur * 20)));
+  for (let i = 0; i <= N; i++){ if (tlCamPosAt(TL.dur * i / N, v)) pts.push(v.clone()); }
+  const grp = new THREE.Group();
+  if (pts.length > 1){
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: 0x58a6ff, dashSize: 0.01, gapSize: 0.008, transparent: true, opacity: 0.85, depthTest: false }));
+    line.computeLineDistances(); line.renderOrder = 9; grp.add(line);
+  }
+  const kp = TL.keys.cam.map(k => new THREE.Vector3().fromArray(k.p));
+  const dots = new THREE.Points(new THREE.BufferGeometry().setFromPoints(kp), new THREE.PointsMaterial({ color: 0x58a6ff, size: 9, sizeAttenuation: false, depthTest: false }));
+  dots.renderOrder = 9; grp.add(dots);
+  grp.visible = false; TL.pathObj = grp; scene.add(grp);
+}
+/* ── the strip ── */
+const TLD = {};
+function tlBuild(){
+  if (TLD.bar) return;
+  const bar = document.createElement("div"); bar.id = "tlBar";
+  bar.innerHTML = `
+    <div class="tlRow">
+      <button id="tlPlay" title="Play / pause (space)">▶</button>
+      <button id="tlHome" title="Back to the start">⏮</button>
+      <span id="tlTime" class="tlTime">0.0 / 20 s</span>
+      <span class="tlSep"></span>
+      <button id="tlAddCam" title="Add a camera key here: the current view">+ ◆ Camera</button>
+      <button id="tlAddView" title="Add a view key here: what is shown now (layers, nuclei, vessels, …)">+ ■ View</button>
+      <button id="tlAddStim" title="Add a stimulus here: fire a cell at its soma">+ ⚡ Stimulus</button>
+      <button id="tlAddCap" title="Add a caption here: a text card that fades in and out, drawn into the movie">+ T Caption</button>
+      <button id="tlAddFx" title="Add an effect here: highlight a cell, freeze the spikes, follow the spike, or set the recording electrodes">+ ✦ Effect</button>
+      <span class="tlSep"></span>
+      <button id="tlUndo" title="Undo (Ctrl+Z)">↶</button><button id="tlRedo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
+      <button id="tlSnap" class="on" title="Snap keys to half seconds, to other keys and to the playhead while dragging">Snap</button>
+      <button id="tlPath" class="on" title="Show the camera's path as a dotted line in the 3D view">Path</button>
+      <span class="tlSep"></span>
+      <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="300" step="1" value="20"> s</label>
+      <label class="tlLab" title="Fade in from black at the start and out to black at the end, in seconds (0 = none). Shown only while playing and in the movie.">Black in <input id="tlFin" type="number" min="0" max="10" step="0.5" value="0"> out <input id="tlFout" type="number" min="0" max="10" step="0.5" value="0"> s</label>
+      <button id="tlRec" title="Film the timeline from start to end with the recorder's size, shape and frame rate">⏺ Film it</button>
+      <button id="tlClear" title="Remove every key">Clear</button>
+      <button id="tlClose" title="Close the timeline">✕</button>
+    </div>
+    <div class="tlRow tlEdit" id="tlEdit"></div>
+    <canvas id="tlCv" height="162"></canvas><div id="tlThumb"></div>`;
+  document.body.appendChild(bar);
+  Object.assign(TLD, { bar, cv: bar.querySelector("#tlCv"), edit: bar.querySelector("#tlEdit"), time: bar.querySelector("#tlTime"), play: bar.querySelector("#tlPlay") });
+  TLD.play.onclick = () => TL.playing ? tlStop() : tlPlay();
+  bar.querySelector("#tlHome").onclick = () => { tlStop(); tlSeek(0); };
+  bar.querySelector("#tlAddCam").onclick = () => tlAdd("cam", tlCaptureCam());
+  bar.querySelector("#tlAddView").onclick = () => tlAdd("view", { v: tlCaptureView(), fade: 0.5 });
+  bar.querySelector("#tlAddStim").onclick = () => {
+    const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : CELLS.findIndex(c => c.mesh && cellClass(c) !== "glia");
+    if (pick < 0){ ctxNote.textContent = "No neuron is loaded to stimulate."; return; }
+    tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 });
+  };
+  bar.querySelector("#tlAddCap").onclick = () => { tlAdd("cap", { text: "Caption", dur: 3, pos: "bottom", size: "m" }); setTimeout(() => { const ta = TLD.edit.querySelector("#tlKtext"); if (ta){ ta.focus(); ta.select(); } }, 0); };
+  bar.querySelector("#tlAddFx").onclick = () => {
+    const pick = SELECTED >= 0 ? SELECTED : CELLS.findIndex(c => c.mesh);
+    tlAdd("fx", { kind: "highlight", cell: Math.max(0, pick), dur: 3, dim: 0.15 });
+  };
+  bar.querySelector("#tlUndo").onclick = () => tlUndo(-1);
+  bar.querySelector("#tlRedo").onclick = () => tlUndo(1);
+  bar.querySelector("#tlSnap").onclick = e => { TL.snap = !TL.snap; e.currentTarget.classList.toggle("on", TL.snap); };
+  bar.querySelector("#tlPath").onclick = e => { TL.showPath = !TL.showPath; e.currentTarget.classList.toggle("on", TL.showPath); tlPathBuild(); };
+  bar.querySelector("#tlFin").onchange = e => { TL.fadeIn = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
+  bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
+  bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(300, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
+  bar.querySelector("#tlRec").onclick = () => tlRecord();
+  bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.sel = null; tlSave(); tlSync(); };
+  bar.querySelector("#tlClose").onclick = () => setTimeline(false);
+  /* Mouse on the lanes: a key is picked and dragged; anywhere else scrubs. */
+  const cv = TLD.cv;
+  cv.addEventListener("pointerdown", e => {
+    const hit = tlHit(e);
+    cv.setPointerCapture(e.pointerId);
+    if (hit){ TL.sel = hit; TL.drag = { key: hit, dx: tlTimeAt(e) - hit.t }; }
+    else { TL.sel = null; TL.drag = { scrub: true }; tlStop(); tlSeek(tlTimeAt(e)); }
+    tlSync();
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!TL.drag) return;
+    if (TL.drag.scrub) tlSeek(tlTimeAt(e));
+    else { TL.drag.key.t = tlSnapT(TL.drag.key, Math.max(0, Math.min(TL.dur, tlTimeAt(e) - TL.drag.dx))); tlSort(); tlDraw(); tlEditor(); }
+  });
+  /* Hovering a camera key shows what it sees. */
+  cv.addEventListener("mousemove", e => {
+    const th = bar.querySelector("#tlThumb"), h = TL.drag ? null : tlHit(e), src = h && h.lane === "cam" ? TL.thumbs.get(tlThumbKey(h)) : null;
+    if (!src){ th.style.display = "none"; return; }
+    const br = bar.getBoundingClientRect();
+    th.innerHTML = '<img src="' + src + '" alt="">'; th.style.display = "block";
+    th.style.left = Math.max(0, Math.min(br.width - 170, e.clientX - br.left - 80)) + "px";
+  });
+  cv.addEventListener("mouseleave", () => { bar.querySelector("#tlThumb").style.display = "none"; });
+  cv.addEventListener("pointerup", () => { if (TL.drag && TL.drag.key) tlSave(); TL.drag = null; });
+  cv.addEventListener("dblclick", e => { const h = tlHit(e); if (h){ tlSeek(h.t); } });
+  new ResizeObserver(() => tlDraw()).observe(bar);
+}
+function confirmClear(){ return !(tlCount()) || window.confirm("Remove every key on the timeline?"); }
+const TL_X0 = 86;
+function tlTimeAt(e){ const r = TLD.cv.getBoundingClientRect(); return Math.max(0, Math.min(TL.dur, (e.clientX - r.left - TL_X0) / (r.width - TL_X0 - 12) * TL.dur)); }
+function tlX(t, W){ return TL_X0 + t / TL.dur * (W - TL_X0 - 12); }
+function tlHit(e){
+  const r = TLD.cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const lane = Math.floor((y - 20) / 28); if (lane < 0 || lane > 4) return null;
+  const L = TL.keys[TL_LANES[lane][0]];
+  /* A caption is a bar: anywhere on it picks it. */
+  if (TL_LANES[lane][0] === "cap" || TL_LANES[lane][0] === "fx"){ for (let i = L.length - 1; i >= 0; i--){ const k = L[i]; if (x >= tlX(k.t, r.width) - 8 && x <= tlX(Math.min(TL.dur, k.t + (k.dur || 0)), r.width) + 8) return k; } return null; }
+  let best = null, bd = 9;
+  for (const k of L){ const d = Math.abs(tlX(k.t, r.width) - x); if (d < bd){ bd = d; best = k; } }
+  return best;
+}
+function tlSort(){ for (const l in TL.keys) TL.keys[l].sort((a, b) => a.t - b.t); }
+function tlAdd(lane, o){
+  /* A key at the same moment in the same lane is replaced, not doubled. */
+  const t = Math.round(TL.t * 10) / 10;
+  TL.keys[lane] = TL.keys[lane].filter(k => Math.abs(k.t - t) > 0.05);
+  const k = tlKey(lane, Object.assign({ t }, o));
+  if (lane === "cam") tlThumb(k);
+  TL.keys[lane].push(k); tlSort(); TL.sel = k; TL.viewApplied = lane === "view" ? k.id : TL.viewApplied;
+  tlSave(); tlSync();
+}
+function tlSeek(t){
+  TL.t = Math.max(0, Math.min(TL.dur, t)); TL.viewApplied = null; TL.elApplied = null;
+  tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); if (!TL.playing) controls.update();
+  tlSync();
+}
+/* The editor row: what the selected key is, and what can be changed about it. */
+function tlEditor(){
+  const k = TL.sel, ed = TLD.edit; if (!ed) return;
+  if (!k){ ed.innerHTML = '<span class="tlHint">Click a key to edit it · drag it to move it · drag the ruler to scrub · double-click a key to jump to it</span>'; return; }
+  const name = { cam: "◆ Camera key", view: "■ View key", stim: "⚡ Stimulus", cap: "T Caption", fx: "✦ Effect" }[k.lane];
+  let h = `<b>${name}</b> at <input id="tlKt" type="number" min="0" step="0.1" value="${k.t.toFixed(1)}"> s`;
+  if (k.lane === "cam"){
+    const o = k.orb || {};
+    h += ` <button id="tlKset">Set to the current view</button>
+           then orbit <select id="tlKodeg">${[0, 90, 180, 360, 720].map(d => `<option value="${d}"${(o.deg || 0) === d ? " selected" : ""}>${d ? d + "°" : "no"}</option>`).join("")}</select>
+           <select id="tlKodir"><option value="1"${(o.dir || 1) === 1 ? " selected" : ""}>left</option><option value="-1"${o.dir === -1 ? " selected" : ""}>right</option></select>
+           over <input id="tlKodur" type="number" min="1" max="120" step="1" value="${o.dur || 8}"> s`;
+  }
+  if (k.lane === "view") h += ` <button id="tlKset">Set to what is shown now</button>
+           fade <input id="tlKfade" type="number" min="0" max="5" step="0.25" value="${k.fade != null ? k.fade : 0.5}"> s`;
+  if (k.lane === "stim"){
+    const opts = CELLS.map((c, i) => c.mesh && cellClass(c) !== "glia" ? `<option value="${i}"${i === k.cell ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
+    const cs = tlStimCells(k);
+    const mopts = CELLS.map((c, i) => c.mesh && cellClass(c) !== "glia" ? `<option value="${i}"${cs.includes(i) ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
+    h += ` cells <select id="tlKcell" multiple size="3" title="Ctrl-click to fire several cells together (a stimulus pattern)">${mopts}</select>
+           <span title="With several cells: each fires this long after the one before it (0 = all at once — coincidence)">stagger <input id="tlKstag" type="number" min="0" max="5" step="0.05" value="${k.stagger || 0}"> s</span>
+           strength <select id="tlKgain">${["1", "10", "30"].map(g => `<option value="${g}"${g === String(k.gain) ? " selected" : ""}>×${g}</option>`).join("")}</select>
+           <select id="tlKmode"><option value="fire"${k.mode !== "psp" ? " selected" : ""}>fires next cells</option><option value="psp"${k.mode === "psp" ? " selected" : ""}>PSP only</option></select>
+           pulses <input id="tlKn" type="number" min="1" max="20" value="${k.n || 1}">
+           every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
+  }
+  if (k.lane === "fx"){
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    if (k.kind !== "electrodes") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
+    if (k.kind === "highlight"){
+      const opts = CELLS.map((c, i) => c.mesh ? `<option value="${i}"${i === k.cell ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
+      h += ` cell <select id="tlKhcell">${opts}</select> others at <input id="tlKdim" type="number" min="0" max="1" step="0.05" value="${k.dim != null ? k.dim : 0.15}">`;
+    }
+    if (k.kind === "freeze") h += ` <span class="tlHint">the electrical activity stands still while the camera goes on</span>`;
+    if (k.kind === "follow") h += ` <span class="tlHint">the camera keeps its distance and follows the travelling spike</span>`;
+    if (k.kind === "electrodes") h += ` <button id="tlKelset">Set to the electrodes placed now (${(k.el || []).length})</button> <span class="tlHint">place them with 📍 in the Activity tab</span>`;
+  }
+  if (k.lane === "cap"){
+    h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur}"> s
+           <select id="tlKpos">${[["top", "top"], ["middle", "middle"], ["bottom", "bottom"]].map(([v, l]) => `<option value="${v}"${k.pos === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKsize">${[["s", "small"], ["m", "medium"], ["l", "large"]].map(([v, l]) => `<option value="${v}"${k.size === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <br><textarea id="tlKtext" rows="2" placeholder="Caption text — a new line starts a new line in the movie">${esc(k.text || "")}</textarea>`;
+  }
+  h += ` <button id="tlKdel" title="Delete this key (Delete)">🗑</button>`;
+  ed.innerHTML = h;
+  const $e = id => ed.querySelector("#" + id);
+  $e("tlKt").onchange = e => { k.t = Math.max(0, Math.min(TL.dur, +e.target.value || 0)); tlSort(); tlSave(); tlSync(); };
+  if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ Object.assign(k, tlCaptureCam()); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
+  if (k.lane === "stim"){
+    $e("tlKcell").onchange = e => { const v = [...e.target.selectedOptions].map(o => +o.value); if (v.length){ k.cells = v; k.cell = v[0]; } tlSave(); tlDraw(); };
+    $e("tlKstag").onchange = e => { k.stagger = Math.max(0, +e.target.value || 0); tlSave(); tlDraw(); };
+    $e("tlKgain").onchange = e => { k.gain = e.target.value; tlSave(); };
+    $e("tlKmode").onchange = e => { k.mode = e.target.value; tlSave(); };
+    $e("tlKn").onchange = e => { k.n = Math.max(1, Math.min(20, +e.target.value || 1)); tlSave(); tlDraw(); };
+    $e("tlKe").onchange = e => { k.every = Math.max(0.05, +e.target.value || 0.5); tlSave(); tlDraw(); };
+  }
+  if (k.lane === "cam"){
+    const upd = () => { const deg = +$e("tlKodeg").value; k.orb = deg ? { deg, dir: +$e("tlKodir").value, dur: Math.max(1, Math.min(120, +$e("tlKodur").value || 8)) } : null; tlSave(); tlDraw(); };
+    $e("tlKodeg").onchange = upd; $e("tlKodir").onchange = upd; $e("tlKodur").onchange = upd;
+  }
+  if (k.lane === "view") $e("tlKfade").onchange = e => { k.fade = Math.max(0, Math.min(5, +e.target.value || 0)); tlSave(); };
+  if (k.lane === "fx"){
+    $e("tlKkind").onchange = e => { k.kind = e.target.value; if (k.kind === "electrodes" && !k.el) k.el = tlCaptureElectrodes(); tlSave(); tlSync(); };
+    if ($e("tlKd")) $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
+    if ($e("tlKhcell")) $e("tlKhcell").onchange = e => { k.cell = +e.target.value; tlSave(); tlDraw(); };
+    if ($e("tlKdim")) $e("tlKdim").onchange = e => { k.dim = Math.max(0, Math.min(1, +e.target.value)); tlSave(); };
+    if ($e("tlKelset")) $e("tlKelset").onclick = () => { k.el = tlCaptureElectrodes(); TL.elApplied = null; tlSave(); tlSync(); };
+  }
+  if (k.lane === "cap"){
+    $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
+    $e("tlKpos").onchange = e => { k.pos = e.target.value; tlSave(); };
+    $e("tlKsize").onchange = e => { k.size = e.target.value; tlSave(); };
+    $e("tlKtext").oninput = e => { k.text = e.target.value; tlSave(); tlDraw(); };
+  }
+  $e("tlKdel").onclick = () => tlDelete(k);
+}
+function tlDelete(k){ TL.keys[k.lane] = TL.keys[k.lane].filter(x => x !== k); TL.sel = null; tlSave(); tlSync(); }
+function tlDraw(){
+  if (!TL.open || !TLD.cv) return;
+  const cv = TLD.cv, W = cv.clientWidth, H = 162, dpr = Math.min(2, devicePixelRatio || 1);
+  if (cv.width !== Math.round(W * dpr)){ cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  /* ruler */
+  g.font = "11px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.strokeStyle = "#30363d";
+  const step = TL.dur <= 20 ? 1 : TL.dur <= 60 ? 5 : 10;
+  for (let s = 0; s <= TL.dur + 1e-6; s += step){ const x = tlX(s, W); g.beginPath(); g.moveTo(x, 12); g.lineTo(x, 20); g.stroke(); if (s % (step * (TL.dur <= 20 ? 2 : 1)) === 0) g.fillText(s + " s", x + 2, 10); }
+  TL_LANES.forEach(([lane, name, col], i) => {
+    const y = 20 + i * 28;
+    g.fillStyle = i % 2 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)"; g.fillRect(TL_X0, y, W - TL_X0 - 12, 26);
+    g.fillStyle = col; g.font = "600 12px system-ui, sans-serif"; g.fillText(name, 8, y + 17);
+    for (const k of TL.keys[lane]){
+      const x = tlX(k.t, W), sel = TL.sel === k, cy = y + 13;
+      g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
+      if (lane === "fx"){
+        const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")" }[k.kind] || k.kind;
+        if (k.kind === "electrodes"){
+          g.beginPath(); g.arc(x, cy, 6, 0, 7); g.fill(); g.stroke();
+          g.fillStyle = "#e6edf3"; g.font = "10px system-ui, sans-serif"; g.fillText(lab, x + 9, cy + 4); continue;
+        }
+        const x2 = tlX(Math.min(TL.dur, k.t + (k.dur || 0)), W);
+        /* Overlapping effects share the lane in two half-height rows. */
+        const over = TL.keys.fx.some(o => o !== k && o.kind !== "electrodes" && o.t < k.t + k.dur && k.t < o.t + o.dur);
+        const row = over ? TL.keys.fx.filter(o => o.kind !== "electrodes" && o.t < k.t + k.dur && k.t < o.t + o.dur && (o.t < k.t || (o.t === k.t && o.id < k.id))).length % 2 : 0;
+        const by = over ? cy - 11 + row * 12 : cy - 9, bh = over ? 10 : 18;
+        g.fillStyle = "rgba(210,168,255,0.25)"; g.beginPath(); g.roundRect(x, by, Math.max(6, x2 - x), bh, 4); g.fill();
+        g.strokeStyle = sel ? "#ffffff" : "rgba(210,168,255,0.8)"; g.lineWidth = sel ? 2 : 1; g.stroke();
+        g.save(); g.beginPath(); g.rect(x, by, Math.max(6, x2 - x), bh); g.clip();
+        g.fillStyle = "#e6edf3"; g.font = (over ? "9px" : "11px") + " system-ui, sans-serif"; g.fillText(lab, x + 5, by + bh - (over ? 2 : 5)); g.restore();
+        continue;
+      }
+      if (lane === "cap"){
+        /* A bar as long as the caption shows, with its first words on it. */
+        const x2 = tlX(Math.min(TL.dur, k.t + k.dur), W);
+        g.fillStyle = "rgba(230,237,243,0.22)"; g.beginPath(); g.roundRect(x, cy - 9, Math.max(6, x2 - x), 18, 4); g.fill();
+        g.strokeStyle = sel ? "#ffffff" : "rgba(230,237,243,0.6)"; g.lineWidth = sel ? 2 : 1; g.stroke();
+        g.save(); g.beginPath(); g.rect(x, cy - 9, Math.max(6, x2 - x), 18); g.clip();
+        g.fillStyle = "#e6edf3"; g.font = "11px system-ui, sans-serif"; g.fillText(String(k.text || "").split("\n")[0], x + 5, cy + 4); g.restore();
+        continue;
+      }
+      if (lane === "cam" && k.orb && k.orb.deg){
+        const x2 = tlX(Math.min(TL.dur, k.t + k.orb.dur), W);
+        g.save(); g.fillStyle = "rgba(88,166,255,0.25)"; g.strokeStyle = "rgba(88,166,255,0.7)"; g.lineWidth = 1;
+        g.beginPath(); g.roundRect(x, cy - 6, Math.max(4, x2 - x), 12, 6); g.fill(); g.stroke();
+        g.fillStyle = "#c9d1d9"; g.font = "10px system-ui, sans-serif"; g.fillText("⟲ " + k.orb.deg + "°", x + 11, cy + 4); g.restore();
+        g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
+      }
+      g.beginPath();
+      if (lane === "cam"){ g.moveTo(x, cy - 8); g.lineTo(x + 8, cy); g.lineTo(x, cy + 8); g.lineTo(x - 8, cy); g.closePath(); }
+      else if (lane === "view") g.rect(x - 7, cy - 7, 14, 14);
+      else { g.moveTo(x + 2, cy - 9); g.lineTo(x - 5, cy + 1); g.lineTo(x, cy + 1); g.lineTo(x - 2, cy + 9); g.lineTo(x + 5, cy - 1); g.lineTo(x, cy - 1); g.closePath(); }
+      g.fill(); g.stroke();
+      if (lane === "stim"){
+        const cs = tlStimCells(k);
+        for (let p = 0; p < (k.n || 1); p++) cs.forEach((ci, j) => { if (!p && !j) return; const xp = tlX(k.t + p * (k.every || 0.5) + j * (k.stagger || 0), W); if (xp > W - 12) return; g.fillStyle = col; g.fillRect(xp - 1, cy - 5, 2, 10); });
+        const c = CELLS[cs[0]]; if (c){ g.fillStyle = "#c9d1d9"; g.font = "10px system-ui, sans-serif"; g.fillText(shortName(c) + (cs.length > 1 ? " +" + (cs.length - 1) : "") + " ×" + k.gain, x + 9, cy + 4); }
+      }
+    }
+  });
+  /* camera path: a thin line joining the camera keys */
+  const K = tlCamList(); if (K.length > 1){ g.strokeStyle = "rgba(88,166,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(tlX(K[0].t, W), 33); g.lineTo(tlX(K[K.length - 1].t, W), 33); g.stroke(); }
+  /* playhead */
+  const x = tlX(TL.t, W); g.strokeStyle = "#f85149"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, 2); g.lineTo(x, H); g.stroke();
+  g.fillStyle = "#f85149"; g.beginPath(); g.moveTo(x - 5, 0); g.lineTo(x + 5, 0); g.lineTo(x, 7); g.closePath(); g.fill();
+  if (TLD.time) TLD.time.textContent = TL.t.toFixed(1) + " / " + TL.dur + " s";
+}
+function tlSync(){
+  if (!TLD.bar) return;
+  TLD.play.textContent = TL.playing ? "⏸" : "▶";
+  TLD.bar.querySelector("#tlDur").value = TL.dur;
+  TLD.bar.querySelector("#tlFin").value = TL.fadeIn || 0; TLD.bar.querySelector("#tlFout").value = TL.fadeOut || 0;
+  TLD.bar.querySelector("#tlRec").classList.toggle("on", TL.rec);
+  tlPlace(); tlEditor(); tlDraw();
+}
+/* The strip sits right of the panel, along the bottom; the edge plots keep clear of it. */
+function tlPlace(){
+  if (!TLD.bar) return;
+  const pan = document.getElementById("panel");
+  let left = 0;
+  if (pan && pan.getClientRects().length && getComputedStyle(pan).display !== "none"){ const r = pan.getBoundingClientRect(); if (r.left < innerWidth / 2) left = r.right + 8; }
+  TLD.bar.style.left = left + "px";
+  TL.height = TL.open ? TLD.bar.getBoundingClientRect().height : 0;
+}
+function setTimeline(v){
+  if (v && renderer.xr.isPresenting) return;
+  TL.open = v; tlBuild(); TLD.bar.style.display = v ? "" : "none";
+  const b = document.getElementById("tlBtn"); if (b) b.classList.toggle("on", v);
+  if (!v) tlStop();
+  tlSync(); STIM._edgeKey = null;
+}
+/* Kept in this browser between visits, and in saved scenes. */
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) } }; }
+/* UNDO / REDO: every saved state is a step; up to 200. */
+function tlSave(){
+  const j = JSON.stringify(tlData());
+  if (TL.hist[TL.hpos] !== j){ TL.hist = TL.hist.slice(0, TL.hpos + 1); TL.hist.push(j); if (TL.hist.length > 200) TL.hist.shift(); TL.hpos = TL.hist.length - 1; }
+  try { localStorage.setItem("vr_timeline", j); } catch (e){}
+  tlPathBuild();
+}
+function tlUndo(d){
+  const i = TL.hpos + d; if (i < 0 || i >= TL.hist.length) return;
+  TL.hpos = i; tlLoad(JSON.parse(TL.hist[i]), true);
+  try { localStorage.setItem("vr_timeline", TL.hist[i]); } catch (e){}
+}
+function tlLoad(o, fromHistory){
+  if (!o || !o.keys) return;
+  TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
+  for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
+  tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
+  TL.sel = null; TL.viewApplied = null; tlSync(); tlPathBuild();
+}
+try { const o = JSON.parse(localStorage.getItem("vr_timeline") || "null"); if (o) tlLoad(o); } catch (e){}
+document.getElementById("tlBtn").addEventListener("click", () => setTimeline(!TL.open));
+addEventListener("keydown", e => {
+  if (!TL.open || e.target.closest && e.target.closest("input, select, textarea")) return;
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ"){ e.preventDefault(); tlUndo(e.shiftKey ? 1 : -1); return; }
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyY"){ e.preventDefault(); tlUndo(1); return; }
+  if (e.code === "Space"){ e.preventDefault(); TL.playing ? tlStop() : tlPlay(); }
+  else if ((e.code === "Delete" || e.code === "Backspace") && TL.sel){ e.preventDefault(); tlDelete(TL.sel); }
+});
+addEventListener("resize", () => { if (TL.open) tlSync(); });
+renderer.xr.addEventListener("sessionstart", () => { if (TL.open) setTimeline(false); });
 
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
@@ -4890,12 +5623,12 @@ renderer.setAnimationLoop(() => {
   const dt = recDt(Math.min(clock.getDelta(), 0.1));        // while a movie is built: at most one movie frame
   flyFrame(dt); recFrame(dt);
   if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
-  else { keysFrame(dt); controls.update(); }
+  else { if (!TL.playing) keysFrame(dt); controls.update(); tlFrame(dt); }
   placeLabel();
   cutFrame();
   scaleBarFrame();
   measureFrame();
-  stimFrame(dt);
+  stimFrame(TL.frozen ? 0 : dt);                            // a freeze effect holds the spike clock
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
@@ -4912,7 +5645,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
