@@ -268,6 +268,11 @@
       <option value="1:1">1:1 square</option>
       <option value="9:16">9:16 portrait</option>
     </select>
+    <select id="recFps" title="Frames per second. 24 is the film look and the smallest file; 30 suits most slides and web video; 60 makes fast flying and turning smooth, but needs a computer that can draw the view 60 times a second at the chosen size — otherwise the movie repeats frames.">
+      <option value="24">24 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="60">60 fps</option>
+    </select>
   </div>
   <div id="recOut" class="help" style="margin-top:0"></div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
@@ -406,6 +411,7 @@
     spraySize: ["", "", { s: dot("currentColor").replace("8px;height:8px", "5px;height:5px"), m: dot("currentColor"), l: dot("currentColor").replace(/8px/g, "13px").replace("4px", "7px") }],
     recMode: ["", "", { free: ICON.camera, turn12: ICON.turntable + "12 s", turn24: ICON.turntable + "24 s" }],
     recSize: ["", "", { "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }],
+    recFps: ["", "", { "24": "24", "30": "30", "60": "60 fps" }],
     recAspect: ["", "", { "16:9": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6.5" width="20" height="11.25" rx="1.5"/></svg>&nbsp;16:9', "1:1": '<svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>&nbsp;1:1', "9:16": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="6.4" y="2" width="11.25" height="20" rx="1.5"/></svg>&nbsp;9:16' }]
   };
   const segs = [];
@@ -4607,10 +4613,14 @@ function startRecording(){
   const size = document.getElementById("recSize").value, mode = document.getElementById("recMode").value;
   const dims = recDims();
   if (dims) recSize(dims);
-  const stream = renderer.domElement.captureStream(30);
+  /* FRAME RATE (2026-10-16, Søren: "We should also be able to choose the framerate"). The canvas is
+     sampled at most this often; the page draws at the screen's rate (usually 60 Hz), so 60 fps is
+     the ceiling, and only reached when the computer keeps up at the chosen size. */
+  const fps = +((document.getElementById("recFps") || {}).value) || 30;
+  const stream = renderer.domElement.captureStream(fps);
   const px = renderer.domElement.width * renderer.domElement.height;
   let rec;
-  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: Math.round(Math.min(45e6, Math.max(4e6, px * 6))) }, mime ? { mimeType: mime } : {})); }
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: Math.round(Math.min(60e6, Math.max(4e6, px * 6 * fps / 30))) }, mime ? { mimeType: mime } : {})); }
   catch (e){ recSize(null); out.textContent = "Recording could not start: " + (e.message || e); return; }
   REC.chunks = []; REC.rec = rec; REC.on = true; REC.t0 = performance.now(); REC.mode = mode;
   rec.ondataavailable = e => { if (e.data && e.data.size) REC.chunks.push(e.data); };
