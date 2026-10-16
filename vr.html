@@ -4601,22 +4601,87 @@ function recSize(wh){
 function recButton(){
   const b = document.getElementById("recBtn");
   if (!REC.on){ window.uiSet(b, { text: "🎬 Record", icon: "rec", lbl: "Record", live: "" }); b.classList.remove("on"); return; }
-  const s = Math.floor((performance.now() - REC.t0) / 1000), tm = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  const s = Math.floor(recSeconds()), tm = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   window.uiSet(b, { text: "⏹ Stop " + tm, icon: "stop", lbl: "Stop", live: tm });
   b.classList.add("on");
 }
-function startRecording(){
+/* FRAME BY FRAME, NO LAG IN THE MOVIE (2026-10-16, Søren: "When I record a video and the computer
+   freezes because it has to load the data, the movie keeps recording so the lag is recorded … only
+   record when the animation is running"). MediaRecorder films the canvas against the wall clock, so
+   a freeze becomes a frozen picture in the movie. Where the browser has WebCodecs (Chrome, Edge,
+   Firefox 130+, Safari 17+) the movie is instead built frame by frame: every frame the page draws is
+   encoded with a timestamp that counts MOVIE time -- frame n is at n / fps -- and the animation
+   itself advances by at most one movie frame per drawn frame. A freeze while data loads therefore
+   simply does not exist in the movie; and when the computer draws more slowly than the chosen frame
+   rate (4K at 60 fps on a laptop), the view runs in slow motion on screen while the movie still
+   plays at the right speed and smoothly. The frames are put into a real MP4 (H.264 where the browser
+   can encode it, which PowerPoint plays; VP9 otherwise) by mp4-muxer (MIT, core/vendor/mp4-muxer).
+   Browsers without WebCodecs fall back to the old MediaRecorder way. */
+async function startFrameRecorder(fps){
+  if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") return null;
+  const W = renderer.domElement.width, H = renderer.domElement.height;
+  if (W % 2 || H % 2) return null;
+  const bitrate = Math.round(Math.min(60e6, Math.max(4e6, W * H * 6 * fps / 30)));
+  const tries = [["avc1.640034", "avc"], ["avc1.640033", "avc"], ["avc1.64002A", "avc"], ["avc1.640028", "avc"], ["avc1.4D4033", "avc"], ["avc1.42E034", "avc"],
+                 ["vp09.00.51.08", "vp9"], ["vp09.00.41.08", "vp9"]];
+  let cfg = null, kind = null;
+  for (const [codec, k] of tries){
+    const c = { codec, width: W, height: H, bitrate, framerate: fps };
+    if (k === "avc") c.avc = { format: "avc" };
+    try { const r = await VideoEncoder.isConfigSupported(c); if (r && r.supported){ cfg = c; kind = k; break; } } catch (e){}
+  }
+  if (!cfg) return null;
+  let M; try { M = await import("./core/vendor/mp4-muxer/mp4-muxer.js"); } catch (e){ console.warn("[vr] mp4-muxer:", e); return null; }
+  const target = new M.ArrayBufferTarget();
+  const muxer = new M.Muxer({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: "in-memory", firstTimestampBehavior: "offset" });
+  const v = { fps, kind, muxer, target, n: 0, clock: 0, next: 0, err: null };
+  v.enc = new VideoEncoder({ output: (chunk, meta) => { try { muxer.addVideoChunk(chunk, meta); } catch (e){ v.err = e; } }, error: e => { v.err = e; } });
+  try { v.enc.configure(cfg); } catch (e){ return null; }
+  return v;
+}
+/* Per drawn frame, after the overlay pass: encode when the movie clock has reached the next frame. */
+function recCapture(dt){
+  const v = REC.vf; if (!v || v.enc.state !== "configured") return;
+  if (v.enc.encodeQueueSize > 6) return;                 // the encoder is behind: the animation waits too (see the loop)
+  v.clock += dt;
+  if (v.n > 0 && v.clock + 1e-6 < v.next) return;
+  const f = new VideoFrame(renderer.domElement, { timestamp: Math.round(v.n * 1e6 / v.fps), duration: Math.round(1e6 / v.fps) });
+  try { v.enc.encode(f, { keyFrame: v.n % (v.fps * 2) === 0 }); } catch (e){ v.err = e; }
+  f.close();
+  v.n++; v.next = v.n / v.fps;
+}
+/* The time step the animation may take this frame while a movie is being built. */
+function recDt(dt){
+  const v = REC.on && REC.vf; if (!v) return dt;
+  if (v.enc.encodeQueueSize > 6) return 0;
+  return Math.min(dt, 1 / v.fps);
+}
+function recSaveBlob(blob, ext, note){
+  const out = document.getElementById("recOut");
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = recFileName(ext); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  out.innerHTML = "Saved to your downloads: <b>" + esc(a.download) + "</b> (" + (blob.size / 1e6).toFixed(1) + " MB, " + ext.toUpperCase() + "). Nothing was uploaded." + (note || "");
+}
+async function startRecording(){
   const out = document.getElementById("recOut");
   if (renderer.xr.isPresenting){ out.textContent = "In the headset, use its own recorder — on a Quest: Meta button → Camera → Record video."; return; }
-  const mime = recMime();
-  if (mime === null || !renderer.domElement.captureStream){ out.textContent = "This browser cannot record the view — try Chrome or Edge."; return; }
+  if (REC.starting) return;
   const size = document.getElementById("recSize").value, mode = document.getElementById("recMode").value;
   const dims = recDims();
   if (dims) recSize(dims);
-  /* FRAME RATE (2026-10-16, Søren: "We should also be able to choose the framerate"). The canvas is
-     sampled at most this often; the page draws at the screen's rate (usually 60 Hz), so 60 fps is
-     the ceiling, and only reached when the computer keeps up at the chosen size. */
+  /* FRAME RATE (2026-10-16, Søren: "We should also be able to choose the framerate", "max 60fps"). */
   const fps = +((document.getElementById("recFps") || {}).value) || 30;
+  REC.starting = true;
+  const vf = await startFrameRecorder(fps).catch(() => null);
+  REC.starting = false;
+  if (vf){
+    REC.vf = vf; REC.on = true; REC.t0 = performance.now(); REC.mode = mode;
+    recBegin(mode, out, " Frame by frame: pauses while data loads are left out of the movie.");
+    return;
+  }
+  const mime = recMime();
+  if (mime === null || !renderer.domElement.captureStream){ recSize(null); out.textContent = "This browser cannot record the view — try Chrome or Edge."; return; }
   const stream = renderer.domElement.captureStream(fps);
   const px = renderer.domElement.width * renderer.domElement.height;
   let rec;
@@ -4627,26 +4692,39 @@ function startRecording(){
   rec.onstop = () => {
     const type = rec.mimeType || mime || "video/webm", ext = /mp4/.test(type) ? "mp4" : "webm";
     const blob = new Blob(REC.chunks, { type }); REC.chunks = [];
-    const url = URL.createObjectURL(blob), a = document.createElement("a");
-    a.href = url; a.download = recFileName(ext); document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    out.innerHTML = "Saved to your downloads: <b>" + esc(a.download) + "</b> (" + (blob.size / 1e6).toFixed(1) + " MB, " + ext.toUpperCase() + "). Nothing was uploaded."
-      + (ext === "webm" ? " This browser cannot write MP4; WebM plays in browsers and VLC — for PowerPoint, record in an up-to-date Chrome or Edge." : "");
+    recSaveBlob(blob, ext, (ext === "webm" ? " This browser cannot write MP4; WebM plays in browsers and VLC — for PowerPoint, record in an up-to-date Chrome or Edge." : "")
+      + " This browser films in real time, so pauses while data loads are in the movie.");
     stream.getTracks().forEach(t => t.stop());
   };
   rec.start(1000);
+  recBegin(mode, out, "");
+}
+function recBegin(mode, out, extra){
   if (mode !== "free"){
     REC.spin = { dur: mode === "turn24" ? 24 : 12, t: 0, q0: stage.quaternion.clone() };
-    out.textContent = "Recording a turntable — " + REC.spin.dur + " s, it stops by itself.";
-  } else out.textContent = "Recording — move about as you like (W A S D, right-click to fly), then press Stop.";
-  REC.timer = setInterval(() => { recButton(); if (performance.now() - REC.t0 > 300000) stopRecording(); }, 250);
+    out.textContent = "Recording a turntable — " + REC.spin.dur + " s, it stops by itself." + extra;
+  } else out.textContent = "Recording — move about as you like (W A S D, right-click to fly), then press Stop." + extra;
+  REC.timer = setInterval(() => { recButton(); if (recSeconds() > 300) stopRecording(); }, 250);
   recButton();
 }
+function recSeconds(){ return REC.vf ? REC.vf.n / REC.vf.fps : (performance.now() - REC.t0) / 1000; }
 function stopRecording(){
   if (!REC.on) return;
   REC.on = false; clearInterval(REC.timer);
   if (REC.spin){ stage.quaternion.copy(REC.spin.q0); REC.spin = null; }
-  try { REC.rec.stop(); } catch (e){}
+  if (REC.vf){
+    const v = REC.vf; REC.vf = null;
+    const out = document.getElementById("recOut"); out.textContent = "Finishing the movie…";
+    (async () => {
+      try {
+        await v.enc.flush(); v.muxer.finalize();
+        if (v.err) throw v.err;
+        recSaveBlob(new Blob([v.target.buffer], { type: "video/mp4" }), "mp4",
+          " " + v.n + " frames, " + (v.n / v.fps).toFixed(1) + " s at " + v.fps + " fps" + (v.kind === "vp9" ? " (VP9: plays in browsers and VLC; for PowerPoint, record in an up-to-date Chrome or Edge, which encode H.264)." : "."));
+      } catch (e){ out.textContent = "The movie could not be finished: " + (e.message || e); }
+      try { v.enc.close(); } catch (e){}
+    })();
+  } else { try { REC.rec.stop(); } catch (e){} }
   recSize(null); recButton();
 }
 /* The turntable turns about the vertical through the collection's centre, at an even pace. */
@@ -4809,7 +4887,7 @@ function renderLogo(){
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const dt = recDt(Math.min(clock.getDelta(), 0.1));        // while a movie is built: at most one movie frame
   flyFrame(dt); recFrame(dt);
   if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
   else { keysFrame(dt); controls.update(); }
@@ -4821,6 +4899,7 @@ renderer.setAnimationLoop(() => {
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
+  if (REC.on && REC.vf) recCapture(dt);
 });
 addEventListener("resize", () => {
   if (typeof REC !== "undefined" && REC.on && REC.saved) return;      // a fixed-size recording keeps its size
