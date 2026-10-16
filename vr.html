@@ -253,6 +253,7 @@
     <button id="plotBtn" class="on" title="A voltage plot above every cell the activity reaches: the soma against the −50 mV threshold, each synapse site (numbered on the cell), and your electrodes">📈 Voltage plots</button>
     <button id="elecBtn" title="Click (or trigger) on a cell to record its membrane voltage at that spot — up to 3 per cell, shown in the cell's voltage plot">📍 Electrode</button>
     <button id="elecClr" title="Remove all electrodes">Clear electrodes</button>
+    <button id="synClr" title="Hide the synapse markers (orange balls, purple cubes). Each comes back when an action potential next uses it.">Hide synapses</button>
     <button id="traceCsv" title="Download every voltage trace of this run — soma, synapse sites and electrodes, every 0.1 ms — as a CSV for figures">⬇ Traces CSV</button>
   </div>
   <div class="ctl" id="caveRow" style="display:none">
@@ -392,7 +393,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -455,7 +456,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset", "traceCsv"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["synClr", "traceCsv"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -509,7 +510,7 @@
     ptsDir: () => !!(V().PTS && V().PTS.on),
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
     stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on),
-    plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on),
+    plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on), synClr: () => !!(V().STIM && V().STIM.syn && V().STIM.syn.length),
     spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
   };
@@ -2227,7 +2228,7 @@ function drawSynapses(){
   STIM.syn.forEach(s => {
     s.cls = cellClass(CELLS[s.pre]) === "inh" ? "inh" : "exc";
     const m = new THREE.Mesh(s.cls === "inh" ? cube : ball, new THREE.MeshBasicMaterial({ color: SYN_COL[s.cls], transparent: true, opacity: 0.9 }));
-    m.position.copy(s.p); s.marker = m; grp.add(m);
+    m.position.copy(s.p); s.marker = m; m.visible = !STIM.synCleared; grp.add(m);
   });
   STIM.markers = grp; content.add(grp);
   colourSynapses();
@@ -2536,7 +2537,7 @@ function deliver(s, t){
   if (s.postNode == null){ const near = nearestNode(G, s.p); s.postNode = near.dist <= SYN_TOL ? near.node : -1; }
   if (s.postNode < 0){ noteWhy(c, "off"); return; }
   const inh = cellClass(CELLS[s.pre]) === "inh";
-  if (s.marker) s.marker.scale.setScalar(2.2);
+  if (s.marker){ s.marker.visible = true; s.marker.scale.setScalar(2.2); }   // a cleared synapse comes back when it is used
   const w = why(c); inh ? w.ipsp++ : w.epsp++;
   if (cellClass(c) === "glia"){ noteWhy(c, "glia"); return; }
   /* A cell you have hidden takes no part (v42): activity no longer runs through cells you cannot
@@ -3014,6 +3015,20 @@ document.getElementById("plotBtn").addEventListener("click", () => setPlots(!STI
 document.getElementById("elecBtn").addEventListener("click", () => setElectrode(!STIM.electrode));
 document.getElementById("elecClr").addEventListener("click", clearElectrodes);
 document.getElementById("traceCsv").addEventListener("click", exportTraces);
+/* CLEARING THE SYNAPSE MARKERS (2026-10-17, Søren: "once the neuronal synapses orange circles and
+   purple boxes have shown, they can't be cleared again. There should be a button or such to clear
+   them until next AP activates them. I guess this could also be useful in the timeline.").
+   Hidden, every marker stays hidden until a spike reaches that synapse -- then that one shows and
+   pulses as before -- so after a run only the synapses that were used are left. The button then
+   reads "Show synapses" and brings them all back. Also a timeline effect and a palette row. */
+function setSynCleared(v){
+  STIM.synCleared = v;
+  if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.visible = !v; });
+  const b = document.getElementById("synClr");
+  if (b) window.uiSet(b, { text: v ? "Show synapses" : "Hide synapses", lbl: v ? "Show synapses" : "Hide synapses" });
+  MENU.dirty = true;
+}
+document.getElementById("synClr").addEventListener("click", () => setSynCleared(!STIM.synCleared));
 STIM.plots = true; STIM.active = new Set();
 
 /* ── 9. THE SPRAY CAN ───────────────────────────────────────────────────────  2026-10-14
@@ -4147,6 +4162,7 @@ function menuRows(){
     rows.push({ label: "📈 Voltage plots", on: !!STIM.plots, act: () => setPlots(!STIM.plots) });
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     rows.push({ label: "Reset activity", act: resetActivity });
+    rows.push({ label: STIM.synCleared ? "Show all synapse markers" : "Hide synapse markers (until used)", act: () => setSynCleared(!STIM.synCleared) });
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
@@ -5178,13 +5194,13 @@ function tlFrame(dt){
       if (tp >= t0 - 1e-9 && (tp < t1 || (t1 >= TL.dur && tp <= t1))) tlFireStim(k, ci);
     });
   }
-  tlApplyViewAt(TL.t, true); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlFollow(dt);
+  tlApplyViewAt(TL.t, true); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlApplySynAt(TL.t); tlFollow(dt);
   if (TL.t >= TL.dur) tlStop(true);
   tlDraw();
 }
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
-  TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.follow = null; controls.enabled = false;
+  TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
@@ -5225,6 +5241,12 @@ function tlThumb(k){
 }
 /* ELECTRODE KEYS: the electrodes as placed when the key was set; reached, they replace those placed. */
 function tlCaptureElectrodes(){ const out = []; CELLS.forEach((c, i) => (c.electrodes || []).forEach(e => out.push({ cell: i, node: e.node }))); return out; }
+function tlApplySynAt(t, crossing){
+  /* While playing: the key acts when it is crossed. Scrubbing: the state the latest key left. */
+  let k = null; for (const f of TL.keys.fx) if (f.kind === "synapses" && f.t <= t + 1e-6) k = f;
+  if (!k || TL.synApplied === k.id) return;
+  TL.synApplied = k.id; setSynCleared(!k.show);
+}
 function tlApplyElectrodesAt(t){
   let k = null; for (const f of TL.keys.fx) if (f.kind === "electrodes" && f.t <= t + 1e-6) k = f;
   if (!k || TL.elApplied === k.id) return;
@@ -5411,8 +5433,8 @@ function tlAdd(lane, o){
   tlSave(); tlSync();
 }
 function tlSeek(t){
-  TL.t = Math.max(0, Math.min(TL.dur, t)); TL.viewApplied = null; TL.elApplied = null;
-  tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); if (!TL.playing) controls.update();
+  TL.t = Math.max(0, Math.min(TL.dur, t)); TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
+  tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlApplySynAt(TL.t); if (!TL.playing) controls.update();
   tlSync();
 }
 /* The editor row: what the selected key is, and what can be changed about it. */
@@ -5442,8 +5464,9 @@ function tlEditor(){
            every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
   }
   if (k.lane === "fx"){
-    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
-    if (k.kind !== "electrodes") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    if (k.kind === "synapses") h += ` <select id="tlKsyn"><option value="hide"${!k.show ? " selected" : ""}>hide them (each returns when a spike uses it)</option><option value="show"${k.show ? " selected" : ""}>show them all</option></select>`;
+    if (k.kind !== "electrodes" && k.kind !== "synapses") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
     if (k.kind === "highlight"){
       const opts = CELLS.map((c, i) => c.mesh ? `<option value="${i}"${i === k.cell ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
       h += ` cell <select id="tlKhcell">${opts}</select> others at <input id="tlKdim" type="number" min="0" max="1" step="0.05" value="${k.dim != null ? k.dim : 0.15}">`;
@@ -5481,6 +5504,7 @@ function tlEditor(){
     if ($e("tlKd")) $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
     if ($e("tlKhcell")) $e("tlKhcell").onchange = e => { k.cell = +e.target.value; tlSave(); tlDraw(); };
     if ($e("tlKdim")) $e("tlKdim").onchange = e => { k.dim = Math.max(0, Math.min(1, +e.target.value)); tlSave(); };
+    if ($e("tlKsyn")) $e("tlKsyn").onchange = e => { k.show = e.target.value === "show"; TL.synApplied = null; tlSave(); tlDraw(); };
     if ($e("tlKelset")) $e("tlKelset").onclick = () => { k.el = tlCaptureElectrodes(); TL.elApplied = null; tlSave(); tlSync(); };
   }
   if (k.lane === "cap"){
@@ -5509,8 +5533,8 @@ function tlDraw(){
       const x = tlX(k.t, W), sel = TL.sel === k, cy = y + 13;
       g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
       if (lane === "fx"){
-        const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")" }[k.kind] || k.kind;
-        if (k.kind === "electrodes"){
+        const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")", synapses: k.show ? "● show synapses" : "○ hide synapses" }[k.kind] || k.kind;
+        if (k.kind === "electrodes" || k.kind === "synapses"){
           g.beginPath(); g.arc(x, cy, 6, 0, 7); g.fill(); g.stroke();
           g.fillStyle = "#e6edf3"; g.font = "10px system-ui, sans-serif"; g.fillText(lab, x + 9, cy + 4); continue;
         }
@@ -5645,7 +5669,7 @@ addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) locat
 const panel = document.getElementById("panel"), show = document.getElementById("show");
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll();
 </script>
