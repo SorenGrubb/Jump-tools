@@ -263,6 +263,11 @@
       <option value="720">1280×720</option>
       <option value="window">Window size</option>
     </select>
+    <select id="recAspect" title="Movie shape: widescreen 16:9, square 1:1 (posters, social media, slides with text beside it) or portrait 9:16 (phone stories). The size above is the short side.">
+      <option value="16:9" selected>16:9</option>
+      <option value="1:1">1:1 square</option>
+      <option value="9:16">9:16 portrait</option>
+    </select>
   </div>
   <div id="recOut" class="help" style="margin-top:0"></div>
   <div id="ctxNote" class="help" style="margin-top:0"></div>
@@ -400,7 +405,8 @@
     stimGain: ["", "Strength", { "1": "×1", "10": "×10", "30": "×30" }],
     spraySize: ["", "", { s: dot("currentColor").replace("8px;height:8px", "5px;height:5px"), m: dot("currentColor"), l: dot("currentColor").replace(/8px/g, "13px").replace("4px", "7px") }],
     recMode: ["", "", { free: ICON.camera, turn12: ICON.turntable + "12 s", turn24: ICON.turntable + "24 s" }],
-    recSize: ["", "", { "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }]
+    recSize: ["", "", { "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }],
+    recAspect: ["", "", { "16:9": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6.5" width="20" height="11.25" rx="1.5"/></svg>&nbsp;16:9', "1:1": '<svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>&nbsp;1:1', "9:16": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="6.4" y="2" width="11.25" height="20" rx="1.5"/></svg>&nbsp;9:16' }]
   };
   const segs = [];
   for (const id in SEG){
@@ -4552,6 +4558,22 @@ function recFileName(ext){
    pixels 30 times a second is heavy: on a laptop the frame rate can drop, which the movie shows as
    stutter -- 2K is the safer choice there. */
 const REC_SIZES = { "2160": [3840, 2160], "1440": [2560, 1440], "1080": [1920, 1080], "720": [1280, 720] };
+/* THE SHAPE (2026-10-16, Søren: "We also need the option to have a 1:1 aspect ratio"). The size
+   names the SHORT side -- 4K square is 2160×2160, 1080 portrait is 1080×1920 -- so every shape keeps
+   the detail its name promises. "Window" with 16:9 films the window as it is; with another shape it
+   films the largest such rectangle that fits in the window. null = film the window unchanged. */
+function recDims(){
+  const size = document.getElementById("recSize").value, asp = (document.getElementById("recAspect") || {}).value || "16:9";
+  let short;
+  if (size === "window"){
+    if (asp === "16:9") return null;
+    const dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth * dpr, H = innerHeight * dpr;
+    short = asp === "1:1" ? Math.min(W, H) : Math.min(W, H * 9 / 16);
+  } else short = (REC_SIZES[size] || REC_SIZES["1080"])[1];
+  short = Math.round(short / 2) * 2;                                    // encoders want even sizes
+  const long = Math.round(short * 16 / 9 / 2) * 2;
+  return asp === "1:1" ? [short, short] : asp === "9:16" ? [short, long] : [long, short];
+}
 /* Letterbox the canvas to w×h for the recording; null puts it back. */
 function recSize(wh){
   const el = renderer.domElement;
@@ -4583,7 +4605,8 @@ function startRecording(){
   const mime = recMime();
   if (mime === null || !renderer.domElement.captureStream){ out.textContent = "This browser cannot record the view — try Chrome or Edge."; return; }
   const size = document.getElementById("recSize").value, mode = document.getElementById("recMode").value;
-  if (size !== "window") recSize(REC_SIZES[size] || REC_SIZES["1080"]);
+  const dims = recDims();
+  if (dims) recSize(dims);
   const stream = renderer.domElement.captureStream(30);
   const px = renderer.domElement.width * renderer.domElement.height;
   let rec;
@@ -4630,7 +4653,7 @@ function recFrame(dt){
 }
 document.getElementById("recBtn").addEventListener("click", () => REC.on ? stopRecording() : startRecording());
 renderer.xr.addEventListener("sessionstart", () => stopRecording());
-addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); recSize(REC_SIZES[s] || REC_SIZES["1080"]); } });
+addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); const d = recDims(); if (d) recSize(d); } });
 
 
 /* ── 17. THE TOOL'S LOGO ──────────────────────────────────────────────────────  2026-10-15
