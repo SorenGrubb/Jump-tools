@@ -257,7 +257,9 @@
       <option value="turn24">Turntable 360°, 24 s</option>
     </select>
     <select id="recSize" title="Movie size. A fixed size letterboxes the view while recording.">
-      <option value="1080">1920×1080</option>
+      <option value="2160">3840×2160 (4K)</option>
+      <option value="1440">2560×1440 (2K)</option>
+      <option value="1080" selected>1920×1080</option>
       <option value="720">1280×720</option>
       <option value="window">Window size</option>
     </select>
@@ -398,7 +400,7 @@
     stimGain: ["", "Strength", { "1": "×1", "10": "×10", "30": "×30" }],
     spraySize: ["", "", { s: dot("currentColor").replace("8px;height:8px", "5px;height:5px"), m: dot("currentColor"), l: dot("currentColor").replace(/8px/g, "13px").replace("4px", "7px") }],
     recMode: ["", "", { free: ICON.camera, turn12: ICON.turntable + "12 s", turn24: ICON.turntable + "24 s" }],
-    recSize: ["", "", { "1080": "1080p", "720": "720p", window: "window" }]
+    recSize: ["", "", { "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }]
   };
   const segs = [];
   for (const id in SEG){
@@ -4543,6 +4545,13 @@ function recFileName(ext){
     .replace(/[^\w\-æøåÆØÅ ]+/g, "").replace(/\s+/g, "-").slice(0, 60) || "vr";
   return "vr-" + what + "-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + "." + ext;
 }
+/* MOVIE SIZES (2K and 4K added 2026-10-15, Søren: "Can we make an option to save in a higher
+   resolution? like 2k or 4k?"). The view is drawn at that size whatever the window -- the screen
+   shows it letterboxed and scaled down -- so a 4K movie is real 4K. The bitrate follows the size
+   (6 bit per pixel per second, at most 45 Mbit/s: about 340 MB per minute at 4K). Drawing 8 million
+   pixels 30 times a second is heavy: on a laptop the frame rate can drop, which the movie shows as
+   stutter -- 2K is the safer choice there. */
+const REC_SIZES = { "2160": [3840, 2160], "1440": [2560, 1440], "1080": [1920, 1080], "720": [1280, 720] };
 /* Letterbox the canvas to w×h for the recording; null puts it back. */
 function recSize(wh){
   const el = renderer.domElement;
@@ -4574,11 +4583,11 @@ function startRecording(){
   const mime = recMime();
   if (mime === null || !renderer.domElement.captureStream){ out.textContent = "This browser cannot record the view — try Chrome or Edge."; return; }
   const size = document.getElementById("recSize").value, mode = document.getElementById("recMode").value;
-  if (size !== "window") recSize(size === "1080" ? [1920, 1080] : [1280, 720]);
+  if (size !== "window") recSize(REC_SIZES[size] || REC_SIZES["1080"]);
   const stream = renderer.domElement.captureStream(30);
   const px = renderer.domElement.width * renderer.domElement.height;
   let rec;
-  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: Math.round(Math.min(16e6, Math.max(4e6, px * 6))) }, mime ? { mimeType: mime } : {})); }
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: Math.round(Math.min(45e6, Math.max(4e6, px * 6))) }, mime ? { mimeType: mime } : {})); }
   catch (e){ recSize(null); out.textContent = "Recording could not start: " + (e.message || e); return; }
   REC.chunks = []; REC.rec = rec; REC.on = true; REC.t0 = performance.now(); REC.mode = mode;
   rec.ondataavailable = e => { if (e.data && e.data.size) REC.chunks.push(e.data); };
@@ -4621,7 +4630,7 @@ function recFrame(dt){
 }
 document.getElementById("recBtn").addEventListener("click", () => REC.on ? stopRecording() : startRecording());
 renderer.xr.addEventListener("sessionstart", () => stopRecording());
-addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); recSize(s === "1080" ? [1920, 1080] : [1280, 720]); } });
+addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); recSize(REC_SIZES[s] || REC_SIZES["1080"]); } });
 
 
 /* ── 17. THE TOOL'S LOGO ──────────────────────────────────────────────────────  2026-10-15
@@ -4682,7 +4691,7 @@ const _ep = new THREE.Vector3();
 function edgePlots(W, H){
   const list = CELLS.filter(c => c.plot && c.mesh);
   if (!list.length) return;
-  const ph = Math.round(Math.min(200, Math.max(92, H * 0.14))), pw = Math.round(ph * 760 / 430), gap = 8, mg = 10;
+  const ph = Math.round(Math.min(420, Math.max(92, H * 0.14))), pw = Math.round(ph * 760 / 430), gap = 8, mg = 10;
   /* Where the panel is (not in a movie: the panel is not filmed). */
   let x0 = mg;
   const pan = document.getElementById("panel");
