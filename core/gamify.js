@@ -160,7 +160,15 @@ function renderChipInner(){
     c.innerHTML='<div class="chipbtn" id="chipOpen"><span>signed in</span><span class="pts">loading…</span></div>';
     var o2=document.getElementById("chipOpen");if(o2)o2.addEventListener("click",openDashboard);
   } else {
-    c.innerHTML='<div class="chipbtn"><span>Sign in to track progress</span></div><div id="chipGsi" style="margin-top:6px"></div>';
+    /* THE TERMS, BEFORE THE SUBMISSION (2026-10-17). What contributors send is their own
+       work, and until now it was collected under nothing stated at all -- which left the
+       community database impossible to share honestly. Said here because this is the one
+       control in every tool that is about becoming a contributor, and because a licence file
+       nobody opens is not a notice. The full statement is on the site. */
+    c.innerHTML='<div class="chipbtn"><span>Sign in to track progress</span></div><div id="chipGsi" style="margin-top:6px"></div>'
+      +'<div style="font-size:10.5px;line-height:1.45;color:var(--mut,#8b949e);margin-top:6px;max-width:30ch">'
+      +'What you submit stays yours, shared under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a> so it can be cited. '
+      +'<a href="/index.html#data" target="_blank" rel="noopener">Terms</a>.</div>';
     if(window.google&&google.accounts&&google.accounts.id){try{google.accounts.id.renderButton(document.getElementById("chipGsi"),{theme:"outline",size:"small",type:"standard"});}catch(_){}}
   }
 }

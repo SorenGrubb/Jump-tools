@@ -637,7 +637,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-14 10:49</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-17 17:37</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -6643,30 +6643,6 @@ async function caveApiQuery(table,filterJson,token,version){
    img65 fragments, see mergeSelfRootIds() below) can be queried as ONE $in filter covering every
    fragment at once, rather than one query per fragment -- CAVE's filter_in_dict already supports a
    list here, so this is both simpler and cheaper than N separate round-trips. */
-/* ── "+ VR" from the analysis panels ─────────────────────────────────────────  2026-10-15
-   Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
-   output synapses found to VR" -- and "the same with these": Astrocyte–synapse proximity and Cell
-   contacts. Each panel hands over entries for core/vrbasket.js's merge(): the target cell carrying
-   its points (syn: [x,y,z,dir 0 in/1 out,partner,partnerType]; marks: [x,y,z,kind,label], tool
-   voxels), and any other cells as plain entries. A cell already in the collection gains the points
-   rather than being refused. The button says what happened, then goes back to its own text. */
-function vrDs(){return (window.UJ&&UJ.cfg&&UJ.cfg.id)||"microns";}
-function vrAddFromTool(entries,btn){
-  if(!(window.UJ&&UJ.vrbasket&&UJ.vrbasket.mergeAll)){if(btn)btn.textContent="VR collection not available";return;}
-  const r=UJ.vrbasket.mergeAll(entries.filter(e=>e&&e.root));
-  if(!btn)return r;
-  const orig=btn.dataset.orig||btn.textContent;btn.dataset.orig=orig;
-  const nSyn=entries.reduce((a,e)=>a+((e&&e.syn)||[]).length,0),nMk=entries.reduce((a,e)=>a+((e&&e.marks)||[]).length,0);
-  btn.textContent=!r.ok?"Too much for the VR collection \u2014 try fewer":
-    "\u2713 In VR: "+entries.length+" cell"+(entries.length===1?"":"s")+(nSyn?", "+nSyn+" synapses":"")+(nMk?", "+nMk+" points":"");
-  clearTimeout(btn._vrT);btn._vrT=setTimeout(()=>{btn.textContent=orig;},3500);
-  return r;
-}
-function vrPartnerLabel(type,dir){
-  const t=String(type||"");
-  return (t?longName(t)+" ("+t+", "+dir+" partner)":(dir==="input"?"Input partner":"Output partner"));
-}
-const VR_PARTNERS_PER_DIR=10;
 function caveSynFilter(rootIds,direction){
   const col=direction==="input"?"post_pt_root_id":"pre_pt_root_id";
   const list=Array.isArray(rootIds)?rootIds:[rootIds];
@@ -7182,13 +7158,12 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
               const somaPos=nid&&somaPosByNuc.get(nid);
               const somaDepth=somaPos?estimateDepthGridded(somaPos[0],somaPos[1],somaPos[2]):null;
               partnerInfo.set(pid,{
-                nuc:nid||"",
                 cell_type:(info&&info.cell_type)||"",
                 classification_system:(info&&info.classification_system)||"",
                 somaDepthUm:somaDepth?somaDepth.depthUm:null
               });
             });
-            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";p.classification_system=(pi&&pi.classification_system)||"";p.nuc=(pi&&pi.nuc)||"";});
+            allPartners.forEach(p=>{const pi=partnerInfo.get(p.partner);p.cell_type=(pi&&pi.cell_type)||"";});
             /* Not every partner has a nucleus detection at all (axon fragments, glial processes,
                and other non-somatic partner IDs simply aren't in nucleus_detection_v0), and not
                every nucleus has a type call, so some blanks are expected. But zero matches across
@@ -7263,8 +7238,6 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
             +'</div>'
             +'<div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap">'
             +'<button class="idbtn" id="connNgl" type="button">Open in Neuroglancer</button>'
-            +'<button class="idbtn" id="connVR" type="button" title="Add this cell to your VR collection with every input (blue) and output (pink) synapse found, drawn on the cell in the VR viewer">+ VR: cell + synapses</button>'
-            +'<button class="idbtn" id="connVRp" type="button" title="Also add the strongest partners as cells, labelled with their type: per direction the '+(VR_PARTNERS_PER_DIR/2)+' strongest excitatory and the '+(VR_PARTNERS_PER_DIR/2)+' strongest inhibitory partners (filled up from the other kind when one has too few)">+ VR: also top partners (E + I)</button>'
             +'<button class="idbtn" id="connXlsx" type="button">Download all connections (Excel)</button></div>'
             +'<div class="scroll" style="max-height:260px;overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr>'
             +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)">dir</th>'
@@ -7300,43 +7273,6 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
           if(noTypeEl)noTypeEl.addEventListener("change",rerenderColorCharts);
           const nglBtn=rt.querySelector("#connNgl");
           if(nglBtn)nglBtn.addEventListener("click",()=>{if(lastUrl)window.open(lastUrl,"_blank");});
-          /* "+ VR" (2026-10-15): the cell carries every synapse found -- all of them, not only the
-             top-N shown in Neuroglancer -- each with its partner and the partner's type. */
-          const vrTarget=()=>{
-            const root=String(rootId||selfIds[0]);
-            return {ds:vrDs(),root,nuc:String(nucleusId||""),extra:selfIds.map(String).filter(x=>x!==root),label:cellType||"Cell",
-              syn:lastPoints.map(p=>[Math.round(Number(p.pos[0])),Math.round(Number(p.pos[1])),Math.round(Number(p.pos[2])),p.direction==="input"?0:1,String(p.partner),p.cell_type||""])};
-          };
-          const vrBtn1=rt.querySelector("#connVR"),vrBtn2=rt.querySelector("#connVRp");
-          if(vrBtn1)vrBtn1.addEventListener("click",()=>vrAddFromTool([vrTarget()],vrBtn1));
-          if(vrBtn2)vrBtn2.addEventListener("click",()=>{
-            /* HALF EXCITATORY, HALF INHIBITORY (2026-10-15, Søren: "I added the top partners for VR,
-               that turned out to be only inhibitory cells, perhaps we could have a top partners half
-               inhibitory and half excitatory?"). Per direction: the strongest excitatory and the
-               strongest inhibitory partners, by synapse count, VR_PARTNERS_PER_DIR/2 of each; when
-               one kind has fewer, the other fills the remaining places. Partners without a type
-               (axon fragments, no nucleus) only fill places that are still empty. Chosen from every
-               partner the query found that passes the minimum-synapse setting, not only the ones
-               listed in Neuroglancer. */
-            const kindOf=p=>{const c=String(p.classification_system||"");return /inhib/i.test(c)?"I":/excit/i.test(c)?"E":"";};
-            const pool=(typeof allPartners!=="undefined"&&allPartners.length?allPartners.filter(p=>p.syn_count>=minSyn):shown).slice().sort((a,b)=>b.syn_count-a.syn_count);
-            const pick=d=>{
-              const ofDir=pool.filter(p=>p.direction===d),half=Math.floor(VR_PARTNERS_PER_DIR/2);
-              const E=ofDir.filter(p=>kindOf(p)==="E"),I=ofDir.filter(p=>kindOf(p)==="I");
-              let take=E.slice(0,half).concat(I.slice(0,half));
-              const rest=E.slice(half).concat(I.slice(half)).sort((a,b)=>b.syn_count-a.syn_count);
-              while(take.length<VR_PARTNERS_PER_DIR&&rest.length)take.push(rest.shift());
-              const untyped=ofDir.filter(p=>!kindOf(p));
-              while(take.length<VR_PARTNERS_PER_DIR&&untyped.length)take.push(untyped.shift());
-              return take;
-            };
-            const parts=["input","output"].filter(d=>dirs.includes(d)).flatMap(pick)
-              /* Each partner carries its nucleus id (from the nucleus_detection_v0 join above), so the
-                 viewer loads its nucleus too and starts its spikes at the real soma (2026-10-15, Søren:
-                 "Why are we only loading the nucleus of the target cell?"). */
-              .map(p=>({ds:vrDs(),root:String(p.partner),nuc:String(p.nuc||""),extra:[],label:vrPartnerLabel(p.cell_type,p.direction)}));
-            vrAddFromTool([vrTarget()].concat(parts),vrBtn2);
-          });
           const xlsxBtn=rt.querySelector("#connXlsx");
           if(xlsxBtn)xlsxBtn.addEventListener("click",()=>{
             /* Per-partner average synapse depth (2026-08-05, Søren: "synapse depth and soma
@@ -9139,11 +9075,10 @@ function cellContactCandidateRowHtml(r,idx){
   const nameHtml=r.cellVoxel
     ?'<a href="#" class="jump" title="Jump to this cell" data-x="'+r.cellVoxel[0]+'" data-y="'+r.cellVoxel[1]+'" data-z="'+r.cellVoxel[2]+'" style="color:var(--accent);text-decoration:none;font-weight:600">'+label+'</a>'
     :'<span style="font-weight:600">'+label+'</span>';
-  const vrOne=(r.rootId&&touchN)?'<button class="idbtn ccVROne" data-idx="'+idx+'" style="margin-left:6px;padding:1px 8px;font-size:11px;vertical-align:middle" title="Add this cell, the target cell and their touch points to your VR collection">+ VR</button>':'';
   const openBtn=r.rootId?'<button class="idbtn ccOpenOne" data-idx="'+idx+'" style="margin-left:8px;padding:1px 8px;font-size:11px;vertical-align:middle" title="Opens a 3D view (with EM imagery) of just this cell and the target cell, with a point at every place they actually touch.">Open in Neuroglancer</button>':'';
   return '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">'
     +'<span class="dot" style="background:'+(touching?"#3fb950":"#6e7681")+';flex:0 0 auto;margin-top:5px"></span>'
-    +'<div style="flex:1 1 auto;min-width:0">'+nameHtml+openBtn+vrOne
+    +'<div style="flex:1 1 auto;min-width:0">'+nameHtml+openBtn
     +'<div class="nsub">'+(touching?(touchN+" touch point"+(touchN===1?"":"s")+", closest "+Number(r.distNm).toFixed(0)+" nm"):("not touching ("+Number(r.distNm).toFixed(0)+" nm gap)"))
     +(r.rootId?' &middot; root '+idSpan(r.rootId):'')+'</div></div></div>';
 }
@@ -9207,7 +9142,6 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     +'<div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">'
     +'<button class="idbtn" id="'+uid+'_check" disabled style="padding:3px 10px;font-size:12px">Check contacts with this type</button>'
     +'<button class="idbtn" id="'+uid+'_ngl" disabled style="padding:3px 10px;font-size:12px" title="Opens a 3D view (with EM imagery) of this cell, every checked cell of the chosen type, and all of their touch points (each nearby cell\'s points in their own colour). Use the per-cell \'Open in Neuroglancer\' button in the list below instead to focus on just one neighbour at a time.">Open all in Neuroglancer</button>'
-    +'<button class="idbtn" id="'+uid+'_vr" disabled style="padding:3px 10px;font-size:12px" title="Add this cell, every touching cell of the chosen type and all their touch points to your VR collection">+ VR: all touching</button>'
     +'<button class="idbtn" id="'+uid+'_xlsx" disabled style="padding:3px 10px;font-size:12px" title="Downloads every evaluated pair (touching or not) with its coordinates, if any.">Download as Excel</button>'
     +'</div><div id="'+uid+'_results" style="margin-top:6px"></div>';
   h+='</details>';
@@ -9219,18 +9153,6 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     nglBtn=document.getElementById(uid+"_ngl"),xlsxBtn=document.getElementById(uid+"_xlsx"),
     resultsEl=document.getElementById(uid+"_results");
   if(!typeSel)return; // shouldn't happen, but keeps this defensive like the rest of the file
-  /* "+ VR" (2026-10-15): the target cell carries every touch point as a "contact" mark labelled
-     with the neighbour it touches; each touching neighbour comes as a cell of its own (at most 15,
-     the closest first, so a Quest 2 can carry it). */
-  async function ccToVR(rows,btn){
-    if(!rows.length||!rootId0)return;
-    let ownExtras=[];try{ownExtras=await fetchExtraRootIdsFor(nucleusId,rootId0);}catch(_e){}
-    const marks=[];
-    rows.forEach(r=>(r.touchPoints||[]).forEach(p=>marks.push([Math.round(p[0]),Math.round(p[1]),Math.round(p[2]),"contact",(r.cellType||"cell")+" \u00b7 nuc "+r.nucleusId])));
-    const target={ds:vrDs(),root:String(rootId0),nuc:String(nucleusId||""),extra:(ownExtras||[]).map(String).filter(x=>x&&x!==String(rootId0)),label:cellType||"Cell",marks};
-    const others=rows.slice().sort((a,b)=>a.distNm-b.distNm).map(r=>({ds:vrDs(),root:String(r.rootId),nuc:String(r.nucleusId||""),extra:[],label:(r.cellType||"Cell")+" (touching)"}));
-    vrAddFromTool([target].concat(others),btn);
-  }
   let curRows=[]; // whichever result set is currently "live" -- declared here (before the delegated
     // listener below, which closes over it) so both the listener and every handler further down
     // always see the CURRENT rows, not a stale copy from whenever the listener was first attached.
@@ -9261,18 +9183,6 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
       e.preventDefault();
       const row=curRows[Number(openBtn.dataset.idx)];
       if(row&&rootId0)openCellContactsSingleViewer(i,rootId0,cellType,row);
-      return;
-    }
-    const vrOneBtn=e.target.closest(".ccVROne");
-    if(vrOneBtn){
-      e.preventDefault();
-      const row=curRows[Number(vrOneBtn.dataset.idx)];
-      if(row&&rootId0)ccToVR([row],vrOneBtn);
-      return;
-    }
-    if(e.target.id===uid+"_vr"){
-      e.preventDefault();
-      ccToVR(curRows.filter(r=>(r.touchPoints||[]).length).slice(0,15),e.target);
     }
   });
   // 2026-08-14 (Soren: "I don't understand why there are 8887 astrocytes in this list, but 9911 in
@@ -9316,7 +9226,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
           distNm:Number(k.minDistanceNm)||0,voxel,touchPoints:voxel?[voxel]:[],cellVoxel};
       });
       resultsEl.innerHTML=curRows.map(cellContactCandidateRowHtml).join('');
-      nglBtn.disabled=false;xlsxBtn.disabled=false;{const vb=document.getElementById(uid+"_vr");if(vb)vb.disabled=!curRows.some(r=>(r.touchPoints||[]).length);}
+      nglBtn.disabled=false;xlsxBtn.disabled=false;
     }else{
       resultsEl.innerHTML=rootId0?'<div class="nsub">Not checked yet.</div>':'<div class="nsub">This cell has no resolvable root ID yet, so contacts can\'t be checked here (past results from others can still show above, if any).</div>';
     }
@@ -9339,7 +9249,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
       countEl.textContent=totalFound+" "+label+(totalFound===1?"":"s")+" found within "+radius+" µm"
         +(checked<totalFound?" — checked nearest "+checked+" (limit "+CELL_CONTACT_TYPE_MAX_FETCH+")":" — all checked")
         +(ccGate?" — "+ccGate:"");
-      nglBtn.disabled=!results.length;xlsxBtn.disabled=!results.length;{const vb=document.getElementById(uid+"_vr");if(vb)vb.disabled=!curRows.some(r=>(r.touchPoints||[]).length);}
+      nglBtn.disabled=!results.length;xlsxBtn.disabled=!results.length;
     }catch(err){
       console.warn("[uJump cell contacts by type]",err);
       resultsEl.innerHTML='<div class="nsub" style="color:#f0883e">Failed: '+escHtml(String((err&&err.message)||err))+'</div>';
@@ -9974,12 +9884,11 @@ function tripartiteRowHtml(r,idx,thresholdNm){
   }else{
     astroHtml=r.checkedCount?'no astrocyte mesh resolvable among '+r.checkedCount+' checked':'no astrocyte found within the search radius';
   }
-  const vrOne='<button class="idbtn tpVROne" data-idx="'+idx+'" style="margin-left:6px;padding:1px 8px;font-size:11px;vertical-align:middle" title="Add this cell, this synapse and the astrocyte found near it to your VR collection">+ VR</button>';
   const openBtn='<button class="idbtn tpOpenOne" data-idx="'+idx+'" style="margin-left:8px;padding:1px 8px;font-size:11px;vertical-align:middle" title="Opens a 4-panel Neuroglancer view (3 EM cross-sections + 3D) of this synapse, its pre/post partner, and the nearest astrocyte found, with the annotation list open.">Open in Neuroglancer</button>';
   return '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">'
     +'<span class="dot" style="background:'+(r.tripartite?"#3fb950":"#6e7681")+';flex:0 0 auto;margin-top:5px"></span>'
     +'<div style="flex:1 1 auto;min-width:0"><span style="color:'+dirColor+';font-weight:600">'+dirLabel+'</span>'
-    +' &middot; partner root '+idSpan(r.partner)+openBtn+vrOne
+    +' &middot; partner root '+idSpan(r.partner)+openBtn
     +'<div class="nsub">'+astroHtml+'</div></div></div>';
 }
 /* Neuroglancer state builders -- same 4panel + annotation-tab-selected convention Cell contacts'
@@ -10137,7 +10046,6 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
     +'<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">'
     +'<button class="idbtn" id="'+uid+'_check">Check for nearby astrocyte processes</button>'
     +'<button class="idbtn" id="'+uid+'_ngl" disabled title="Opens every checked synapse, its partner, and every astrocyte process found, together in one 4-panel Neuroglancer view.">Open all in Neuroglancer</button>'
-    +'<button class="idbtn" id="'+uid+'_vr" disabled title="Add this cell with every checked synapse, each astrocyte found near one and the astrocyte touch points to your VR collection">+ VR: all checked</button>'
     +'</div><span id="'+uid+'_status" style="font-size:12px;color:var(--mut)"></span>'
     +'<div id="'+uid+'_results" style="margin-top:6px"></div>';
   h+='</details>';
@@ -10151,22 +10059,6 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
     statusEl=document.getElementById(uid+"_status"),resultsEl=document.getElementById(uid+"_results");
   if(!checkBtn)return;
   let curRows=[],curThresholdNm=Math.round(TRIPARTITE_ASTRO_DIST_UM*1000);
-  /* "+ VR" (2026-10-15): the target cell carries the checked synapses and, where an astrocyte
-     process was found within the gap, an "astro" mark at the touch point; those astrocytes come as
-     cells of their own. */
-  async function tpToVR(rows,btn){
-    if(!rows.length||!rootId0)return;
-    let ownExtras=[];try{ownExtras=await fetchExtraRootIdsFor(nucleusId,rootId0);}catch(_e){}
-    const syn=rows.filter(r=>r.pos).map(r=>[Math.round(Number(r.pos[0])),Math.round(Number(r.pos[1])),Math.round(Number(r.pos[2])),r.direction==="input"?0:1,String(r.partner||""),""]);
-    const marks=[],astros=new Map();
-    rows.forEach(r=>{
-      if(!r.astro||!r.tripartite)return;
-      if(r.astro.touchVoxel)marks.push([Math.round(r.astro.touchVoxel[0]),Math.round(r.astro.touchVoxel[1]),Math.round(r.astro.touchVoxel[2]),"astro","astrocyte nuc "+r.astro.nucleusId+" \u00b7 "+Number(r.astro.distNm).toFixed(0)+" nm"]);
-      if(r.astro.rootId&&!astros.has(String(r.astro.rootId)))astros.set(String(r.astro.rootId),{ds:vrDs(),root:String(r.astro.rootId),nuc:String(r.astro.nucleusId||""),extra:(r.astro.extraRootIds||[]).map(String),label:"Astrocyte (near a synapse)"});
-    });
-    const target={ds:vrDs(),root:String(rootId0),nuc:String(nucleusId||""),extra:(ownExtras||[]).map(String).filter(x=>x&&x!==String(rootId0)),label:cellType||"Cell",syn,marks};
-    vrAddFromTool([target].concat([...astros.values()]),btn);
-  }
   el.addEventListener("click",function(e){
     const jumpBtn=e.target.closest(".jump");
     if(jumpBtn){
@@ -10180,16 +10072,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
       e.preventDefault();
       const row=curRows[Number(openBtn.dataset.idx)];
       if(row&&rootId0)openTripartiteViewer(i,rootId0,cellType,[row]);
-      return;
     }
-    const vrOneBtn=e.target.closest(".tpVROne");
-    if(vrOneBtn){
-      e.preventDefault();
-      const row=curRows[Number(vrOneBtn.dataset.idx)];
-      if(row&&rootId0)tpToVR([row],vrOneBtn);
-      return;
-    }
-    if(e.target.id===uid+"_vr"){ e.preventDefault(); if(curRows.length)tpToVR(curRows,e.target); }
   });
   checkBtn.addEventListener("click",async function(){
     const token=sanitizeCaveToken(tokenEl.value);
@@ -10230,7 +10113,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
       resultsEl.innerHTML=results.map((r,ri)=>tripartiteRowHtml(r,ri,curThresholdNm)).join('');
       statusEl.textContent=nTri+" of "+results.length+" checked synapse"+(results.length===1?"":"s")+" have an astrocyte process within "+curThresholdNm+" nm"+(allPoints.length>capped.length?" (checked first "+capped.length+" of "+allPoints.length+" synapses found — raise the cap above to check more)":"")+(triGate?" — "+triGate:"");
       statusEl.style.color="var(--mut)";
-      nglBtn.disabled=!results.length;{const vb=document.getElementById(uid+"_vr");if(vb)vb.disabled=!results.length;}
+      nglBtn.disabled=!results.length;
     }catch(err){
       console.warn("[uJump tripartite]",err);
       resultsEl.innerHTML='<div class="nsub" style="color:#f0883e">Failed: '+escHtml(String((err&&err.message)||err))+'</div>';
@@ -13397,12 +13280,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     vrBtn.disabled=false;vrBtn.textContent=orig;
     if(!parts.length){alert("None of these matches has a root ID with a mesh to show.");return;}
     const base=location.href.replace(/[#?].*$/,"").replace(/[^\/]*$/,"");
-    /* The region boxes travel too (2026-10-14, Søren: "they should be included when the VR has been
-       opened via Filter and show and bounding boxes have been set"): each as min~max corners in
-       micrometres, in the same order and so the same colours (REGION_BOX_COLORS) as the 3D view. */
-    const um=v=>Math.round(v/100)/10;
-    const boxes=getRegionBoxesNM().map(bx=>[bx.n,um(bx.xmin),um(bx.ymin),um(bx.zmin),um(bx.xmax),um(bx.ymax),um(bx.zmax)].join("~"));
-    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:"")+(boxes.length?"&box="+boxes.join(","):""),"_blank");
+    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:""),"_blank");
   });
   if(viewAllBtn)viewAllBtn.addEventListener("click",async()=>{
     if(!lastResult||!lastResult.matches.length)return;

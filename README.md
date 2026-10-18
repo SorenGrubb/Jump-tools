@@ -87,7 +87,22 @@ All the core data (nucleus positions, cell-type predictions, m-types, the verifi
 
 ## License
 
-This project is licensed under [CC BY 4.0](LICENSE) — you're free to share and adapt it, with attribution.
+The **code** — the pages, `core/*.js`, the build scripts in `src/` and the `*-build`
+directories, the Apps Script backend and the Colab and Blender exports — is under the
+[MIT License](LICENSE). The **writing and figures** on the site and inside the tools are under
+[CC BY 4.0](LICENSE-CONTENT). Two licences rather than one because Creative Commons
+[recommends against](https://creativecommons.org/faq/) using its licences for software.
+
+Neither covers the **electron-microscopy datasets**: every volume is read from its publisher's
+own cloud bucket, nothing is redistributed here, and each dataset's own terms apply — a
+number of them state no reuse licence at all. The terms for each are shown on its page in the
+tools. The **libraries** in `core/vendor/` are third-party code under their own licences,
+included unmodified with their notices beside them.
+
+**Contributions** made through the tools — identifications, corrections, organelle reports,
+tracings and forum posts — are released by their authors under
+[CC BY 4.0](LICENSE-CONTENT) so the community annotation database can be shared and cited.
+Contributors keep the copyright in their own work and are credited by name or handle.
 
 ## Author
 

@@ -165,6 +165,12 @@
       <option value="ei">Colour: excitatory / inhibitory</option>
     </select>
   </div>
+  <div class="ctl" id="lookRow" style="align-items:center">
+    <span style="font-size:12px;color:var(--mut)">Background</span>
+    <input id="bgCol" type="color" value="#0d1117" title="The colour of the world behind the cells — also in the movie" style="width:34px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:none">
+    <span id="bgPresets" style="display:inline-flex;gap:4px"></span>
+    <button id="gridBtn" class="on" title="The floor grid under the cells">Floor grid</button>
+  </div>
   <div class="ctl">
     <button id="layerBtn" class="on" title="Cortical layer boundaries from µJump's traced pia and white-matter surfaces, divided in Ledderose's proportions — the same model the Jump tab's layer estimate uses">Layers</button>
     <select id="vascSel" title="Wan &amp; Wei's TriSAM segmentation of the blood vessels in the whole minnie65 volume (BossDB wei2024; IEEE JBHI 2025, doi:10.1109/JBHI.2025.3576643). One 50 MB download, then cut to the box around your cells.">
@@ -259,6 +265,48 @@
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
+  </div>
+  <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
+    <div class="ctl" style="margin:0 0 6px;align-items:center">
+      <b style="font-size:13px">Tissue block</b>
+      <select id="blkSrc" title="Where the box comes from">
+        <option value="centre">a centre and a size</option>
+        <option value="corners">two corners</option>
+        <option value="cells">around the cells</option>
+      </select>
+      <span id="blkUnitWrap"><select id="blkUnit" title="The unit the coordinates are typed in">
+        <option value="vox">voxels (as in Neuroglancer)</option>
+        <option value="um">µm</option>
+      </select></span>
+    </div>
+    <div class="ctl" id="blkCorners" style="margin:0 0 6px;display:none">
+      <input id="blkA" placeholder="corner x, y, z" style="width:140px" title="One corner: x, y, z (Danish decimals: separate with ;)">
+      <input id="blkB" placeholder="opposite corner x, y, z" style="width:160px" title="The opposite corner">
+    </div>
+    <div class="ctl" id="blkCentre" style="margin:0 0 6px">
+      <input id="blkC" placeholder="centre x, y, z" style="width:140px" title="The box's centre: x, y, z">
+      <button id="blkPick" title="The centre of the picked cell's nucleus (or its mesh)">picked cell</button>
+      <input id="blkS" placeholder="size µm: 40, 40, 20" style="width:130px" title="Size in µm: one number for a cube, or x, y, z for a brick">
+    </div>
+    <div class="ctl" style="margin:0 0 6px;align-items:center">
+      <select id="blkAxis" title="Which face is eaten away first: the front (the dataset's z, the face you see first — as in the Blender block) or the top (from the pia down)">
+        <option value="front">peel from the front</option>
+        <option value="top">peel from the top</option>
+      </select>
+      <label title="Every other cell's segmentation, pale over the EM; the collection's own cells in their colours"><input type="checkbox" id="blkSeg" checked> other cells' segmentation</label>
+      <select id="blkQ" title="How finely the EM is read: about 6, 16 or 40 million voxels for the whole block">
+        <option value="coarse">coarse</option>
+        <option value="medium" selected>medium</option>
+        <option value="fine">fine (PC)</option>
+      </select>
+    </div>
+    <div class="ctl" style="margin:0;align-items:center">
+      <button id="blkBtn" title="Read the EM (and segmentation) inside the box and stand it among the cells">▣ Build block</button>
+      <button id="blkClr" title="Remove the block">Remove</button>
+      <input id="blkPeel" type="range" min="0" max="100" value="0" style="flex:1;min-width:90px" title="How much has been peeled away">
+      <span id="blkPeelV" style="font-size:12px;color:var(--mut);min-width:34px">0 %</span>
+    </div>
+    <div id="blkNote" class="help" style="margin-top:6px">For a movie: build the block, then add a “peel the tissue block” effect in the timeline.</div>
   </div>
   <div class="ctl" id="sprayRow">
     <button id="sprayBtn" title="Paint on the cells and vessels to point things out to others: drag with the mouse, or hold the right trigger in VR">🎨 Spray</button>
@@ -453,11 +501,11 @@
 
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
-    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"]]],
+    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["synClr", "traceCsv"], ["#caveRow"]]],
-    ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
+    ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
   ];
@@ -538,8 +586,8 @@
 
 <script>
 /* Per-dataset sources, keyed by the dataset id each collected cell carries (UJ.cfg.id of the
-   page it was collected on). Copied from ujump.html's own UJ.cfg.mesh / UJ.cfg.em.nucSource —
-   the prototype knows µJump only; another tool is one more entry here. */
+   page it was collected on). Copied from each tool page's own UJ.cfg.mesh / EM / nucleus source;
+   another tool is one more entry here. */
 window.VR_DATASETS = {
   microns: {
     label: "MICrONS minnie65",
@@ -569,6 +617,9 @@ window.VR_DATASETS = {
     /* The EM, read through core/emtiles.js + core/segread.js exactly as the tracing pad and the
        EM preview read it: raw uint8, sharded, no token. res is the tool frame, nm per voxel. */
     em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
+    /* The flat segmentation of the same snapshot as the meshes, for the tissue block's pale
+       segments (section 19): its ids ARE the root ids. */
+    seg: "precomputed://gs://iarpa_microns/minnie/minnie65/seg_m1300",
     /* The Jump tab's nucleus table in 100 µm tiles (src/build_vr_nuclei.js), for neighbours. */
     nuclei: "core/vr_nuc/microns/",
     /* Hand-traced structures (the tracing pad), from the same backend: ?tracings=1&ds=… */
@@ -583,11 +634,148 @@ window.VR_DATASETS = {
        edge pairs, then one float32 per vertex for each attribute in its info. Checked 2026-10-14:
        x 283–1598, y 263–1159, z 316–1114 µm, the same frame as the cells. */
     vascSkel: "https://www.googleapis.com/storage/v1/b/microns_vascular_skeleton/o/",
+    /* Synapses among the loaded cells (section 8's loadSynapses), from CAVE. */
+    syn: { server: "https://minnie.microns-daf.com", datastack: "minnie65_public", version: "1300",
+           table: "synapses_pni_2", tokenKey: "cave_token", res: [4, 4, 40], name: "MICrONS synapses_pni_2, v1300" },
+    res: [4, 4, 40]
+  },
+  /* ── THE OTHER TOOLS (2026-10-17, Søren: "I think it is time we spread the VR to the other
+     tools.") Each block is that page's own UJ.cfg.mesh, EM and nucleus source, copied from it.
+     What a dataset does not have is simply absent, and the viewer hides the controls that need it
+     (see DS_HAS below): layers, vessels, the V1 column, the areas, the vascular skeletons, the
+     neighbour table and the centriole / cilium vectors are minnie65's alone. backendDs is the ds=
+     the Apps Script backend routes on (Datasets.gs), so proposals, organelles and tracings come
+     from that tool's own spreadsheet. */
+  hjump: {
+    label: "H01 human cortex",
+    mesh: {
+      notFoundKey: "hjump_mesh_notfound_v1",
+      meshBase: "https://storage.googleapis.com/h01-release/data/20210601/c3/mesh/",
+      meshBaseAlt: "https://storage.googleapis.com/storage/v1/b/h01-release/o/data%2F20210601%2Fc3%2Fmesh%2F",
+      meshBaseAltSuffix: ".shard?alt=media", preferAlt: true,
+      preshiftBits: 6, minishardBits: 8, shardBits: 10, vertexQuantizationBits: 16,
+      transform: [16,0,0,0, 0,16,0,0, 0,0,33,0], extraRootSegType: "c3",
+      dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+      dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+    },
+    /* No nucleus volume: H01's cell bodies are c3 segments, not a nucleus segmentation. */
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "hjump", tracingDs: "hjump", extraSegType: "c3",
+    em: "precomputed://gs://h01-release/data/20210601/4nm_raw",
+    seg: "precomputed://gs://h01-release/data/20210601/c3",
+    /* This bucket answers browsers only through the JSON API (core/segread.js useJsonApi). */
+    jsonApi: "h01-release",
+    res: [8, 8, 33]
+  },
+  bjump: {
+    label: "Alzheimer's vCLEM — hippocampal CA1",
+    mesh: {
+      meshBase: "https://storage.googleapis.com/vclem-xh/alzheimers/segmentation_secgan_16nm/mesh/",
+      meshBaseAlt: "https://storage.googleapis.com/storage/v1/b/vclem-xh/o/alzheimers%2Fsegmentation_secgan_16nm%2Fmesh%2F",
+      meshBaseAltQuery: "?alt=media", unsharded: true,
+      notFoundKey: "bjump_mesh_notfound_v1", snapshotName: "the Alzheimer's vCLEM mesh set",
+      vertexQuantizationBits: 16, transform: [16,0,0,0, 0,16,0,0, 0,0,30,0], extraRootSegType: "secgan16",
+      dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+      dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+    },
+    /* No nucleus volume: the nuclei are Hoechst detections. */
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "bjump", tracingDs: "bjump", extraSegType: "secgan16",
+    em: "precomputed://gs://vclem-xh/alzheimers/em_clahe",
+    seg: "precomputed://gs://vclem-xh/alzheimers/segmentation_secgan_16nm",
+    jsonApi: "vclem-xh",
+    res: [8, 8, 30]
+  },
+  v1dd: {
+    label: "V1DD (Allen V1 Deep Dive)",
+    mesh: {
+      notFoundKey: "djump_mesh_notfound_v1",
+      meshBase: "https://storage.googleapis.com/v1dd_pcg/ws/graphene_meshes/initial/",
+      meshBaseDynamic: "https://storage.googleapis.com/v1dd_pcg/ws/graphene_meshes/dynamic/",
+      meshBaseAlt: "https://storage.googleapis.com/storage/v1/b/v1dd_pcg/o/ws%2Fgraphene_meshes%2Finitial%2F",
+      meshBaseAltSuffix: "?alt=media",
+      manifestBase: "https://api.em.brain.allentech.org/meshing/api/v1/table/v1dd_public/manifest/",
+      manifestNeedsToken: true, caveTokenKey: "djump_cave_token",
+      preshiftBits: 6, minishardBits: 8, shardBits: 13, vertexQuantizationBits: 16,
+      transform: [9.7,0,0,0, 0,9.7,0,0, 0,0,45,0],
+      dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+      dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+    },
+    nucSource: "precomputed://gs://v1dd_imagery/v1dd_nuclei/segmentation",
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "djump", tracingDs: "djump", extraSegType: "img65",
+    /* The first scale of this EM 404s (δJump's emConfigure says why). */
+    em: "precomputed://gs://v1dd_imagery/image/aligned_image", emSkip: ["placeholder"],
+    syn: { server: "https://api.em.brain.allentech.org", datastack: "v1dd_public", version: "1196",
+           table: "synapses_v1dd", tokenKey: "djump_cave_token", res: [9, 9, 45], name: "V1DD synapses_v1dd, v1196" },
+    res: [9, 9, 45]
+  },
+  pinky100: {
+    label: "MICrONS pinky100 (Layer 2/3)",
+    mesh: {
+      notFoundKey: "pjump_mesh_notfound_v1",
+      meshBase: "https://storage.googleapis.com/microns_public_datasets/pinky100_v185/seg/mesh_mip_2_err_40/",
+      meshBaseAlt: "https://storage.googleapis.com/storage/v1/b/microns_public_datasets/o/pinky100_v185%2Fseg%2Fmesh_mip_2_err_40%2F",
+      meshBaseAltSuffix: ".shard?alt=media",
+      preshiftBits: 6, minishardBits: 8, shardBits: 13, vertexQuantizationBits: 16,
+      transform: [16,0,0,0, 0,16,0,0, 0,0,40,0],
+      dracoWrapper:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+      dracoWasm:"https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+    },
+    nucSource: "precomputed://https://td.princeton.edu/sseung-archive/pinky100-nuclei/seg",
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "pjump", tracingDs: "pjump", extraSegType: "img65",
+    em: "precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",
+    seg: "precomputed://gs://microns_public_datasets/pinky100_v185/seg",
+    /* No synapses: pinky100's root ids are not in any public CAVE synapse table. */
+    res: [4, 4, 40]
+  },
+  /* ── TRACED CELLS ONLY (2026-10-17, Søren: "Although they don't have cells to show, there will
+     be traced cells that can be shown.") λJump has no segmentation and χJump's cb2 meshes are read
+     by its own legacy renderer, so here a cell IS what was traced in the tracing pad: its traced
+     outline lofted into the cell's surface, its traced nucleus as the nucleus (loadTracedBody).
+     mesh: null tells the viewer never to ask core/mesh.js. */
+  ljump: {
+    label: "Lee16 — mouse V1 serial-section TEM",
+    mesh: null, tracedOnly: true,
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "ljump", tracingDs: "ljump",
+    em: "precomputed://s3://open-neurodata/lee/lee16/image",
+    res: [4, 4, 40]
+  },
+  xjump: {
+    label: "cb2 — mouse cerebellum",
+    mesh: null, tracedOnly: true,
+    backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+    backendDs: "xjump", tracingDs: "xjump",
+    /* 4 nm chunks are 26 MB each; χJump's pad skips them too. */
+    em: "precomputed://https://bossdb-open-data.s3.amazonaws.com/nguyen_thomas2022/cb2/em", emSkip: ["4_4_40"],
     res: [4, 4, 40]
   }
 };
+VR_DATASETS.djump = VR_DATASETS.v1dd; VR_DATASETS.pjump = VR_DATASETS.pinky100; VR_DATASETS.ujump = VR_DATASETS.microns; VR_DATASETS.cb2 = VR_DATASETS.xjump;
+/* ONE DATASET PER VIEWER. core/mesh.js binds itself to UJ.cfg.mesh when it loads, and two volumes
+   have unrelated coordinate frames anyway, so the page decides which dataset it is before that
+   script tag: &ds= in the link, else the first collected cell in #c=, else the newest cell in the
+   browser's collection. Cells of another dataset are listed and left out (loadOne). A saved scene
+   of another dataset reloads the page with its &ds= (openScene). */
+window.VR_DS = (function(){
+  var h = location.hash, m = h.match(/[#&]ds=([a-z0-9]+)/);
+  function id(d){ var x = VR_DATASETS[d]; if (!x) return null; for (var k in VR_DATASETS) if (VR_DATASETS[k] === x && !/^(djump|pjump|ujump|cb2)$/.test(k)) return k; return d; }
+  if (m && id(m[1])) return id(m[1]);
+  var c = h.match(/[#&]c=([^~&,]*)~/);
+  if (c && id(decodeURIComponent(c[1]))) return id(decodeURIComponent(c[1]));
+  if (!/[#&](scene|c)=/.test(h)){
+    try {
+      var a = JSON.parse(localStorage.getItem("jump_vr_basket_v1") || "[]"), best = null;
+      (Array.isArray(a) ? a : []).forEach(function(e){ if (e && id(e.ds || "microns") && (!best || (e.t || 0) >= (best.t || 0))) best = e; });
+      if (best) return id(best.ds || "microns");
+    } catch (e){}
+  }
+  return "microns";
+})();
 window.UJ = window.UJ || {};
-UJ.cfg = { id: "microns", mesh: VR_DATASETS.microns.mesh, res: [4, 4, 40] };
+UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh || { notFoundKey: "vr_traced_only_v1" })), res: VR_DATASETS[VR_DS].res };
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="core/mesh.js"></script>
@@ -608,6 +796,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 
 const BASKET_KEY = "jump_vr_basket_v1";
+/* The one dataset this page shows (VR_DS, decided before core/mesh.js loaded). */
+const DSX = VR_DATASETS[VR_DS];
 /* No red (vessel) and no blue (nucleus) — the same colour policy as the Blender export. */
 const PALETTE = ["#f0a742","#3fb950","#d2a8ff","#f778ba","#e3d24f","#56d4c8","#ff8f5a","#a5e075",
                  "#c79bf2","#ffb3c7","#9fd8a8","#d9b98c","#b0bec5","#ffd38a"];
@@ -641,7 +831,7 @@ let FROM_LINK = true;
    list starts empty and is filled when the scene has been read. */
 const SCENE_ID = (location.hash.match(/[#&]scene=([a-z0-9]+)/) || [])[1] || "";
 let CELLS = SCENE_ID ? [] : parseHash();
-if (!CELLS){ FROM_LINK = false; CELLS = readBasket(); }
+if (!CELLS){ FROM_LINK = false; CELLS = readBasket().filter(e => VR_DATASETS[e.ds || "microns"] === DSX); }
 function prepCells(list){
   return list.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
     { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" }));
@@ -676,7 +866,7 @@ function cellClass(c){
        recognised, so those cells were "unknown" and their synapses excited. Likewise the
        excitatory m-types (L2a…L6tall-c, L5ET, L5NP, L6wm…) now count as excitatory. */
     /\b(BC|MC|BPC|NGC|PTC|DTC|STC|ITC)\b|basket|martinotti|bipolar|neurogliaform|chandelier|inhibitory|interneuron|\bsst\b|\bpvalb?\b|\bvip\b|(proximal|distal|sparsely)[- ]targeting|inhibitory[- ]targeting/i.test(l) ? "inh" :
-    /\b(2\/?3P|23P|4P|5P|6P)|pyramid|stellate|excitatory|\bIT\b|\bET\b|\bNP\b|\bCT\b|\bL[2-6](?:[a-c]\b|ET|NP|IT|CT|tall|short|wm)/i.test(l) ? "exc" :
+    /\b(2\/?3P|23P|4P|5P|6P)|pyramid|stellate|excitatory|\bIT\b|\bET\b|\bNP\b|\bCT\b|\bL[2-6](?:[a-c]\b|ET|NP|IT|CT|tall|short|wm)|\bL[2-6]P\b|\bPYC\b|\bgranule\b/i.test(l) ? "exc" :
     /astro|oligo|\bOPC\b|microglia|pericyte|endothel|smooth muscle|mural|glia|ependym/i.test(l) ? "glia" : "unknown";
   return c.cls;
 }
@@ -693,7 +883,7 @@ function setColourMode(mode){
 
 function headsetLink(){
   const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
-  return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",")
+  return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",") + (VR_DS !== "microns" ? "&ds=" + VR_DS : "")
     + (RBOX.list.length ? "&box=" + RBOX.list.map(b => b.join("~")).join(",") : "");
 }
 
@@ -728,6 +918,41 @@ const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-2, 1,
 
 /* A floor grid so the headset has a ground to stand on. */
 const grid = new THREE.GridHelper(6, 24, 0x30363d, 0x1c2128); scene.add(grid);
+/* THE WORLD'S LOOK (2026-10-18, Søren: "the world background should be possible to change color and
+   the grid in the bottom should be removable"). Kept in this browser, in a saved scene, and in a
+   timeline view key, so a film can cut from dark to white. The grid's lines follow the background:
+   a little lighter on a dark one, a little darker on a light one. */
+const LOOK = { bg: "#0d1117", grid: true };
+const BG_PRESETS = [["#0d1117", "dark (default)"], ["#000000", "black"], ["#ffffff", "white"], ["#e9edf2", "light grey"], ["#3a3f47", "mid grey"]];
+function setBackground(hex){
+  if (!/^#[0-9a-f]{6}$/i.test(String(hex))) return;
+  LOOK.bg = hex.toLowerCase(); scene.background.set(LOOK.bg);
+  const c = new THREE.Color(LOOK.bg), lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, dark = lum < 0.25;
+  const a = c.clone().offsetHSL(0, 0, dark ? 0.14 : -0.18), b2 = c.clone().offsetHSL(0, 0, dark ? 0.06 : -0.08);
+  const cols = grid.geometry.attributes.color, n = cols.count;
+  /* GridHelper colours its two centre lines with the first colour and the rest with the second. */
+  /* GridHelper: four vertices per step (one line each way); the middle step is the centre cross. */
+  for (let i = 0; i < n; i++){ const k = Math.floor(i / 4) === 12 ? a : b2; cols.setXYZ(i, k.r, k.g, k.b); }
+  cols.needsUpdate = true;
+  const el = document.getElementById("bgCol"); if (el && el.value !== LOOK.bg) el.value = LOOK.bg;
+  try { localStorage.setItem("vr_look", JSON.stringify(LOOK)); } catch (e){}
+  try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
+}
+function setGrid(v){
+  LOOK.grid = !!v; grid.visible = LOOK.grid;
+  const b = document.getElementById("gridBtn"); if (b) b.classList.toggle("on", LOOK.grid);
+  try { localStorage.setItem("vr_look", JSON.stringify(LOOK)); } catch (e){}
+  try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
+}
+document.getElementById("bgCol").addEventListener("input", e => setBackground(e.target.value));
+document.getElementById("gridBtn").addEventListener("click", () => setGrid(!LOOK.grid));
+BG_PRESETS.forEach(([hex, name]) => {
+  const b = document.createElement("button"); b.type = "button"; b.title = name;
+  b.style.cssText = "width:22px;height:22px;padding:0;border-radius:50%;border:1px solid var(--line);background:" + hex;
+  b.addEventListener("click", () => setBackground(hex));
+  document.getElementById("bgPresets").appendChild(b);
+});
+try { const o = JSON.parse(localStorage.getItem("vr_look") || "null"); if (o){ if (o.bg) setBackground(o.bg); if (o.grid === false) setGrid(false); } } catch (e){}
 
 /* stage = what you grab, turn and resize (metres). content = the cells, in micrometres,
    offset so the collection's centre sits at the stage origin. */
@@ -762,12 +987,12 @@ function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "
 
 function renderList(){
   if (!CELLS.length){
-    subEl.innerHTML = "No cells collected yet. In µJump, press <b>+ VR</b> beside a cell's root ID, then open this page again.";
+    subEl.innerHTML = "No cells collected yet. In any of the Jump tools (µJump, ηJump, βJump, δJump, πJump), press <b>+ VR</b> beside a cell's root ID, then open this page again.";
     listEl.innerHTML = ""; return;
   }
   subEl.textContent = CELLS.length + " cell" + (CELLS.length > 1 ? "s" : "")
     + (OF > CELLS.length ? " · evenly spread through " + OF.toLocaleString() + " filter matches"
-       : (FROM_LINK ? " · from link" : " · from this browser's collection"));
+       : (CELLS.length && CELLS.every(c => c.tracedCell) ? " · traced in " + DSX.label.split(" — ")[0] : FROM_LINK ? " · from link" : " · from this browser's collection"));
   /* GROUPED BY CELL TYPE, COLLAPSED (2026-10-14, Søren: "organise under cell type and have them
      collapsed by default"). A group's header carries what you need without opening it: its colour,
      E/I, how many cells, how many are loaded or failed, and one box that shows or hides them all.
@@ -928,13 +1153,16 @@ function addActivityAttributes(g){
 async function loadOne(c, token, light){
   const ds = VR_DATASETS[c.ds];
   if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); return false; }
+  if (ds !== DSX){ c.err = true; c.status = "from " + ds.label + " — this viewer is showing " + DSX.label + "; open that tool's VR collection for it"; renderList(); return false; }
   try {
-    if (!c.root && !(c.extra && c.extra.length)){
-      /* A cell with no root id -- one traced by hand that the segmentation does not have -- is its
-         nucleus and its tracings (section 7). */
+    if ((!c.root && !(c.extra && c.extra.length)) || !ds.mesh){
+      /* A cell with no root id -- one traced by hand that the segmentation does not have -- or any
+         cell of a dataset with no meshes here: its nucleus and what was traced of it, the traced
+         outline BEING the cell (section 7, loadTracedBody). */
       c.tris = 0; c.status = "no segmentation mesh — its nucleus and traced outline only";
       await loadNucleus(c, ds, token);
-      return !!c.nucMesh;
+      await loadTracedBody(c, ds, token);
+      return !!(c.mesh || c.nucMesh);
     }
     c.status = "fetching mesh…"; renderList();
     const extras = await extrasFor(c, ds);
@@ -961,7 +1189,7 @@ async function loadOne(c, token, light){
   }
 }
 async function loadNucleus(c, ds, token){
-  if (!c.nuc || c.nuc === "0") return;
+  if (!c.nuc || c.nuc === "0" || !ds.nucSource) return;
   try {
     if (!UJ.nucmesh.configured()) UJ.nucmesh.configure({ nuc: ds.nucSource });
     const n = await UJ.nucmesh.fetchNucleus(c.nuc);
@@ -972,6 +1200,54 @@ async function loadNucleus(c, ds, token){
       content.add(nm); c.nucMesh = nm; c.tris += n.indices.length / 3;
     }
   } catch (e){ /* no nucleus is not an error */ }
+}
+/* A TRACED CELL AS THE CELL (2026-10-17). The cell's own "cell" tracings, lofted exactly as section 7
+   lofts them, become c.mesh -- with the activity attributes and the cell material, so it can be
+   picked, coloured, hidden, made see-through, stimulated and recorded like a segmentation mesh. Its
+   "nucleus" tracings become c.nucMesh when there is no nucleus volume. Several pieces of one cell
+   are one mesh. drawTraced then leaves those structures out (c.traceUsed), so nothing is drawn twice. */
+async function loadTracedBody(c, ds, token){
+  if (!ds.backend || !UJ.tracing || !UJ.traceloft) return;
+  const nid = String(c.nuc || ""), rid = String(c.root || "");
+  if (!nid && !rid) return;
+  let idx; try { idx = await trcIndex(); } catch (e){ return; }
+  const mine = idx.filter(t => (nid && String(t.nucleusId || "") === nid) || (rid && String(t.rootId || "") === rid));
+  const body = mine.filter(t => t.kind === "cell"), nuc = c.nucMesh ? [] : mine.filter(t => t.kind === "nucleus");
+  if (!body.length && !nuc.length){ if (!c.nucMesh) c.status = "nothing traced of this cell yet"; return; }
+  c.status = "reading its tracings…"; renderList();
+  await fetchRings(body.concat(nuc), "this cell's tracings");
+  if (token !== LOAD_TOKEN) return;
+  const res = ds.res || [4, 4, 40];
+  function lofted(list){
+    const P = [], I = []; let off = 0, n = 0;
+    for (const t of list){
+      const rings = TRC.rings[t.structureId]; if (!rings || !rings.length) continue;
+      let L; try { L = UJ.traceloft.loft(rings, res); } catch (e){ continue; }
+      if (!L || !L.positions || !L.indices || !L.indices.length) continue;
+      for (let k = 0; k < L.positions.length; k++) P.push(L.positions[k] / 1000);      // nm -> µm
+      for (let k = 0; k < L.indices.length; k++) I.push(L.indices[k] + off);
+      off += L.positions.length / 3; n++;
+    }
+    return n ? geometryFrom(new Float32Array(P), new Uint32Array(I)) : null;
+  }
+  c.traceUsed = [];
+  const g = body.length ? lofted(body) : null;
+  if (g){
+    addActivityAttributes(g);
+    const mesh = new THREE.Mesh(g, cellMaterial(c.colour)); mesh.material.side = THREE.DoubleSide;
+    mesh.userData.cell = c.i; mesh.userData.traced = true;
+    content.add(mesh); c.mesh = mesh; c.graph = null; c.tris += g.index.count / 3;
+    body.forEach(t => c.traceUsed.push(t.structureId));
+  }
+  const gn = nuc.length ? lofted(nuc) : null;
+  if (gn){
+    const nm = new THREE.Mesh(gn, new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5, side: THREE.DoubleSide }));
+    nm.userData.cell = c.i; nm.userData.nucleus = true;
+    content.add(nm); c.nucMesh = nm; c.tris += gn.index.count / 3;
+    nuc.forEach(t => c.traceUsed.push(t.structureId));
+  }
+  c.status = (g ? "traced by hand — " + body.length + " outline" + (body.length > 1 ? "s" : "") : "no traced outline of the cell")
+           + (gn ? " · traced nucleus" : "") + " · " + (c.tris / 1000).toFixed(0) + "k triangles";
 }
 /* The box around the cells: their meshes, or the nucleus of a cell that has none. */
 function cellBoxOf(c){ const m = c.mesh || c.nucMesh; if (!m) return null; if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return m.geometry.boundingBox; }
@@ -1021,7 +1297,7 @@ let ALL_PROPS = null;
 async function allProposals(ds){
   if (ALL_PROPS) return ALL_PROPS;
   try {
-    const r = await fetch(ds.backend + "?allRootIds=1");
+    const r = await fetch(ds.backend + "?allRootIds=1" + dsQ(ds));
     ALL_PROPS = r.ok ? (((await r.json()) || {}).byNucleus || {}) : {};
   } catch (e){ ALL_PROPS = {}; }
   return ALL_PROPS;
@@ -1066,7 +1342,9 @@ function regionBox(){
   b.expandByScalar(Math.max(40, 0.3 * Math.max(size.x, size.y, size.z)));
   return b;
 }
-function dsOfCells(){ return VR_DATASETS[(CELLS.find(c => c.mesh) || CELLS[0] || {}).ds] || VR_DATASETS.microns; }
+function dsOfCells(){ return DSX; }
+/* The backend's dataset routing (Datasets.gs): µJump's own sheet needs none. */
+function dsQ(ds){ return ds.backendDs ? "&ds=" + encodeURIComponent(ds.backendDs) : ""; }
 function buildContext(){ buildLayers(); buildVessels(); if (ORG.on) setOrganelles(true); if (TRC.on) setTraced(true);
   cellAreas(); buildRegionBoxes(); buildPoints(); if (VEC.cent || VEC.cil) buildVectors(); if (SKEL.mode !== "off") buildSkel(); if (V1COL.mode !== "off") buildV1Col(); if (AREAS.on) buildAreas(); }
 
@@ -1272,7 +1550,7 @@ async function showEM(centre){
   if (!c){ ctxNote.textContent = "Load a cell first."; return; }
   EM.centre = c.slice(); EM.size = document.getElementById("emSize").value;
   const L = EM_LEVEL[EM.size], token = ++EM.token;
-  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res });
+  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
   /* Size known before the read: px pixels at the level's nm per pixel. */
   const info = await UJ.emtiles.scaleAt(L.mip, true);
   const um = L.px * info.scale.resolution[0] / 1000;
@@ -1595,7 +1873,7 @@ async function setOrganelles(v){
   if (!ORG.data){
     if (ORG.loading) return; ORG.loading = true;
     ctxNote.textContent = "Organelles: asking µJump for every report (about 10 s)…";
-    try { const r = await fetch(ds.backend + "?allOrganelles=1"); ORG.data = ((await r.json()) || {}).organelles || []; }
+    try { const r = await fetch(ds.backend + "?allOrganelles=1" + dsQ(ds)); ORG.data = ((await r.json()) || {}).organelles || []; }
     catch (e){ ORG.data = null; ctxNote.textContent = "Organelles could not be loaded: " + (e.message || e); ORG.loading = false; return; }
     ORG.loading = false;
     if (!ORG.on) return;
@@ -1672,7 +1950,7 @@ async function loadVectors(){
 }
 async function loadReports(){
   if (ORG.data) return ORG.data;
-  const r = await fetch(dsOfCells().backend + "?allOrganelles=1");
+  const r = await fetch(dsOfCells().backend + "?allOrganelles=1" + dsQ(dsOfCells()));
   ORG.data = ((await r.json()) || {}).organelles || [];
   return ORG.data;
 }
@@ -1940,6 +2218,7 @@ function drawTraced(){
     const cell = trcCell(t), loose = !t.nucleusId && !t.rootId;
     if (!cell && !loose){ others++; otherCells.add(trcCellKey(t)); continue; }
     if (cell && cell.hidden) continue;
+    if (cell && cell.traceUsed && cell.traceUsed.includes(t.structureId)) continue;     // it IS that cell's mesh
     const rings = TRC.rings[t.structureId];
     if (!rings || !rings.length) continue;
     if (loose){ const ctr = trcCentre(t); if (!ctr || !b || !b.containsPoint(ctr)) continue; }
@@ -2011,7 +2290,7 @@ async function addTracedCells(){
     }
     const type = t.cellType || predicted || "Traced cell";
     const label = type.charAt(0).toUpperCase() + type.slice(1) + (predicted && !t.cellType ? " (" + predicted + ", MICrONS prediction)" : "");
-    const c = { i: CELLS.length, ds: (CELLS[0] || {}).ds || "microns", root, nuc: nid, label, extra: [], status: "waiting…",
+    const c = { i: CELLS.length, ds: VR_DS, root, nuc: nid, label, extra: [], status: "waiting…",
                 tracedCell: true };
     c.colour = c.typeColour = colourFor(label); if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
     CELLS.push(c); added.push(c);
@@ -2179,11 +2458,13 @@ function writeAttr(c, name, perNode){
 }
 
 /* ── synapses among the loaded cells, from CAVE ── */
-function caveToken(){ try { return (localStorage.getItem("cave_token") || "").replace(/^["']|["']$/g, "").trim(); } catch (e){ return ""; } }
+function caveToken(){ try { return (localStorage.getItem((DSX.syn && DSX.syn.tokenKey) || (DSX.mesh && DSX.mesh.caveTokenKey) || "cave_token") || "").replace(/^["']|["']$/g, "").trim(); } catch (e){ return ""; } }
 async function loadSynapses(){
   if (STIM.syn || STIM.synLoading) return STIM.syn;
+  const SY = DSX.syn;
+  if (!SY){ STIM.syn = []; STIM.noSynTable = true; ctxNote.textContent = "No public synapse table for " + DSX.label + " — activity stays in the cell you touch."; return STIM.syn; }
   const tok = caveToken();
-  if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one µJump's connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it."; return null; }
+  if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one " + (VR_DS === "v1dd" ? "δJump" : "µJump") + "'s connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it."; return null; }
   /* Every root this collection draws, including proposed fragments, mapped back to its cell. */
   const rootToCell = new Map();
   for (const c of CELLS){ if (!c.mesh) continue; [c.root].concat(c.extraUsed || c.extra || []).filter(Boolean).forEach(r => rootToCell.set(String(r), c.i)); }
@@ -2192,8 +2473,8 @@ async function loadSynapses(){
   STIM.synLoading = true; ctxNote.textContent = "Synapses: asking CAVE for the synapses among these " + CELLS.length + " cells…";
   try {
     /* Root ids are > 2^53, so the list is written as raw digits, never through a JS number. */
-    const raw = '{"filter_in_dict":{"synapses_pni_2":{"pre_pt_root_id":[' + roots.join(",") + '],"post_pt_root_id":[' + roots.join(",") + ']}}}';
-    const r = await fetch("https://minnie.microns-daf.com/materialize/api/v3/datastack/minnie65_public/version/1300/table/synapses_pni_2/query?return_pyarrow=false",
+    const raw = '{"filter_in_dict":{"' + SY.table + '":{"pre_pt_root_id":[' + roots.join(",") + '],"post_pt_root_id":[' + roots.join(",") + ']}}}';
+    const r = await fetch(SY.server + "/materialize/api/v3/datastack/" + SY.datastack + "/version/" + SY.version + "/table/" + SY.table + "/query?return_pyarrow=false",
       { method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json", "Accept": "application/json" }, body: raw });
     if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 160));
     const txt = (await r.text()).replace(/([:\[,]\s*)(-?\d{16,})(\s*[,\]\}])/g, '$1"$2"$3');
@@ -2202,11 +2483,11 @@ async function loadSynapses(){
     else { const ks = Object.keys(j), f = j[ks[0]]; const n = Array.isArray(f) ? f.length : Object.keys(f || {}).length;
            for (let i = 0; i < n; i++){ const o = {}; ks.forEach(k => o[k] = Array.isArray(j[k]) ? j[k][i] : j[k][String(i)]); rows.push(o); } }
     STIM.syn = rows.map(o => ({ pre: rootToCell.get(String(o.pre_pt_root_id)), post: rootToCell.get(String(o.post_pt_root_id)),
-                                p: new THREE.Vector3(+o.ctr_pt_position_x * 4 / 1000, +o.ctr_pt_position_y * 4 / 1000, +o.ctr_pt_position_z * 40 / 1000),
+                                p: new THREE.Vector3(+o.ctr_pt_position_x * SY.res[0] / 1000, +o.ctr_pt_position_y * SY.res[1] / 1000, +o.ctr_pt_position_z * SY.res[2] / 1000),
                                 size: +o.size || 0 }))
       .filter(x => x.pre != null && x.post != null && x.pre !== x.post && isFinite(x.p.x));
     drawSynapses();
-    ctxNote.textContent = STIM.syn.length ? "Synapses: " + STIM.syn.length + " among these cells (MICrONS synapses_pni_2, v1300)."
+    ctxNote.textContent = STIM.syn.length ? "Synapses: " + STIM.syn.length + " among these cells (" + SY.name + ")."
                                           : "Synapses: none between these cells — activity will stay in the cell you touch. Try “+3 neighbours”.";
   } catch (e){ STIM.syn = null; ctxNote.textContent = "Synapses could not be read from CAVE: " + (e.message || e); }
   STIM.synLoading = false;
@@ -2255,8 +2536,10 @@ function colourSynapses(){
 }
 document.getElementById("caveSave").addEventListener("click", () => {
   const t = document.getElementById("caveTok").value.trim();
-  try { if (t) localStorage.setItem("cave_token", t); } catch (e){}
-  document.getElementById("caveRow").style.display = "none"; STIM.syn = null; loadSynapses();
+  try { if (t) localStorage.setItem((DSX.syn && DSX.syn.tokenKey) || (DSX.mesh && DSX.mesh.caveTokenKey) || "cave_token", t); } catch (e){}
+  document.getElementById("caveRow").style.display = "none"; STIM.syn = null;
+  if (DSX.mesh && DSX.mesh.manifestNeedsToken && CELLS.some(c => !c.mesh && !c.nucMesh)){ loadAll(); return; }
+  loadSynapses();
 });
 
 /* ── firing ── */
@@ -2886,7 +3169,8 @@ function runSummary(){
   const mode = document.getElementById("stimMode").value, gain = stimGain();
   const st = STIM.started != null ? CELLS[STIM.started] : null;
   const lines = [];
-  if (!STIM.syn) lines.push("No synapses loaded — activity can only stay in the cell you touch (needs a CAVE token).");
+  if (STIM.noSynTable) lines.push("No public synapse table for " + DSX.label + " — activity can only stay in the cell you touch.");
+  else if (!STIM.syn) lines.push("No synapses loaded — activity can only stay in the cell you touch (needs a CAVE token).");
   else if (st){
     const outs = STIM.syn.filter(x => x.pre === st.i), on = outs.filter(x => x.node != null && x.node >= 0).length;
     if (!outs.length) lines.push(shortName(st) + " makes no synapses onto the other loaded cells — nothing can be passed on. Try “+3 neighbours” or cells from its Connectivity list.");
@@ -3241,7 +3525,8 @@ function captureScene(){
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
           selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots,
-          pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap } },
+          pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
+          bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
        after it opened is centred and fitted on fewer cells than it holds, and recomputing either
        on reopening would move it. */
@@ -3252,6 +3537,7 @@ function captureScene(){
     cut: { mode: CUT.mode === "hand" ? "frozen" : CUT.mode, depth: +document.getElementById("cutDepth").value },
     meas: MEAS.items.map(g => [v3(g.userData.a), v3(g.userData.b)]),
     boxes: RBOX.list, boxesOn: RBOX.on,
+    block: BLOCK.spec ? { spec: BLOCK.spec, peel: +BLOCK.peel.toFixed(3), axis: BLOCK.axis, seg: BLOCK.showSeg, on: BLOCK.on } : null,
     paint: STROKES.slice()
   };
   /* A frozen knife is kept relative to the collection, so it cuts the same place wherever the
@@ -3307,7 +3593,7 @@ async function saveScene(fromVR){
   document.getElementById("sceneCopy").onclick = e => { (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(() => e.target.textContent = "Copied ✓", () => prompt("Copy:", link)); };
   document.getElementById("sceneForum").onclick = () => forumComposer(title, link);
   ctxNote.textContent = "💾 Scene " + (d.updated ? "updated" : "saved") + ": " + title;
-  if (typeof MENU !== "undefined") MENU.dirty = true;
+  try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
 }
 /* ── into the discussion forum ── one shared stream for all the tools (core/forum.js); the post
    carries the link, and the forum draws the preview card from it. */
@@ -3341,6 +3627,11 @@ async function openScene(id){
   catch (e){ d = { ok: false, error: "could not reach the server" }; }
   if (!d || !d.ok || !d.scene){ subEl.textContent = "That scene could not be opened: " + ((d && d.error) || "no answer"); return; }
   let sc; try { sc = typeof d.scene === "string" ? JSON.parse(d.scene) : d.scene; } catch (e){ subEl.textContent = "That scene could not be read."; return; }
+  /* A scene from another tool: this page bound core/mesh.js to one dataset when it loaded, so it
+     opens again as that dataset's viewer. */
+  { const sd = ((sc.cells || [])[0] || {}).ds || "microns";
+    if (VR_DATASETS[sd] && VR_DATASETS[sd] !== DSX && !/[#&]ds=/.test(location.hash)){
+      location.hash = location.hash.replace(/^#?/, "#") + "&ds=" + encodeURIComponent(sd); location.reload(); return; } }
   SCENE.title = d.title || ""; document.getElementById("sceneTitle").value = SCENE.title;
   document.getElementById("sceneOut").innerHTML = "Scene <b>" + esc(d.title || "") + "</b> by " + esc(d.authorName || "somebody")
     + " · " + esc(String(d.updatedAt || d.timestamp || "").slice(0, 10)) + ". Saving again makes " + (credOk() ? "" : "(once signed in) ") + "your own copy unless it is yours.";
@@ -3361,6 +3652,8 @@ async function openScene(id){
 /* After the cells are in: everything else, in the order it depends on itself. */
 async function applyScene(sc){
   const u = sc.ui || {};
+  if (u.bg) setBackground(u.bg);
+  if (u.grid != null) setGrid(u.grid);
   CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; });
   if (u.colour === "ei") setColourMode("ei");
   setNuclei(u.nuc !== false);
@@ -3376,6 +3669,8 @@ async function applyScene(sc){
   if (sc.cam){ camera.position.fromArray(sc.cam.p); controls.target.fromArray(sc.cam.t); controls.update(); }
   select(u.selected != null && u.selected < CELLS.length ? u.selected : -1);
   replayStrokes(sc.paint || []);
+  blkFillSources();
+  if (sc.block && sc.block.spec){ BLOCK.peel = sc.block.peel || 0; BLOCK.axis = sc.block.axis || "front"; BLOCK.showSeg = sc.block.seg !== false; BLOCK.on = sc.block.on !== false; buildBlock(sc.block.spec); }
   STROKES.length = 0; (sc.paint || []).forEach(x => STROKES.push(x));
   (sc.meas || []).forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); });
   setScaleBar(u.sbar !== false);
@@ -3917,7 +4212,7 @@ let label = null;
 function updateLabel(){
   if (label){ scene.remove(label); label.material.map.dispose(); label.material.dispose(); label = null; }
   const c = CELLS[SELECTED];
-  const lines = c ? [c.label, "root " + c.root + (c.nuc ? " · nucleus " + c.nuc : "") + (c.area != null && ATLAS.data ? " · " + areaName(c.area) : "")]
+  const lines = c ? [c.label, (c.root ? "root " + c.root : "traced cell") + (c.nuc ? " · nucleus " + c.nuc : "") + (c.area != null && ATLAS.data ? " · " + areaName(c.area) : "")]
                   : [CELLS.length + " cells — " + (VR_DATASETS[(CELLS[0] || {}).ds] || {}).label, "Trigger on a cell to pick it"];
   label = textSprite(lines, { border: c ? c.colour : "#30363d" });
   scene.add(label);
@@ -4116,9 +4411,11 @@ function menuRows(){
       if (PTS.on) rows.push({ label: "   Synapses: " + ({ both: "inputs and outputs", in: "inputs only", out: "outputs only" })[PTS.dir] + "  ▸",
                               act: () => { PTS.dir = ({ both: "in", in: "out", out: "both" })[PTS.dir]; document.getElementById("ptsDir").value = PTS.dir; buildPoints(); } });
     }
+    if (DS_HAS.vec){
     rows.push({ label: "Nucleus → centriole vectors", on: VEC.cent, act: () => setVectors("cent", !VEC.cent) });
     rows.push({ label: "Cilium base → tip vectors", on: VEC.cil, act: () => setVectors("cil", !VEC.cil) });
-    if (VEC.cent || VEC.cil){
+    }
+    if (DS_HAS.vec && (VEC.cent || VEC.cil)){
       const vt = ["all"].concat(VEC.types || []);
       rows.push({ label: "   Vectors of: " + (VEC.type === "all" ? "all cell types" : VEC.type) + "  ▸",
                   swatch: VEC.type !== "all" && VEC.colour === "type" ? vecTypeColour(VEC.type) : undefined,
@@ -4135,17 +4432,21 @@ function menuRows(){
       rows.push({ label: "   + Add the cells with these tracings", act: addTracedCells });
     }
     rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
+    rows.push({ label: "Floor grid", on: LOOK.grid, act: () => setGrid(!LOOK.grid) });
+    { const i = BG_PRESETS.findIndex(x => x[0] === LOOK.bg);
+      rows.push({ label: "Background: " + (i >= 0 ? BG_PRESETS[i][1] : LOOK.bg) + "  ▸", swatch: LOOK.bg,
+                  act: () => setBackground(BG_PRESETS[(i + 1) % BG_PRESETS.length][0]) }); }
   } else if (t === "Map"){
     /* Where the cells are: the layers, the V1 column, the visual areas and the vessels (2026-10-14). */
-    rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
-    rows.push({ label: "V1 column: " + ({ off: "off", outline: "outline", cells: "outline + its cells" })[V1COL.mode] + "  ▸",
+    if (DS_HAS.layers) rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
+    if (DS_HAS.v1) rows.push({ label: "V1 column: " + ({ off: "off", outline: "outline", cells: "outline + its cells" })[V1COL.mode] + "  ▸",
                 on: V1COL.mode !== "off", act: () => setV1Col(({ off: "outline", outline: "cells", cells: "off" })[V1COL.mode]) });
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
-    rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
+    if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
     const vm = document.getElementById("vascSel").value;
-    rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
+    if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
                 on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
-    rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
+    if (DS_HAS.skel) rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
                 on: SKEL.mode !== "off", act: () => setSkel(({ off: "box", box: "whole", whole: "off" })[SKEL.mode]) });
     if (SKEL.mode !== "off"){
       SKEL_GROUPS.forEach(g => rows.push({ label: g.name, swatch: g.color, on: SKEL.groups.has(g.key),
@@ -4163,6 +4464,13 @@ function menuRows(){
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     rows.push({ label: "Reset activity", act: resetActivity });
     rows.push({ label: STIM.synCleared ? "Show all synapse markers" : "Hide synapse markers (until used)", act: () => setSynCleared(!STIM.synCleared) });
+    if (BLOCK.group || BLOCK.loading){
+      rows.push({ label: "Tissue block" + (BLOCK.loading ? " (reading…)" : ""), on: BLOCK.on, act: () => { BLOCK.on = !BLOCK.on; blkApply(); } });
+      rows.push({ label: "   Peeled: " + Math.round(BLOCK.peel * 100) + " %  ▸", act: () => setPeel(BLOCK.peel >= 0.99 ? 0 : Math.min(1, Math.round(BLOCK.peel * 4 + 1) / 4)) });
+      rows.push({ label: "   Peel from the " + (BLOCK.axis === "top" ? "top" : "front") + "  ▸", act: () => { BLOCK.axis = BLOCK.axis === "top" ? "front" : "top"; blkApply(); } });
+      if (BLOCK.hasSeg) rows.push({ label: "   Other cells' segmentation", on: BLOCK.showSeg, act: () => { BLOCK.showSeg = !BLOCK.showSeg; document.getElementById("blkSeg").checked = BLOCK.showSeg; blkApply(); } });
+    } else if (RBOX.list.length || CELL_BOX) rows.push({ label: "Tissue block around " + (RBOX.list.length ? "the region box" : "the cells"),
+      act: () => { document.getElementById("blkSrc").value = RBOX.list.length ? "rbox:0" : "cells"; blkSrcUI(); blockFromUI(); } });
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
@@ -4171,7 +4479,7 @@ function menuRows(){
     rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
     rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
     rows.push({ label: "Fly with the trigger / pinch", on: !!FLY.trigger, act: () => { FLY.trigger = !FLY.trigger; } });
-    rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
+    if (DS_HAS.nb) rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
   } else if (t === "Spray"){
     rows.push({ label: "Spray can (hold the right trigger)", on: SPRAY.on, act: () => setSpray(!SPRAY.on) });
     SPRAY_COLOURS.forEach(([name, hex]) => rows.push({ label: name, swatch: hex, picked: SPRAY.colour === hex && !SPRAY.erase,
@@ -4830,7 +5138,7 @@ addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.
      uncomfortable in VR. */
 const LOGO_TOOLS = { microns: ["µ", "#27e0b3"], hjump: ["η", "#27e0b3"], bjump: ["β", "#27e0b3"], v1dd: ["δ", "#b388ff"],
                      ljump: ["λ", "#27e0b3"], pinky100: ["π", "#f78ad4"], wjump: ["ω", "#fbbf24"], xjump: ["χ", "#4ade80"], cb2: ["χ", "#4ade80"] };
-function logoTool(){ return LOGO_TOOLS[(CELLS[0] || {}).ds] || LOGO_TOOLS.microns; }
+function logoTool(){ return LOGO_TOOLS[VR_DS] || LOGO_TOOLS.microns; }
 /* Draws the logo with its top-left at (x, y), the big letters `size` px tall; returns its width. */
 function drawLogo(g, x, y, size, url){
   const [greek, accent] = logoTool(), font = '800 ' + size + 'px "Segoe UI", system-ui, -apple-system, sans-serif';
@@ -4948,19 +5256,40 @@ function edgePlots(W, H){
    lands on. While the timeline is open it shows at the playhead, so it can be placed by eye; on
    screen a bottom caption sits above the timeline strip, in the movie at the real bottom. */
 const CAPS = new Map();
+/* CAPTION STYLE (2026-10-18, Søren: "It could be an option to remove the grey background and change
+   the text color, font and size."). Per caption: the box (dark, light, none, or none with a soft
+   shadow so the words still read over a bright cell), the text colour, the font and five sizes.
+   A new caption starts in the style of the last one edited (TL.capStyle), so a film's captions
+   match without setting each one. */
+const CAP_SIZES = { xs: 0.026, s: 0.032, m: 0.045, l: 0.065, xl: 0.09 };
+const CAP_FONTS = {
+  sans: ["600", "system-ui, -apple-system, 'Segoe UI', sans-serif", "Sans bold"],
+  sanslight: ["400", "system-ui, -apple-system, 'Segoe UI', sans-serif", "Sans"],
+  serif: ["600", "Georgia, 'Times New Roman', serif", "Serif bold"],
+  serifit: ["italic 400", "Georgia, 'Times New Roman', serif", "Serif italic"],
+  mono: ["500", "ui-monospace, Consolas, 'Courier New', monospace", "Mono"]
+};
+const CAP_BGS = { dark: "dark box", light: "light box", shadow: "no box, soft shadow", none: "no box" };
+function capStyleOf(k){ return { bg: k.bg || "dark", col: k.col || "#f0f6fc", font: CAP_FONTS[k.font] ? k.font : "sans", size: CAP_SIZES[k.size] ? k.size : "m" }; }
 function capCard(k, H){
-  const px = Math.round(H * ({ s: 0.032, m: 0.045, l: 0.065 })[k.size || "m"]), key = k.text + "|" + px;
+  const st = capStyleOf(k), F = CAP_FONTS[st.font];
+  const px = Math.round(H * CAP_SIZES[st.size]), key = [k.text, px, st.bg, st.col, st.font].join("|");
   let c = CAPS.get(k.id);
   if (c && c.key === key) return c;
-  const lines = String(k.text || "").split("\n");
-  const m = document.createElement("canvas").getContext("2d"); m.font = "600 " + px + "px system-ui, sans-serif";
+  const lines = String(k.text || "").split("\n"), font = F[0] + " " + px + "px " + F[1];
+  const m = document.createElement("canvas").getContext("2d"); m.font = font;
   const pad = Math.round(px * 0.6), lh = Math.round(px * 1.3);
   const W = Math.ceil(Math.max(...lines.map(l => m.measureText(l).width)) + pad * 2), Hc = Math.ceil(lines.length * lh + pad * 1.4);
   const cv = document.createElement("canvas"); cv.width = Math.max(4, W); cv.height = Math.max(4, Hc);
   const g = cv.getContext("2d");
-  g.fillStyle = "rgba(13,17,23,0.72)"; g.beginPath(); g.roundRect(0, 0, cv.width, cv.height, Math.round(px * 0.4)); g.fill();
-  g.font = "600 " + px + "px system-ui, sans-serif"; g.fillStyle = "#f0f6fc"; g.textAlign = "center"; g.textBaseline = "middle";
+  if (st.bg === "dark" || st.bg === "light"){
+    g.fillStyle = st.bg === "dark" ? "rgba(13,17,23,0.72)" : "rgba(246,248,250,0.82)";
+    g.beginPath(); g.roundRect(0, 0, cv.width, cv.height, Math.round(px * 0.4)); g.fill();
+  }
+  g.font = font; g.fillStyle = st.col; g.textAlign = "center"; g.textBaseline = "middle";
+  if (st.bg === "shadow"){ g.shadowColor = "rgba(0,0,0,0.85)"; g.shadowBlur = Math.max(2, px * 0.18); g.shadowOffsetY = Math.max(1, px * 0.04); }
   lines.forEach((l, i) => g.fillText(l, cv.width / 2, pad * 0.7 + lh * (i + 0.5)));
+  if (st.bg === "shadow"){ g.shadowBlur = Math.max(1, px * 0.06); lines.forEach((l, i) => g.fillText(l, cv.width / 2, pad * 0.7 + lh * (i + 0.5))); }
   if (c){ c.tex.dispose(); }
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   if (!c){
@@ -5040,11 +5369,13 @@ function tlCaptureView(){
   return { nuc: SHOW_NUC, glass: SEE_THROUGH, iso: ISOLATE, colour: COLOUR_MODE, layers: layersOn(),
            vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, skel: SKEL.mode,
            org: ORG.on, traced: TRC.on, cvec: VEC.cent, lvec: VEC.cil, pts: PTS.on, sbar: SBAR.on, rbox: RBOX.on,
-           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden) };
+           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), bg: LOOK.bg, grid: LOOK.grid };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
   if (!v) return;
+  if (v.bg && v.bg !== LOOK.bg) setBackground(v.bg);
+  if (v.grid != null && v.grid !== LOOK.grid) setGrid(v.grid);
   if (v.nuc !== SHOW_NUC) setNuclei(v.nuc);
   if (v.glass !== SEE_THROUGH) toggleGlass();
   if (v.iso !== ISOLATE) toggleIsolate();
@@ -5184,6 +5515,7 @@ function tlFireStim(k, ci){
 function tlFrame(dt){
   tlEffects();
   if (!TL.playing) return;
+  if (BLOCK.loading){ tlDraw(); return; }
   const t0 = TL.t, t1 = Math.min(TL.dur, TL.t + dt);
   TL.t = t1;
   /* Stimuli in [t0, t1) fire this frame -- the end is open so no pulse fires twice. */
@@ -5210,6 +5542,7 @@ function tlStop(ended){
 }
 async function tlRecord(){
   if (REC.on) return;
+  await tlPrepBlock();
   TL.t = 0; tlApplyViewAt(0); tlApplyCam(0);
   const mode = document.getElementById("recMode"); mode.value = "free";
   await startRecording();
@@ -5264,7 +5597,9 @@ function tlEffects(){
     if (k.kind === "highlight" && f > hf){ hl = k; hf = f; }
     if (k.kind === "freeze" && TL.playing) frz = true;
   }
-  TL.frozen = frz;
+  if (TL.open) tlApplyPeelAt(TL.t);
+  /* A block still being read holds the clock, so the movie does not run on without it. */
+  TL.frozen = frz || !!(TL.playing && BLOCK.loading);
   if (hl){
     CELLS.forEach((c, i) => {
       if (!c.mesh) return;
@@ -5366,7 +5701,7 @@ function tlBuild(){
     if (pick < 0){ ctxNote.textContent = "No neuron is loaded to stimulate."; return; }
     tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 });
   };
-  bar.querySelector("#tlAddCap").onclick = () => { tlAdd("cap", { text: "Caption", dur: 3, pos: "bottom", size: "m" }); setTimeout(() => { const ta = TLD.edit.querySelector("#tlKtext"); if (ta){ ta.focus(); ta.select(); } }, 0); };
+  bar.querySelector("#tlAddCap").onclick = () => { tlAdd("cap", Object.assign({ text: "Caption", dur: 3, pos: "bottom", size: "m" }, TL.capStyle || {})); setTimeout(() => { const ta = TLD.edit.querySelector("#tlKtext"); if (ta){ ta.focus(); ta.select(); } }, 0); };
   bar.querySelector("#tlAddFx").onclick = () => {
     const pick = SELECTED >= 0 ? SELECTED : CELLS.findIndex(c => c.mesh);
     tlAdd("fx", { kind: "highlight", cell: Math.max(0, pick), dur: 3, dim: 0.15 });
@@ -5464,7 +5799,7 @@ function tlEditor(){
            every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
   }
   if (k.lane === "fx"){
-    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
     if (k.kind === "synapses") h += ` <select id="tlKsyn"><option value="hide"${!k.show ? " selected" : ""}>hide them (each returns when a spike uses it)</option><option value="show"${k.show ? " selected" : ""}>show them all</option></select>`;
     if (k.kind !== "electrodes" && k.kind !== "synapses") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
     if (k.kind === "highlight"){
@@ -5473,12 +5808,23 @@ function tlEditor(){
     }
     if (k.kind === "freeze") h += ` <span class="tlHint">the electrical activity stands still while the camera goes on</span>`;
     if (k.kind === "follow") h += ` <span class="tlHint">the camera keeps its distance and follows the travelling spike</span>`;
+    if (k.kind === "peel"){
+      h += ` from <select id="tlKpax"><option value="front"${k.axis !== "top" ? " selected" : ""}>the front</option><option value="top"${k.axis === "top" ? " selected" : ""}>the top</option></select>
+             <input id="tlKp0" type="number" min="0" max="100" step="5" value="${k.p0 || 0}"> % → <input id="tlKp1" type="number" min="0" max="100" step="5" value="${k.p1 != null ? k.p1 : 100}"> % peeled
+             <label><input type="checkbox" id="tlKpseg"${k.seg !== false ? " checked" : ""}> other cells</label>
+             <button id="tlKpblk" title="Give this effect the box built in the Tools tab">Use the Tools block</button>
+             <span class="tlHint">${k.blk ? esc(blkDesc(k.blk)) : "no block yet — build one under Tools → Tissue block"}</span>`;
+    }
     if (k.kind === "electrodes") h += ` <button id="tlKelset">Set to the electrodes placed now (${(k.el || []).length})</button> <span class="tlHint">place them with 📍 in the Activity tab</span>`;
   }
   if (k.lane === "cap"){
     h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur}"> s
            <select id="tlKpos">${[["top", "top"], ["middle", "middle"], ["bottom", "bottom"]].map(([v, l]) => `<option value="${v}"${k.pos === v ? " selected" : ""}>${l}</option>`).join("")}</select>
-           <select id="tlKsize">${[["s", "small"], ["m", "medium"], ["l", "large"]].map(([v, l]) => `<option value="${v}"${k.size === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKsize" title="Text size">${[["xs", "tiny"], ["s", "small"], ["m", "medium"], ["l", "large"], ["xl", "huge"]].map(([v, l]) => `<option value="${v}"${capStyleOf(k).size === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKfont" title="Font">${Object.entries(CAP_FONTS).map(([v, f]) => `<option value="${v}"${capStyleOf(k).font === v ? " selected" : ""}>${f[2]}</option>`).join("")}</select>
+           <input id="tlKcol" type="color" value="${capStyleOf(k).col}" title="Text colour" style="width:34px;height:24px;padding:0;border:1px solid var(--line);border-radius:4px;background:none">
+           <select id="tlKbg" title="Background behind the text">${Object.entries(CAP_BGS).map(([v, l]) => `<option value="${v}"${capStyleOf(k).bg === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <button id="tlKall" title="Give every caption in this film this caption's size, font, colour and background">Style all</button>
            <br><textarea id="tlKtext" rows="2" placeholder="Caption text — a new line starts a new line in the movie">${esc(k.text || "")}</textarea>`;
   }
   h += ` <button id="tlKdel" title="Delete this key (Delete)">🗑</button>`;
@@ -5500,17 +5846,30 @@ function tlEditor(){
   }
   if (k.lane === "view") $e("tlKfade").onchange = e => { k.fade = Math.max(0, Math.min(5, +e.target.value || 0)); tlSave(); };
   if (k.lane === "fx"){
-    $e("tlKkind").onchange = e => { k.kind = e.target.value; if (k.kind === "electrodes" && !k.el) k.el = tlCaptureElectrodes(); tlSave(); tlSync(); };
+    $e("tlKkind").onchange = e => { k.kind = e.target.value; if (k.kind === "electrodes" && !k.el) k.el = tlCaptureElectrodes();
+      if (k.kind === "peel"){ if (!k.blk && BLOCK.spec) k.blk = JSON.parse(JSON.stringify(BLOCK.spec)); if (k.p0 == null) k.p0 = 0; if (k.p1 == null) k.p1 = 100;
+        if (!k.axis) k.axis = BLOCK.axis; if (k.seg == null) k.seg = BLOCK.showSeg; if (!(k.dur > 0) || k.dur === 3) k.dur = 6; }
+      tlSave(); tlSync(); };
     if ($e("tlKd")) $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
     if ($e("tlKhcell")) $e("tlKhcell").onchange = e => { k.cell = +e.target.value; tlSave(); tlDraw(); };
     if ($e("tlKdim")) $e("tlKdim").onchange = e => { k.dim = Math.max(0, Math.min(1, +e.target.value)); tlSave(); };
     if ($e("tlKsyn")) $e("tlKsyn").onchange = e => { k.show = e.target.value === "show"; TL.synApplied = null; tlSave(); tlDraw(); };
+    if ($e("tlKpax")) $e("tlKpax").onchange = e => { k.axis = e.target.value; tlSave(); };
+    if ($e("tlKp0")) $e("tlKp0").onchange = e => { k.p0 = Math.max(0, Math.min(100, +e.target.value || 0)); tlSave(); tlDraw(); };
+    if ($e("tlKp1")) $e("tlKp1").onchange = e => { k.p1 = Math.max(0, Math.min(100, +e.target.value)); tlSave(); tlDraw(); };
+    if ($e("tlKpseg")) $e("tlKpseg").onchange = e => { k.seg = e.target.checked; tlSave(); };
+    if ($e("tlKpblk")) $e("tlKpblk").onclick = () => { if (BLOCK.spec){ k.blk = JSON.parse(JSON.stringify(BLOCK.spec)); tlSave(); tlSync(); } else blkSay("Build a block first."); };
     if ($e("tlKelset")) $e("tlKelset").onclick = () => { k.el = tlCaptureElectrodes(); TL.elApplied = null; tlSave(); tlSync(); };
   }
   if (k.lane === "cap"){
     $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
     $e("tlKpos").onchange = e => { k.pos = e.target.value; tlSave(); };
-    $e("tlKsize").onchange = e => { k.size = e.target.value; tlSave(); };
+    const capStyled = () => { TL.capStyle = { size: k.size, font: k.font, col: k.col, bg: k.bg }; tlSave(); };
+    $e("tlKsize").onchange = e => { k.size = e.target.value; capStyled(); };
+    $e("tlKfont").onchange = e => { k.font = e.target.value; capStyled(); };
+    $e("tlKcol").oninput = e => { k.col = e.target.value; capStyled(); };
+    $e("tlKbg").onchange = e => { k.bg = e.target.value; capStyled(); };
+    $e("tlKall").onclick = () => { const st = capStyleOf(k); TL.keys.cap.forEach(x => Object.assign(x, st)); capStyled(); tlDraw(); };
     $e("tlKtext").oninput = e => { k.text = e.target.value; tlSave(); tlDraw(); };
   }
   $e("tlKdel").onclick = () => tlDelete(k);
@@ -5533,7 +5892,8 @@ function tlDraw(){
       const x = tlX(k.t, W), sel = TL.sel === k, cy = y + 13;
       g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
       if (lane === "fx"){
-        const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")", synapses: k.show ? "● show synapses" : "○ hide synapses" }[k.kind] || k.kind;
+        const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")", synapses: k.show ? "● show synapses" : "○ hide synapses",
+                      peel: "▤ peel " + (k.axis === "top" ? "top " : "front ") + (k.p0 || 0) + "→" + (k.p1 != null ? k.p1 : 100) + " %" + (k.blk ? "" : " (no block)") }[k.kind] || k.kind;
         if (k.kind === "electrodes" || k.kind === "synapses"){
           g.beginPath(); g.arc(x, cy, 6, 0, 7); g.fill(); g.stroke();
           g.fillStyle = "#e6edf3"; g.font = "10px system-ui, sans-serif"; g.fillText(lab, x + 9, cy + 4); continue;
@@ -5626,6 +5986,7 @@ function tlLoad(o, fromHistory){
   if (!o || !o.keys) return;
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
+  { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
   TL.sel = null; TL.viewApplied = null; tlSync(); tlPathBuild();
 }
@@ -5656,7 +6017,7 @@ renderer.setAnimationLoop(() => {
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
-  if (REC.on && REC.vf) recCapture(dt);
+  if (REC.on && REC.vf && !BLOCK.loading) recCapture(dt);
 });
 addEventListener("resize", () => {
   if (typeof REC !== "undefined" && REC.on && REC.saved) return;      // a fixed-size recording keeps its size
@@ -5666,12 +6027,434 @@ addEventListener("resize", () => {
 /* A collection changed in µJump (another tab) while this page is open from the browser's own list. */
 addEventListener("storage", e => { if (e.key === BASKET_KEY && !FROM_LINK) location.reload(); });
 
+/* ── 19. A BLOCK OF TISSUE THAT PEELS ──────────────────────────────────────  2026-10-18
+   Søren: "For the timeline, I also want the option to peel away the EM for a box that is either set
+   by coordinates given in the viewer or is given by the bounding boxes in the filter and show. It
+   should be possible to peel from the front or the top (like for the Blender script) and
+   segmentation of other cells should also be optional to include. It should be possible either to
+   give coordinates for the corners of the box or give a coordinate and then the size of the box."
+
+   WHAT IT IS. The EM inside the box, read once as a small 3D volume (one texture), drawn as a solid
+   block: its six faces and, where it has been peeled to, the cut face, all sampled from the same
+   volume -- so every face shows the tissue that is really there, and the cells come out of it as it
+   is eaten away. The same picture as the Blender script's block (claude/a-block-of-tissue-that-
+   peels.md): the collection's cells strong in their own colours, every OTHER segment pale (35 %,
+   coloured by its id and lifted towards white), and the segmentation optional.
+
+   THE BOX, in µm in the cells' own frame: two corners, or a centre and a size (one number for a
+   cube, three for a brick), typed in Neuroglancer voxels or in µm; or one of Filter and show's region
+   boxes; or the box around the cells.
+
+   ONE VOLUME, SIZED TO A BUDGET. The finest EM level whose box fits the chosen detail (about 6, 16 or
+   40 million voxels) is read, every k-th section kept so a voxel is roughly as deep as it is wide.
+   The contrast is stretched to the block's own 1st-99.5th percentile. The segmentation is read at
+   the level nearest the EM's and looked up per voxel; its ids are compared as two 32-bit halves.
+
+   PEEL "from the front" eats the block along the dataset's z (the face you see first, as in the
+   Blender sweep); "from the top" along its y, from the pia down. 0 % is the whole block, 100 % gone.
+   In the timeline it is an effect: from one percentage to another over the effect's length, holding
+   its end value afterwards; a key carries its own box, so a saved scene rebuilds it. While a block
+   is still loading the timeline waits and a recording takes no frames. */
+const BLOCK = { spec: null, key: "", loading: null, loadingKey: "", group: null, mesh: null, cap: null, mat: null,
+                tex: [], peel: 0, axis: "front", showSeg: true, hasSeg: false, on: true, info: "" };
+const BLK_BUDGET = { coarse: 6e6, medium: 16e6, fine: 40e6 };
+const blkNote = document.getElementById("blkNote");
+function blkSay(t){ if (blkNote) blkNote.textContent = t; }
+/* "x, y, z", "x y z" or Danish "x; y; z" with decimal commas. */
+function blkNums(s){
+  s = String(s || "").trim(); if (!s) return [];
+  const parts = s.includes(";") ? s.split(";").map(x => x.replace(",", ".")) : s.split(/[\s,]+/);
+  return parts.map(x => parseFloat(String(x).replace(/[^\d.eE+-]/g, ""))).filter(v => isFinite(v));
+}
+function blkToUm(v, unit){ const r = DSX.res || [4, 4, 40]; return unit === "um" ? v.slice(0, 3) : v.slice(0, 3).map((x, i) => x * r[i] / 1000); }
+function blkFromUm(v, unit){ const r = DSX.res || [4, 4, 40]; return unit === "um" ? v.map(x => +x.toFixed(2)) : v.map((x, i) => Math.round(x * 1000 / r[i])); }
+function blkKey(sp){ return sp ? JSON.stringify([sp.box.map(v => +v.toFixed(2)), sp.q, !!sp.seg]) : ""; }
+function blkDesc(sp){
+  if (!sp) return "no block";
+  const b = sp.box, d = [b[3] - b[0], b[4] - b[1], b[5] - b[2]].map(v => v.toFixed(0));
+  return d.join(" × ") + " µm" + (sp.seg ? " + segmentation" : "") + " (" + sp.q + ")";
+}
+/* The region-box choices follow RBOX.list. */
+function blkFillSources(){
+  const sel = document.getElementById("blkSrc"); if (!sel) return;
+  const cur = sel.value;
+  [...sel.options].filter(o => o.value.startsWith("rbox:")).forEach(o => o.remove());
+  RBOX.list.forEach((b, i) => { const o = document.createElement("option"); o.value = "rbox:" + i;
+    o.textContent = "Filter and show box " + (b[0] != null ? b[0] : i + 1); sel.appendChild(o); });
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  blkSrcUI();
+}
+function blkSrcUI(){
+  const v = document.getElementById("blkSrc").value;
+  document.getElementById("blkCorners").style.display = v === "corners" ? "" : "none";
+  document.getElementById("blkCentre").style.display = v === "centre" ? "" : "none";
+  document.getElementById("blkUnitWrap").style.display = v === "corners" || v === "centre" ? "" : "none";
+}
+/* What the panel describes, as a spec, or a reason it cannot be one. */
+function blkSpecFromUI(){
+  const $ = id => document.getElementById(id), src = $("blkSrc").value, unit = $("blkUnit").value;
+  let box = null;
+  if (src === "corners"){
+    const a = blkNums($("blkA").value), b = blkNums($("blkB").value);
+    if (a.length < 3 || b.length < 3) return { err: "Give both corners as x, y, z." };
+    const A = blkToUm(a, unit), B = blkToUm(b, unit);
+    box = [0, 1, 2].map(i => Math.min(A[i], B[i])).concat([0, 1, 2].map(i => Math.max(A[i], B[i])));
+  } else if (src === "centre"){
+    const c = blkNums($("blkC").value); let sz = blkNums($("blkS").value);
+    if (c.length < 3) return { err: "Give the centre as x, y, z (or press “picked cell”)." };
+    if (!sz.length) return { err: "Give the size in µm: one number for a cube, or x, y, z." };
+    if (sz.length < 3) sz = [sz[0], sz[0], sz[0]];
+    const C = blkToUm(c, unit);
+    box = [0, 1, 2].map(i => C[i] - Math.abs(sz[i]) / 2).concat([0, 1, 2].map(i => C[i] + Math.abs(sz[i]) / 2));
+  } else if (src === "cells"){
+    if (!CELL_BOX) return { err: "Load the cells first." };
+    const b = CELL_BOX.clone().expandByScalar(3);
+    box = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z];
+  } else if (src.startsWith("rbox:")){
+    const b = RBOX.list[+src.slice(5)]; if (!b) return { err: "That region box is gone." };
+    box = b.slice(1, 7);
+  }
+  if (!box || box.some(v => !isFinite(v))) return { err: "That is not a box." };
+  const d = [box[3] - box[0], box[4] - box[1], box[5] - box[2]];
+  if (d.some(v => v < 0.5)) return { err: "The box is flat — every side must be at least 0.5 µm." };
+  if (d.some(v => v > 1500)) return { err: "The box is more than 1.5 mm on a side — choose a smaller one." };
+  return { box: box.map(v => +v.toFixed(3)), q: $("blkQ").value, seg: $("blkSeg").checked && !!DSX.seg };
+}
+function blkPickCentre(){
+  const c = CELLS[SELECTED] || CELLS.find(x => x.mesh || x.nucMesh);
+  if (!c){ blkSay("Pick a cell first."); return; }
+  const m = c.nucMesh || c.mesh; if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+  const p = m.geometry.boundingBox.getCenter(new THREE.Vector3());
+  const unit = document.getElementById("blkUnit").value;
+  document.getElementById("blkSrc").value = "centre"; blkSrcUI();
+  document.getElementById("blkC").value = blkFromUm([p.x, p.y, p.z], unit).join(", ");
+  if (!document.getElementById("blkS").value) document.getElementById("blkS").value = "40, 40, 20";
+}
+
+/* ── reading ── */
+function blkChunks(s, v0, dims){
+  const ch = s.chunk_sizes[0], off = s.voxel_offset || [0, 0, 0];
+  const grid = [0, 1, 2].map(a => Math.ceil(s.size[a] / ch[a]));
+  const c0 = [0, 1, 2].map(a => Math.max(0, Math.floor((v0[a] - off[a]) / ch[a])));
+  const c1 = [0, 1, 2].map(a => Math.min(grid[a] - 1, Math.floor((v0[a] + dims[a] - 1 - off[a]) / ch[a])));
+  const out = [];
+  for (let z = c0[2]; z <= c1[2]; z++) for (let y = c0[1]; y <= c1[1]; y++) for (let x = c0[0]; x <= c1[0]; x++){
+    const cc = [x, y, z], start = [0, 1, 2].map(a => off[a] + cc[a] * ch[a]);
+    const end = [0, 1, 2].map(a => Math.min(start[a] + ch[a], off[a] + s.size[a]));
+    out.push({ c: cc, grid, start, end, local: [0, 0, 0], shape: ch });
+  }
+  return out;
+}
+/* A whole compressed_segmentation chunk, as one class byte per voxel (actual chunk shape). The class
+   of each table entry is worked out once per block, never once per voxel. */
+function blkCsClasses(buf, sh, bs, words, clsOf){
+  const d = new Uint32Array(buf), chan = d[0], out = new Uint8Array(sh[0] * sh[1] * sh[2]);
+  const g = [0, 1, 2].map(a => Math.ceil(sh[a] / bs[a]));
+  for (let bz = 0; bz < g[2]; bz++) for (let by = 0; by < g[1]; by++) for (let bx = 0; bx < g[0]; bx++){
+    const hdr = chan + (bx + g[0] * (by + g[1] * bz)) * 2, h0 = d[hdr], h1 = d[hdr + 1];
+    const table = chan + (h0 & 0xffffff), bits = (h0 >>> 24) & 0xff, vals = chan + (h1 >>> 0);
+    const cache = new Map();
+    const clsAt = idx => { let c = cache.get(idx); if (c === undefined){ c = words === 1 ? clsOf(d[table + idx] >>> 0, 0) : clsOf(d[table + idx * 2] >>> 0, d[table + idx * 2 + 1] >>> 0); cache.set(idx, c); } return c; };
+    const xe = Math.min(sh[0], (bx + 1) * bs[0]), ye = Math.min(sh[1], (by + 1) * bs[1]), ze = Math.min(sh[2], (bz + 1) * bs[2]);
+    if (!bits){ const c = clsAt(0); if (!c) continue;
+      for (let z = bz * bs[2]; z < ze; z++) for (let y = by * bs[1]; y < ye; y++){ const r = (z * sh[1] + y) * sh[0]; out.fill(c, r + bx * bs[0], r + xe); }
+      continue; }
+    const mask = (1 << bits) - 1;
+    for (let z = bz * bs[2]; z < ze; z++) for (let y = by * bs[1]; y < ye; y++) for (let x = bx * bs[0]; x < xe; x++){
+      const i = (x % bs[0]) + bs[0] * ((y % bs[1]) + bs[1] * (z % bs[2])), bit = i * bits;
+      out[(z * sh[1] + y) * sh[0] + x] = clsAt((d[vals + (bit >>> 5)] >>> (bit & 31)) & mask);
+    }
+  }
+  return out;
+}
+function blkRawClasses(buf, sh, bpv, clsOf){
+  const n = sh[0] * sh[1] * sh[2], out = new Uint8Array(n);
+  const d = bpv === 1 ? new Uint8Array(buf) : bpv === 2 ? new Uint16Array(buf) : new Uint32Array(buf), cache = new Map();
+  for (let i = 0; i < n; i++){
+    const lo = bpv === 8 ? d[2 * i] >>> 0 : d[i] >>> 0, hi = bpv === 8 ? d[2 * i + 1] >>> 0 : 0;
+    if (!lo && !hi) continue;
+    const k = lo + ":" + hi; let c = cache.get(k); if (c === undefined){ c = clsOf(lo, hi); cache.set(k, c); } out[i] = c;
+  }
+  return out;
+}
+async function buildBlock(sp){
+  const key = blkKey(sp);
+  if (BLOCK.key === key && BLOCK.group) return true;
+  if (BLOCK.loading && BLOCK.loadingKey === key) return BLOCK.loading;
+  const ds = DSX;
+  if (!ds.em){ blkSay("No EM source for this dataset."); return false; }
+  const job = (async () => {
+    const t0 = performance.now();
+    if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
+    const emBase = UJ.segread._httpBase(ds.em), budget = BLK_BUDGET[sp.q] || BLK_BUDGET.medium;
+    const n = (await UJ.emtiles.scaleAt(0, true)).count;
+    let pick = null;
+    for (let i = 0; i < n; i++){
+      const s = (await UJ.emtiles.scaleAt(i, true)).scale, r = s.resolution;
+      const zs = Math.max(1, Math.round(r[0] / r[2]));
+      const dims = [0, 1, 2].map(a => Math.max(2, Math.ceil((sp.box[a + 3] - sp.box[a]) * 1000 / r[a])));
+      const nz = Math.ceil(dims[2] / zs), cnt = dims[0] * dims[1] * nz;
+      pick = { s, zs, dims, nz, cnt };
+      if (cnt <= budget && Math.max(dims[0], dims[1], nz) <= 2048) break;
+    }
+    /* Still too many at the coarsest level: keep every st-th voxel as well (a big box, a coarser block). */
+    const st = Math.max(1, Math.ceil(Math.cbrt(pick.cnt / budget - 1e-9)), Math.ceil(Math.max(pick.dims[0], pick.dims[1], pick.nz) / 2048));
+    const s = pick.s, r = s.resolution, ch = s.chunk_sizes[0], zs = pick.zs * st, dims = pick.dims;
+    const nx = Math.ceil(dims[0] / st), ny = Math.ceil(dims[1] / st), nz = Math.ceil(dims[2] / zs);
+    const v0 = [0, 1, 2].map(a => Math.floor(sp.box[a] * 1000 / r[a]));
+    const vol = new Uint8Array(nx * ny * nz);
+    const list = blkChunks(s, v0, dims);
+    let done = 0;
+    blkSay("Block: reading the EM — " + list.length + " chunks at " + r[0] + " nm…");
+    await UJ.segread.mapPool(list, 6, async at => {
+      const buf = await UJ.segread._chunkBuf(emBase, s, at);
+      if (buf){
+        const sh = [0, 1, 2].map(a => at.end[a] - at.start[a]);
+        const a = await UJ.emtiles._decodeChunk(buf, s, ch, sh);
+        for (let z = 0; z < sh[2]; z++){
+          const dz = at.start[2] + z - v0[2]; if (dz < 0 || dz >= dims[2] || dz % zs) continue;
+          const k = dz / zs;
+          for (let y = 0; y < sh[1]; y++){
+            const dy = at.start[1] + y - v0[1]; if (dy < 0 || dy % st) continue;
+            const jy = dy / st; if (jy >= ny) continue;
+            const rs = (z * ch[1] + y) * ch[0], rd = (k * ny + jy) * nx;
+            for (let x = 0; x < sh[0]; x++){ const dx = at.start[0] + x - v0[0]; if (dx < 0 || dx % st) continue; const ix = dx / st; if (ix < nx) vol[rd + ix] = a[rs + x]; }
+          }
+        }
+      }
+      done++; if (done % 4 === 0 || done === list.length) blkSay("Block: EM " + done + " / " + list.length + " chunks…");
+    });
+    /* The block's own contrast: 1st-99.5th percentile of what was read. */
+    const hist = new Uint32Array(256); let seen = 0;
+    for (let i = 0; i < vol.length; i++){ if (vol[i]){ hist[vol[i]]++; seen++; } }
+    let lo = 0, hi = 255;
+    if (seen){ let acc = 0; for (let i = 0; i < 256; i++){ acc += hist[i]; if (acc > seen * 0.01){ lo = i; break; } }
+               acc = 0; for (let i = 0; i < 256; i++){ acc += hist[i]; if (acc >= seen * 0.995){ hi = i; break; } } }
+    if (hi - lo < 16){ lo = 0; hi = 255; }
+    const lut = new Uint8Array(256); for (let i = 0; i < 256; i++) lut[i] = Math.max(0, Math.min(255, Math.round((i - lo) * 255 / (hi - lo))));
+    for (let i = 0; i < vol.length; i++) vol[i] = lut[vol[i]];
+    /* The segmentation, if asked for: 1-32 the collection's cells, 33-255 everything else. */
+    let lab = null, segNote = "";
+    if (sp.seg && ds.seg){
+      try {
+        const segBase = UJ.segread._httpBase(ds.seg), info = await UJ.segread._getInfo(segBase);
+        const words = /64/.test(String(info.data_type || "uint64")) ? 2 : 1;
+        const scales = info.scales.slice().sort((a, b) => a.resolution[0] - b.resolution[0]);
+        let ss = scales[0]; for (const q of scales) if (q.resolution[0] <= r[0] * 1.01) ss = q;
+        const sr = ss.resolution, sch = ss.chunk_sizes[0];
+        const want = new Map();
+        CELLS.slice(0, 32).forEach((c, i) => [c.root].concat(c.extraUsed || c.extra || []).filter(Boolean).forEach(id => {
+          try { const b = BigInt(id); want.set(Number(b & 0xffffffffn) + ":" + Number(b >> 32n), i + 1); } catch (e){}
+        }));
+        const clsOf = (lo2, hi2) => {
+          if (!lo2 && !hi2) return 0;
+          const m = want.get(lo2 + ":" + hi2); if (m) return m;
+          return 33 + ((Math.imul(lo2, 2654435761) ^ Math.imul(hi2 + 0x9e37, 40503)) >>> 0) % 223;
+        };
+        /* Each EM voxel's centre, in segmentation voxels. */
+        const sx = new Int32Array(nx), sy = new Int32Array(ny), sz = new Int32Array(nz);
+        for (let i = 0; i < nx; i++) sx[i] = Math.floor((v0[0] + i * st + 0.5) * r[0] / sr[0]);
+        for (let j = 0; j < ny; j++) sy[j] = Math.floor((v0[1] + j * st + 0.5) * r[1] / sr[1]);
+        for (let k = 0; k < nz; k++) sz[k] = Math.floor((v0[2] + k * zs + 0.5) * r[2] / sr[2]);
+        const sv0 = [sx[0], sy[0], sz[0]], sdims = [sx[nx - 1] - sx[0] + 1, sy[ny - 1] - sy[0] + 1, sz[nz - 1] - sz[0] + 1];
+        const slist = blkChunks(ss, sv0, sdims);
+        lab = new Uint8Array(nx * ny * nz);
+        let sd = 0;
+        await UJ.segread.mapPool(slist, 6, async at => {
+          const buf = await UJ.segread._chunkBuf(segBase, ss, at);
+          if (buf){
+            const sh = [0, 1, 2].map(a => at.end[a] - at.start[a]);
+            const cls = ss.encoding === "raw"
+              ? blkRawClasses(buf, sh, { uint8: 1, uint16: 2, uint32: 4, uint64: 8 }[info.data_type] || 8, clsOf)
+              : blkCsClasses(buf, sh, ss.compressed_segmentation_block_size, words, clsOf);
+            for (let k = 0; k < nz; k++){ const lz = sz[k] - at.start[2]; if (lz < 0 || lz >= sh[2]) continue;
+              for (let j = 0; j < ny; j++){ const ly = sy[j] - at.start[1]; if (ly < 0 || ly >= sh[1]) continue;
+                const rs = (lz * sh[1] + ly) * sh[0], rd = (k * ny + j) * nx;
+                for (let i = 0; i < nx; i++){ const lx = sx[i] - at.start[0]; if (lx >= 0 && lx < sh[0]) lab[rd + i] = cls[rs + lx]; } } }
+          }
+          sd++; if (sd % 4 === 0 || sd === slist.length) blkSay("Block: segmentation " + sd + " / " + slist.length + " chunks…");
+        });
+        segNote = " + segmentation at " + sr[0] + " nm";
+      } catch (e){ lab = null; segNote = " (segmentation could not be read: " + (e.message || e) + ")"; }
+    }
+    return { vol, lab, nx, ny, nz, res: r, zs, st, secs: ((performance.now() - t0) / 1000).toFixed(0), segNote };
+  })();
+  BLOCK.loading = job; BLOCK.loadingKey = key;
+  let got = null;
+  try { got = await job; }
+  catch (e){ blkSay("The block could not be read: " + (e.message || e)); }
+  if (BLOCK.loadingKey === key){ BLOCK.loading = null; BLOCK.loadingKey = ""; }
+  if (!got) return false;
+  blkMake(sp, got);
+  BLOCK.spec = sp; BLOCK.key = key; BLOCK.hasSeg = !!got.lab;
+  BLOCK.info = got.nx + "×" + got.ny + "×" + got.nz + " voxels at " + got.res[0] * got.st + " × " + got.res[1] * got.st + " × " + (got.res[2] * got.zs) + " nm" + got.segNote;
+  blkSay("Block: " + blkDesc(sp) + " — " + BLOCK.info + " (" + got.secs + " s).");
+  MENU.dirty = true;
+  return true;
+}
+const BLK_VS = `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const BLK_FS = `precision highp float; precision highp sampler3D;
+uniform sampler3D em; uniform sampler3D lab; uniform vec3 bmin; uniform vec3 bsize; uniform int axis; uniform float cut;
+uniform float segOn; uniform float hasLab; uniform vec3 cellCol[32]; varying vec3 vP;
+vec3 pale(float c){ float h = fract(c * 0.618034); vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); return mix(k, vec3(1.0), 0.42); }
+void main(){
+  float a = axis == 0 ? vP.z : vP.y;
+  if (a < cut - 1e-3) discard;
+  vec3 uvw = clamp((vP - bmin) / bsize, 0.0005, 0.9995);
+  vec3 col = vec3(texture(em, uvw).r);
+  if (hasLab > 0.5 && segOn > 0.5){
+    float L = floor(texture(lab, uvw).r * 255.0 + 0.5);
+    if (L >= 33.0) col = mix(col, pale(L), 0.35);
+    else if (L >= 1.0){ int ci = int(L) - 1; vec3 cc = vec3(0.0); for (int i = 0; i < 32; i++) if (i == ci) cc = cellCol[i]; col = mix(col, cc, 0.6); }
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+function blkDispose(){
+  if (BLOCK.group){ content.remove(BLOCK.group); BLOCK.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  if (BLOCK.mat) BLOCK.mat.dispose();
+  if (BLOCK.cap) BLOCK.cap.material.dispose();
+  BLOCK.tex.forEach(t => t.dispose());
+  BLOCK.group = BLOCK.mesh = BLOCK.cap = BLOCK.mat = null; BLOCK.tex = []; BLOCK.key = ""; BLOCK.spec = null; BLOCK.hasSeg = false;
+}
+function blkTex(data, nx, ny, nz, linear){
+  const t = new THREE.Data3DTexture(data, nx, ny, nz);
+  t.format = THREE.RedFormat; t.type = THREE.UnsignedByteType; t.unpackAlignment = 1;
+  t.minFilter = t.magFilter = linear ? THREE.LinearFilter : THREE.NearestFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
+}
+function blkMake(sp, got){
+  blkDispose();
+  const b = sp.box, emT = blkTex(got.vol, got.nx, got.ny, got.nz, true);
+  const labT = blkTex(got.lab || new Uint8Array(1), got.lab ? got.nx : 1, got.lab ? got.ny : 1, got.lab ? got.nz : 1, false);
+  BLOCK.tex = [emT, labT];
+  /* The volume's real extent (whole voxels), so a face samples the voxel it lies on. */
+  const r = got.res, v0 = [0, 1, 2].map(a => Math.floor(b[a] * 1000 / r[a]));
+  const bmin = new THREE.Vector3(v0[0] * r[0] / 1000, v0[1] * r[1] / 1000, v0[2] * r[2] / 1000);
+  const bsize = new THREE.Vector3(got.nx * got.st * r[0] / 1000, got.ny * got.st * r[1] / 1000, got.nz * got.zs * r[2] / 1000);
+  /* Colours in display (sRGB) values: the shader writes the EM's grey as it is, so a cell colour
+     must not be the linear working value or it would come out darker than the cell's own mesh. */
+  const cols = []; for (let i = 0; i < 32; i++) cols.push(new THREE.Color(CELLS[i] ? CELLS[i].colour : "#ffffff").convertLinearToSRGB());
+  BLOCK.mat = new THREE.ShaderMaterial({ vertexShader: BLK_VS, fragmentShader: BLK_FS, side: THREE.FrontSide,
+    uniforms: { em: { value: emT }, lab: { value: labT }, bmin: { value: bmin }, bsize: { value: bsize }, axis: { value: 0 },
+                cut: { value: -1e9 }, segOn: { value: 1 }, hasLab: { value: got.lab ? 1 : 0 }, cellCol: { value: cols } } });
+  const capMat = BLOCK.mat.clone(); capMat.side = THREE.DoubleSide; capMat.uniforms = BLOCK.mat.uniforms;
+  const geo = new THREE.BoxGeometry(bsize.x, bsize.y, bsize.z);
+  geo.translate(bmin.x + bsize.x / 2, bmin.y + bsize.y / 2, bmin.z + bsize.z / 2);
+  BLOCK.mesh = new THREE.Mesh(geo, BLOCK.mat);
+  const cg = new THREE.BufferGeometry(); cg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3)); cg.setIndex([0, 1, 2, 0, 2, 3]);
+  BLOCK.cap = new THREE.Mesh(cg, capMat); BLOCK.cap.frustumCulled = false;
+  /* Never in the way of a click on a cell, a measurement or the stimulator. */
+  BLOCK.mesh.raycast = () => {}; BLOCK.cap.raycast = () => {};
+  BLOCK.group = new THREE.Group(); BLOCK.group.add(BLOCK.mesh, BLOCK.cap); BLOCK.group.userData.block = true;
+  BLOCK.bmin = bmin; BLOCK.bsize = bsize;
+  content.add(BLOCK.group);
+  blkApply();
+}
+/* The peel, the axis and the segmentation, to the shader and the cap. */
+function blkApply(){
+  if (!BLOCK.group) return;
+  const u = BLOCK.mat.uniforms, ax = BLOCK.axis === "top" ? 1 : 0, p = Math.max(0, Math.min(1, BLOCK.peel));
+  const lo = ax ? BLOCK.bmin.y : BLOCK.bmin.z, len = ax ? BLOCK.bsize.y : BLOCK.bsize.z, cut = lo + p * len;
+  u.axis.value = ax; u.cut.value = p <= 0 ? -1e9 : cut; u.segOn.value = BLOCK.showSeg ? 1 : 0;
+  const m = BLOCK.bmin, s = BLOCK.bsize, P = BLOCK.cap.geometry.attributes.position.array;
+  const q = ax ? [[m.x, cut, m.z], [m.x + s.x, cut, m.z], [m.x + s.x, cut, m.z + s.z], [m.x, cut, m.z + s.z]]
+               : [[m.x, m.y, cut], [m.x + s.x, m.y, cut], [m.x + s.x, m.y + s.y, cut], [m.x, m.y + s.y, cut]];
+  q.forEach((v, i) => P.set(v, i * 3)); BLOCK.cap.geometry.attributes.position.needsUpdate = true;
+  BLOCK.cap.visible = p > 0 && p < 1;
+  BLOCK.group.visible = BLOCK.on && p < 1;
+  for (let i = 0; i < 32; i++) if (CELLS[i]) u.cellCol.value[i].set(CELLS[i].colour).convertLinearToSRGB();
+  const sl = document.getElementById("blkPeel"); if (sl && document.activeElement !== sl) sl.value = Math.round(p * 100);
+  const pv = document.getElementById("blkPeelV"); if (pv) pv.textContent = Math.round(p * 100) + " %";
+  if (document.getElementById("blkAxis").value !== BLOCK.axis) document.getElementById("blkAxis").value = BLOCK.axis;
+}
+function setPeel(p){ BLOCK.peel = p; blkApply(); MENU.dirty = true; }
+function removeBlock(){ blkDispose(); blkSay("No block."); MENU.dirty = true; }
+async function blockFromUI(){
+  const sp = blkSpecFromUI();
+  if (sp.err){ blkSay(sp.err); return false; }
+  BLOCK.on = true;
+  return buildBlock(sp);
+}
+/* ── the timeline: a "peel" effect ── */
+function tlPeelKeys(){ return TL.keys.fx.filter(k => k.kind === "peel").sort((a, b) => a.t - b.t); }
+function tlApplyPeelAt(t){
+  const ks = tlPeelKeys(); if (!ks.length) return;
+  let k = ks[0], p = (k.p0 || 0) / 100;
+  for (const x of ks){
+    if (t < x.t) break;
+    k = x;
+    const u = x.dur > 0 ? Math.min(1, (t - x.t) / x.dur) : 1, e = u * u * (3 - 2 * u);
+    p = ((x.p0 || 0) + ((x.p1 != null ? x.p1 : 100) - (x.p0 || 0)) * e) / 100;
+  }
+  if (k.blk && blkKey(k.blk) !== BLOCK.key){ if (!BLOCK.loading) buildBlock(k.blk); return; }
+  BLOCK.on = true; BLOCK.axis = k.axis || "front"; BLOCK.showSeg = k.seg !== false; BLOCK.peel = p; blkApply();
+}
+/* Before a recording starts: the first block it needs, read now rather than in the middle of a take. */
+async function tlPrepBlock(){
+  const k = tlPeelKeys().find(x => x.blk);
+  if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
+}
+
+document.getElementById("blkSrc").addEventListener("change", blkSrcUI);
+document.getElementById("blkPick").addEventListener("click", blkPickCentre);
+document.getElementById("blkBtn").addEventListener("click", blockFromUI);
+document.getElementById("blkClr").addEventListener("click", removeBlock);
+document.getElementById("blkPeel").addEventListener("input", e => setPeel(+e.target.value / 100));
+document.getElementById("blkAxis").addEventListener("change", e => { BLOCK.axis = e.target.value; blkApply(); });
+document.getElementById("blkSeg").addEventListener("change", e => {
+  BLOCK.showSeg = e.target.checked; blkApply();
+  if (e.target.checked && BLOCK.group && !BLOCK.hasSeg && DSX.seg) blkSay("Press “Build block” again to read the segmentation for it.");
+});
+document.getElementById("blkUnit").addEventListener("change", e => {
+  /* Convert what is typed, so switching units never moves the box. */
+  const from = e.target.value === "um" ? "vox" : "um", to = e.target.value;
+  ["blkA", "blkB", "blkC"].forEach(id => { const el = document.getElementById(id), v = blkNums(el.value); if (v.length >= 3) el.value = blkFromUm(blkToUm(v, from), to).join(", "); });
+});
+if (!DSX.seg){ const sg = document.getElementById("blkSeg"); sg.checked = false; sg.disabled = true; sg.parentNode.title = "No flat segmentation of this dataset can be read in the browser."; }
+blkFillSources();
+/* Opened from Filter and show with its boxes: the first box is the obvious block. */
+if (RBOX.list.length){ document.getElementById("blkSrc").value = "rbox:0"; blkSrcUI(); }
+
 const panel = document.getElementById("panel"), show = document.getElementById("show");
+/* ── WHAT THIS DATASET HAS ──────────────────────────────────────────────────  2026-10-17
+   The map of minnie65 (layers, the V1 column, the areas, the vessels and their skeletons), its
+   neighbour table and Søren's vectors exist for MICrONS alone. Elsewhere those controls are
+   taken away -- in the panel and in the headset palette -- rather than left to fail. */
+const DS_HAS = { layers: !!DSX.layers, v1: !!DSX.v1areas, vasc: !!DSX.vascMesh, skel: !!DSX.vascSkel,
+                 nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, mesh: !!DSX.mesh };
+if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
+(function hideMissing(){
+  const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
+                 skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh" };
+  for (const id in gone){
+    if (DS_HAS[gone[id]]) continue;
+    const el = document.getElementById(id); if (!el) continue;
+    (el._wrap || el).style.setProperty("display", "none", "important"); el.dataset.dsGone = "1";
+  }
+  if (!DS_HAS.layers) document.getElementById("layerBtn").classList.remove("on");
+  if (!DS_HAS.layers && !DS_HAS.v1 && !DS_HAS.vasc && !DS_HAS.skel && !RBOX.list.length){
+    const t = document.querySelector('#tabs button[data-tab="map"]'); if (t) t.style.display = "none";
+  }
+  /* V1DD's meshes are listed by CAVE: without δJump's token there is no mesh at all. */
+  if (DSX.mesh && DSX.mesh.manifestNeedsToken && !caveToken()){
+    document.getElementById("caveRow").style.display = "flex";
+    document.getElementById("caveTok").placeholder = "CAVE token (" + DSX.label + ": meshes and synapses)";
+    ctxNote.textContent = DSX.label + " meshes need your CAVE token (the one δJump uses) — paste it under Activity and press Save.";
+  }
+})();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
-else if (CELLS.length) loadAll();
+else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
+/* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
+   (newest first, at most TRC_ADD_MAX); the Objects tab's cell type and kind narrow it afterwards. */
+else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
+  subEl.textContent = "Bringing in the cells traced in " + DSX.label + "…";
+  addTracedCells().then(() => { updateLabel(); if (!CELLS.length) subEl.textContent = "Nothing has been traced in " + DSX.label + " yet."; });
+}
 </script>
 </body>
 </html>

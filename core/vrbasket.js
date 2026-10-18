@@ -36,6 +36,15 @@ UJ.vrbasket = (function(){
   var LISTENERS = [];
 
   function ds(){ return (UJ.cfg && UJ.cfg.id) || "microns"; }
+  /* TOOLS WHOSE CELLS ARE TRACINGS (2026-10-17). λJump has no segmentation and χJump's meshes are
+     its own renderer's, so there is no mesh button to put "+ VR" beside. The pill is always there
+     instead and opens the viewer on every cell traced in this dataset (vr.html#ds=…&traced=1). */
+  var TRACED_ONLY = { ljump: 1, xjump: 1 };
+  function tracedOnly(){ return !!TRACED_ONLY[ds()]; }
+  function tracedLink(){
+    var base = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
+    return base + "vr.html#ds=" + encodeURIComponent(ds()) + "&traced=1";
+  }
 
   function load(){
     try {
@@ -101,12 +110,20 @@ UJ.vrbasket = (function(){
 
   /* The link vr.html understands. ds~root~nucleus~label, comma-separated, each part
      URI-encoded -- so a label with a comma or a tilde in it cannot break the list. */
+  /* ONE DATASET PER VIEWER (2026-10-17). The collection is shared by every tool, but vr.html shows
+     one volume at a time -- two volumes have unrelated coordinate frames -- so a tool opens the
+     viewer with ITS cells, and says which dataset (&ds=). The others wait for their own tool. */
+  function hereOf(list){
+    var all = list || load(), here = all.filter(function(e){ return (e.ds || "microns") === ds(); });
+    return here.length ? here : all;
+  }
   function linkFor(list){
-    var parts = (list || load()).map(function(e){
+    var here = hereOf(list), d = (here[0] && here[0].ds) || ds();
+    var parts = here.map(function(e){
       return [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~");
     });
     var base = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
-    return base + "vr.html#c=" + parts.join(",");
+    return base + "vr.html#c=" + parts.join(",") + (d !== "microns" ? "&ds=" + encodeURIComponent(d) : "");
   }
 
   /* The cell-type line for the panel the button sits in: the nearest ancestor that has a
@@ -188,6 +205,7 @@ UJ.vrbasket = (function(){
       var b = ev.target.closest("button"); if (!b) return;
       if (b.dataset.rm){ remove(b.dataset.rm, b.dataset.ds); }
       else if (b.dataset.act === "open"){ window.open(linkFor(), "_blank"); }
+      else if (b.dataset.act === "traced"){ window.open(tracedLink(), "_blank"); }
       else if (b.dataset.act === "copy"){
         var l = linkFor();
         (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject())
@@ -202,9 +220,19 @@ UJ.vrbasket = (function(){
   }
   function render(list){
     if (!pill) return;
-    pill.textContent = "🥽 VR collection (" + list.length + ")";
-    pill.style.display = list.length ? "block" : "none";
-    if (!list.length){ tray.style.display = "none"; }
+    var nHere = list.filter(function(e){ return (e.ds || "microns") === ds(); }).length;
+    pill.textContent = "🥽 VR collection (" + (nHere && nHere < list.length ? nHere + " of " + list.length : list.length) + ")";
+    pill.style.display = list.length || tracedOnly() ? "block" : "none";
+    if (!list.length && !tracedOnly()){ tray.style.display = "none"; }
+    if (tracedOnly()){
+      pill.textContent = "🥽 Traced cells in VR";
+      tray.innerHTML = "<h4>Traced cells in VR</h4>" +
+        "<div class='vrb-note'>This dataset has no segmentation meshes here, so the viewer shows what has been traced: " +
+        "each cell's traced outline as the cell, its traced nucleus, and the structures traced inside it. " +
+        "Choose a cell type or a kind of structure in the viewer's <b>Objects</b> tab.</div>" +
+        "<div class='vrb-acts'><button class='vrb-go' data-act='traced'>Open the traced cells in VR</button></div>";
+      return;
+    }
     var h = "<h4>VR collection</h4>";
     list.forEach(function(e){
       var pts = (e.syn && e.syn.length ? " · " + e.syn.length + " synapses" : "") +
@@ -213,6 +241,10 @@ UJ.vrbasket = (function(){
            "<small>" + esc(e.root) + (e.ds !== ds() ? " · " + esc(e.ds) : "") + esc(pts) + "</small></div>" +
            "<button data-rm='" + esc(e.root) + "' data-ds='" + esc(e.ds) + "' title='Remove'>×</button></div>";
     });
+    var others = list.filter(function(e){ return (e.ds || "microns") !== ds(); }).length;
+    if (others && others < list.length)
+      h += "<div class='vrb-note'>" + others + " cell" + (others > 1 ? "s" : "") + " from other tools stay in the collection; " +
+           "the viewer opens one dataset at a time, so open " + (others > 1 ? "them" : "it") + " from " + (others > 1 ? "their" : "its") + " own tool.</div>";
     if (list.length > SOFT_MAX)
       h += "<div class='vrb-note vrb-warn'>More than " + SOFT_MAX + " cells may be too heavy for a standalone Quest 2.</div>";
     h += "<div class='vrb-acts'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +

@@ -1,0 +1,41 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 Søren Grubb
+
+THIS FILE COVERS THE WRITING, NOT THE CODE. The prose on grubblab.com, the
+dataset tables, the explanatory text inside the tools, the figures and the
+documentation are licensed under CC BY 4.0. The software is under the MIT
+License -- see LICENSE. Creative Commons recommends against using its licences
+for software, which is why the two are separate:
+https://creativecommons.org/faq/
+
+CONTRIBUTIONS. Identifications, corrections, organelle reports, tracings and
+forum posts submitted through the Jump tools are released by their authors
+under this same licence, so that the community annotation database can be
+shared and cited. Contributors keep the copyright in what they submit and are
+credited by name or handle. This applies to submissions made after
+2026-10-17; anything submitted before that was given under no stated terms.
+
+You are free to:
+  - Share -- copy and redistribute the material in any medium or format
+  - Adapt -- remix, transform, and build upon the material
+  for any purpose, even commercially.
+
+Under the following terms:
+  - Attribution -- You must give appropriate credit, provide a link to the
+    license, and indicate if changes were made. You may do so in any
+    reasonable manner, but not in any way that suggests the licensor
+    endorses you or your use.
+  - No additional restrictions -- You may not apply legal terms or
+    technological measures that legally restrict others from doing
+    anything the license permits.
+
+No warranties are given. The license may not give you all of the
+permissions necessary for your intended use.
+
+The full legal text is at:
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+NOT COVERED: the electron-microscopy datasets. They are read from their
+publishers' own buckets, nothing is redistributed, and each one's terms are
+stated on its page in the tools.
