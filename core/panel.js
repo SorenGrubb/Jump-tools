@@ -1971,3 +1971,57 @@ function wireOrganelleForm(container,slug){
     }).catch(()=>no_(""));
   });
 }
+
+/* ── A RANDOM PICK BRINGS YOU TO THE CELL ──────────────────────────────────────  2026-10-18
+   Søren: "When you click random example, it would be neat if you can jump to the cell identity
+   card. As it is now, the cell identity card loads outside the screen, so it is hard to know if
+   your click worked." Self-installing, so every tool that loads this file gets it without a line
+   of its own: any <button id="random…"> (Random example, Random unassigned / unclassified cell,
+   Random community-identified cell, χJump's Random built / untouched) arms a watch on the cell
+   card -- #cellPanelCard, or #panel in βJump and λJump. The first change to it within eight
+   seconds is the new cell arriving; then, if the card's top is not already on screen, the page
+   scrolls to it, and the card glows once so the eye finds it. A pick that found nothing (an
+   alert, no new cell) changes nothing, so nothing moves. */
+(function(){
+  if (typeof document === "undefined" || window.__ujRandomScroll) return;
+  window.__ujRandomScroll = true;
+  function card(){
+    var c = document.getElementById("cellPanelCard");
+    if (c) return c;
+    return document.getElementById("panel");
+  }
+  function visible(el){ return !!(el && el.getClientRects().length && el.offsetHeight > 0); }
+  function flash(el){
+    if (!document.getElementById("uj-pickflash-style")){
+      var st = document.createElement("style"); st.id = "uj-pickflash-style";
+      st.textContent = "@keyframes uj-pickflash{0%{box-shadow:0 0 0 3px var(--accent,#3fb950)}100%{box-shadow:0 0 0 3px transparent}}"
+        + ".uj-pickflash{animation:uj-pickflash 1.4s ease-out 1}";
+      document.head.appendChild(st);
+    }
+    el.classList.remove("uj-pickflash"); void el.offsetWidth; el.classList.add("uj-pickflash");
+    setTimeout(function(){ el.classList.remove("uj-pickflash"); }, 1500);
+  }
+  function bring(el){
+    var r = el.getBoundingClientRect();
+    if (r.top < 0 || r.top > window.innerHeight * 0.6){
+      var y = window.pageYOffset + r.top - 12;
+      try { window.scrollTo({ top: Math.max(0, y), behavior: "smooth" }); } catch (_e){ window.scrollTo(0, Math.max(0, y)); }
+    }
+    flash(el);
+  }
+  var watch = null;
+  document.addEventListener("click", function(ev){
+    var b = ev.target && ev.target.closest && ev.target.closest('button[id^="random"]');
+    if (!b) return;
+    var el = card(); if (!el) return;
+    if (watch){ watch.disconnect(); watch = null; }
+    var done = false, mo = new MutationObserver(function(){
+      if (done) return;
+      /* Let the render finish (the card is often filled in two or three passes). */
+      setTimeout(function(){ if (done || !visible(el)) return; done = true; mo.disconnect(); bring(el); }, 120);
+    });
+    mo.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+    watch = mo;
+    setTimeout(function(){ if (!done){ done = true; mo.disconnect(); } }, 8000);
+  }, true);
+})();
