@@ -1995,6 +1995,8 @@ function jumpToIndex(i){ showCell(i,null,false); }
 function wireMeshButtons(i){
   const msg=document.getElementById("meshmsg");
   function prog(frac,text){
+    /* A turning ring and the whole fragment count (UJ.busy, core/mesh3d.js, 2026-10-18). */
+    if(window.UJ&&UJ.busy){ UJ.busy(msg,frac,text||"working"); return; }
     msg.textContent=(text||"working…")+(typeof frac==="number"?" ("+Math.round(frac*100)+"%)":"");
   }
   function run(btn,fn){

@@ -7159,7 +7159,7 @@ document.addEventListener("click",(e)=>{
     const volNucVolUm3=volBtn.dataset.nucvol?parseFloat(volBtn.dataset.nucvol):null;
     const volNucleusId=volBtn.dataset.nucid||"";
     extrasForButton(volNucleusId,rootId)
-      .then(volExtras=>MeshDL.computeVolume(rootId,(frac,msg)=>{volBtn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,volExtras))
+      .then(volExtras=>MeshDL.computeVolume(rootId,(frac,msg)=>{UJ.busy(volBtn,frac,msg);},e.shiftKey,volExtras))
       .then(info=>{
         /* 2026-08-05 redesign (Søren): the number moves off the button and onto the volume idrow
            (see meshVolRowHtml()/decorateMeshVolButtons()), and the button itself is hidden right
@@ -7281,8 +7281,8 @@ document.addEventListener("click",(e)=>{
      baked-in attribute alone goes stale after a community report resolves. */
   const liveCellType=(btn.dataset.followLive==="1"&&typeof CUR_CELLTYPE_DISPLAY!=="undefined"&&CUR_CELLTYPE_DISPLAY)?CUR_CELLTYPE_DISPLAY:btn.dataset.celltype;
   const task=extrasForButton(btn.dataset.nucid||"",rootId).then(function(dlExtras){
-    return isPptx?MeshDL.downloadRootPptx(rootId,liveCellType,btn.dataset.coords,(frac,msg)=>{btn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,dlExtras)
-                 :MeshDL.downloadRoot(rootId,(frac,msg)=>{btn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,dlExtras);
+    return isPptx?MeshDL.downloadRootPptx(rootId,liveCellType,btn.dataset.coords,(frac,msg)=>{UJ.busy(btn,frac,msg);},e.shiftKey,dlExtras)
+                 :MeshDL.downloadRoot(rootId,(frac,msg)=>{UJ.busy(btn,frac,msg);},e.shiftKey,dlExtras);
   });
   task.then(info=>{
       const vertStr=(info.vertices>=1000?(info.vertices/1000).toFixed(0)+"k":info.vertices)+" verts";
@@ -8973,7 +8973,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     const orig=checkBtn.textContent;checkBtn.disabled=true;typeSel.disabled=true;radiusEl.disabled=true;clusterEl.disabled=true;thresholdEl.disabled=true;
     try{
       const{results,totalFound,checked}=await computeCellContactsOfType(rootId0,i,label,radius,clusterNm/1000,thresholdNm/1000,function(frac,msg){
-        checkBtn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";
+        UJ.busy(checkBtn,frac,msg);
       });
       curRows=results;curThresholdNm=thresholdNm;
       const ccGate=maybeSaveCellContacts(nucleusId,rootId0,cellType,results,clusterNm/1000,thresholdNm/1000);
@@ -9776,7 +9776,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
       }
       const capped=allPoints.slice(0,maxSyn);
       const results=await computeTripartiteSynapses(capped,thresholdUm,radiusUm,function(frac,msg){
-        statusEl.textContent=(msg||"")+" "+Math.round(frac*100)+"%";
+        UJ.busy(statusEl,frac,msg);
       });
       curRows=results;curThresholdNm=Math.round(thresholdUm*1000);
       const nTri=results.filter(r=>r.tripartite).length;

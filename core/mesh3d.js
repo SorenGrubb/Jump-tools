@@ -33,7 +33,46 @@
    The cost of that discipline is the matrix maths and shaders below; the benefit is that nothing
    breaks because a CDN moved.
    ────────────────────────────────────────────────────────────────────────────────────────── */
+/* ── A LOADING LABEL THAT SAYS THE WHOLE NUMBER ────────────────────────────  2026-10-18
+   Søren, on δJump's "Show in 3D" button reading "fetching+decoding 33/4" -- the 22-character cut
+   had taken the rest of "33/412": *"it would be more useful with a loading (animated symbol if
+   possible) and then showing the whole number. This goes for all of the times fragments have to
+   be loaded."* UJ.busy(el, frac, msg) puts a turning ring and a short label in el: core/mesh.js's
+   "fetching+decoding 33/412…" becomes "fragments 33 / 412", any other "n/m" keeps its words and
+   gets the whole count, and a message with no count shows its percentage. The ring is made once
+   per element and only the label changes after that, so it turns smoothly through a long load.
+   Whoever started it puts the element's own text back when the work is done, which removes both.
+   Defined here because every tool that fetches a mesh loads this file (or, in ωJump, inlines it). */
 window.UJ = window.UJ || {};
+UJ.busyLabel = UJ.busyLabel || function(frac, msg){
+  var m = String(msg || "").replace(/[\u2026.]+$/, "").trim(), n = /(\d+)\s*\/\s*(\d+)/.exec(m);
+  if (n){
+    var lead = /fetching\+decoding/.test(m) ? (/edited/.test(m) ? "edited fragments" : "fragments")
+                                              : m.slice(0, n.index).replace(/[\s:]+$/, "");
+    return (lead ? lead + " " : "") + n[1] + " / " + n[2];
+  }
+  return (m || "loading") + (typeof frac === "number" && frac > 0 && frac < 1 ? " " + Math.round(frac * 100) + "%" : "");
+};
+UJ.busy = UJ.busy || function(el, frac, msg){
+  if (!el) return;
+  if (!document.getElementById("uj-busy-style")){
+    var st = document.createElement("style"); st.id = "uj-busy-style";
+    st.textContent = ".uj-spin{display:inline-block;width:.85em;height:.85em;margin-right:.45em;vertical-align:-.1em;"
+      + "border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:uj-spin .8s linear infinite}"
+      + "@keyframes uj-spin{to{transform:rotate(360deg)}}"
+      + ".uj-busy-t{font-variant-numeric:tabular-nums;white-space:nowrap}"
+      + "@media (prefers-reduced-motion:reduce){.uj-spin{animation-duration:2.4s}}";
+    document.head.appendChild(st);
+  }
+  var t = el.querySelector && el.querySelector(":scope > .uj-busy-t");
+  if (!t){
+    el.textContent = "";
+    var sp = document.createElement("span"); sp.className = "uj-spin"; sp.setAttribute("aria-hidden", "true");
+    t = document.createElement("span"); t.className = "uj-busy-t";
+    el.appendChild(sp); el.appendChild(t);
+  }
+  t.textContent = UJ.busyLabel(frac, msg);
+};
 UJ.mesh3d = (function(){
   "use strict";
 
@@ -1676,11 +1715,10 @@ UJ.mesh3d = (function(){
         if (btn.disabled) return;
         btn.disabled = true;
         var label = btn.textContent;
-        btn.textContent = "loading…";
+        UJ.busy(btn, 0, "loading");
         host.innerHTML = "<div class='m3d'><div class='m3d-note'>fetching the mesh…</div></div>";
         fetcher(root, function(frac, msg){
-          btn.textContent = msg ? String(msg).slice(0, 22)
-                                : "loading… " + Math.round((frac || 0) * 100) + "%";
+          UJ.busy(btn, frac, msg);
         }).then(function(m){
           var geo = prepare(m.positions, m.indices,
             { unitNm: o.unitNm === undefined ? 1000 : o.unitNm, extentNm: o.extentNm });

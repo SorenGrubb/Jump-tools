@@ -6806,6 +6806,8 @@ UJ.app = (function(){
        thing you are looking at. A percentage as well as a count, because "checking 2 of 6" moves
        once a minute on a cell of 116 fragments and a bar that does not move reads as a hang. */
     var say = function(msg, frac){
+      /* With the turning ring and the whole count (UJ.busy, core/mesh3d.js, 2026-10-18). */
+      if (window.UJ && UJ.busy){ UJ.busy(btn, frac == null ? null : frac, msg); return; }
       btn.textContent = msg + (frac == null ? "" : " " + Math.round(frac * 100) + "%");
     };
     /* Sub-progress WITHIN one cell. Each candidate is a hundred-odd fragment fetches, so a

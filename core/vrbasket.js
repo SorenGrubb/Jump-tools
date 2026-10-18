@@ -73,7 +73,14 @@ UJ.vrbasket = (function(){
     var list = load().filter(function(e){ return keyOf(e.ds, e.root) !== k; });
     save(list); return list;
   }
-  function clear(){ save([]); }
+  /* SEPARATE PER TOOL (2026-10-18, Søren in δJump: "It said 6 cells in the VR already, but they
+     were from uJump. I think we should keep them separate, or else it will be confusing.") One
+     stored list still, every entry carrying its dataset, but each tool sees, counts, opens and
+     clears only its own: mine() is the whole of what a tool shows. Clearing in δJump leaves
+     µJump's cells where they were. */
+  function isMine(e){ return (e.ds || "microns") === ds(); }
+  function mine(list){ return (list || load()).filter(isMine); }
+  function clear(){ save(load().filter(function(e){ return !isMine(e); })); }
   /* Add, or add TO: an entry already here keeps its label and gains the new extra root ids,
      synapses and marks (no duplicates). Returns {ok, added, merged}; ok is false when the browser
      refused to store it (localStorage is ~5 MB per site). */
@@ -110,15 +117,11 @@ UJ.vrbasket = (function(){
 
   /* The link vr.html understands. ds~root~nucleus~label, comma-separated, each part
      URI-encoded -- so a label with a comma or a tilde in it cannot break the list. */
-  /* ONE DATASET PER VIEWER (2026-10-17). The collection is shared by every tool, but vr.html shows
-     one volume at a time -- two volumes have unrelated coordinate frames -- so a tool opens the
-     viewer with ITS cells, and says which dataset (&ds=). The others wait for their own tool. */
-  function hereOf(list){
-    var all = list || load(), here = all.filter(function(e){ return (e.ds || "microns") === ds(); });
-    return here.length ? here : all;
-  }
+  /* ONE DATASET PER VIEWER (2026-10-17): vr.html shows one volume at a time -- two volumes have
+     unrelated coordinate frames -- so a tool opens the viewer with ITS cells and says which
+     dataset (&ds=). Since 2026-10-18 the other tools' cells are not even shown (see mine()). */
   function linkFor(list){
-    var here = hereOf(list), d = (here[0] && here[0].ds) || ds();
+    var here = mine(list), d = ds();
     var parts = here.map(function(e){
       return [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~");
     });
@@ -218,10 +221,10 @@ UJ.vrbasket = (function(){
     document.body.appendChild(pill); document.body.appendChild(tray);
     render(load());
   }
-  function render(list){
+  function render(all){
     if (!pill) return;
-    var nHere = list.filter(function(e){ return (e.ds || "microns") === ds(); }).length;
-    pill.textContent = "🥽 VR collection (" + (nHere && nHere < list.length ? nHere + " of " + list.length : list.length) + ")";
+    var list = mine(all);
+    pill.textContent = "🥽 VR collection (" + list.length + ")";
     pill.style.display = list.length || tracedOnly() ? "block" : "none";
     if (!list.length && !tracedOnly()){ tray.style.display = "none"; }
     if (tracedOnly()){
@@ -238,13 +241,9 @@ UJ.vrbasket = (function(){
       var pts = (e.syn && e.syn.length ? " · " + e.syn.length + " synapses" : "") +
                 (e.marks && e.marks.length ? " · " + e.marks.length + " points" : "");
       h += "<div class='vrb-row'><div><b title='" + esc(e.label) + "'>" + esc(e.label || "Cell") + "</b>" +
-           "<small>" + esc(e.root) + (e.ds !== ds() ? " · " + esc(e.ds) : "") + esc(pts) + "</small></div>" +
+           "<small>" + esc(e.root) + esc(pts) + "</small></div>" +
            "<button data-rm='" + esc(e.root) + "' data-ds='" + esc(e.ds) + "' title='Remove'>×</button></div>";
     });
-    var others = list.filter(function(e){ return (e.ds || "microns") !== ds(); }).length;
-    if (others && others < list.length)
-      h += "<div class='vrb-note'>" + others + " cell" + (others > 1 ? "s" : "") + " from other tools stay in the collection; " +
-           "the viewer opens one dataset at a time, so open " + (others > 1 ? "them" : "it") + " from " + (others > 1 ? "their" : "its") + " own tool.</div>";
     if (list.length > SOFT_MAX)
       h += "<div class='vrb-note vrb-warn'>More than " + SOFT_MAX + " cells may be too heavy for a standalone Quest 2.</div>";
     h += "<div class='vrb-acts'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +

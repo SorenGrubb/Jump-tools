@@ -2327,6 +2327,8 @@ function wireMeshButtons(i){
   if(!hasMesh(i)) return;   // buttons rendered disabled; nothing to wire
   const msg=document.getElementById("meshmsg");
   function prog(frac,text){
+    /* A turning ring and the whole fragment count (UJ.busy, core/mesh3d.js, 2026-10-18). */
+    if(window.UJ&&UJ.busy){ UJ.busy(msg,frac,text||"working"); return; }
     msg.textContent=(text||"working…")+(typeof frac==="number"?" ("+Math.round(frac*100)+"%)":"");
   }
   /* keepMsg: the volume button writes its OWN result into #meshmsg, and the generic "done."
@@ -2949,7 +2951,7 @@ function renderCellContactsPanel(el,known,i){
     try{
       const candidates=bjumpMeshedCandidates(i,k);
       const results=await computeBjumpCellContacts(rootId0,candidates,clusterNm/1000,thresholdNm/1000,function(frac,msg){
-        checkBtn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";
+        UJ.busy(checkBtn,frac,msg);
       });
       curRows=results;curThresholdNm=thresholdNm;
       const ccGate=maybeSaveBjumpCellContacts(BID[i],rootId0,cellType,results,clusterNm/1000,thresholdNm/1000);
