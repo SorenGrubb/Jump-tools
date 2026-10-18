@@ -1979,8 +1979,8 @@ function wireOrganelleForm(container,slug){
    of its own: any <button id="random…"> (Random example, Random unassigned / unclassified cell,
    Random community-identified cell, χJump's Random built / untouched) arms a watch on the cell
    card -- #cellPanelCard, or #panel in βJump and λJump. The first change to it within eight
-   seconds is the new cell arriving; then, if the card's top is not already on screen, the page
-   scrolls to it, and the card glows once so the eye finds it. A pick that found nothing (an
+   seconds is the new cell arriving; then, unless the card's top is already at the top of the
+   screen, the page scrolls it there, and the card glows once so the eye finds it. A pick that found nothing (an
    alert, no new cell) changes nothing, so nothing moves. */
 (function(){
   if (typeof document === "undefined" || window.__ujRandomScroll) return;
@@ -2003,7 +2003,9 @@ function wireOrganelleForm(container,slug){
   }
   function bring(el){
     var r = el.getBoundingClientRect();
-    if (r.top < 0 || r.top > window.innerHeight * 0.6){
+    /* Always to the card's top unless it is already there: "half way down the screen" (where it
+       landed on a phone) still reads as nothing having happened. */
+    if (r.top < 0 || r.top > 80){
       var y = window.pageYOffset + r.top - 12;
       try { window.scrollTo({ top: Math.max(0, y), behavior: "smooth" }); } catch (_e){ window.scrollTo(0, Math.max(0, y)); }
     }
