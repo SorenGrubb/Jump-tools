@@ -471,18 +471,20 @@ ctrl-shift-R.">build 2026-10-17 17:38</span></p>
   <!-- 2026-09-21 -- the card the other seven tools have: browsing first and always visible, the
        kind picker above the buttons, the coordinate box a fold, shut. Every id is kept. -->
   <div id="randomCellPanel">
-    <label for="randomTypeSelect">Browse a cell <span class="lab-note">&mdash; pick a kind and draw
-    an example, or take a random one</span></label>
+    <label for="randomTypeSelect">Browse a cell <span class="lab-note">&mdash; pick a kind to see or
+    review one, or build one nobody has worked on</span></label>
+    <!-- 2026-10-18, Søren: "For xJump I also want the same and I guess the nobody has worked on could
+         be 'Build'." Show · Review side by side, Build under them; ids unchanged. -->
     <div id="find-random">
-      <div class="row" style="gap:8px;margin-top:2px">
-        <select id="randomTypeSelect" style="flex:1 1 auto"></select>
-        <button type="button" class="idbtn" id="randomOfType" title="Good for learning what a cell type looks like &mdash; a new random example loads each click.">Random example</button>
+      <select id="randomTypeSelect" style="width:100%;margin-top:2px"></select>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button type="button" class="idbtn" id="randomOfType" style="flex:1 1 0" title="A random proofread cell of the chosen kind &mdash; a new one each click, for learning what it looks like">Show</button>
+        <button type="button" class="idbtn" id="randomBuilt" style="flex:1 1 0"
+          title="A random cell somebody assembled in this page, of the chosen kind &mdash; confirm, extend or challenge their assembly">Review</button>
       </div>
-      <button type="button" class="idbtn wide" id="randomUntouched" style="margin-top:10px"
-        title="A cell the Lee lab proofread that nobody here has extended or corrected yet — these are where your work is worth most">Random cell nobody has worked on &mdash; extend or correct it</button>
-      <p class="hint" id="randomCounts" style="margin:-2px 0 8px"></p>
-      <button type="button" class="idbtn wide" id="randomBuilt"
-        title="Jump to a cell somebody assembled in this page — useful for reviewing, confirming or challenging another person's assembly">Random community-built cell &mdash; review someone&rsquo;s assembly</button>
+      <button type="button" class="idbtn wide" id="randomUntouched" style="margin-top:8px"
+        title="A random proofread cell that nobody here has extended or corrected yet, of the chosen kind &mdash; these are where your work is worth most">Build</button>
+      <p class="hint" id="randomCounts" style="margin:4px 0 8px"></p>
       <button type="button" class="idbtn wide" id="randomUnassigned"
         title="A nucleus somebody marked in this volume that nobody has built a cell around yet — build one and the nucleus is joined to it automatically">Random unassigned cell</button>
     </div>
@@ -4618,9 +4620,8 @@ UJ.app = (function(){
     if (el("randomUnassigned")){
       el("randomUnassigned").disabled = free === 0;
       el("randomUnassigned").textContent = free
-        ? "Random unassigned cell — " + free.toLocaleString() + " marked nucle"
-          + (free === 1 ? "us" : "i") + " with no cell yet"
-        : "Random unassigned cell — none marked yet";
+        ? "Build from a marked nucleus — " + free.toLocaleString() + " waiting"
+        : "Build from a marked nucleus — none marked yet";
     }
   }
 
@@ -4635,9 +4636,11 @@ UJ.app = (function(){
   /* A proofread cell nobody here has extended yet. Drawn from the whole-cell seeds the store has
      never seen a key for -- so it answers "where is my work worth most" with a fact rather than a
      guess. */
+  /* The kind chosen in the dropdown, for Build and Review as for Show (2026-10-18). Empty = any. */
+  function chosenKind(){ var s = el("randomTypeSelect"); return s ? s.value : ""; }
   function showRandomUntouched(){
-    var touched = touchedSeeds();
-    var pool = seeds().filter(function(r){ return r.whole && !touched[r.key]; });
+    var touched = touchedSeeds(), kind = chosenKind();
+    var pool = seeds().filter(function(r){ return r.whole && !touched[r.key] && (!kind || r.type === kind); });
     if (!pool.length){
       say("find-msg", "Every proofread cell has been worked on. That is a first.", true); return;
     }
@@ -4651,9 +4654,21 @@ UJ.app = (function(){
     if (!STATE.cells.length){
       say("find-msg", "No cells have been built here yet — build the first one.", false); return;
     }
-    var c = STATE.cells[Math.floor(Math.random() * STATE.cells.length)];
-    var seed = X.isSeedKey(c.id)
-      ? seeds().filter(function(r){ return r.key === c.id; })[0] : null;
+    /* Of the chosen kind: a cell built on a proofread seed has the seed's kind; a cell built from
+       loose fragments counts when one of the names people gave it is the kind's own name. */
+    var kind = chosenKind(), label = kind ? String((X.seedTypes().filter(function(t){ return t.type === kind; })[0] || {}).label || kind).toLowerCase() : "";
+    var byKey = {}; seeds().forEach(function(r){ byKey[r.key] = r; });
+    var pool = STATE.cells.filter(function(c){
+      if (!kind) return true;
+      var s = X.isSeedKey(c.id) ? byKey[c.id] : null;
+      if (s) return s.type === kind;
+      return Object.keys(c.names || {}).some(function(n){ n = String(n).toLowerCase(); return n === kind || (label && n.indexOf(label) >= 0); });
+    });
+    if (!pool.length){
+      say("find-msg", "Nobody has built a cell of this kind here yet — use Build to start one.", false); return;
+    }
+    var c = pool[Math.floor(Math.random() * pool.length)];
+    var seed = X.isSeedKey(c.id) ? byKey[c.id] || null : null;
     if (seed) landOn(seed, "built on by somebody here");
     focusCell(c.id);
   }

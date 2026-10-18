@@ -584,14 +584,17 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      always visible, the type picker above the two random buttons; the coordinate box a fold,
      shut. Every id is ηJump's own, so nothing that reaches them had to change. -->
 <div id="randomCellPanel">
-<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type and draw an example, or take a random one</span></label>
-<div class="row" style="gap:8px;margin-top:2px">
-<select id="randomTypeSelect" style="flex:1 1 auto"></select>
-<button class="idbtn" id="randomOfType" title="Good for learning what a cell type looks like &mdash; a new random example loads each click.">Random example</button>
+<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type to see or review one, or identify a cell H01 could not type</span></label>
+<!-- 2026-10-18, Søren: "the others could also say show and identify, to be consistent ... For
+     all of them they could have a mouseover with details." Ids unchanged, so every handler and
+     core/panel.js's jump-to-the-card still finds them. -->
+<select id="randomTypeSelect" style="width:100%;margin-top:2px"></select>
+<div class="row" style="gap:8px;margin-top:8px">
+<button class="idbtn" id="randomOfType" style="flex:1 1 0" title="A random cell of the chosen type &mdash; a new one each click, for learning what the type looks like">Show</button>
+<button class="idbtn" id="randomCommunity" style="flex:1 1 0" title="A random cell the community has identified as the chosen type &mdash; confirm the call, or challenge it">Review</button>
 </div>
-<button class="idbtn" id="randomUnassigned" style="width:100%;margin:10px 0 8px" title="Cells H01 could not confidently type — these are where a community identification is worth most">Random unassigned cell &mdash; help identify one</button>
+<button class="idbtn" id="randomUnassigned" style="width:100%;margin:8px 0 8px" title="A random cell H01 could not confidently type, of any type &mdash; these are where a community identification is worth most">Identify</button>
 <p class="hint" id="unassignedCount" style="margin:-4px 0 8px"></p>
-<button class="idbtn" id="randomCommunity" style="width:100%;margin-bottom:8px" title="Jump to a cell someone has already identified — useful for reviewing, confirming or challenging another person's call">Random community-identified cell &mdash; review someone&rsquo;s call</button>
 </div>
 <details class="rv-panel" id="coordPanel">
 <summary>Or jump to a coordinate <span style="font-weight:400;color:var(--mut);font-size:12px">&mdash; in <span id="unitres"></span> voxels; jump to it in H01, identify the nearest cell body and its neighbours, and load the cell in 3D</span></summary>
@@ -3886,12 +3889,33 @@ function renderContactRows(i,rows,thresholdNm,clusterNm){
     fail(""); jumpToIndex(i);
   });
   const rc=$("randomCommunity");
+  /* REVIEW, BY TYPE (2026-10-18): a cell the community has identified as the type chosen above.
+     The identities are the same consensus records the cell card shows (fetchHjumpIdentities); a
+     record counts for an H01 type through H01_EQUIV (the tree's leaf → H01's classes), for
+     microglia / OPC through h01SplitFor, and for a cell H01 never listed by its own name. The old
+     "Random community-identified cell" read d.allIds, a field ?allIds=1 has never returned, so it
+     could only ever say nobody had identified anything. */
+  function identityIsType(name,t){
+    const n=String(name||"").trim().toLowerCase(); if(!n||!t) return false;
+    if(String(t).indexOf(ADDED_POOL)===0) return n===String(t).slice(ADDED_POOL.length).trim().toLowerCase();
+    const split=h01SplitFor(name); if(split) return split===t;
+    for(const slug in LEAF_NAMES){
+      const d=String(LEAF_NAMES[slug]);
+      let c=""; try{ c=(typeof canonSubmitName==="function")?String(canonSubmitName(d)):""; }catch(_e){}
+      if(d.toLowerCase()===n||c.toLowerCase()===n) return (H01_EQUIV[slug]||[]).indexOf(t)>=0;
+    }
+    return n===String(t).toLowerCase()||n===String(poolLabel(t)).toLowerCase();
+  }
   if(rc) rc.addEventListener("click",function(){
+    const t=($("randomTypeSelect")||{}).value;
+    if(!t){ fail("Pick a cell type first."); return; }
     rc.disabled=true; const old=rc.textContent; rc.textContent="looking…";
-    loadCommunityIdentified(function(list){
+    fetchHjumpIdentities().then(function(){
       rc.disabled=false; rc.textContent=old;
-      if(!list.length){ fail("No community identifications on file yet — be the first."); return; }
-      fail(""); jumpToIndex(pickRandom(list));
+      const pool=[];
+      for(let i=0;i<N;i++){ const id=hjumpIdentityOf(i); if(id&&identityIsType(id,t)) pool.push(i); }
+      if(!pool.length){ fail("Nobody has identified a cell as "+poolLabel(t)+" yet. Use Identify to name one."); return; }
+      fail(""); jumpToIndex(pickRandom(pool));
     });
   });
   renderRandomTypeSelect();

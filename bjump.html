@@ -518,18 +518,21 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      the picker above the button, the same way µJump has it. -->
 <div id="randomCellPanel">
 <label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick an identity the community has given, or take one nobody has named</span></label>
-<div class="row" style="gap:8px;margin-top:2px">
-<select id="randomTypeSelect" style="flex:1 1 auto"></select>
-<button class="idbtn" id="randomOfType" title="Great for learning what an identity looks like on this dataset — a new random example loads each click.">Random example</button>
+<!-- 2026-10-18, Søren: "the others could also say show and identify, to be consistent ... For
+     all of them they could have a mouseover with details." Ids unchanged, so every handler and
+     core/panel.js's jump-to-the-card still finds them. -->
+<select id="randomTypeSelect" style="width:100%;margin-top:2px"></select>
+<div class="row" style="gap:8px;margin-top:8px;margin-bottom:8px">
+<button class="idbtn" id="randomOfType" style="flex:1 1 0" title="A random cell the community has given the chosen identity &mdash; a new one each click, for learning what it looks like on this dataset">Show</button>
+<button class="idbtn" id="randomUnclassified" style="flex:1 1 0" title="A random cell nobody has named yet &mdash; help identify it">Identify</button>
 </div>
-<button class="idbtn" id="randomUnclassified" style="width:100%;margin-bottom:8px;margin-top:10px">Random unidentified cell &mdash; help identify one</button>
 <p class="hint" id="unclCount" style="margin-top:-4px;margin-bottom:2px"></p>
 <!-- The tool's own "Show me a random nucleus", moved up from inside the paste hint. It was a
      browsing control living in the coordinate box, and once that box folds shut it was a browsing
      control you could not see. Three ways to draw a cell now sit together: one of this identity,
      one nobody has named, or any at all. The element is moved, not rewritten -- same id, same
      listener, wherever that is wired. -->
-<div style="margin-top:6px"><button id="rand" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font:inherit">Show me a random nucleus</button></div>
+<div style="margin-top:6px"><button id="rand" title="Any nucleus at all, named or not" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font:inherit">Show me a random nucleus</button></div>
 </div>
 <!-- SHUT BY DEFAULT, 2026-09-20 (Søren: "the coordinate should be expandable and
      hidden by default"). Its old <label> is the summary -- keeping both would put the
