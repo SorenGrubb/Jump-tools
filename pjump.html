@@ -788,14 +788,19 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
      and the buttons are two ways of not choosing. The id is kept so nothing that refers
      to this block has to be found and changed. -->
 <div id="randomCellPanel">
-<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type and draw an example, or take a random one</span></label>
-<div class="row" style="gap:8px;margin-top:2px">
-<select id="randomTypeSelect" style="flex:1 1 auto"></select>
-<button class="idbtn" id="randomOfType" title="Great for learning what a cell type looks like (a new random example loads each click), or for quickly finding a cell that still needs a first identification.">Random example</button>
+<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type to see or review one, or identify a cell nobody has named</span></label>
+<select id="randomTypeSelect" style="width:100%;margin-top:2px"></select>
+<!-- 2026-10-18, Søren: "I think we could have the community identified button next to the random
+     example. Instead of random example, it should be "Show" and instead of community identified it
+     should be "review" and load a cell identified as the cell type chosen in the dropdown menu, and
+     instead of random unassigned it should be "Identify"." The ids are unchanged, so every handler,
+     check and core/panel.js's jump-to-the-card still finds them. -->
+<div class="row" style="gap:8px;margin-top:8px">
+<button class="idbtn" id="randomOfType" style="flex:1 1 0" title="A random cell of the chosen type &mdash; a new one each click, for learning what the type looks like">Show</button>
+<button class="idbtn" id="randomCommunityId" style="flex:1 1 0" title="A random cell the community has identified as the chosen type &mdash; confirm the call, or challenge it">Review</button>
 </div>
-<button class="idbtn" id="randomUnclassified" style="width:100%;margin-bottom:8px;margin-top:10px">Random unassigned cell &mdash; help identify one</button>
+<button class="idbtn" id="randomUnclassified" style="width:100%;margin-top:8px;margin-bottom:8px" title="A random cell that nobody has named yet, of any type &mdash; help identify it">Identify</button>
 <p class="hint" id="unclCount" style="margin-top:-4px;margin-bottom:8px"></p>
-<button class="idbtn" id="randomCommunityId" style="width:100%;margin-bottom:8px" title="Jump to a random cell that MICrONS never predicted but the community has since identified — useful for reviewing, confirming or challenging other people's calls">Random community-identified cell &mdash; review someone's call</button>
 </div>
 <!-- SHUT BY DEFAULT, 2026-09-20 (Søren: "the coordinate should be expandable and hidden
      by default"). Remembered by the same persistDetailsOpen the panels below it use.
@@ -4181,11 +4186,17 @@ if(randomCommunityIdBtn)randomCommunityIdBtn.addEventListener("click",async()=>{
   if(!window.pickCommunityIdentifiedIndex)return;
   const orig=randomCommunityIdBtn.textContent;
   randomCommunityIdBtn.disabled=true;randomCommunityIdBtn.textContent="Finding one…";
+  /* Review: a cell the community has identified as the type in the dropdown (pickCommunityOfType). */
+  const sel=randomTypeSelect?randomTypeSelect.value:null;
+  const pool=sel?(window.RAND_POOLS||{})[sel]:null;
+  const opt=randomTypeSelect&&randomTypeSelect.selectedOptions[0];
+  const label=(pool&&pool.label)||(opt?String(opt.textContent).replace(/\s*\(\d[\d,]*\)\s*$/,""):"");
+  if(!label||!window.pickCommunityOfType){randomCommunityIdBtn.disabled=false;randomCommunityIdBtn.textContent=orig;alert("Pick a cell type first.");return;}
   let i=-2;
-  try{i=await window.pickCommunityIdentifiedIndex();}catch(_){i=-2;}
+  try{i=await window.pickCommunityOfType(label);}catch(_){i=-2;}
   randomCommunityIdBtn.disabled=false;randomCommunityIdBtn.textContent=orig;
-  if(i===-2){alert("Couldn't reach the list of community reports (REPORT_ENDPOINT missing or unreachable), so there's no way to tell which cells have been identified.");return;}
-  if(i===-1){alert("No community-identified cells yet — every cell the community has named will show up here. Use \"Random unassigned cell\" to name the first one.");return;}
+  if(i===-2){alert("Couldn't reach the list of community reports, so there's no way to tell which cells have been identified.");return;}
+  if(i===-1){alert("Nobody has identified a cell as "+label+" yet. Use Identify to name one.");return;}
   jumpToNucleusIndex(i);
 });
 const randomOfTypeBtn=document.getElementById("randomOfType");
@@ -10893,6 +10904,34 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     const t=unclassifiedTotals();
     const pool=[];
     for(let k=0;k<t.unverifiedIds.length;k++)if(rep.ids.has(t.unverifiedIds[k]))pool.push(t.unverifiedIdx[k]);
+    if(!pool.length)return -1;
+    return pool[Math.floor(Math.random()*pool.length)];
+  };
+  /* REVIEW, BY TYPE (2026-10-18). The cells somebody has identified as the type chosen in the
+     dropdown -- any cell, predicted or not, because a community call on a predicted cell is just as
+     much a call to confirm or challenge. A report counts when its identity is the type's own name,
+     the same name through longName() ("oligo" → "Oligodendrocyte"), the same code in brackets
+     ("23P"), or a qualified form of it ("Mural cell - Pericyte"). -2: the report list could not
+     be reached; -1: nobody has called a cell this type yet. */
+  window.pickCommunityOfType=async function(label){
+    const rep=await fetchAllReports();
+    if(!rep)return -2;
+    const norm=s=>String(s||"").toLowerCase().replace(/\s+/g," ").trim();
+    const code=s=>{const m=/\(([^)]+)\)\s*$/.exec(String(s||""));return m?m[1].toLowerCase():"";};
+    const L=norm(label),LC=code(label);
+    const same=r=>{
+      const R=norm(r);if(!R)return false;
+      if(R===L)return true;
+      try{if(typeof longName==="function"&&norm(longName(r))===L)return true;}catch(_e){}
+      if(LC&&(R===LC||code(r)===LC))return true;
+      return R.endsWith(" - "+L);
+    };
+    if(!window.__NID_INDEX){const m=new Map();for(let i=0;i<N;i++)m.set(String(NID[i]),i);window.__NID_INDEX=m;}
+    const pool=[];
+    rep.byNucleus.forEach((list,nid)=>{
+      if(!Array.isArray(list))return;
+      if(list.some(x=>x&&!x.notNucleus&&same(x.identified))){const i=window.__NID_INDEX.get(String(nid));if(i!=null)pool.push(i);}
+    });
     if(!pool.length)return -1;
     return pool[Math.floor(Math.random()*pool.length)];
   };

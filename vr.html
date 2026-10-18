@@ -41,6 +41,17 @@
   .row .st{font-size:11px;color:var(--mut)}
   .row .st.err{color:#f0883e}
   .ctl{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  /* LOADING CARD (2026-10-18): in the middle of the view while cells arrive -- see section 3b. */
+  #loadCard{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;pointer-events:none;
+    min-width:min(300px,calc(100vw - 48px));max-width:calc(100vw - 32px);padding:14px 18px;border-radius:12px;
+    background:rgba(13,17,23,.86);border:1px solid #30363d;color:#e6edf3;font:14px system-ui,sans-serif;
+    box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  #loadCard .lcRow{display:flex;align-items:center;gap:10px;font-weight:600}
+  #loadCard .lcSpin{width:18px;height:18px;border:2.5px solid #3fb950;border-right-color:transparent;border-radius:50%;animation:lcspin .8s linear infinite;flex:none}
+  @keyframes lcspin{to{transform:rotate(360deg)}}
+  #lcLine{color:#8b949e;font-size:13px;margin:6px 0 9px 28px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #loadCard .lcBar{height:4px;border-radius:2px;background:#30363d;overflow:hidden;margin-left:28px}
+  #loadCard .lcBar i{display:block;height:100%;width:0;background:#3fb950;transition:width .25s ease}
   button,select{font:inherit;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid var(--line);
     background:transparent;color:inherit;padding:5px 9px}
   button.on{background:var(--accent);color:#0d1117;border-color:var(--accent)}
@@ -126,6 +137,8 @@
 </head>
 <body>
 <div id="view"></div>
+<div id="loadCard" aria-live="polite" style="display:none"><div class="lcRow"><span class="lcSpin"></span><span id="lcHead">Loading…</span></div>
+  <div id="lcLine"></div><div class="lcBar"><i id="lcFill"></i></div></div>
 <button id="show">☰ Cells</button>
 <div id="keysCard" title="Click (or press H) to fold this away">
   <div class="t"><b>Keys</b></div>
@@ -1150,7 +1163,39 @@ function addActivityAttributes(g){
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
    "bring in the neighbours", which adds cells to a scene that is already standing. */
+/* ── 3b. THE LOADING CARD ──────────────────────────────────────────────────  2026-10-18
+   Søren, after waiting for a big V1DD neuron on his phone: "it took a long time. The user has no
+   idea how long, we need a loading animation or something to avoid confusion." The per-cell
+   status lives in the cell list, which is folded away on a phone. So while any cell is being
+   fetched a card sits in the middle of the view: a turning ring, "Loading cell 2 of 6 · <name>",
+   the fragment count as core/mesh.js reports it ("fragments 33 / 412") and a bar for the whole
+   collection. In the headset the same words replace the label above the collection. */
+const LOADUI = { busy: 0, cur: null, f: 0, msg: "", t: 0 };
+function loadUiText(f, msg){
+  const m = String(msg || "").replace(/[\u2026.]+$/, "").trim(), n = /(\d+)\s*\/\s*(\d+)/.exec(m);
+  if (n) return (/fetching\+decoding/.test(m) ? (/edited/.test(m) ? "edited fragments" : "fragments") : m.slice(0, n.index).trim()) + " " + n[1] + " / " + n[2];
+  return (m || "fetching the mesh") + (f > 0 && f < 1 ? " · " + Math.round(f * 100) + "%" : "");
+}
+function loadUi(c, f, msg){
+  LOADUI.cur = c; LOADUI.f = f || 0; if (msg != null) LOADUI.msg = msg;
+  const card = document.getElementById("loadCard");
+  if (!LOADUI.busy){ card.style.display = "none"; return; }
+  const total = CELLS.length || 1, ready = CELLS.filter(x => x.mesh || x.nucMesh || x.err).length;
+  const k = Math.min(total, ready + 1);
+  card.style.display = "block";
+  document.getElementById("lcHead").textContent = total > 1 ? "Loading cell " + k + " of " + total : "Loading the cell";
+  document.getElementById("lcLine").textContent = (c ? shortName(c) + " · " : "") + loadUiText(LOADUI.f, LOADUI.msg);
+  document.getElementById("lcFill").style.width = Math.round(100 * Math.min(1, (ready + Math.min(1, LOADUI.f)) / total)) + "%";
+  /* The label in the room, at most four times a second (it is a canvas texture). */
+  const now = performance.now();
+  if (now - LOADUI.t > 250){ LOADUI.t = now; try { updateLabel(); } catch (e){} }
+}
 async function loadOne(c, token, light){
+  LOADUI.busy++; loadUi(c, 0, "starting");
+  try { return await loadOneInner(c, token, light); }
+  finally { LOADUI.busy = Math.max(0, LOADUI.busy - 1); LOADUI.msg = ""; loadUi(null, 0); if (!LOADUI.busy) try { updateLabel(); } catch (e){} }
+}
+async function loadOneInner(c, token, light){
   const ds = VR_DATASETS[c.ds];
   if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); return false; }
   if (ds !== DSX){ c.err = true; c.status = "from " + ds.label + " — this viewer is showing " + DSX.label + "; open that tool's VR collection for it"; renderList(); return false; }
@@ -1169,6 +1214,7 @@ async function loadOne(c, token, light){
     const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
       const s = (msg || "") + " " + Math.round(f * 100) + "%";
       if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
+      loadUi(c, f, msg);
     }, false, extras, light);
     if (token !== LOAD_TOKEN) return false;
     c.extraUsed = extras; c.graph = null;
@@ -4212,7 +4258,8 @@ let label = null;
 function updateLabel(){
   if (label){ scene.remove(label); label.material.map.dispose(); label.material.dispose(); label = null; }
   const c = CELLS[SELECTED];
-  const lines = c ? [c.label, (c.root ? "root " + c.root : "traced cell") + (c.nuc ? " · nucleus " + c.nuc : "") + (c.area != null && ATLAS.data ? " · " + areaName(c.area) : "")]
+  const lines = LOADUI.busy ? [document.getElementById("lcHead").textContent + "…", document.getElementById("lcLine").textContent]
+              : c ? [c.label, (c.root ? "root " + c.root : "traced cell") + (c.nuc ? " · nucleus " + c.nuc : "") + (c.area != null && ATLAS.data ? " · " + areaName(c.area) : "")]
                   : [CELLS.length + " cells — " + (VR_DATASETS[(CELLS[0] || {}).ds] || {}).label, "Trigger on a cell to pick it"];
   label = textSprite(lines, { border: c ? c.colour : "#30363d" });
   scene.add(label);
