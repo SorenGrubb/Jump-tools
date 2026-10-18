@@ -34,6 +34,12 @@ WHAT MOVES WHERE
     Segment cells & organelles online   all eight (the tracing pad)
   "Hand-verified layers & vasculature" is dropped, as asked.
 
+"33 cell types to choose from" (2026-10-18, replacing "16 cell classes", which counted the
+  labels of the Allen metamodel table embedded in µJump): the end points of µJump's guided-ID tree
+  in core/ontology.js -- 33 reachable leaves. The three pericyte subtypes are asked but recorded as
+  "Pericyte" (LEAF_SUBMIT_CANON), and the generic excitatory/inhibitory fallbacks are no longer
+  offered, so neither adds to the count.
+
 Idempotent: a card already rewritten (it has a .vf line in its figure) is left alone.
 """
 import re, sys, io
@@ -75,7 +81,7 @@ FEAT = {
 CARDS = [
   # href, volume caption (as it stands), extent, voxel, chips
   ("/ujump.html", u"1.7 &times; 1.4 &times; 0.5" + MM, u"4 &times; 4 &times; 40" + NM,
-   [u"MICrONS", u"Mouse visual cortex", u"144,118 nuclei", pct(94008, 144118) + u" classified", u"16 cell classes",
+   [u"MICrONS", u"Mouse visual cortex", u"144,118 nuclei", pct(94008, 144118) + u" classified", u"33 cell types to choose from",
     FEAT["conn"], FEAT["vr"], FEAT["seg"], FEAT["mesh"]]),
   ("/djump.html", u"1.8 &times; 1.1 &times; 0.8" + MM, u"9 &times; 9 &times; 45" + NM,
    [u"Allen Institute V1DD", u"Mouse visual cortex", u"207,455 nuclei", pct(48077, 207455) + u" classified",

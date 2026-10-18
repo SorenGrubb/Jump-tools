@@ -7662,7 +7662,10 @@ function wireTracing(){
   if(!sel)return;
   /* The same cell names the identification tree offers, so a traced astrocyte is the same word as
      a detected one and lands in the same Blender collection. */
-  const names=(typeof LEAF_NAMES!=="undefined")?Object.keys(LEAF_NAMES).map(function(k){
+  /* Only what the dataset's tree can still give (2026-10-18): core/tree.js's leafHidden() drops the
+     retired generic neuron leaves and the dataset's own excludeLeaves, where that file is loaded. */
+  const names=(typeof LEAF_NAMES!=="undefined")?Object.keys(LEAF_NAMES).filter(function(k){
+    return !(typeof leafHidden==="function"&&leafHidden(k));}).map(function(k){
     return {v:LEAF_NAMES[k],l:LEAF_NAMES[k]};}):[];
   names.sort(function(a,b){return a.l<b.l?-1:1;});
   sel.innerHTML='<option value="traced">(no cell type)</option>'

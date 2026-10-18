@@ -26,6 +26,8 @@
      startNode  the tree node the first question comes from  (default "q2")
      modal      true  → the panel is an overlay: toggle .show and scrollIntoView on open
                 false → the panel is inline: never touched, never scrolled  (default true)
+     excludeLeaves  slugs this dataset's search and lists must never offer
+     keepLeaves     retired slugs this dataset still offers (see RETIRED_LEAVES below)
 
    HOST CONTRACT: escHtml, TREE + LEAF_NAMES (core/ontology.js), and a global renderResult(slug).
    A host with no renderResult gets a legible message in the panel rather than a thrown error. */
@@ -36,6 +38,23 @@ UJ.tree.BUILD = "2026-08-18 stage-P3";
 function treeCfg(){
   try{ return (UJ&&UJ.cfg&&UJ.cfg.tree)||{}; }catch(_e){ return {}; }
 }
+/* ── RETIRED LEAVES ─────────────────────────────────────────────────────────  2026-10-18
+   "Excitatory neuron" and "Inhibitory neuron" were taken out of the tree as answers (they were the
+   "can't resolve the subtype" escape hatch -- see ujump-decision-tree-generic-leaf-removal), but
+   they stayed in LEAF_NAMES so older submissions still display. Søren, on finding that the card's
+   "33 cell types to choose from" was still contradicted by the "jump straight there" search and
+   the tracing card's cell-type list: *"Ok, tidy that"*. So every place that OFFERS a leaf asks
+   leafHidden() first: retired slugs are hidden everywhere, a dataset's own excludeLeaves too.
+   A dataset where these two ARE published classes says so with keepLeaves -- πJump, where 396 of
+   456 pinky100 cells are classified exactly "excitatory neuron" / "inhibitory neuron". */
+const RETIRED_LEAVES = ["excitatory_neuron", "inhibitory_neuron"];
+function leafHidden(slug){
+  const c = treeCfg();
+  if ((c.keepLeaves || []).indexOf(slug) >= 0) return false;
+  if (RETIRED_LEAVES.indexOf(slug) >= 0) return true;
+  return (c.excludeLeaves || []).indexOf(slug) >= 0;
+}
+UJ.tree.leafHidden = leafHidden;
 function treePanel(){ return document.getElementById(treeCfg().panelId||"idfpanel"); }
 /* Two halves of "open the panel", split so the inline case can opt out of both. µJump's
    #idfpanel is display:none until .show is added; βJump's #idbox is always in the flow, and
@@ -208,9 +227,8 @@ function openLocationOnlyReport(pos){
 function searchLeaves(query){
   const q=query.trim().toLowerCase();
   if(!q)return[];
-  const excluded=(typeof UJ!=="undefined"&&UJ.cfg&&UJ.cfg.tree&&UJ.cfg.tree.excludeLeaves)||null;
   return Object.keys(LEAF_NAMES).filter(slug=>{
-    if(excluded&&excluded.indexOf(slug)>=0)return false;
+    if(leafHidden(slug))return false;
     return LEAF_NAMES[slug].toLowerCase().includes(q);
   }).slice(0,8);
 }

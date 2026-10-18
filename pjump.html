@@ -528,6 +528,11 @@ UJ.cfg.backend = {
    out of that file's own CFG in stage 1 so hJump can point the same pipeline at H01's c3 meshes
    by changing only this object. loadInfo() overwrites the sharding fields at runtime from the
    bucket's info file, which stays authoritative. */
+/* "Excitatory neuron" / "Inhibitory neuron" are pinky100's own published classes (396 of 456
+   cells), not the retired "can't resolve the subtype" answers they are in µJump's tree -- so πJump
+   keeps offering them in the leaf search and the tracing card (core/tree.js, RETIRED_LEAVES). */
+UJ.cfg.tree = Object.assign(UJ.cfg.tree || {}, { keepLeaves: ["excitatory_neuron", "inhibitory_neuron"] });
+
 UJ.cfg.mesh = {
   /* Its own, not core/mesh.js's shared default. Five tools were writing one list of
      "roots with no mesh", and an id absent from one volume is a real id in the next —

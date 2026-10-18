@@ -3244,7 +3244,8 @@ function loadCommunityIdentified(cb){
 function searchLeaves(q){
   q=String(q||"").trim().toLowerCase();
   if(!q)return[];
-  return Object.keys(LEAF_NAMES).filter(function(s){ return LEAF_NAMES[s].toLowerCase().indexOf(q)>=0; }).slice(0,8);
+  /* leafHidden (core/tree.js): the retired generic neuron leaves are not offered here either. */
+  return Object.keys(LEAF_NAMES).filter(function(s){ return !(typeof leafHidden==="function"&&leafHidden(s)) && LEAF_NAMES[s].toLowerCase().indexOf(q)>=0; }).slice(0,8);
 }
 function leafSearchHtml(idPrefix,label){
   return '<div class="leaf-search"><label style="display:block;font-size:11px;text-transform:uppercase;'
