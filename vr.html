@@ -2864,11 +2864,11 @@ function clearVm(c){ const a = c.mesh && c.mesh.geometry.attributes.vm; if (a){ 
 
 function resetActivity(){
   if (STIM.warn){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
-  STIM.events = []; STIM.now = 0; STIM.running = false; STIM.spikes = 0; AP_UNI.apNow.value = -1e9;
+  STIM.events = []; STIM.now = 0; STIM.running = false; STIM.spikes = 0; STIM.extox = 0; AP_UNI.apNow.value = -1e9;
   STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.logRows = 0; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
     const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
-    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.log = null; c.refrNoted = false; c.spikesAt = null; }
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.log = null; c.refrNoted = false; c.spikesAt = null; c.extox = null; c.depolSince = null; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
   clearSiteTags();
   CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
@@ -3216,7 +3216,12 @@ function drawPlot(c){
   g.font = "600 34px system-ui, sans-serif"; g.fillStyle = "#e6edf3";
   g.fillText(shortName(c) + "  ·  " + GAIN_NAME[String(stimGain())], 22, 42, W - 44);
   g.font = "30px system-ui, sans-serif";
-  if (!PLOT_SHOW.vm){
+  if (c.extox){
+    /* The warning takes the readout's line: it is the more important sentence. */
+    g.fillStyle = "rgba(255,123,57,0.16)"; g.fillRect(10, 52, W - 20, 34);
+    g.fillStyle = "#ff7b39"; g.font = "600 26px system-ui, sans-serif";
+    g.fillText("⚠ Excitotoxic if sustained — " + c.extox.why, 22, 77, W - 44); g.font = "30px system-ui, sans-serif";
+  } else if (!PLOT_SHOW.vm){
     g.fillStyle = "#7dffa6";
     if (showC) g.fillText("Ca²⁺ at the soma " + Math.round(caApAt(c, STIM.now)) + " nM · " + (c.spikesAt ? c.spikesAt.length : 0) + " spike" + ((c.spikesAt || []).length === 1 ? "" : "s"), 22, 76, W - 44);
     else { g.fillStyle = "#c9d1d9"; g.fillText("Synapse sites (EPSP / IPSP)", 22, 76); }
@@ -3263,6 +3268,38 @@ function drawPlot(c){
   P.tex.needsUpdate = true;
 }
 /* The Ca²⁺ strip: free Ca²⁺ at the soma over the same 40 ms window, in nM. */
+/* EXCITOTOXIC IF SUSTAINED (v63, 2026-10-19, Søren: "there should be a warning when the stimulation
+   becomes excitotoxic"). Excitotoxicity is Ca²⁺ overload from runaway excitation -- mainly through
+   NMDA receptors -- and in tissue it kills over minutes to hours, so no 40 ms of this model can BE
+   excitotoxic. What it can do is show the pattern that would be if kept up, and say so once per cell
+   per run. Three signs, any one enough:
+     · free Ca²⁺ at the soma above 1 µM (the AP-evoked model, v62 -- about five spikes close together);
+     · the soma held above −25 mV (depolarisation block) for 20 ms or more;
+     · firing above 100 Hz -- 10 spikes or more in the last 100 ms.
+   The thresholds are teaching thresholds, chosen to mark the regime, not measured death points. */
+const EXTOX = { caNM: 1000, depolV: -25, depolMs: 20, nSpikes: 10, winMs: 100 };
+function excitoCheck(now){
+  for (const c of STIM.active || []){
+    if (c.extox || cellClass(c) === "glia" || !c.mesh) continue;
+    const soma = somaNode(c, -1); if (soma < 0) continue;
+    const v = vmAt(c, soma, now);
+    if (v > EXTOX.depolV){ if (c.depolSince == null) c.depolSince = now; } else c.depolSince = null;
+    const ca = caApAt(c, now), recent = (c.spikesAt || []).filter(t => now - t <= EXTOX.winMs).length;
+    let why = "";
+    if (ca >= EXTOX.caNM) why = "free Ca²⁺ at the soma " + (ca / 1000).toFixed(1) + " µM (above " + (EXTOX.caNM / 1000) + " µM)";
+    else if (c.depolSince != null && now - c.depolSince >= EXTOX.depolMs) why = "soma held above −25 mV for " + Math.round(now - c.depolSince) + " ms";
+    else if (recent >= EXTOX.nSpikes) why = "firing at " + Math.round(recent * 1000 / EXTOX.winMs) + " Hz";
+    if (!why) continue;
+    c.extox = { t: now, why };
+    STIM.extox = (STIM.extox || 0) + 1;
+    const msg = ["⚠ Excitotoxic if sustained: " + shortName(c), why + ".",
+                 "In tissue, Ca²⁺ overload from runaway excitation (mainly via NMDA receptors) kills neurons over minutes to hours.",
+                 "Lower the input strength, stimulate less often, or break the loop."];
+    ctxNote.textContent = msg.join(" ");
+    flashWarn(msg, 9000, "#ff7b39");
+    if (c.plot) drawPlot(c);
+  }
+}
 function drawCaStrip(c, g, L, R, W, cT, cH, tr){
   const t0 = STIM.now - VM.window, n = 120;
   let hi = 400; for (let i = 0; i <= n; i++) hi = Math.max(hi, caApAt(c, t0 + VM.window * i / n));
@@ -3391,12 +3428,14 @@ function runSummary(){
     if (w.fired){
       /* A cell that fired again and again: name the loop that kept it going. */
       const loop = Object.keys(w.from || {}).filter(p => STIM.why[p] && STIM.why[p].from && STIM.why[p].from[k] && STIM.why[p].fired).map(p => CELLS[p]).filter(Boolean);
+      if (c.extox) lines.push("⚠ " + shortName(c) + ": excitotoxic if sustained — " + c.extox.why + " at t = " + c.extox.t.toFixed(1) + " ms.");
       lines.push("✓ " + shortName(c) + " fired " + w.fired + "× (" + ins + ")"
         + (w.fired > 2 && loop.length ? " — in a loop with " + loop.slice(0, 3).map(shortName).join(", ") + ": each excites the other." : "")
         + (w.reasons.block ? " Then it went into depolarisation block: held above −25 mV, it could not fire again until it repolarised." : ""));
       continue;
     }
     let msg = "✗ " + shortName(c) + ": " + ins;
+    if (c.extox) msg += " ⚠ Excitotoxic if sustained — " + c.extox.why + ".";
     if (w.reasons.glia || w.reasons.off || w.reasons.hidden || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
     else if (w.reasons.psp) msg += " — PSP-only mode: synapses never fire the next cell.";
     else {
@@ -3454,6 +3493,7 @@ function stimFrame(dt){
     STIM.now += step / n;
     while (STIM.events.length && STIM.events[0].t <= STIM.now){ const e = STIM.events.shift(); if (e.syn) deliver(e.syn, e.t); }
     for (const c of STIM.active){ checkCell(c, STIM.now); sampleCell(c, STIM.now); }
+    excitoCheck(STIM.now);
   }
   AP_UNI.apNow.value = STIM.now;
   /* Membrane colours, a few times a second. */
@@ -7133,7 +7173,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
