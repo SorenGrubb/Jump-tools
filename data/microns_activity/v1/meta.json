@@ -1,0 +1,99 @@
+{
+ "version": 1,
+ "made": "2026-10-19",
+ "source": "DANDI:000402 (MICrONS Two Photon Functional Imaging), CC-BY-4.0",
+ "coregistration": "coregistration_manual_v4",
+ "what": "Mean response to the 6 oracle clips (10 repeats each), robust z-score of the raw fluorescence (median/MAD over the whole scan), resampled on a common grid around each clip start.",
+ "grid": {
+  "from": -1.0,
+  "to": 10.0,
+  "step": 0.1,
+  "n": 111
+ },
+ "quant": {
+  "offset": -2.0,
+  "step": 0.05,
+  "dtype": "uint8"
+ },
+ "clips": [
+  {
+   "hash": "5zQTb77qI+ig8rigx1XU",
+   "movie": "Mad Max: Fury Road (2015)",
+   "kind": "Cinematic",
+   "duration": 9.967,
+   "movie_start": 0.0
+  },
+  {
+   "hash": "7UETOWO5Z8aWuHDBJ2GG",
+   "movie": "Star Wars: Episode VII - The Force Awakens (2015)",
+   "kind": "Cinematic",
+   "duration": 9.967,
+   "movie_start": 9.967
+  },
+  {
+   "hash": "GjCMo2GkJp6y5vricadg",
+   "movie": "americandiner_005-1-5-70-0_54.165.28.255",
+   "kind": "Rendered",
+   "duration": 9.967,
+   "movie_start": 19.933
+  },
+  {
+   "hash": "KXdTNAGMo1gCWz2Ge8zr",
+   "movie": "run82-ancientTomb-1-0",
+   "kind": "Rendered",
+   "duration": 9.967,
+   "movie_start": 29.9
+  },
+  {
+   "hash": "Oup5uAZxF2G7zEJkT+ui",
+   "movie": "2012 USA Basketball vs The Dream Team 1992 USA Basketball - NBA 2K13",
+   "kind": "sports1m",
+   "duration": 9.967,
+   "movie_start": 39.867
+  },
+  {
+   "hash": "ecUQJtcERZJGdqza1k7h",
+   "movie": "2009 Krugers Cross Singlespeed Cyclocross Race - Helmet Cam",
+   "kind": "sports1m",
+   "duration": 9.967,
+   "movie_start": 49.833
+  }
+ ],
+ "shards": 512,
+ "shard_key": "int(root_id) % shards, file NNN.json",
+ "movie": "oracle_movie.mp4",
+ "movie_fps": 30,
+ "cells": 2052,
+ "roots": 1929,
+ "scans": [
+  {
+   "session": 5,
+   "scan": 3,
+   "cells": 413,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 7,
+   "scan": 5,
+   "cells": 891,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 8,
+   "scan": 7,
+   "cells": 3,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 9,
+   "scan": 6,
+   "cells": 745,
+   "method": "through_all",
+   "agree": 1.0
+  }
+ ],
+ "movie_webm": "oracle_movie.webm"
+}
