@@ -210,6 +210,7 @@
       <option value="order">Vessel colour: by order — Søren's tracings, Shih et al. for the rest</option>
       <option value="traced">Vessel colour: by order — Søren's tracings only</option>
       <option value="shih">Vessel colour: by order — Shih et al. only</option>
+      <option value="agree">Vessel colour: where Søren and Shih et al. agree</option>
     </select>
     <span id="vcolKey" style="display:none;font-size:11px;color:var(--mut);align-items:center;gap:3px;flex-wrap:wrap"></span>
   </div>
@@ -375,6 +376,7 @@
       <label title="A pulse with every heartbeat (awake mouse ≈ 10 Hz; slowed to ~1 Hz when teaching)"><input type="checkbox" data-nv="pulse" checked> heartbeat</label>
       <label title="Slow rhythmic diameter changes of the arterioles, about 0.1 Hz"><input type="checkbox" data-nv="vaso" checked> vasomotion (0.1 Hz)</label>
       <label title="A plot of the diameter of the chain the picked (or most active) cell drives"><input type="checkbox" data-nv="plot" checked> diameter plot</label>
+      <label title="Also use Shih et al.'s ordered capillary bed (How et al. 2026; 30 MB) where Søren traced nothing: the dilation can then start in, and run through, every capillary — his tracing still wins where it exists"><input type="checkbox" data-nv="useShih" checked> Shih et al. for untraced capillaries</label>
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 2px">Driven by</div>
     <div class="catick">
@@ -595,7 +597,7 @@
     detail: ["", "Detail", { light: ICON.lowres + '<span class="lbl">&nbsp;light</span>', full: ICON.hires + '<span class="lbl">&nbsp;full</span>' }],
     colourSel: ["", "Colour", { type: dot("#f0a742") + dot("#3fb950") + dot("#58a6ff") + '<span class="lbl">&nbsp;type</span>', ei: '<b style="color:#f0a742">E</b>·<b style="color:#b67cff">I</b>' }],
     vascSel: ["vessel", "Vessels", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
-    vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>', traced: "traced", shih: "Shih" }],
+    vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>', traced: "traced", shih: "Shih", agree: "agree?" }],
     v1Sel: ["column", "V1 column", { off: ICON.off, outline: "outline", cells: "+ cells" }],
     skelSel: ["skel", "Skeletons", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
     capSel: ["", "Capillaries", { act: "ACT", cvt: "CVT", plain: "plain" }],
@@ -5482,17 +5484,17 @@ document.getElementById("raCsv").addEventListener("click", raCsv);
      arterioles (Mestre et al. 2018; van Veluw et al. 2020).
    · TEACHING: four times the dilation, slower conduction, the heartbeat slowed to ~1 Hz and
      larger, so each step can be seen. Labelled as such wherever it shows. */
-const NV = { colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
+const NV = { useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
              net: null, netP: null, err: "", geo: null, nodes: null, tex: null, texData: null, W: 1024, H: 1,
              src: new Map(), spk: new Map(), lastTick: 0, t0: performance.now(), hud: null, plotSpr: null, plotCv: null, hist: [], plot: true, routed: 0 };
 const NV_PRESET = {
-  real:  { gain: { acap1: 0.15, pa: 0.10, acap2: 0.07, pial_art: 0.06, acap3: 0.03, ven: 0.02 },
-           pulse: { pial_art: 0.02, pa: 0.02, acap1: 0.010, acap2: 0.006, acap3: 0.004, ven: 0.003, none: 0.004 }, hr: 10,
-           vaso: { pial_art: 0.03, pa: 0.03, acap1: 0.015, acap2: 0.008, acap3: 0.004, ven: 0.002, none: 0.004 }, vf: 0.1,
+  real:  { gain: { acap1: 0.15, pa: 0.10, acap2: 0.07, pial_art: 0.06, acap3: 0.03, mid: 0.012, ven: 0.02 },
+           pulse: { pial_art: 0.02, pa: 0.02, acap1: 0.010, acap2: 0.006, acap3: 0.004, mid: 0.004, ven: 0.003, none: 0.004 }, hr: 10,
+           vaso: { pial_art: 0.03, pa: 0.03, acap1: 0.015, acap2: 0.008, acap3: 0.004, mid: 0.003, ven: 0.002, none: 0.004 }, vf: 0.1,
            speed: 500, lambda: 600, tau: 0.6, label: "realistic" },
-  teach: { gain: { acap1: 0.60, pa: 0.40, acap2: 0.28, pial_art: 0.24, acap3: 0.12, ven: 0.08 },
-           pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, ven: 0.012, none: 0.015 }, hr: 1.2,
-           vaso: { pial_art: 0.09, pa: 0.09, acap1: 0.05, acap2: 0.025, acap3: 0.012, ven: 0.006, none: 0.01 }, vf: 0.1,
+  teach: { gain: { acap1: 0.60, pa: 0.40, acap2: 0.28, pial_art: 0.24, acap3: 0.12, mid: 0.05, ven: 0.08 },
+           pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, mid: 0.015, ven: 0.012, none: 0.015 }, hr: 1.2,
+           vaso: { pial_art: 0.09, pa: 0.09, acap1: 0.05, acap2: 0.025, acap3: 0.012, mid: 0.01, ven: 0.006, none: 0.01 }, vf: 0.1,
            speed: 120, lambda: 900, tau: 0.9, label: "TEACHING — larger and slower than life" }
 };
 const NV_ART = new Set(["pial_art", "pa", "acap1", "acap2", "acap3"]);
@@ -5509,6 +5511,7 @@ NV_TONE.none = new THREE.Color("#8b8790");
 const NV_TONE_NAME = { art: "arterioles (pial, penetrating)", acap1: "1st-order arterial capillary", acap2: "2nd order", acap3: "3rd order",
                        vcap3: "3rd-order venous capillary", vcap2: "2nd order", vcap1: "1st order venous", ven: "venules (ascending, pial)", none: "not traced" };
 /* A tone anywhere on the scale: 0 arterioles … 1 1st order … 3 3rd order | 4 3rd venous … 7 venules. */
+const NV_AGREE = { yes: new THREE.Color("#2f9e44"), no: new THREE.Color("#f08c00"), his: new THREE.Color("#339af0"), shih: new THREE.Color("#ced4da") };
 function nvToneAt(p){ return NV_TONE_A.clone().lerp(NV_TONE_V, Math.max(0, Math.min(7, p)) / 7); }
 /* ── ORDERING EVERY CAPILLARY WITH SHIH ET AL. (v70) ─────────────────────────────────────────────
    Søren: "Shih et al has tried to order the capillaries from both sides, try to look at that and see
@@ -5549,24 +5552,44 @@ async function nvShihPoints(bb){
     return bj < 0 ? null : pts[bj];
   };
   /* Calibrate their counts against Søren's orders, on his own traced capillary points. */
-  const net = NV.net, q = net.q, dA = [], dV = [];
+  const net = NV.net, q = net.q, dA = [], dV = [], anc = [];
   for (let k = 0, m = net.own.length; k < m; k++){
     const cn = net.cname(net.own[k]), mt = /^(a|v)cap(\d)$/.exec(cn); if (!mt) continue;
     const x = net.Dq[k*3] * q, y = net.Dq[k*3+1] * q, z = net.Dq[k*3+2] * q;
     if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) continue;
     const p = near(x, y, z, 3); if (!p || p[4] == null) continue;
-    if (mt[1] === "a" && p[4] > -1e8) dA.push(p[4] - +mt[2]);
-    if (mt[1] === "v" && p[5] > -1e8) dV.push(p[5] - +mt[2]);
+    if (mt[1] === "a" && p[4] > -1e8){ dA.push(p[4] - +mt[2]); anc.push([x, y, z, "a", p[4] - +mt[2], +mt[2], p[4]]); }
+    if (mt[1] === "v" && p[5] > -1e8){ dV.push(p[5] - +mt[2]); anc.push([x, y, z, "v", p[5] - +mt[2], +mt[2], p[5]]); }
   }
   const med = a => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
   const offA = med(dA), offV = med(dV);
   const within = (a, o) => a.length ? Math.round(100 * a.filter(d => Math.abs(d - o) <= 1).length / a.length) : null;
   NV.cal = { offA: offA == null ? 0 : offA, offV: offV == null ? 0 : offV, nA: dA.length, nV: dV.length, agreeA: within(dA, offA), agreeV: within(dV, offV) };
+  /* A CONSENSUS BETWEEN THE TWO (v72, Søren: "We should find a consensus between my tracings and
+     Shih's"). One offset for the whole box assumes their count starts the same distance from the
+     arteriole everywhere; it need not (their transition zone is longer on some vessels than on
+     others). So the offset is also taken LOCALLY: the median over his traced points in the same
+     100 µm block (or, with fewer than 5 there, the 27 blocks around it), falling back to the
+     box-wide one. How often the two then agree within one order is reported for both. */
+  const B = 100, blocks = new Map(), bk = (x, y, z, sd) => Math.floor(x / B) + "," + Math.floor(y / B) + "," + Math.floor(z / B) + sd;
+  for (const a of anc){ const k = bk(a[0], a[1], a[2], a[3]); let l = blocks.get(k); if (!l){ l = []; blocks.set(k, l); } l.push(a[4]); }
+  const memo = new Map();
+  NV.cal.offAt = (x, y, z, sd) => {
+    const key = bk(x, y, z, sd); if (memo.has(key)) return memo.get(key);
+    let l = blocks.get(key) || [];
+    if (l.length < 5){ l = []; const gx = Math.floor(x / B), gy = Math.floor(y / B), gz = Math.floor(z / B);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){ const m = blocks.get((gx+dx) + "," + (gy+dy) + "," + (gz+dz) + sd); if (m) l = l.concat(m); } }
+    const o = l.length >= 5 ? med(l) : (sd === "a" ? NV.cal.offA : NV.cal.offV);
+    memo.set(key, o); return o;
+  };
+  const agreeLoc = sd => { const a = anc.filter(x => x[3] === sd); return a.length ? Math.round(100 * a.filter(x => Math.abs(x[6] - NV.cal.offAt(x[0], x[1], x[2], sd) - x[5]) <= 1).length / a.length) : null; };
+  NV.cal.agreeLocA = agreeLoc("a"); NV.cal.agreeLocV = agreeLoc("v");
   return { near, pts };
 }
+function nvOff(x, y, z, sd){ const c = NV.cal || {}; return c.offAt ? c.offAt(x, y, z, sd) : (sd === "a" ? c.offA || 0 : c.offV || 0); }
 function nvShihTone(p){
   if (p[3] != null) return p[3];
-  const a = p[4] > -1e8 ? p[4] - NV.cal.offA : null, v = p[5] > -1e8 ? p[5] - NV.cal.offV : null;
+  const a = p[4] > -1e8 ? p[4] - nvOff(p[0], p[1], p[2], "a") : null, v = p[5] > -1e8 ? p[5] - nvOff(p[0], p[1], p[2], "v") : null;
   if (a == null && v == null) return null;
   const arterialSide = v == null || (a != null && a <= v);
   if (arterialSide && a <= 3) return Math.max(1, a);
@@ -5587,30 +5610,41 @@ async function nvRecolour(){
     sh = NV.shih;
   }
   if (VASC.mesh !== mesh) return;
-  let fromS = 0, fromT = 0, grey = 0;
+  let fromS = 0, fromT = 0, grey = 0, both = 0, agree = 0;
   for (let v = 0; v < nv; v++){
-    let p = null;
-    if (src !== "shih" && NV.vTone[v] >= 0 && NV.vDist[v] <= (src === "traced" || !sh ? 12 : 6)){ p = NV.vTone[v]; fromT++; }
-    else if (sh){
-      const s = sh.near(P[v*3], P[v*3+1], P[v*3+2], 6);
-      if (s){ p = nvShihTone(s); if (p != null) fromS++; }
+    let p = null, c;
+    const hisOk = NV.vTone[v] >= 0 && NV.vDist[v] <= (src === "traced" || !sh ? 12 : 6);
+    const sp = sh ? sh.near(P[v*3], P[v*3+1], P[v*3+2], 6) : null, st = sp ? nvShihTone(sp) : null;
+    /* Where both say something: they agree when within one step of the scale (one order). The
+       consensus then is his order; where they disagree it is also his (he traced it by eye), and the
+       agreement map shows where that happens, for checking. */
+    if (hisOk && st != null){ both++; if (Math.abs(NV.vTone[v] - st) <= 1) agree++; }
+    if (src === "agree"){
+      c = hisOk && st != null ? (Math.abs(NV.vTone[v] - st) <= 1 ? NV_AGREE.yes : NV_AGREE.no) : hisOk ? NV_AGREE.his : st != null ? NV_AGREE.shih : NV_TONE.none;
+      if (hisOk) fromT++; else if (st != null) fromS++; else grey++;
+    } else {
+      if (src !== "shih" && hisOk){ p = NV.vTone[v]; fromT++; }
+      else if (st != null){ p = st; fromS++; }
+      c = p == null ? NV_TONE.none : nvToneAt(p);
+      if (p == null) grey++;
     }
-    const c = p == null ? NV_TONE.none : nvToneAt(p);
-    if (p == null) grey++;
     col[v*3] = c.r; col[v*3+1] = c.g; col[v*3+2] = c.b;
     if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
   }
   g.attributes.vnCol.needsUpdate = true;
   const pc = n => Math.round(100 * n / Math.max(1, nv));
   const cal = NV.cal;
-  ctxNote.textContent = "Vessel colour by order: " + pc(fromT) + " % from Søren's tracings, " + pc(fromS) + " % from Shih et al., " + pc(grey) + " % grey (neither)."
-    + (cal ? " Shih's counts against Søren's: arterial side " + (cal.nA ? "their order = his + " + cal.offA + " (" + cal.agreeA + " % within one order, " + cal.nA + " points)" : "no overlap here")
-      + "; venous side " + (cal.nV ? "their order = his + " + cal.offV + " (" + cal.agreeV + " % within one, " + cal.nV + " points)" : "no overlap here") + "." : "");
+  NV.consensus = { both, agree, pct: both ? Math.round(100 * agree / both) : null };
+  ctxNote.textContent = (src === "agree" ? "Agreement map: green both agree (within one order), orange they disagree, blue Søren only, light grey Shih only. " : "Vessel colour by order: ")
+    + pc(fromT) + " % from Søren's tracings, " + pc(fromS) + " % from Shih et al., " + pc(grey) + " % neither."
+    + (both ? " Where both exist, " + NV.consensus.pct + " % of the surface agrees within one order; his order is used where they disagree." : "")
+    + (cal ? " Shih's count against Søren's: arterial side " + (cal.nA ? "their order = his + " + cal.offA + " box-wide (" + cal.agreeA + " % of his points within one order; " + cal.agreeLocA + " % with the offset set per 100 µm block, " + cal.nA + " points)" : "no overlap here")
+      + "; venous side " + (cal.nV ? "+ " + cal.offV + " (" + cal.agreeV + " %; " + cal.agreeLocV + " % per block, " + cal.nV + " points)" : "no overlap here") + "." : "");
 }
 function nvToneOf(cn){ return cn === "pial_art" || cn === "pa" ? "art" : cn === "av" || cn === "pial_ven" ? "ven" : (NV_TONE[cn] ? cn : "none"); }
 /* Which way a dilation may be conducted: up to the PA and the pia, down the capillary orders,
    never back down a PA into its other capillaries or along the pia into other PAs. */
-const NV_STEP = { acap1: ["acap1", "pa", "acap2"], pa: ["pa", "pial_art"], pial_art: ["pial_art"], acap2: ["acap2", "acap3"], acap3: ["acap3"] };
+const NV_STEP = { acap1: ["acap1", "pa", "acap2"], pa: ["pa", "pial_art"], pial_art: ["pial_art"], acap2: ["acap2", "acap3"], acap3: ["acap3", "mid"], mid: ["mid"] };
 async function nvNet(){
   if (NV.net) return NV.net;
   if (!NV.netP) NV.netP = (async () => {
@@ -5632,7 +5666,16 @@ async function nvNet(){
   })();
   try { return await NV.netP; } catch (err){ NV.netP = null; throw err; }
 }
-function nvClass(cn){ return cn && cn[0] === "v" || cn === "av" || cn === "pial_ven" ? "ven" : cn; }
+function nvClass(cn){ return cn && cn[0] === "v" || cn === "av" || cn === "pial_ven" || cn === "sven" ? "ven" : cn; }
+/* ONE NUMBERING FOR BOTH NETWORKS (v71). Søren's traced nodes keep their own numbers 0…n−1;
+   Shih et al.'s skeleton points in the box are numbered n + s. -1 is "nobody traced it". */
+function nvC(id){ if (id < 0) return "none"; const net = NV.net; return id < net.n ? net.cname(id) : (NV.snet ? NV.snet.cls[id - net.n] || "none" : "none"); }
+function nvPos(id){ const net = NV.net; if (id < net.n) return [net.pos[id*3], net.pos[id*3+1], net.pos[id*3+2]]; const S = NV.snet.pos, k = (id - net.n) * 3; return [S[k], S[k+1], S[k+2]]; }
+function nvEach(id, fn){
+  const net = NV.net, SN = NV.snet;
+  if (id < net.n){ const A = net.adj[id]; for (let k = 0; k < A.length; k += 2) fn(A[k], A[k+1]); if (SN){ const L = SN.fromHis.get(id); if (L) for (const [j, d] of L) fn(j, d); } }
+  else if (SN){ const L = SN.adj[id - net.n]; for (let k = 0; k < L.length; k += 2) fn(L[k], L[k+1]); }
+}
 /* Tie the TriSAM mesh to the network: once per vessel mesh. */
 async function nvAttach(){
   const mesh = VASC.mesh; if (!mesh || !(NV.on || NV.colour)){ return; }
@@ -5677,7 +5720,7 @@ async function nvAttach(){
     if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
   }
   /* Which way is "out": the normals of a closed surface all point one way; the capillaries say which. */
-  const sign = sgnN && sgnSum < 0 ? -1 : 1;
+  const sign = sgnN && sgnSum < 0 ? -1 : 1; NV.sign = sign; NV.snet = null; NV.snetFor = null;
   if (sign < 0) for (let v = 0; v < nv; v++) vnR[v] = -vnR[v];
   g.setAttribute("vnNode", new THREE.BufferAttribute(vnNode, 1));
   g.setAttribute("vnR", new THREE.BufferAttribute(vnR, 1));
@@ -5701,10 +5744,10 @@ function nvStatic(){
   if (!NV.texData) return;
   const pr = NV_PRESET[NV.preset], net = NV.net, D = NV.texData;
   for (let li = 0; li < NV.glob.length; li++){
-    const gi = NV.glob[li], cls = gi < 0 ? "none" : nvClass(net.cname(gi));
+    const gi = NV.glob[li], cls = nvClass(nvC(gi));
     D[li*4+1] = NV.pulse ? (pr.pulse[cls] || 0) : 0;
     D[li*4+2] = NV.vaso ? (pr.vaso[cls] || 0) : 0;
-    const vid = gi < 0 ? 7 : net.vid[gi]; D[li*4+3] = ((vid * 2654435761) % 1000) / 1000 * 6.2832;
+    const vid = gi < 0 ? 7 : gi < net.n ? net.vid[gi] : 100003 + Math.floor((gi - net.n) / 40); D[li*4+3] = ((vid * 2654435761) % 1000) / 1000 * 6.2832;
   }
   NV.tex.needsUpdate = true;
   AP_UNI.nvHR.value = pr.hr; AP_UNI.nvVF.value = pr.vf;
@@ -5744,50 +5787,165 @@ function nvSoma(c){ if (!c.mesh) return null; const s = somaNode(c, -1); if (s >
 /* Where a cell's drive enters the network, and everywhere it is conducted to: (local node,
    weight, delay s). Computed once per cell. */
 function nvRoute(c){
-  const net = NV.net, pr = NV_PRESET[NV.preset], at = nvSoma(c); if (!at) return [];
+  const pr = NV_PRESET[NV.preset], at = nvSoma(c); if (!at) return [];
+  /* Where it starts: Søren's 1st-order capillaries within 50 µm; where he traced none that close,
+     Shih et al.'s 1st order (calibrated) within 50 µm; else the nearest 1st order of either within 150. */
   const trig = [];
   for (let li = 1; li < NV.glob.length; li++){
-    const gi = NV.glob[li]; if (net.cname(gi) !== "acap1") continue;
-    const d = Math.hypot(net.pos[gi*3] - at.x, net.pos[gi*3+1] - at.y, net.pos[gi*3+2] - at.z);
-    if (d < 150) trig.push([gi, d]);
+    const gi = NV.glob[li]; if (nvC(gi) !== "acap1") continue;
+    const p = nvPos(gi), d = Math.hypot(p[0] - at.x, p[1] - at.y, p[2] - at.z);
+    if (d < 150) trig.push([gi, d, gi < NV.net.n]);
+  }
+  if (NV.snet) for (let s2 = 0; s2 < NV.snet.n; s2++){
+    if (NV.snet.cls[s2] !== "acap1") continue;
+    const P = NV.snet.pos, d = Math.hypot(P[s2*3] - at.x, P[s2*3+1] - at.y, P[s2*3+2] - at.z);
+    if (d < 150) trig.push([NV.net.n + s2, d, false]);
   }
   trig.sort((a, b) => a[1] - b[1]);
-  let use = trig.filter(t => t[1] <= 50); if (!use.length && trig.length) use = [trig[0]];
+  let use = trig.filter(t => t[2] && t[1] <= 50);
+  if (!use.length) use = trig.filter(t => t[1] <= 50);
+  if (!use.length && trig.length) use = [trig[0]];
   if (!use.length) return [];
-  /* Dijkstra over the allowed steps, from every trigger node at once. */
-  const dist = new Map(), w0 = new Map(), heap = [];
+  /* Dijkstra over the allowed steps, from every trigger node at once, across both networks. */
+  const dist = new Map(), heap = [];
   const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k){ const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let k = 0; for (;;){ const l = 2*k+1, r = l+1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
-  for (const [gi, d] of use){ dist.set(gi, 0); w0.set(gi, Math.exp(-d / 40)); push(0, gi); }
+  for (const [gi] of use){ dist.set(gi, 0); push(0, gi); }
   const wTrig = Math.max(...use.map(u => Math.exp(-u[1] / 40)));
   while (heap.length){
     const [d, i] = pop(); if (d > dist.get(i) || d > 1500) continue;
-    const ci = net.cname(i), ok = NV_STEP[ci] || [];
-    const A = net.adj[i];
-    for (let k = 0; k < A.length; k += 2){
-      const j = A[k], cj = net.cname(j); if (!ok.includes(cj)) continue;
-      const nd = d + A[k+1]; if (nd < (dist.has(j) ? dist.get(j) : 1e9)){ dist.set(j, nd); push(nd, j); }
-    }
+    const ok = NV_STEP[nvC(i)] || [];
+    nvEach(i, (j, L) => { if (!ok.includes(nvC(j))) return; const nd = d + L; if (nd < (dist.has(j) ? dist.get(j) : 1e9)){ dist.set(j, nd); push(nd, j); } });
   }
-  const out = [], artW = new Map();
+  const out = [], artW = [];
   for (const [gi, d] of dist){
     const li = NV.loc.get(gi); if (li == null) continue;
-    const w = wTrig * Math.exp(-d / pr.lambda) * (pr.gain[net.cname(gi)] || 0);
+    const cn = nvC(gi), w = wTrig * Math.exp(-d / pr.lambda) * (pr.gain[cn] || 0);
     if (w < 0.002) continue;
-    out.push([li, w, d / pr.speed]); artW.set(gi, [w, d / pr.speed]);
+    out.push([li, w, d / pr.speed]);
+    if (/cap1|cap2/.test(cn)){ const p = nvPos(gi); artW.push([p, w / (pr.gain[cn] || 1), d / pr.speed]); }
   }
-  /* Venules near the dilating capillaries: passive, later, smaller. */
-  for (let li = 1; li < NV.glob.length; li++){
-    const gi = NV.glob[li]; if (nvClass(net.cname(gi)) !== "ven") continue;
+  /* Venules near the dilating capillaries: passive, later, smaller (hashed on 40 µm). */
+  const H = new Map(), K = (x, y, z) => x + "," + y + "," + z;
+  for (const a of artW){ const k = K(Math.floor(a[0][0] / 40), Math.floor(a[0][1] / 40), Math.floor(a[0][2] / 40)); let l = H.get(k); if (!l){ l = []; H.set(k, l); } l.push(a); }
+  if (artW.length) for (let li = 1; li < NV.glob.length; li++){
+    const gi = NV.glob[li]; if (nvClass(nvC(gi)) !== "ven") continue;
+    const p = nvPos(gi), gx = Math.floor(p[0] / 40), gy = Math.floor(p[1] / 40), gz = Math.floor(p[2] / 40);
     let best = 0, dl = 0;
-    for (const [ga, [w, de]] of artW){
-      if (!/cap1|cap2/.test(net.cname(ga))) continue;
-      const d = Math.hypot(net.pos[gi*3] - net.pos[ga*3], net.pos[gi*3+1] - net.pos[ga*3+1], net.pos[gi*3+2] - net.pos[ga*3+2]);
-      if (d < 40){ const v = (w / (pr.gain[net.cname(ga)] || 1)) * Math.exp(-d / 20); if (v > best){ best = v; dl = de; } }
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = H.get(K(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const [q, w, de] of l){ const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); if (d < 40){ const v = w * Math.exp(-d / 20); if (v > best){ best = v; dl = de; } } }
     }
     if (best * pr.gain.ven > 0.002) out.push([li, best * pr.gain.ven, dl + 1.0]);
   }
   return out;
+}
+/* ── SHIH ET AL.'S CAPILLARY BED IN THE COUPLING (v71) ───────────────────────────────────────────
+   Søren: "will this also be possible to show for the neurovascular coupling?" -- "Yes build it."
+   Their skeletons inside the vessels' box become a second network beside his: the capillary bed
+   (each point classed by its calibrated order -- arterial 1st, 2nd, 3rd, the middle of the bed, or
+   the venous side), their arteriole-capillary transitions as 1st order, their penetrating and
+   terminal arterioles as PA, their capillary-venule transitions and veins as venous. Points of
+   different files within 2 µm are joined, and every point within 4 µm of one of his traced points
+   is joined to that node of his -- so a dilation can start in their bed and run up into his PA and
+   pia, or start at his 1st order and run on into their middle of the bed. TriSAM vertices nobody
+   traced are then tied to the nearest of their points (8 µm). His tracing still wins: a vertex
+   already tied to his network keeps that tie. */
+const NV_SHIH_NET = [["skelFinal_v7_branch_order", "bed"], ["skelFinal_ACTs_v7", "acap1"], ["skelFinal_PAs_v7_connected", "pa"], ["skelFinal_terminalPAs_v7", "pa"],
+                     ["skelFinal_CVTs_v7", "sven"], ["skelFinal_deepCVTs_v7", "sven"], ["skelFinal_AVs_v7_connected", "sven"], ["skelFinal_terminalAVs_v7", "sven"]];
+function nvShihClass(a, v, x, y, z){
+  const A = a > -1e8 ? a - nvOff(x, y, z, "a") : null, V = v > -1e8 ? v - nvOff(x, y, z, "v") : null;
+  if (A == null && V == null) return null;
+  const art = V == null || (A != null && A <= V);
+  if (art) return A <= 1 ? "acap1" : A === 2 ? "acap2" : A === 3 ? "acap3" : "mid";
+  return "sven";
+}
+async function nvShihNet(){
+  const mesh = VASC.mesh; if (!mesh || !NV.net || NV.geo !== mesh.geometry.uuid) return;
+  const g = mesh.geometry, uuid = g.uuid;
+  if (!NV.shih || NV.shih.geo !== uuid){
+    try { const bbc = g.boundingBox.clone().expandByScalar(10); NV.shih = await nvShihPoints(bbc); NV.shih.geo = uuid; }
+    catch (e){ ctxNote.textContent = "Vessel dilation: Shih et al.'s skeletons could not be read (" + (e.message || e) + ") — dilation on Søren's tracings only."; return; }
+  }
+  const bb = g.boundingBox.clone().expandByScalar(60), net = NV.net;
+  const pos = [], cls = [], fileOf = [];
+  const adjL = [];
+  for (const [slug, kind] of NV_SHIH_NET){
+    let R; try { R = await loadSkel(slug); } catch (e){ continue; }
+    const map = new Int32Array(R.nv).fill(-1);
+    for (let i = 0; i < R.nv; i++){
+      const x = R.pos[i*3], y = R.pos[i*3+1], z = R.pos[i*3+2];
+      if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) continue;
+      const c = kind === "bed" ? nvShihClass(R.act[i], R.cvt[i], x, y, z) : kind;
+      if (!c) continue;
+      map[i] = cls.length; pos.push(x, y, z); cls.push(c); fileOf.push(slug); adjL.push([]);
+    }
+    for (let e = 0; e < R.ne; e++){
+      const a = map[R.edges[2*e]], b = map[R.edges[2*e+1]]; if (a < 0 || b < 0) continue;
+      const L = Math.hypot(pos[a*3] - pos[b*3], pos[a*3+1] - pos[b*3+1], pos[a*3+2] - pos[b*3+2]);
+      adjL[a].push(net.n + b, L); adjL[b].push(net.n + a, L);
+    }
+    if (!(R.nv & 3)) await new Promise(r => setTimeout(r, 0));
+  }
+  if (VASC.mesh !== mesh) return;
+  const n = cls.length, P = new Float32Array(pos);
+  /* Joins between their files (2 µm) and to his traced points (4 µm). */
+  const S = 4, Hs = new Map(), K = (x, y, z) => x + "," + y + "," + z;
+  for (let k = 0; k < n; k++){ const kk = K(Math.floor(P[k*3] / S), Math.floor(P[k*3+1] / S), Math.floor(P[k*3+2] / S)); let l = Hs.get(kk); if (!l){ l = []; Hs.set(kk, l); } l.push(k); }
+  let joins = 0;
+  for (let k = 0; k < n; k++){
+    const gx = Math.floor(P[k*3] / S), gy = Math.floor(P[k*3+1] / S), gz = Math.floor(P[k*3+2] / S);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = Hs.get(K(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const j of l){ if (j <= k || fileOf[j] === fileOf[k]) continue;
+        const d = Math.hypot(P[k*3] - P[j*3], P[k*3+1] - P[j*3+1], P[k*3+2] - P[j*3+2]); if (d < 2){ adjL[k].push(net.n + j, d); adjL[j].push(net.n + k, d); joins++; } }
+    }
+  }
+  const fromHis = new Map(); let links = 0;
+  const q = net.q;
+  for (let t = 0, m = net.own.length; t < m; t++){
+    const x = net.Dq[t*3] * q, y = net.Dq[t*3+1] * q, z = net.Dq[t*3+2] * q;
+    if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) continue;
+    const gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S); let best = 16, bj = -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = Hs.get(K(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const j of l){ const d2 = (P[j*3]-x)*(P[j*3]-x) + (P[j*3+1]-y)*(P[j*3+1]-y) + (P[j*3+2]-z)*(P[j*3+2]-z); if (d2 < best){ best = d2; bj = j; } }
+    }
+    if (bj < 0) continue;
+    const gi = net.own[t], d = Math.sqrt(best);
+    let L = fromHis.get(gi); if (!L){ L = []; fromHis.set(gi, L); }
+    if (!L.some(e => e[0] === net.n + bj)){ L.push([net.n + bj, d]); adjL[bj].push(gi, d); links++; }
+  }
+  NV.snet = { n, pos: P, cls, adj: adjL, fromHis, hash: Hs, S };
+  /* Tie the untraced TriSAM vertices to their nearest Shih point (8 µm). */
+  const A = g.attributes, vnNode = A.vnNode.array, vnR = A.vnR.array, VP = A.position.array, nv = VP.length / 3;
+  let tied = 0;
+  for (let v = 0; v < nv; v++){
+    if (vnNode[v] !== 0) continue;
+    const x = VP[v*3], y = VP[v*3+1], z = VP[v*3+2];
+    const S2 = 8, gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S); let best = S2 * S2, bj = -1;
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++){
+      const l = Hs.get(K(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const j of l){ const d2 = (P[j*3]-x)*(P[j*3]-x) + (P[j*3+1]-y)*(P[j*3+1]-y) + (P[j*3+2]-z)*(P[j*3+2]-z); if (d2 < best){ best = d2; bj = j; } }
+    }
+    if (bj < 0) continue;
+    const id = net.n + bj; let li = NV.loc.get(id); if (li == null){ li = NV.glob.length; NV.loc.set(id, li); NV.glob.push(id); }
+    vnNode[v] = li; vnR[v] = (NV.sign || 1) * Math.min(6, Math.max(1, Math.sqrt(best))); tied++;
+    if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  A.vnNode.needsUpdate = true; A.vnR.needsUpdate = true;
+  /* A bigger texture for the extra nodes. */
+  const H = Math.max(1, Math.ceil(NV.glob.length / NV.W));
+  if (H !== NV.H){
+    const D = new Float32Array(NV.W * H * 4); D.set(NV.texData.subarray(0, Math.min(NV.texData.length, D.length))); NV.texData = D; NV.H = H;
+    NV.tex.dispose(); NV.tex = new THREE.DataTexture(NV.texData, NV.W, NV.H, THREE.RGBAFormat, THREE.FloatType);
+    NV.tex.minFilter = NV.tex.magFilter = THREE.NearestFilter;
+  }
+  nvStatic(); nvMaterial(mesh); NV.src.clear(); NV.snetFor = uuid;
+  const c = NV.cal || {};
+  NV.shihNote = "Shih et al.'s capillary bed joined to Søren's network: " + n.toLocaleString() + " skeleton points in the box, " + links + " links to his tracings; "
+    + Math.round(100 * tied / nv) + " % of the TriSAM surface newly tied to their points (orders calibrated: arterial their = his + " + (c.offA ?? "?") + ", venous + " + (c.offV ?? "?") + ").";
+  ctxNote.textContent = "Vessel dilation: " + NV.shihNote;
 }
 function nvDrives(dtS){
   /* Each cell's input this tick, 0–1 (a sum may exceed 1 in a burst). */
@@ -5840,6 +5998,9 @@ function nvFrame(){
   NV._cleared = false;
   if (VASC.mesh && NV.geo !== VASC.mesh.geometry.uuid && !NV._attaching){ NV._attaching = true; nvAttach().finally(() => { NV._attaching = false; }); }
   AP_UNI.nvT.value = (performance.now() - NV.t0) / 1000;
+  if (NV.useShih && NV.act && VASC.mesh && NV.geo === VASC.mesh.geometry.uuid && NV.snetFor !== NV.geo && !NV._snetBusy){
+    NV._snetBusy = true; NV.snetFor = NV.geo; nvShihNet().finally(() => { NV._snetBusy = false; });
+  }
   const now = performance.now();
   if (now - (NV._tickAt || 0) > 100){ NV._tickAt = now; nvTick(); }
   if (now - (NV._plotAt || 0) > 200){ NV._plotAt = now; nvPlotDraw(); }
@@ -5850,7 +6011,7 @@ function nvChain(){
   for (const [c, s] of NV.src){ if (!s || !s.route.length) continue; const v = c.i === SELECTED ? 1e9 : (s.x3 || 0); if (v > bv){ bv = v; best = [c, s]; } }
   if (!best) return null;
   const [c, s] = best, net = NV.net, pick = {};
-  for (const [li, w] of s.route){ const cls = nvClass(net.cname(NV.glob[li])); if (!pick[cls] || w > pick[cls][1]) pick[cls] = [li, w]; }
+  for (const [li, w] of s.route){ const cls = nvClass(nvC(NV.glob[li])); if (!pick[cls] || w > pick[cls][1]) pick[cls] = [li, w]; }
   return { c, pick };
 }
 function nvPlotSample(){
@@ -5862,8 +6023,8 @@ function nvPlotSample(){
   }
   while (NV.hist.length && NV.hist[0].t < t - 20) NV.hist.shift();
 }
-const NV_COL = { acap1: "#ff6b6b", pa: "#f03e3e", acap2: "#ffa8a8", pial_art: "#c92a2a", acap3: "#ffd8d8", ven: "#4dabf7" };
-const NV_LAB = { acap1: "1st-order capillary", pa: "penetrating arteriole", acap2: "2nd-order capillary", pial_art: "pial arteriole", acap3: "3rd-order capillary", ven: "venule (passive)" };
+const NV_COL = { acap1: "#ff6b6b", pa: "#f03e3e", acap2: "#ffa8a8", pial_art: "#c92a2a", acap3: "#ffd8d8", mid: "#e599f7", ven: "#4dabf7" };
+const NV_LAB = { acap1: "1st-order capillary", pa: "penetrating arteriole", acap2: "2nd-order capillary", pial_art: "pial arteriole", acap3: "3rd-order capillary", mid: "middle of the bed (Shih)", ven: "venule (passive)" };
 function nvPlotDraw(hide){
   const last = NV.hist[NV.hist.length - 1];
   if (hide || !NV.on || !NV.plot || !NV.act || !last || last.c == null){ if (NV.plotSpr) NV.plotSpr.visible = false; return; }
@@ -5883,7 +6044,7 @@ function nvPlotDraw(hide){
   for (let k = 0; k <= 4; k++){ const v = ymax * k / 4, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); g.fillText("+" + Math.round(v * 100) + " %", 8, y + 5); }
   g.fillText("20 s", L, B + 24); g.fillText("now", R - 30, B + 24);
   let row = 0;
-  for (const k of ["acap1", "pa", "acap2", "pial_art", "acap3", "ven"]){
+  for (const k of ["acap1", "pa", "acap2", "pial_art", "acap3", "mid", "ven"]){
     if (!NV.hist.some(h => h.v[k] != null)) continue;
     g.strokeStyle = NV_COL[k]; g.lineWidth = 3; g.setLineDash(k === "ven" ? [6, 5] : []); g.beginPath(); let first = true;
     for (const h of NV.hist){ if (h.v[k] == null) continue; const x = X(h.t), y = Y(h.v[k]); first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; }
@@ -5911,7 +6072,7 @@ function nvPlace(){
 /* ── switches ── */
 function setVesselColour(mode){
   if (mode === true) mode = "order";
-  NV.colour = mode === "order" || mode === "traced" || mode === "shih";
+  NV.colour = mode === "order" || mode === "traced" || mode === "shih" || mode === "agree";
   if (NV.colour) NV.colourSrc = mode;
   const sel = document.getElementById("vcolSel"); if (sel && sel.value !== mode) sel.value = mode;
   if (VASC.mesh && VASC.mesh.material.userData.nv) VASC.mesh.material.userData.nv.col.value = NV.colour ? 1 : 0;
@@ -5939,15 +6100,17 @@ function setNv(v){
 function nvSetting(k, v){
   if (k in NV.drv) NV.drv[k] = !!v; else NV[k] = v;
   if (k === "preset"){ NV.src.clear(); NV.hist = []; const el = document.getElementById("nvPreset"); if (el) el.value = v; }
+  if (k === "useShih"){ NV.geo = null; NV.snet = null; NV.snetFor = null; NV.src.clear(); }      // tie the surface again, with or without their bed
   const box = document.querySelector('#nvBox [data-nv="' + k + '"]'); if (box) box.checked = !!v;
   nvStatic();
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
-function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot }; }
+function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot, useShih: NV.useShih }; }
 function nvApplyUi(u){
   if (!u) return;
   if (u.preset) nvSetting("preset", u.preset);
   ["act", "pulse", "vaso", "plot"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
+  if (u.useShih != null && !!u.useShih !== NV.useShih) nvSetting("useShih", !!u.useShih);
   if (u.drv) for (const k in u.drv) nvSetting(k, u.drv[k]);
   if (u.on != null && !!u.on !== NV.on) setNv(u.on);
   if (u.colour != null) setVesselColour(u.colour === true ? "order" : u.colour || "one");
@@ -6357,8 +6520,8 @@ function menuRows(){
     const vm = document.getElementById("vascSel").value;
     if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
                 on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
-    if (DS_HAS.vasc && vm !== "off") rows.push({ label: "   Vessel colour: " + (!NV.colour ? "one colour" : ({ order: "by order (traced + Shih)", traced: "by order (traced only)", shih: "by order (Shih only)" })[NV.colourSrc || "order"]) + "  ▸",
-      on: NV.colour, act: () => setVesselColour(!NV.colour ? "order" : ({ order: "traced", traced: "shih", shih: "one" })[NV.colourSrc || "order"]) });
+    if (DS_HAS.vasc && vm !== "off") rows.push({ label: "   Vessel colour: " + (!NV.colour ? "one colour" : ({ order: "by order (traced + Shih)", traced: "by order (traced only)", shih: "by order (Shih only)", agree: "where they agree" })[NV.colourSrc || "order"]) + "  ▸",
+      on: NV.colour, act: () => setVesselColour(!NV.colour ? "order" : ({ order: "traced", traced: "shih", shih: "agree", agree: "one" })[NV.colourSrc || "order"]) });
     if (DS_HAS.skel) rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
                 on: SKEL.mode !== "off", act: () => setSkel(({ off: "box", box: "whole", whole: "off" })[SKEL.mode]) });
     if (SKEL.mode !== "off"){
@@ -6388,6 +6551,7 @@ function menuRows(){
         rows.push({ label: "   Heartbeat", on: NV.pulse, act: () => nvSetting("pulse", !NV.pulse) });
         rows.push({ label: "   Vasomotion (0.1 Hz)", on: NV.vaso, act: () => nvSetting("vaso", !NV.vaso) });
         rows.push({ label: "   Diameter plot", on: NV.plot, act: () => nvSetting("plot", !NV.plot) });
+        rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
     }
     if (DS_HAS.ra){
@@ -8442,7 +8606,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
