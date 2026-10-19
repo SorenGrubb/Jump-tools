@@ -1,0 +1,112 @@
+{
+ "version": 1,
+ "made": "2026-10-19",
+ "source": "S\u00f8ren Grubb's hand tracings in minnie65 (Neuroglancer line annotations, 'Vascular outlines'): lumen outlines of pial arterioles, penetrating arterioles, ascending and pial venules; centrelines of 1st-3rd order arterial and venous capillaries. Joined into one network by build2.py (outline pieces linked across sections within 10 \u00b5m for PA/AV, 6 \u00b5m pial; each capillary attached to its parent order within 4-6 \u00b5m; PA to pial arteriole and AV to pial venule within 8 \u00b5m).",
+ "units": "\u00b5m, minnie65 (x,y,z) with y = depth",
+ "cats": [
+  "pial_art",
+  "pa",
+  "acap1",
+  "acap2",
+  "acap3",
+  "vcap1",
+  "vcap2",
+  "vcap3",
+  "av",
+  "pial_ven"
+ ],
+ "names": {
+  "pial_art": "pial arteriole",
+  "pa": "penetrating arteriole",
+  "acap1": "1st-order arterial capillary",
+  "acap2": "2nd-order arterial capillary",
+  "acap3": "3rd-order arterial capillary",
+  "vcap1": "1st-order venous capillary",
+  "vcap2": "2nd-order venous capillary",
+  "vcap3": "3rd-order venous capillary",
+  "av": "ascending venule",
+  "pial_ven": "pial venule"
+ },
+ "n": 40121,
+ "e": 46144,
+ "d": 355014,
+ "quant": 0.025,
+ "layout": [
+  "nodes f32 n*3",
+  "radius f32 n",
+  "vessel id u32 n",
+  "category u8 n (padded to 4)",
+  "edges u32 e*2",
+  "traced points u16 d*3 (x quant, padded to 4)",
+  "owner node u32 d"
+ ],
+ "report": {
+  "pial_art": {
+   "segments": 6681,
+   "outline_pieces": 755,
+   "links_between_sections": 699
+  },
+  "pa": {
+   "segments": 30871,
+   "outline_pieces": 1336,
+   "links_between_sections": 2829,
+   "junctions_to_pial_art": 126
+  },
+  "acap1": {
+   "segments": 2337,
+   "nodes": 2472,
+   "junctions_to_pa": 1085
+  },
+  "acap2": {
+   "segments": 4647,
+   "nodes": 4772,
+   "junctions_to_acap1": 527
+  },
+  "acap3": {
+   "segments": 3335,
+   "nodes": 3729,
+   "junctions_to_acap2": 467
+  },
+  "vcap1": {
+   "segments": 3274,
+   "nodes": 3885,
+   "junctions_to_av": 1224
+  },
+  "vcap2": {
+   "segments": 9330,
+   "nodes": 10598,
+   "junctions_to_vcap1": 982
+  },
+  "vcap3": {
+   "segments": 7928,
+   "nodes": 9066,
+   "junctions_to_vcap2": 1214
+  },
+  "av": {
+   "segments": 56637,
+   "outline_pieces": 1798,
+   "links_between_sections": 3598,
+   "junctions_to_pial_ven": 330
+  },
+  "pial_ven": {
+   "segments": 15655,
+   "outline_pieces": 1710,
+   "links_between_sections": 2336
+  },
+  "reach": {
+   "acap1\u2192PA": 0.984,
+   "acap2\u2192PA": 0.949,
+   "acap3\u2192PA": 0.731,
+   "PA\u2192pial art": 0.853,
+   "acap1\u2192pial art": 0.866,
+   "vcap1\u2192AV": 0.604,
+   "vcap3\u2192AV": 0.231,
+   "AV\u2192pial ven": 0.875
+  },
+  "totals": {
+   "nodes": 40121,
+   "edges": 46144,
+   "components": 1912
+  }
+ }
+}

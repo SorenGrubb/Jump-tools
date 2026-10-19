@@ -356,6 +356,27 @@
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">Mean of 10 repeats per clip · excitatory neurons only (GCaMP6s) · DANDI:000402, MICrONS Consortium, CC-BY-4.0 · r = oracle score (how alike the repeats were)</div>
   </div>
+  <div class="ctl">
+    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vessel dilation</button>
+  </div>
+  <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="margin:0 0 6px">
+      <select id="nvPreset" title="Realistic: sizes and speeds of the right order for an awake mouse. Teaching: four times the dilation, slower conduction and a slowed, larger heartbeat, so each step can be seen"><option value="real" selected>Realistic</option><option value="teach">Teaching (larger, slower)</option></select>
+    </div>
+    <div class="catick">
+      <label title="Dilation driven by the cells' activity, from the 1st-order capillary outward"><input type="checkbox" data-nv="act" checked> neurovascular coupling</label>
+      <label title="A pulse with every heartbeat (awake mouse ≈ 10 Hz; slowed to ~1 Hz when teaching)"><input type="checkbox" data-nv="pulse" checked> heartbeat</label>
+      <label title="Slow rhythmic diameter changes of the arterioles, about 0.1 Hz"><input type="checkbox" data-nv="vaso" checked> vasomotion (0.1 Hz)</label>
+      <label title="A plot of the diameter of the chain the picked (or most active) cell drives"><input type="checkbox" data-nv="plot" checked> diameter plot</label>
+    </div>
+    <div style="font-size:11.5px;color:var(--mut);margin:6px 0 2px">Driven by</div>
+    <div class="catick">
+      <label><input type="checkbox" data-nv="rec" checked> recorded activity (inferred spikes)</label>
+      <label><input type="checkbox" data-nv="stim" checked> stimulated spikes</label>
+      <label><input type="checkbox" data-nv="ca" checked> Ca²⁺ waves (astrocytes most)</label>
+    </div>
+    <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">A model on Søren Grubb's traced vessels (pial and penetrating arterioles, 1st–3rd order capillaries, venules), applied to the TriSAM surface (Wan &amp; Wei 2025). Needs Vessels shown (Map tab).</div>
+  </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
@@ -541,7 +562,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], nvBtn: ["vessel", "Vessel dilation"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -604,7 +625,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -730,6 +751,8 @@ window.VR_DATASETS = {
     vectors: "core/vr_vectors_microns.json",
     /* MICrONS recorded activity, baked from DANDI:000402 by microns_activity_bake.ipynb (section 21). */
     activity: "data/microns_activity/v1/",
+    /* Søren's traced vessel network (section 22), from the line annotations in "Vascular outlines". */
+    vascNet: "data/vasc_net/v1/",
     /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
        because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
        neuroglancer skeleton for segment 3: uint32 nv, uint32 ne, float32 xyz NANOMETRES, uint32
@@ -3843,7 +3866,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -3967,6 +3990,7 @@ async function openScene(id){
   if (u.plotShow) ["vm", "syn", "ca"].forEach(k => { if (u.plotShow[k] != null) setPlotShow(k, u.plotShow[k]); });
   try { caApplyUi(u.ca); } catch (e){ console.warn("[vr] Ca²⁺ settings", e); }
   try { raApplyUi(u.ra); } catch (e){ console.warn("[vr] recorded-activity settings", e); }
+  try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -5412,6 +5436,374 @@ document.getElementById("raDim").addEventListener("click", () => { RA.dim = !RA.
 })();
 document.getElementById("raCsv").addEventListener("click", raCsv);
 
+/* ── 22. VESSELS THAT MOVE: neurovascular coupling, the heartbeat and vasomotion ─  2026-10-19 (v68)
+   Søren: "make that vasculature dilate with neuronal activity … first the 1-3 order capillary
+   nearest the neuron, then the penetrating arteriole connected to it, and then the pial arterioles
+   directly connected", then: the dilation STARTS at the 1st-order capillary, which dilates more than
+   the arteriole and the 2nd order; a smaller, passive widening of the nearest venules; all three
+   activities drive it (recorded, stimulated, Ca²⁺ waves); it is applied to the Wan (TriSAM) mesh;
+   a teaching version with larger dilations; and a heartbeat and ~0.1 Hz vasomotion by default.
+
+   THE NETWORK (data/vasc_net/v1, made by vn/build2.py from Søren's own hand tracings -- the
+   Neuroglancer line annotations in "Vascular outlines", not the simplified ellipsoids):
+   · lumen outlines of pial arterioles, penetrating arterioles (PA), ascending and pial venules,
+     each outline piece one node, pieces of one vessel linked across sections (10 µm for PA/AV);
+   · centrelines of 1st–3rd order arterial and venous capillaries, as traced;
+   · each capillary attached to its parent order where its tracing comes within 4–6 µm of it, each
+     PA to a pial arteriole (8 µm): 98 % of 1st-order capillary nodes reach a PA, 87 % a pial
+     arteriole; the PAs come out as 22 connected trees.
+   THE SURFACE that moves is Wan & Wei's TriSAM mesh: each of its vertices is tied to the traced
+   point nearest it (within 12 µm) and so to a node of the network, and is pushed along its
+   normal by (local radius × that node's dilation). Vertices of vessels nobody traced take part
+   in the heartbeat and vasomotion only.
+
+   THE MODEL -- SCHEMATIC, every number adjustable, the ORDER and rough TIMING from papers:
+   · Each active cell drives the 1st-order arterial capillaries within 50 µm of its soma (else the
+     nearest within 150 µm) -- Hall et al. 2014 (capillaries before arterioles), Rungta et al.
+     2018 (capillary → PA → pia), Grubb et al. 2020 (the 1st order, at the precapillary
+     sphincter, dilates most).
+   · From there it is conducted UPSTREAM along the traced network -- into that PA, then the pial
+     arteriole feeding it -- and DOWNSTREAM into the 2nd and 3rd order, at a set speed
+     (Longden et al. 2017: capillary-to-arteriole signalling), weakening with path length.
+     It does not run back down the PA into other capillaries, nor along the pia into other PAs.
+   · Each class has its own size: 1st order > PA > 2nd order > pial > 3rd order; venules near the
+     dilating capillaries widen passively, later and much less.
+   · Drive → response through three first-order lags (τ ≈ 0.6 s), so a burst gives a rise over ~1–2 s
+     and a return over several seconds.
+   · The heartbeat (awake mouse ≈ 10 Hz) and ~0.1 Hz vasomotion run all the time, largest in the
+     arterioles (Mestre et al. 2018; van Veluw et al. 2020).
+   · TEACHING: four times the dilation, slower conduction, the heartbeat slowed to ~1 Hz and
+     larger, so each step can be seen. Labelled as such wherever it shows. */
+const NV = { on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
+             net: null, netP: null, err: "", geo: null, nodes: null, tex: null, texData: null, W: 1024, H: 1,
+             src: new Map(), spk: new Map(), lastTick: 0, t0: performance.now(), hud: null, plotSpr: null, plotCv: null, hist: [], plot: true, routed: 0 };
+const NV_PRESET = {
+  real:  { gain: { acap1: 0.15, pa: 0.10, acap2: 0.07, pial_art: 0.06, acap3: 0.03, ven: 0.02 },
+           pulse: { pial_art: 0.02, pa: 0.02, acap1: 0.010, acap2: 0.006, acap3: 0.004, ven: 0.003, none: 0.004 }, hr: 10,
+           vaso: { pial_art: 0.03, pa: 0.03, acap1: 0.015, acap2: 0.008, acap3: 0.004, ven: 0.002, none: 0.004 }, vf: 0.1,
+           speed: 500, lambda: 600, tau: 0.6, label: "realistic" },
+  teach: { gain: { acap1: 0.60, pa: 0.40, acap2: 0.28, pial_art: 0.24, acap3: 0.12, ven: 0.08 },
+           pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, ven: 0.012, none: 0.015 }, hr: 1.2,
+           vaso: { pial_art: 0.09, pa: 0.09, acap1: 0.05, acap2: 0.025, acap3: 0.012, ven: 0.006, none: 0.01 }, vf: 0.1,
+           speed: 120, lambda: 900, tau: 0.9, label: "TEACHING — larger and slower than life" }
+};
+const NV_ART = new Set(["pial_art", "pa", "acap1", "acap2", "acap3"]);
+/* Which way a dilation may be conducted: up to the PA and the pia, down the capillary orders,
+   never back down a PA into its other capillaries or along the pia into other PAs. */
+const NV_STEP = { acap1: ["acap1", "pa", "acap2"], pa: ["pa", "pial_art"], pial_art: ["pial_art"], acap2: ["acap2", "acap3"], acap3: ["acap3"] };
+async function nvNet(){
+  if (NV.net) return NV.net;
+  if (!NV.netP) NV.netP = (async () => {
+    const base = (DSX && DSX.vascNet) || (VR_DATASETS.microns || {}).vascNet; if (!base) throw new Error("no traced vessel network for this dataset");
+    const meta = await (await fetch(base + "meta.json")).json();
+    const buf = await (await fetch(base + "net.bin")).arrayBuffer();
+    const n = meta.n, e = meta.e, d = meta.d; let o = 0;
+    const pos = new Float32Array(buf, o, n * 3); o += n * 12;
+    const rad = new Float32Array(buf, o, n); o += n * 4;
+    const vid = new Uint32Array(buf, o, n); o += n * 4;
+    const cat = new Uint8Array(buf, o, n); o += n + ((4 - n % 4) % 4);
+    const E = new Uint32Array(buf, o, e * 2); o += e * 8;
+    const Dq = new Uint16Array(buf, o, d * 3); o += d * 6 + ((4 - (d * 6) % 4) % 4);
+    const own = new Uint32Array(buf, o, d);
+    const adj = Array.from({ length: n }, () => []);
+    for (let k = 0; k < e; k++){ const a = E[k*2], b = E[k*2+1], L = Math.hypot(pos[a*3]-pos[b*3], pos[a*3+1]-pos[b*3+1], pos[a*3+2]-pos[b*3+2]); adj[a].push(b, L); adj[b].push(a, L); }
+    NV.net = { meta, n, pos, rad, vid, cat, cname: i => meta.cats[cat[i]], adj, Dq, own, q: meta.quant };
+    return NV.net;
+  })();
+  try { return await NV.netP; } catch (err){ NV.netP = null; throw err; }
+}
+function nvClass(cn){ return cn && cn[0] === "v" || cn === "av" || cn === "pial_ven" ? "ven" : cn; }
+/* Tie the TriSAM mesh to the network: once per vessel mesh. */
+async function nvAttach(){
+  const mesh = VASC.mesh; if (!mesh || !NV.on){ return; }
+  if (NV.geo === mesh.geometry.uuid) return;
+  let net; try { net = await nvNet(); } catch (e){ NV.err = String(e.message || e); ctxNote.textContent = "Vessel dilation: the traced network could not be read — " + NV.err; return; }
+  if (VASC.mesh !== mesh) return;
+  const g = mesh.geometry, P = g.attributes.position.array, Nn = g.attributes.normal.array, nv = P.length / 3;
+  if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox.clone().expandByScalar(15), q = net.q;
+  /* Traced points inside the mesh's box, hashed on a 6 µm grid. */
+  const S = 6, cells = new Map(), key = (x, y, z) => x + "," + y + "," + z;
+  const pts = [];
+  for (let k = 0, m = net.own.length; k < m; k++){
+    const x = net.Dq[k*3] * q, y = net.Dq[k*3+1] * q, z = net.Dq[k*3+2] * q;
+    if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) continue;
+    const j = pts.length; pts.push([x, y, z, net.own[k]]);
+    const kk = key(Math.floor(x / S), Math.floor(y / S), Math.floor(z / S)); let l = cells.get(kk); if (!l){ l = []; cells.set(kk, l); } l.push(j);
+  }
+  /* Local node numbering: 0 = "a vessel nobody traced". */
+  const loc = new Map(), glob = [-1];
+  const L = gi => { let v = loc.get(gi); if (v == null){ v = glob.length; loc.set(gi, v); glob.push(gi); } return v; };
+  const vnNode = new Float32Array(nv), vnR = new Float32Array(nv);
+  let tied = 0, sgnSum = 0, sgnN = 0;
+  for (let v = 0; v < nv; v++){
+    const x = P[v*3], y = P[v*3+1], z = P[v*3+2], gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S);
+    let best = 144, bj = -1;      // (12 µm)²
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = cells.get(key(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const j of l){ const p = pts[j], d2 = (p[0]-x)*(p[0]-x) + (p[1]-y)*(p[1]-y) + (p[2]-z)*(p[2]-z); if (d2 < best){ best = d2; bj = j; } }
+    }
+    if (bj < 0){ vnNode[v] = 0; vnR[v] = 2.5; continue; }
+    const p = pts[bj], gi = p[3], cn = net.cname(gi); tied++;
+    vnNode[v] = L(gi);
+    const isCap = /cap/.test(cn), d = Math.sqrt(best);
+    /* Capillaries: the traced line IS the centreline, so the distance to it is the local radius.
+       Larger vessels: half the short axis of the traced outline piece. */
+    vnR[v] = isCap ? Math.min(6, Math.max(1, d)) : net.rad[gi];
+    if (isCap && d > 0.5){ sgnSum += ((x - p[0]) * Nn[v*3] + (y - p[1]) * Nn[v*3+1] + (z - p[2]) * Nn[v*3+2]) / d; sgnN++; }
+    if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  /* Which way is "out": the normals of a closed surface all point one way; the capillaries say which. */
+  const sign = sgnN && sgnSum < 0 ? -1 : 1;
+  if (sign < 0) for (let v = 0; v < nv; v++) vnR[v] = -vnR[v];
+  g.setAttribute("vnNode", new THREE.BufferAttribute(vnNode, 1));
+  g.setAttribute("vnR", new THREE.BufferAttribute(vnR, 1));
+  /* One RGBA texel per local node: r = activity dilation now, g = heartbeat size, b = vasomotion
+     size, a = vasomotion phase (one phase per vessel). */
+  NV.W = 1024; NV.H = Math.max(1, Math.ceil(glob.length / NV.W));
+  NV.texData = new Float32Array(NV.W * NV.H * 4);
+  if (NV.tex) NV.tex.dispose();
+  NV.tex = new THREE.DataTexture(NV.texData, NV.W, NV.H, THREE.RGBAFormat, THREE.FloatType);
+  NV.tex.minFilter = NV.tex.magFilter = THREE.NearestFilter; NV.tex.needsUpdate = true;
+  NV.glob = glob; NV.loc = loc; NV.geo = g.uuid; NV.tied = tied / Math.max(1, nv); NV.nVert = nv; NV.src.clear();
+  nvStatic();
+  nvMaterial(mesh);
+  ctxNote.textContent = "Vessel dilation: " + Math.round(NV.tied * 100) + " % of the TriSAM surface here tied to Søren's traced network (" + (glob.length - 1) + " traced nodes)"
+    + (NV.tied < 0.3 ? " — the rest are vessels nobody traced; they still beat and move." : ".") + " " + NV_PRESET[NV.preset].label + ".";
+}
+function nvStatic(){
+  if (!NV.texData) return;
+  const pr = NV_PRESET[NV.preset], net = NV.net, D = NV.texData;
+  for (let li = 0; li < NV.glob.length; li++){
+    const gi = NV.glob[li], cls = gi < 0 ? "none" : nvClass(net.cname(gi));
+    D[li*4+1] = NV.pulse ? (pr.pulse[cls] || 0) : 0;
+    D[li*4+2] = NV.vaso ? (pr.vaso[cls] || 0) : 0;
+    const vid = gi < 0 ? 7 : net.vid[gi]; D[li*4+3] = ((vid * 2654435761) % 1000) / 1000 * 6.2832;
+  }
+  NV.tex.needsUpdate = true;
+  AP_UNI.nvHR.value = pr.hr; AP_UNI.nvVF.value = pr.vf;
+}
+AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0.1 };
+function nvMaterial(mesh){
+  const m = mesh.material;
+  if (m.userData.nv){ m.userData.nv.tex.value = NV.tex; m.userData.nv.W.value = NV.W; m.userData.nv.H.value = NV.H; return; }
+  const U = { tex: { value: NV.tex }, W: { value: NV.W }, H: { value: NV.H } };
+  m.userData.nv = U;
+  const base = m.onBeforeCompile;
+  m.onBeforeCompile = sh => {
+    base(sh);
+    sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H;
+    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nvarying float vNvD;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+        {
+          vec2 nuv = vec2((mod(vnNode, nvW) + 0.5) / nvW, (floor(vnNode / nvW) + 0.5) / nvH);
+          vec4 q = texture2D(nvTex, nuv);
+          float ph = fract(nvT * nvHR);
+          float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);      // a sharp rise, a slower fall
+          float d = q.r + q.g * beat + q.b * sin(6.2831853 * nvVF * nvT + q.a);
+          vNvD = q.r;
+          transformed += objectNormal * vnR * d;
+        }`);
+    sh.fragmentShader = "varying float vNvD;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        totalEmissiveRadiance += vec3(1.0, 0.25, 0.2) * clamp(vNvD * 2.5, 0.0, 0.8);`);
+  };
+  m.customProgramCacheKey = () => "vessel-nv";
+  m.needsUpdate = true;
+}
+/* ── drives ── */
+function nvSoma(c){ if (!c.mesh) return null; const s = somaNode(c, -1); if (s >= 0) return nodePos(c, s); c.mesh.geometry.computeBoundingBox(); return c.mesh.geometry.boundingBox.getCenter(new THREE.Vector3()); }
+/* Where a cell's drive enters the network, and everywhere it is conducted to: (local node,
+   weight, delay s). Computed once per cell. */
+function nvRoute(c){
+  const net = NV.net, pr = NV_PRESET[NV.preset], at = nvSoma(c); if (!at) return [];
+  const trig = [];
+  for (let li = 1; li < NV.glob.length; li++){
+    const gi = NV.glob[li]; if (net.cname(gi) !== "acap1") continue;
+    const d = Math.hypot(net.pos[gi*3] - at.x, net.pos[gi*3+1] - at.y, net.pos[gi*3+2] - at.z);
+    if (d < 150) trig.push([gi, d]);
+  }
+  trig.sort((a, b) => a[1] - b[1]);
+  let use = trig.filter(t => t[1] <= 50); if (!use.length && trig.length) use = [trig[0]];
+  if (!use.length) return [];
+  /* Dijkstra over the allowed steps, from every trigger node at once. */
+  const dist = new Map(), w0 = new Map(), heap = [];
+  const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k){ const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let k = 0; for (;;){ const l = 2*k+1, r = l+1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+  for (const [gi, d] of use){ dist.set(gi, 0); w0.set(gi, Math.exp(-d / 40)); push(0, gi); }
+  const wTrig = Math.max(...use.map(u => Math.exp(-u[1] / 40)));
+  while (heap.length){
+    const [d, i] = pop(); if (d > dist.get(i) || d > 1500) continue;
+    const ci = net.cname(i), ok = NV_STEP[ci] || [];
+    const A = net.adj[i];
+    for (let k = 0; k < A.length; k += 2){
+      const j = A[k], cj = net.cname(j); if (!ok.includes(cj)) continue;
+      const nd = d + A[k+1]; if (nd < (dist.has(j) ? dist.get(j) : 1e9)){ dist.set(j, nd); push(nd, j); }
+    }
+  }
+  const out = [], artW = new Map();
+  for (const [gi, d] of dist){
+    const li = NV.loc.get(gi); if (li == null) continue;
+    const w = wTrig * Math.exp(-d / pr.lambda) * (pr.gain[net.cname(gi)] || 0);
+    if (w < 0.002) continue;
+    out.push([li, w, d / pr.speed]); artW.set(gi, [w, d / pr.speed]);
+  }
+  /* Venules near the dilating capillaries: passive, later, smaller. */
+  for (let li = 1; li < NV.glob.length; li++){
+    const gi = NV.glob[li]; if (nvClass(net.cname(gi)) !== "ven") continue;
+    let best = 0, dl = 0;
+    for (const [ga, [w, de]] of artW){
+      if (!/cap1|cap2/.test(net.cname(ga))) continue;
+      const d = Math.hypot(net.pos[gi*3] - net.pos[ga*3], net.pos[gi*3+1] - net.pos[ga*3+1], net.pos[gi*3+2] - net.pos[ga*3+2]);
+      if (d < 40){ const v = (w / (pr.gain[net.cname(ga)] || 1)) * Math.exp(-d / 20); if (v > best){ best = v; dl = de; } }
+    }
+    if (best * pr.gain.ven > 0.002) out.push([li, best * pr.gain.ven, dl + 1.0]);
+  }
+  return out;
+}
+function nvDrives(dtS){
+  /* Each cell's input this tick, 0–1 (a sum may exceed 1 in a burst). */
+  const u = new Map();
+  if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
+    for (const c of raCells()){ const e = raEntry(c); u.set(c, (u.get(c) || 0) + Math.min(1.5, raAt(e, raInfer(e).rate, RA.t) / 8)); }
+  if (NV.drv.stim) for (const c of CELLS){
+    const n = (c.spikesAt || []).length, was = NV.spk.get(c) || 0;
+    if (n > was) u.set(c, (u.get(c) || 0) + 0.35 * (n - was) / Math.max(dtS, 0.05));
+    NV.spk.set(c, n);
+  }
+  if (NV.drv.ca) for (const c of caCells()){
+    const v = caTrace(c, CA.now); if (v > 0.02) u.set(c, (u.get(c) || 0) + v * (caKind(c) === "astro" ? 1 : 0.5));
+  }
+  return u;
+}
+function nvTick(){
+  if (!NV.on || !NV.texData || !VASC.mesh || VASC.mesh.geometry.uuid !== NV.geo){ return; }
+  const now = performance.now(), dtS = Math.min(0.5, (now - (NV.lastTick || now)) / 1000); NV.lastTick = now;
+  const pr = NV_PRESET[NV.preset], D = NV.texData;
+  for (let li = 0; li < NV.glob.length; li++) D[li*4] = 0;
+  if (NV.act){
+    const u = nvDrives(dtS);
+    for (const [c, val] of u){
+      let s = NV.src.get(c);
+      if (!s){ s = { route: nvRoute(c), x1: 0, x2: 0, hist: new Float32Array(400), h: 0 }; NV.src.set(c, s); NV.routed++; }
+      s.u = val;
+    }
+    for (const [c, s] of NV.src){
+      if (!s) continue;
+      const inp = s.u || 0; s.u = 0;
+      /* Three first-order lags: an onset after ~0.5 s, a peak after ~1.5–2.5 s, a slow return. */
+      const a = Math.min(1, dtS / pr.tau);
+      s.x1 += (inp - s.x1) * a; s.x2 += (s.x1 - s.x2) * a; s.x3 = (s.x3 || 0) + (s.x2 - (s.x3 || 0)) * a;
+      s.h = (s.h + 1) % s.hist.length; s.hist[s.h] = s.x3;
+      for (const [li, w, dl] of s.route){
+        const back = Math.min(s.hist.length - 1, Math.round(dl / Math.max(0.02, dtS)));
+        const v = s.hist[(s.h - back + s.hist.length) % s.hist.length];
+        D[li*4] += w * Math.min(1.5, v);
+      }
+    }
+  }
+  NV.tex.needsUpdate = true;
+  /* The chain of the picked cell (or the most active), for the plot. */
+  if (NV.plot) nvPlotSample();
+}
+function nvFrame(){
+  if (!NV.on){ if (VASC.mesh && VASC.mesh.material.userData.nv){ AP_UNI.nvT.value = 0; if (NV.texData && NV._cleared !== true){ NV.texData.fill(0); NV.tex.needsUpdate = true; NV._cleared = true; } } nvPlotDraw(true); return; }
+  NV._cleared = false;
+  if (VASC.mesh && NV.geo !== VASC.mesh.geometry.uuid && !NV._attaching){ NV._attaching = true; nvAttach().finally(() => { NV._attaching = false; }); }
+  AP_UNI.nvT.value = (performance.now() - NV.t0) / 1000;
+  const now = performance.now();
+  if (now - (NV._tickAt || 0) > 100){ NV._tickAt = now; nvTick(); }
+  if (now - (NV._plotAt || 0) > 200){ NV._plotAt = now; nvPlotDraw(); }
+}
+/* ── the plot: % diameter of the chain the picked (or most active) cell drives ── */
+function nvChain(){
+  let best = null, bv = -1;
+  for (const [c, s] of NV.src){ if (!s || !s.route.length) continue; const v = c.i === SELECTED ? 1e9 : (s.x3 || 0); if (v > bv){ bv = v; best = [c, s]; } }
+  if (!best) return null;
+  const [c, s] = best, net = NV.net, pick = {};
+  for (const [li, w] of s.route){ const cls = nvClass(net.cname(NV.glob[li])); if (!pick[cls] || w > pick[cls][1]) pick[cls] = [li, w]; }
+  return { c, pick };
+}
+function nvPlotSample(){
+  const ch = nvChain(); const t = AP_UNI.nvT.value;
+  if (!ch){ NV.hist.push({ t, v: {} }); } else {
+    const v = {};
+    for (const k in ch.pick){ const li = ch.pick[k][0]; v[k] = NV.texData[li*4]; }
+    NV.hist.push({ t, v, c: ch.c.i });
+  }
+  while (NV.hist.length && NV.hist[0].t < t - 20) NV.hist.shift();
+}
+const NV_COL = { acap1: "#ff6b6b", pa: "#f03e3e", acap2: "#ffa8a8", pial_art: "#c92a2a", acap3: "#ffd8d8", ven: "#4dabf7" };
+const NV_LAB = { acap1: "1st-order capillary", pa: "penetrating arteriole", acap2: "2nd-order capillary", pial_art: "pial arteriole", acap3: "3rd-order capillary", ven: "venule (passive)" };
+function nvPlotDraw(hide){
+  const last = NV.hist[NV.hist.length - 1];
+  if (hide || !NV.on || !NV.plot || !NV.act || !last || last.c == null){ if (NV.plotSpr) NV.plotSpr.visible = false; return; }
+  const W = 760, H = 400;
+  if (!NV.plotCv){ NV.plotCv = document.createElement("canvas"); NV.plotCv.width = W; NV.plotCv.height = H; }
+  const g = NV.plotCv.getContext("2d"), t1 = last.t, t0 = t1 - 20;
+  let ymax = 0.02; for (const h of NV.hist) for (const k in h.v) ymax = Math.max(ymax, h.v[k]);
+  ymax = Math.ceil(ymax * 100 / 5) * 5 / 100;
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#f03e3e"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif";
+  g.fillText("Vessel diameter, driven by " + shortName(CELLS[last.c]).slice(0, 24), 16, 32);
+  g.font = "600 16px system-ui, sans-serif"; g.fillStyle = NV.preset === "teach" ? "#ffb454" : "#f0883e";
+  g.fillText("MODEL, not measured · " + (NV.preset === "teach" ? "TEACHING: larger and slower than life" : "realistic sizes") + " · heartbeat and vasomotion not shown", 16, 56);
+  const L = 70, R = W - 220, T = 74, B = H - 40, X = t => L + (R - L) * (t - t0) / 20, Y = v => B - (B - T) * v / ymax;
+  g.font = "16px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.strokeStyle = "#21262d"; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++){ const v = ymax * k / 4, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); g.fillText("+" + Math.round(v * 100) + " %", 8, y + 5); }
+  g.fillText("20 s", L, B + 24); g.fillText("now", R - 30, B + 24);
+  let row = 0;
+  for (const k of ["acap1", "pa", "acap2", "pial_art", "acap3", "ven"]){
+    if (!NV.hist.some(h => h.v[k] != null)) continue;
+    g.strokeStyle = NV_COL[k]; g.lineWidth = 3; g.setLineDash(k === "ven" ? [6, 5] : []); g.beginPath(); let first = true;
+    for (const h of NV.hist){ if (h.v[k] == null) continue; const x = X(h.t), y = Y(h.v[k]); first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; }
+    g.stroke(); g.setLineDash([]);
+    g.fillStyle = NV_COL[k]; g.fillRect(R + 14, T + row * 30, 18, 4); g.fillStyle = "#c9d1d9"; g.fillText(NV_LAB[k], R + 38, T + row * 30 + 7); row++;
+  }
+  if (!NV.plotSpr){
+    const tex = new THREE.CanvasTexture(NV.plotCv); tex.colorSpace = THREE.SRGBColorSpace;
+    NV.plotSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); NV.plotSpr.renderOrder = 30; scene.add(NV.plotSpr);
+  }
+  NV.plotSpr.material.map.needsUpdate = true; NV.plotSpr.visible = true;
+  const h = 0.11; NV.plotSpr.scale.set(h * W / H, h, 1);
+  nvPlace();
+}
+function nvPlace(){
+  if (!NV.plotSpr || !NV.plotSpr.visible) return;
+  const cand = [STIM.warn && STIM.warn.parent ? STIM.warn : null, STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null,
+                CA.hud && CA.hud.spr && CA.hud.spr.parent ? CA.hud.spr : null, CA.plotSpr && CA.plotSpr.visible ? CA.plotSpr : null,
+                RA.hud && RA.hud.visible ? RA.hud : null, RA.plotSpr && RA.plotSpr.visible ? RA.plotSpr : null].filter(Boolean);
+  let low = null; for (const x of cand) if (!low || x.position.y - x.scale.y / 2 < low.position.y - low.scale.y / 2) low = x;
+  const s = NV.plotSpr;
+  if (low) s.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - s.scale.y / 2, 0));
+  else s.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - s.scale.y / 2, 0));
+}
+/* ── switches ── */
+function setNv(v){
+  NV.on = !!v; document.getElementById("nvBtn").classList.toggle("on", NV.on);
+  document.getElementById("nvBox").style.display = NV.on ? "" : "none";
+  if (NV.on && document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Vessel dilation needs the vessels: showing the TriSAM vessels around the cells…"; setVessels("box"); }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function nvSetting(k, v){
+  if (k in NV.drv) NV.drv[k] = !!v; else NV[k] = v;
+  if (k === "preset"){ NV.src.clear(); NV.hist = []; const el = document.getElementById("nvPreset"); if (el) el.value = v; }
+  const box = document.querySelector('#nvBox [data-nv="' + k + '"]'); if (box) box.checked = !!v;
+  nvStatic();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function nvUi(){ return { on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot }; }
+function nvApplyUi(u){
+  if (!u) return;
+  if (u.preset) nvSetting("preset", u.preset);
+  ["act", "pulse", "vaso", "plot"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
+  if (u.drv) for (const k in u.drv) nvSetting(k, u.drv[k]);
+  if (u.on != null && !!u.on !== NV.on) setNv(u.on);
+}
+document.getElementById("nvBtn").addEventListener("click", () => setNv(!NV.on));
+document.getElementById("nvPreset").addEventListener("change", e => nvSetting("preset", e.target.value));
+document.querySelectorAll("#nvBox [data-nv]").forEach(el => el.addEventListener("change", () => nvSetting(el.dataset.nv, el.checked)));
+
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
    output synapses found to VR" -- and the same from Astrocyte–synapse proximity and Cell contacts.
@@ -5834,6 +6226,16 @@ function menuRows(){
       rows.push({ label: "   Reset Ca²⁺", act: caReset });
     }
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
+    if (DS_HAS.vasc){
+      rows.push({ label: "Vessel dilation (model)", on: NV.on, act: () => setNv(!NV.on) });
+      if (NV.on){
+        rows.push({ label: "   " + (NV.preset === "teach" ? "Teaching: larger, slower" : "Realistic sizes") + "  ▸", act: () => nvSetting("preset", NV.preset === "teach" ? "real" : "teach") });
+        rows.push({ label: "   Neurovascular coupling", on: NV.act, act: () => nvSetting("act", !NV.act) });
+        rows.push({ label: "   Heartbeat", on: NV.pulse, act: () => nvSetting("pulse", !NV.pulse) });
+        rows.push({ label: "   Vasomotion (0.1 Hz)", on: NV.vaso, act: () => nvSetting("vaso", !NV.vaso) });
+        rows.push({ label: "   Diameter plot", on: NV.plot, act: () => nvSetting("plot", !NV.plot) });
+      }
+    }
     if (DS_HAS.ra){
       rows.push({ label: "Recorded activity (MICrONS)", on: RA.on, act: () => setRa(!RA.on) });
       if (RA.on){
@@ -7453,6 +7855,7 @@ renderer.setAnimationLoop(() => {
   stimFrame(TL.frozen ? 0 : dt);                            // a freeze effect holds the spike clock
   caFrame(TL.frozen ? 0 : dt);                              // …and the Ca²⁺ clock
   raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
+  try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
@@ -7866,7 +8269,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 (function hideMissing(){
   const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
@@ -7885,7 +8288,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
