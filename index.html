@@ -136,6 +136,11 @@
     .volbox{position:absolute;top:26px;right:28px;margin:0;text-align:right}
     .volbox svg{margin-left:auto}
   }
+  /* The three numbers that describe the drawn box, each behind its own symbol (2026-10-18):
+     volume (cube), extent (double arrow), voxel (pixel grid). See the_card_reads_at_a_glance.py. */
+  .volbox .vf{display:flex;align-items:center;gap:6px;line-height:1.55}
+  .volbox .vi{width:12px;height:12px;flex:none;opacity:.8}
+  @media(min-width:820px){ .volbox .vf{justify-content:flex-end} }
   /* featured tool card */
   .feature{
     display:block;margin:32px 0 0;
@@ -467,7 +472,7 @@
         <li><a href="#datasets">Every dataset</a></li>
       </ul>
     </nav>
-    <p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-19 03:18</span></p>
+    <p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-19 11:06</span></p>
   </div>
 </header>
 
@@ -497,6 +502,11 @@
   </div>
 </div>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vi-vol" viewBox="0 0 16 16"><path d="M8 1.8 14 5v6.2L8 14.4 2 11.2V5Z M2 5l6 3.2L14 5 M8 8.2v6.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="vi-ext" viewBox="0 0 16 16"><path d="M1.5 8h13 M1.5 8l3-3 M1.5 8l3 3 M14.5 8l-3-3 M14.5 8l-3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="vi-vox" viewBox="0 0 16 16"><path d="M2 2h12v12H2Z M6 2v12 M10 2v12 M2 6h12 M2 10h12" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M6 6h4v4H6Z" fill="currentColor" fill-opacity=".55"/></symbol>
+</svg>
 <div class="wrap" id="tools">
   <h2 class="sectionhead">The tools</h2>
   <a class="feature" href="/ujump.html">
@@ -508,22 +518,24 @@
           <polygon points="90.64,47.47 135.79,73.53 135.79,58.20 90.64,32.13" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="90.64,32.13 135.79,58.20 98.61,79.67 53.46,53.60" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>1.2 × 10⁹&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>1.2 × 10⁹&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>1.7 &times; 1.4 &times; 0.5&nbsp;mm</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>4 &times; 4 &times; 40&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">µ</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">MICrONS</span>
       <span class="chip">Mouse visual cortex</span>
-      <span class="chip">1.7 &times; 1.4 &times; 0.5&nbsp;mm</span>
-      <span class="chip">4 &times; 4 &times; 40&nbsp;nm</span>
       <span class="chip">144,118 nuclei</span>
-      <span class="chip">94,008 classified</span>
-      <span class="chip">50,110 unclassified</span>
-      <span class="chip">Hand-verified layers &amp; vasculature</span>
-      <span class="chip">Cell contacts</span>
+      <span class="chip">65% classified</span>
+      <span class="chip">33 cell types to choose from</span>
+      <span class="chip">Cell contacts &amp; connectivity</span>
+      <span class="chip">Show in VR &amp; make movies</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">3D mesh, PowerPoint &amp; Excel</span>
-      <span class="chip">MICrONS minnie65</span>
-      <span class="chip">16 cell classes</span>
     </div>
     <span class="cta">Open µJump &rarr;</span>
   </a>
@@ -537,23 +549,27 @@
           <polygon points="87.99,52.07 135.79,79.67 135.79,55.13 87.99,27.53" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="87.99,27.53 135.79,55.13 106.58,72.00 58.77,44.40" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>1.6 × 10⁹&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>1.6 × 10⁹&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>1.8 &times; 1.1 &times; 0.8&nbsp;mm</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>9 &times; 9 &times; 45&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&delta;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">Allen Institute V1DD</span>
       <span class="chip">Mouse visual cortex</span>
-      <span class="chip">1.8 &times; 1.1 &times; 0.8&nbsp;mm</span>
-      <span class="chip">9 &times; 9 &times; 45&nbsp;nm</span>
       <span class="chip">207,455 nuclei</span>
-      <span class="chip">48,077 classified</span>
-      <span class="chip">159,378 unclassified</span>
+      <span class="chip">23% classified</span>
+      <span class="chip">Neurons only &mdash; glia unnamed</span>
+      <span class="chip">Pia to white matter</span>
       <span class="chip">Layers fitted from the data</span>
+      <span class="chip">Cell contacts &amp; connectivity</span>
+      <span class="chip">Show in VR &amp; make movies</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">3D mesh, PowerPoint &amp; Excel</span>
       <span class="chip">Free CAVE account to view segmentation</span>
-      <span class="chip">Allen Institute V1DD</span>
-      <span class="chip">Pia to white matter</span>
-      <span class="chip">Neurons only &mdash; glia unnamed</span>
     </div>
     <span class="cta">Open &delta;Jump &rarr;</span>
   </a>
@@ -567,22 +583,25 @@
           <polygon points="126.23,73.52 135.79,79.04 135.79,76.37 126.23,70.85" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="126.23,70.85 135.79,76.37 130.08,79.67 120.52,74.15" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>6.7 × 10⁶&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>6.7 × 10⁶&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>360 &times; 215 &times; 87&nbsp;&micro;m</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>4 &times; 4 &times; 40&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&pi;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">MICrONS pinky100</span>
       <span class="chip">Mouse visual cortex</span>
-      <span class="chip">360 &times; 215 &times; 87&nbsp;&micro;m</span>
-      <span class="chip">4 &times; 4 &times; 40&nbsp;nm</span>
       <span class="chip">452 somas &mdash; finishable</span>
-      <span class="chip">451 classified</span>
-      <span class="chip">1 unclassified</span>
-      <span class="chip">Connectivity without a login</span>
+      <span class="chip">99.8% classified</span>
+      <span class="chip">Proofread soma-to-soma graph</span>
+      <span class="chip">Cell contacts &amp; connectivity, no login</span>
+      <span class="chip">Show in VR &amp; make movies</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">3D mesh, PowerPoint &amp; Excel</span>
       <span class="chip">Cell table CC-BY-4.0</span>
-      <span class="chip">MICrONS pinky100</span>
-      <span class="chip">Proofread soma-to-soma graph</span>
     </div>
     <span class="cta">Open &pi;Jump &rarr;</span>
   </a>
@@ -596,22 +615,25 @@
           <polygon points="123.73,66.85 135.79,73.81 135.79,72.80 123.73,65.84" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="123.73,65.84 135.79,72.80 123.89,79.67 111.84,72.71" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>6.7 × 10⁶&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>6.7 × 10⁶&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>454 &times; 448 &times; 33&nbsp;&micro;m</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>4 &times; 4 &times; 40&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&lambda;</span><span class="jm">Jump</span></div>
     <div class="chips">
-      <span class="chip">Mouse visual cortex</span>
-      <span class="chip">450 &times; 450 &times; 33&nbsp;&micro;m</span>
-      <span class="chip">4 &times; 4 &times; 40&nbsp;nm</span>
-      <span class="chip">488 nuclei</span>
-      <span class="chip">0 classified</span>
-      <span class="chip">488 unclassified</span>
-      <span class="chip">Leptomeninges imaged</span>
-      <span class="chip">No segmentation &mdash; no 3D meshes</span>
-      <span class="chip">ODC-By v1.0</span>
       <span class="chip">Lee16 serial-section TEM</span>
+      <span class="chip">Mouse visual cortex</span>
+      <span class="chip">488 nuclei</span>
+      <span class="chip">0% classified</span>
+      <span class="chip">Leptomeninges imaged</span>
       <span class="chip">Depth from the traced pia</span>
+      <span class="chip">No segmentation &mdash; cells are traced</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
+      <span class="chip">Traced cells in VR &amp; movies</span>
+      <span class="chip">ODC-By v1.0</span>
     </div>
     <span class="cta">Open &lambda;Jump &rarr;</span>
   </a>
@@ -625,23 +647,26 @@
           <polygon points="56.12,8.21 135.79,54.21 135.79,49.00 56.12,3.00" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="56.12,3.00 135.79,49.00 82.67,79.67 3.00,33.67" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>1.0 × 10⁹&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>1.0 × 10⁹&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>3 &times; 2 &times; 0.17&nbsp;mm</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>8 &times; 8 &times; 33&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&eta;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">H01 &mdash; Lichtman lab &amp; Google</span>
       <span class="chip">Human cortex</span>
-      <span class="chip">~3 &times; 2&nbsp;mm wedge</span>
-      <span class="chip">8 &times; 8 &times; 33&nbsp;nm</span>
       <span class="chip">47,447 cells</span>
-      <span class="chip">46,173 classified</span>
-      <span class="chip">1,274 unclassified</span>
+      <span class="chip">97% classified</span>
+      <span class="chip">Oligodendrocytes the largest class</span>
+      <span class="chip">Pia to white matter</span>
       <span class="chip">Cortical layers from the volume</span>
       <span class="chip">Cell contacts</span>
+      <span class="chip">Show in VR &amp; make movies</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">3D mesh, PowerPoint &amp; Excel</span>
-      <span class="chip">H01 &mdash; Lichtman lab &amp; Google</span>
-      <span class="chip">Pia to white matter</span>
-      <span class="chip">Oligodendrocytes the largest class</span>
     </div>
     <span class="cta">Open &eta;Jump &rarr;</span>
   </a>
@@ -655,21 +680,25 @@
           <polygon points="109.29,51.70 135.79,67.00 135.79,65.53 109.29,50.23" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="109.29,50.23 135.79,65.53 111.30,79.67 84.80,64.36" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>4.4 × 10⁷&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>4.4 × 10⁷&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>998 &times; 922 &times; 48&nbsp;&micro;m</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>4 &times; 4 &times; 40&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&chi;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">cb2 &mdash; one cell, many fragments</span>
       <span class="chip">Mouse cerebellar cortex</span>
-      <span class="chip">998 &times; 922 &times; 48&nbsp;&micro;m</span>
-      <span class="chip">4 &times; 4 &times; 40&nbsp;nm</span>
       <span class="chip">No cell list &mdash; fragments, not cells</span>
-      <span class="chip">0 classified</span>
       <span class="chip">Every cell &mdash; you build it</span>
       <span class="chip">Free-text cell names</span>
       <span class="chip">Community assembly</span>
+      <span class="chip">Cell contacts</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
+      <span class="chip">Traced cells in VR &amp; movies</span>
       <span class="chip">Public via BossDB; no reuse terms stated</span>
-      <span class="chip">cb2 &mdash; one cell, many fragments</span>
     </div>
     <span class="cta">Open &chi;Jump &rarr;</span>
   </a>
@@ -683,22 +712,26 @@
           <polygon points="129.42,73.03 135.79,76.71 135.79,75.91 129.42,72.23" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="129.42,72.23 135.79,75.91 129.28,79.67 122.91,75.99" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>1.5 × 10⁶&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>1.5 × 10⁶&nbsp;µm&sup3;</span>
+        <span class="vf" title="Extent (x × y × z)"><svg class="vi"><use href="#vi-ext"/></svg>240 &times; 245 &times; 26&nbsp;&micro;m</span>
+        <span class="vf" title="Voxel size (x × y × z)"><svg class="vi"><use href="#vi-vox"/></svg>8 &times; 8 &times; 30&nbsp;nm</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&beta;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">vCLEM &mdash; fluorescence on EM</span>
       <span class="chip">Alzheimer's model, hippocampal CA1</span>
-      <span class="chip">240 &times; 245 &times; 26&nbsp;&micro;m</span>
-      <span class="chip">8 &times; 8 &times; 30&nbsp;nm</span>
       <span class="chip">220 nuclei</span>
-      <span class="chip">0 classified</span>
-      <span class="chip">220 unclassified</span>
+      <span class="chip">0% classified</span>
+      <span class="chip">No machine prediction</span>
       <span class="chip">Amyloid-&beta;, pTau &amp; CD11b readout</span>
       <span class="chip">Correct the detections</span>
+      <span class="chip">Cell contacts</span>
+      <span class="chip">Show in VR &amp; make movies</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">3D mesh, PowerPoint &amp; Excel</span>
-      <span class="chip">vCLEM &mdash; fluorescence on EM</span>
-      <span class="chip">No machine prediction</span>
     </div>
     <span class="cta">Open &beta;Jump &rarr;</span>
   </a>
@@ -728,23 +761,25 @@
           <polygon points="135.14,75.81 135.79,76.19 135.79,76.05 135.14,75.67" fill="var(--teal)" fill-opacity=".17" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/>
           <polygon points="135.14,75.67 135.79,76.05 135.36,76.30 134.70,75.92" fill="var(--teal)" fill-opacity=".30" stroke="var(--teal)" stroke-opacity=".55" stroke-width=".9" stroke-linejoin="round"/></g>
       </svg>
-      <figcaption>1.8 × 10³–1.6 × 10⁸&nbsp;µm&sup3;</figcaption>
+      <figcaption>
+        <span class="vf" title="Volume"><svg class="vi"><use href="#vi-vol"/></svg>1.8 × 10³–1.6 × 10⁸&nbsp;µm&sup3;</span>
+      </figcaption>
     </figure>
     <div class="kicker">Interactive tool</div>
     <div class="logo"><span class="mu">&omega;</span><span class="jm">Jump</span></div>
     <div class="chips">
+      <span class="chip">20 OpenOrganelle &middot; 28 WEBKNOSSOS &middot; 13 BossDB &middot; 1 Eyewire II</span>
       <span class="chip">Mouse, human, macaque, zebrafish, zebra finch, rat</span>
       <span class="chip">62 volumes &middot; 6 species &middot; 23 tissues</span>
-      <span class="chip">20 OpenOrganelle &middot; 28 WEBKNOSSOS &middot; 13 BossDB &middot; 1 Eyewire II</span>
       <span class="chip">4&ndash;8&nbsp;nm isotropic FIB-SEM</span>
       <span class="chip">Serial-section 4&ndash;16&nbsp;nm in plane, 25&ndash;50&nbsp;nm thick</span>
       <span class="chip">Developmental series, P6 to P523</span>
       <span class="chip">No nucleus table &mdash; you build it</span>
-      <span class="chip">0 classified</span>
       <span class="chip">40&nbsp;&micro;m boxes, 16,298 to cover</span>
       <span class="chip">Largest three hold three fifths of the grid</span>
       <span class="chip">Free-text cell names</span>
       <span class="chip">Community mapping</span>
+      <span class="chip">Segment cells &amp; organelles online</span>
       <span class="chip">Terms shown per dataset</span>
     </div>
     <span class="cta">Open &omega;Jump &rarr;</span>
