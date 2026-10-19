@@ -346,6 +346,10 @@
       <select id="raMode" title="The activity map: every imaged cell (a row) across the whole movie (columns), coloured by its response — when each cell is active. Traces: the current clip's responses as lines."><option value="map" selected>Activity map (whole movie)</option><option value="traces">Traces (this clip)</option></select>
       <button id="raDim" class="on" title="Darken the loaded cells that were not imaged, so the ones with recordings stand out">Dim cells not imaged</button>
     </div>
+    <div class="ctl" style="margin:0 0 6px">
+      <button id="raSpk" class="on" title="Action potentials INFERRED from the calcium recording (a guess, not measured): each one is drawn as a white band leaving the soma, slowed down enormously so it can be seen; the green glow is the recorded calcium">Inferred spikes</button>
+      <button id="raCellPl" title="A plot above each imaged neuron: its GUESSED membrane potential (from the inferred spikes) and its RECORDED calcium, over the last 5 s">Per-cell plots</button>
+    </div>
     <div class="ctl" style="margin:0">
       <button id="raNb" title="Bring in the 3 imaged neurons nearest the picked cell (nucleus to nucleus)">+ Recorded neighbours</button>
       <button id="raCsv" title="Download who the imaged cells are (session, scan, unit, oracle score, tuning) and their mean traces for every clip">⬇ Recorded CSV</button>
@@ -537,7 +541,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -1193,21 +1197,35 @@ const AP_UNI = { apNow: { value: -1e9 }, apCol: { value: new THREE.Color(1.0, 0.
 function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
   m.userData.raU = { value: 0 };        // recorded activity (section 21): this cell's glow now, 0–1
+  m.userData.raS = { value: new THREE.Vector4(-1, -1, -1, -1) };   // movie-seconds since its last 4 inferred spikes (v67)
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.raA = m.userData.raU;
-    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
-      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
+    sh.uniforms.raS = m.userData.raS;
+    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nattribute float raD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA; vRaD = raD;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
     /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform vec3 raCol;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
         if (vPaint.a > 0.5) totalEmissiveRadiance += vPaint.rgb * vGlow * (1.1 + 0.45 * sin(sprayTime * 3.5));
         if (raA < -0.5) diffuseColor.rgb *= 0.28;   // not imaged, and "Dim cells not imaged" is on
+        if (vRaD < 1e8 && raS.x >= 0.0){
+          /* An INFERRED spike (v67): a white band leaving the soma and running out over the cell,
+             far slower than a real one (schematic), each of the last four spikes its own band. */
+          float b = 0.0, f, d;
+          f = raS.x * raVs; d = (vRaD - f) / 7.0; b += exp(-d * d);
+          if (raS.y >= 0.0){ f = raS.y * raVs; d = (vRaD - f) / 7.0; b += exp(-d * d); }
+          if (raS.z >= 0.0){ f = raS.z * raVs; d = (vRaD - f) / 7.0; b += exp(-d * d); }
+          if (raS.w >= 0.0){ f = raS.w * raVs; d = (vRaD - f) / 7.0; b += exp(-d * d); }
+          b = min(b, 1.0);
+          totalEmissiveRadiance += apCol * 2.2 * b;
+          diffuseColor.rgb = mix(diffuseColor.rgb, apCol, 0.6 * b);
+        }
         if (raA > 0.003){
           /* Recorded activity (section 21): the whole cell, as bright as its measured response now. */
           totalEmissiveRadiance += raCol * 1.5 * raA;
@@ -1275,6 +1293,7 @@ function addActivityAttributes(g){
   g.setAttribute("paintGlow", new THREE.BufferAttribute(new Uint8Array(n), 1, true));
   g.setAttribute("caT", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
   g.setAttribute("caA", new THREE.BufferAttribute(new Float32Array(n), 1));
+  g.setAttribute("raD", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));   // µm from the soma (section 21, v67)
 }
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
@@ -3201,8 +3220,14 @@ function exportTraces(){
   ctxNote.textContent = "Saved " + (rows.length - 1).toLocaleString() + " samples (every 0.1 ms) to your downloads: " + a.download + ". Columns: time_ms, cell, root_id, cell_type, trace, mV.";
 }
 function plotCells(){
-  return [...(STIM.active || [])].filter(c => c.mesh && cellClass(c) !== "glia" || (c.electrodes && c.electrodes.length)).slice(0, VM.plotMax);
+  const st = STIM.plots ? [...(STIM.active || [])].filter(c => c.mesh && cellClass(c) !== "glia" || (c.electrodes && c.electrodes.length)) : [];
+  /* Recorded activity's per-cell plots (v67): the imaged cells, the picked one first, then the most
+     reliable -- up to the same 12. */
+  const ra = raPlotsOn() ? raCells().sort((a, b) => (b.i === SELECTED) - (a.i === SELECTED) || (raEntry(b).os || 0) - (raEntry(a).os || 0)) : [];
+  return [...new Set(ra.concat(st))].slice(0, VM.plotMax);
 }
+function raPlotsOn(){ return !!(window.__RA && window.__RA.on && window.__RA.cellPlots && window.__RA.meta); }
+function raPlotCell(c){ return raPlotsOn() && !!raEntry(c); }
 /* WHAT THE PLOTS SHOW (v62, 2026-10-19, Søren: "the cells that have action potentials could have an
    option to show Ca2+ signal in the graph. By default off, so that the graphs are not too crowded.
    Epsp and ipsp should also be possible to turn off, also the membrane potential if you only want to
@@ -3229,6 +3254,7 @@ document.getElementById("plVm").addEventListener("click", () => setPlotShow("vm"
 document.getElementById("plSyn").addEventListener("click", () => setPlotShow("syn", !PLOT_SHOW.syn));
 document.getElementById("plCa").addEventListener("click", () => setPlotShow("ca", !PLOT_SHOW.ca));
 function drawPlot(c){
+  if (raPlotCell(c)) return raDrawCellPlot(c);
   const P = c.plot, g = P.ctx, W = P.cv.width, H = P.cv.height;
   const L = 100, R = 16, T = 96, B = 40, pw = W - L - R, PH = H - T - B;
   const showV = PLOT_SHOW.vm || PLOT_SHOW.syn, showC = PLOT_SHOW.ca;
@@ -3413,12 +3439,12 @@ function placePlots(list){
   }
 }
 function syncPlots(force){
-  const want = new Set(STIM.plots ? plotCells() : []);
+  const want = new Set(STIM.plots || raPlotsOn() ? plotCells() : []);
   CELLS.forEach(c => { if (c.plot && !want.has(c)) dropPlot(c); });
   want.forEach(c => { if (!c.plot) makePlot(c); if (force) drawPlot(c); });
 }
 function plotsFrame(){
-  if (!STIM.plots) return;
+  if (!STIM.plots && !raPlotsOn()){ if (CELLS.some(c => c.plot)) syncPlots(); return; }
   const now = performance.now();
   if (!STIM._plotSync || now - STIM._plotSync > 300){ STIM._plotSync = now; syncPlots(); }
   const list = CELLS.filter(c => c.plot && c.mesh), xr = renderer.xr.isPresenting;
@@ -3427,7 +3453,7 @@ function plotsFrame(){
   list.forEach(c => { c.plot.spr.visible = c.plot.lead.visible = xr && !!c.mesh.visible; });
   if (xr) placePlots(list.filter(c => c.mesh.visible));
   list.forEach(c => {
-    if (now - c.plot.last > 110 && (STIM.running || !c.plot.drawn)){ c.plot.last = now; c.plot.drawn = true; drawPlot(c); } });
+    if (now - c.plot.last > 110 && (STIM.running || !c.plot.drawn || (raPlotCell(c) && (RA.playing || RA.tlKey || now - c.plot.last > 500)))){ c.plot.last = now; c.plot.drawn = true; drawPlot(c); } });
   placeTags();
 }
 function setPlots(v){
@@ -4807,9 +4833,11 @@ function caApplyUi(u){
 const RA = { on: false, meta: null, metaP: null, index: null, shards: {}, base: "", t: 0, playing: false, speed: 1, clip: "all",
              scale: "shared", plot: true, screen: false, side: "behind", hud: null, plotSpr: null, plotCv: null, scr: null, video: null,
              tex: null, cap: null, capKey: "", place: "", tlKey: null, tlScreen: false, loading: false, attachedSig: "", lit: false, err: "",
-             mode: "map", dim: true, wantPlay: false, warnedSig: "" };
+             mode: "map", dim: true, wantPlay: false, warnedSig: "",
+             spikes: true, cellPlots: false, vs: 1500 };
 window.__RA = RA;      // for renderList, which can run before this line has
 AP_UNI.raCol = { value: new THREE.Color(0.35, 1.0, 0.35) };
+AP_UNI.raVs = { value: 1500 };      // µm per movie-second the drawn spike travels (a real one: ~500 µm per MILLIsecond)
 function raDs(c){ const d = c && VR_DATASETS[c.ds]; return d && d.activity ? d.activity : null; }
 function raBase(){ for (const c of CELLS){ const b = raDs(c); if (b) return b; } return (VR_DATASETS.microns || {}).activity || null; }
 async function raMeta(){
@@ -4862,6 +4890,71 @@ async function raAttach(){
   } finally { RA.attaching = null; RA.loading = false; renderList(); if (typeof MENU !== "undefined") MENU.dirty = true; }
 }
 function raEntry(c){ return c && c.ra ? c.ra.list[c.ra.use] : null; }
+/* ── INFERRED SPIKES (v67, Søren: "animate it like an AP that spreads from the soma and out, and then
+   have the color change like it is now to show the calcium change which was imaged … plots of each
+   neurons membrane potential and calcium activity (should be clear that it is not the actual data
+   but something guessed)").
+   A GUESS, AND SAID TO BE ONE EVERYWHERE IT IS SHOWN. Two-photon calcium imaging does not record
+   spikes; GCaMP6s turns each one into a slow rise and a ~1 s decay (Chen et al. 2013, Nature
+   499:295). Inverting a first-order indicator -- drive = dz/dt + z/τ -- is the simplest form of the
+   deconvolution used on such data (e.g. Friedrichs, Zhou & Paninski 2017, PLoS Comput Biol
+   13:e1005423, OASIS). Here: z lightly smoothed (3 samples), τ = 1 s, rate = 1.5 × (drive − 1)
+   spikes/s, between 0 and 40, turned into spike times by accumulating the rate (deterministic, so a
+   replay always shows the same spikes). That gives ~0.2 Hz for a median cell and up to ~9 Hz for the
+   strongest responses -- a plausible range for mouse V1 pyramidal cells, NOT a measurement of
+   them: the trace is the MEAN of 10 repeats, whose bumps are no single trial's spikes, and the
+   z-score has no calibration to spike counts. The fit back (each spike convolved with the same
+   exp(−t/τ)) is drawn under the recording so the guess can be judged against the data. */
+const RA_INF = { tau: 1.0, gain: 1.5, d0: 1.0, max: 40 };
+function raInfer(e){
+  if (e.inf) return e.inf;
+  const G = RA.G, n = G.n, dt = G.step, i0 = Math.round(-G.from / dt), C = RA.meta.clips;
+  const rate = new Float32Array(e.z.length), fit = new Float32Array(e.z.length), spk = [];
+  for (let k = 0; k < C.length; k++){
+    const z = i => e.z[k * n + Math.max(0, Math.min(n - 1, i))];
+    const zs = i => (z(i - 1) + z(i) + z(i + 1)) / 3;
+    let acc = 0;
+    for (let i = 0; i < n; i++){
+      const d = (zs(i + 1) - zs(i)) / dt + zs(i) / RA_INF.tau;
+      const r = Math.max(0, Math.min(RA_INF.max, RA_INF.gain * (d - RA_INF.d0)));
+      rate[k * n + i] = r;
+      /* Spikes only while the clip is on screen (0 to its length), at their movie time. */
+      const s = G.from + i * dt;
+      if (i >= i0 && s < C[k].duration){ acc += r * dt; let nb = 0; while (acc >= 1){ acc -= 1; nb++; } for (let j = 0; j < nb; j++) spk.push(C[k].movie_start + s + dt * (j + 0.5) / nb); }
+    }
+    /* The fit: the inferred spikes put back through the indicator, scaled to the recording. */
+    const mine = spk.filter(t => t >= C[k].movie_start && t < C[k].movie_start + C[k].duration);
+    const m = new Float32Array(n);
+    for (let i = 0; i < n; i++){ const t = C[k].movie_start + G.from + i * dt; let v = 0; for (const ts of mine){ const a = t - ts; if (a > 0 && a < 8) v += Math.exp(-a / RA_INF.tau); } m[i] = v; }
+    let num = 0, den = 0; for (let i = 0; i < n; i++){ num += m[i] * z(i); den += m[i] * m[i]; }
+    const A = den > 0 ? Math.max(0, num / den) : 0;
+    for (let i = 0; i < n; i++) fit[k * n + i] = A * m[i];
+  }
+  spk.sort((a, b) => a - b);
+  return (e.inf = { rate, fit, spk: Float64Array.from(spk) });
+}
+/* Any per-sample array of an entry at a movie time (the same lookup raValue uses for z). */
+function raAt(e, arr, t){
+  const { k, s } = raClipAt(t), G = RA.G, n = G.n, x = (s - G.from) / G.step, i = Math.max(0, Math.min(n - 2, Math.floor(x))), f = Math.max(0, Math.min(1, x - i));
+  return arr[k * n + i] * (1 - f) + arr[k * n + i + 1] * f;
+}
+/* The last four inferred spikes at or before t, newest first, as seconds since each (−1 = none). */
+function raRecentSpikes(e, t, out){
+  const S = raInfer(e).spk; let lo = 0, hi = S.length;
+  while (lo < hi){ const mid = (lo + hi) >> 1; if (S[mid] <= t) lo = mid + 1; else hi = mid; }
+  const v = [-1, -1, -1, -1];
+  for (let q = 0; q < 4; q++){ const j = lo - 1 - q; if (j < 0) break; const a = t - S[j]; if (a > 3) break; v[q] = a; }
+  out.set(v[0], v[1], v[2], v[3]);
+}
+/* µm from the soma along the cell, once per cell, for the drawn spike to travel by. */
+function raDistances(c){
+  if (!c.mesh || c.raDDone === c.mesh.geometry.uuid) return;
+  const g = c.mesh.geometry;
+  if (!g.attributes.raD) g.setAttribute("raD", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(1e9), 1));
+  const G = cellGraph(c), soma = somaNode(c, 0);
+  if (soma >= 0){ const { D } = arrival(G, [{ node: soma, t0: 0 }], null, 0, 1); writeAttr(c, "raD", D); }
+  c.raDDone = g.uuid;
+}
 /* One number per second of each clip (6 × 10), the mean response over that second -- the same
    squares as µJump's identity card (core/recact.js), and its colours. */
 function raSeconds(e){
@@ -4927,6 +5020,11 @@ function raApplyGlow(on){
   for (const c of CELLS){
     const u = c.mesh && c.mesh.material.userData && c.mesh.material.userData.raU; if (!u) continue;
     const e = raEntry(c);
+    const sp = c.mesh.material.userData.raS;
+    if (sp){
+      if (on && e && RA.spikes && RA.meta){ raDistances(c); raRecentSpikes(e, RA.t, sp.value); }
+      else sp.value.set(-1, -1, -1, -1);
+    }
     u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) : (RA.dim && c.raRoot ? -1 : 0);
   }
 }
@@ -4973,11 +5071,13 @@ function raHud(){
   const txt = "Recorded · clip " + (k + 1) + "/" + RA.meta.clips.length + " · " + Math.max(0, s).toFixed(1) + " s"
     + (RA.tlKey ? " · timeline" : RA.playing ? " · ×" + RA.speed : " · paused") + " · " + n + " imaged cell" + (n === 1 ? "" : "s");
   const l2 = C.movie.slice(0, 48) + " (" + C.kind + ")";
-  const key = txt + "|" + l2;
+  const key = txt + "|" + l2 + "|" + RA.spikes;
   if (RA.hud && RA.hudKey === key){ RA.hud.visible = true; return; }
   if (RA.hud){ scene.remove(RA.hud); RA.hud.material.map.dispose(); RA.hud.material.dispose(); }
-  const spr = textSprite([txt, l2, "green — mean response of 10 repeats (GCaMP6s, z)"], { fit: true, border: "#9be15d", colors: [null, "#c9d1d9", "#7dffa6"] });
-  const h = 0.02 * 3 * 0.75; spr.scale.set(h * spr.userData.aspect, h, 1);
+  const leg = ["green — RECORDED Ca²⁺, mean of 10 repeats (GCaMP6s, z)"];
+  if (RA.spikes) leg.push("white band — GUESSED spike, inferred from the Ca²⁺, slowed");
+  const spr = textSprite([txt, l2].concat(leg), { fit: true, border: "#9be15d", colors: [null, "#c9d1d9", "#7dffa6", "#fff6c8"] });
+  const h = 0.02 * (2 + leg.length) * 0.75; spr.scale.set(h * spr.userData.aspect, h, 1);
   scene.add(spr); RA.hud = spr; RA.hudKey = key;
 }
 function raPlace(){
@@ -5089,6 +5189,45 @@ function raMapDraw(){
   RA.plotSpr.material.map.needsUpdate = true; RA.plotSpr.visible = true;
   const h = 0.13 * W / 900 * H / 470 * (900 / W); RA.plotSpr.scale.set(0.13 * 900 / 470 * (W / 900), h, 1);
 }
+/* ONE NEURON'S PLOT (v67): its GUESSED membrane potential on top and its RECORDED calcium below,
+   over the last 5 s of the movie. The guess is coloured and labelled as a guess. */
+function raDrawCellPlot(c){
+  const P = c.plot, g = P.ctx, W = P.cv.width, H = P.cv.height, e = raEntry(c), inf = raInfer(e);
+  const t1 = RA.t, t0 = t1 - 5, L = 92, R = W - 16;
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#" + new THREE.Color(c.colour).getHexString(); g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
+  g.fillStyle = "#e6edf3"; g.font = "600 26px system-ui, sans-serif"; g.fillText(shortName(c).slice(0, 30), 16, 34);
+  g.font = "18px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.fillText("r " + (e.os != null ? e.os.toFixed(2) : "–") + " · last 5 s", W - 150, 34);
+  const X = t => L + (R - L) * (t - t0) / 5;
+  /* the guess */
+  const vT = 70, vB = 210, Vy = v => vB - (vB - vT) * (v + 75) / 115;
+  g.fillStyle = "rgba(240,136,62,0.10)"; g.fillRect(L, vT - 6, R - L, vB - vT + 12);
+  g.fillStyle = "#f0883e"; g.font = "600 17px system-ui, sans-serif"; g.fillText("GUESSED membrane potential — spikes inferred from the Ca²⁺, not recorded", L, vT - 12);
+  g.font = "15px system-ui, sans-serif"; g.fillStyle = "#8b949e";
+  [-70, -40, 0, 30].forEach(v => { g.fillText(v + " mV", 8, Vy(v) + 5); g.strokeStyle = "#21262d"; g.lineWidth = 1; g.beginPath(); g.moveTo(L, Vy(v)); g.lineTo(R, Vy(v)); g.stroke(); });
+  g.setLineDash([8, 5]); g.strokeStyle = "#f0a742"; g.lineWidth = 2.5; g.beginPath();
+  for (let i = 0; i <= 200; i++){ const t = t0 + 5 * i / 200; const v = t < 0 ? -68 : -68 + 14 * (1 - Math.exp(-raAt(e, inf.rate, t) / 6)); i ? g.lineTo(X(t), Vy(v)) : g.moveTo(X(t), Vy(v)); }
+  g.stroke(); g.setLineDash([]);
+  g.strokeStyle = "#fff1b8"; g.lineWidth = 2;
+  for (const ts of inf.spk){ if (ts < t0 || ts > t1) continue; g.beginPath(); g.moveTo(X(ts), Vy(-68 + 14 * (1 - Math.exp(-raAt(e, inf.rate, ts) / 6)))); g.lineTo(X(ts), Vy(30)); g.stroke(); }
+  /* the recording */
+  const cT = 262, cB = H - 46;
+  let zmax = 3; for (let i = 0; i <= 50; i++){ const t = t0 + 5 * i / 50; if (t >= 0) zmax = Math.max(zmax, raValue(c, t)); }
+  zmax = Math.ceil(zmax); const Cy = z => cB - (cB - cT) * (z + 1) / (zmax + 1);
+  g.fillStyle = "#3fb950"; g.font = "600 17px system-ui, sans-serif"; g.fillText("RECORDED Ca²⁺ (GCaMP6s, mean of 10 repeats, z)", L, cT - 12);
+  g.font = "15px system-ui, sans-serif"; g.fillStyle = "#8b949e";
+  [0, zmax].forEach(z => { g.fillText("z " + z, 22, Cy(z) + 5); g.strokeStyle = "#21262d"; g.beginPath(); g.moveTo(L, Cy(z)); g.lineTo(R, Cy(z)); g.stroke(); });
+  g.setLineDash([4, 4]); g.strokeStyle = "rgba(125,255,166,0.55)"; g.lineWidth = 2; g.beginPath();
+  for (let i = 0; i <= 200; i++){ const t = t0 + 5 * i / 200; if (t < 0) continue; const y = Cy(raAt(e, inf.fit, t)); g.lineTo(X(t), y); }
+  g.stroke(); g.setLineDash([]);
+  g.strokeStyle = "#3fe07a"; g.lineWidth = 3; g.beginPath(); let first = true;
+  for (let i = 0; i <= 200; i++){ const t = t0 + 5 * i / 200; if (t < 0) continue; const y = Cy(raValue(c, t)); first ? g.moveTo(X(t), y) : g.lineTo(X(t), y); first = false; }
+  g.stroke();
+  /* clip changes inside the window */
+  RA.meta.clips.forEach((cl, k) => { if (k && cl.movie_start > t0 && cl.movie_start <= t1){ const x = X(cl.movie_start); g.strokeStyle = "#6e7681"; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(x, vT); g.lineTo(x, cB); g.stroke(); g.setLineDash([]); g.fillStyle = "#8b949e"; g.fillText("clip " + (k + 1), x + 4, cB + 20); } });
+  g.fillStyle = "#6e7681"; g.font = "14px system-ui, sans-serif"; g.fillText("dashed green: the guessed spikes put back through the indicator", L, H - 12);
+  P.tex.needsUpdate = true;
+}
 /* ── the movie screen ── */
 function raScreenEnsure(){
   if (RA.scr || !RA.meta || !RA.meta.movie) return !!RA.scr;
@@ -5171,6 +5310,7 @@ function raScreenFrame(){
 /* ── switches ── */
 async function setRa(v, quiet){
   if (!v) RA.wantPlay = false;
+  if (!v) CELLS.forEach(c => { const sp = c.mesh && c.mesh.material.userData.raS; if (sp) sp.value.set(-1, -1, -1, -1); });
   RA.on = v; document.getElementById("raBtn").classList.toggle("on", v);
   document.getElementById("raBox").style.display = v ? "" : "none";
   if (!v){ RA.playing = false; raPlayBtn(); raApplyGlow(false); if (RA.hud) RA.hud.visible = false; if (RA.plotSpr) RA.plotSpr.visible = false; if (typeof MENU !== "undefined") MENU.dirty = true; return; }
@@ -5224,6 +5364,8 @@ function raCsv(){
   rows.push([]); rows.push([q("Mean of 10 repeats per clip, robust z of raw fluorescence; time from clip start. " + RA.meta.source + ", " + RA.meta.coregistration)]);
   rows.push(["clip", "movie", "time_s"].concat(cs.map(c => q(shortName(c)))));
   C.forEach((cl, k) => { for (let i = 0; i < G.n; i++) rows.push([k + 1, q(cl.movie), (G.from + i * G.step).toFixed(1)].concat(cs.map(c => raEntry(c).z[k * G.n + i].toFixed(2)))); });
+  rows.push([]); rows.push([q("GUESSED, not recorded: spike times inferred from the mean calcium trace (rate = " + RA_INF.gain + " x (dz/dt + z/" + RA_INF.tau + " s - " + RA_INF.d0 + "), accumulated); movie time in seconds")]);
+  cs.forEach(c => rows.push([q(shortName(c)), q("inferred spikes")].concat(Array.from(raInfer(raEntry(c)).spk).map(t => t.toFixed(2)))));
   csvDownload(rows, "vr-recorded-");
   ctxNote.textContent = "Saved the recorded responses of " + cs.length + " cell" + (cs.length === 1 ? "" : "s") + ": who they are (session, scan, unit, oracle score, tuning), then each clip's mean trace every 0.1 s.";
 }
@@ -5231,11 +5373,13 @@ function raCsv(){
    movie "running in the background" reopened with the movie stuck on its first frame -- the scene
    switched Recorded activity on but never pressed Play). */
 function raUi(){ return { on: RA.on, clip: RA.clip, speed: RA.speed, scale: RA.scale, plot: RA.plot, screen: RA.screen, side: RA.side, mode: RA.mode, dim: RA.dim,
-                          playing: !!RA.playing, t: +RA.t.toFixed(2) }; }
+                          playing: !!RA.playing, t: +RA.t.toFixed(2), spikes: RA.spikes, cellPlots: RA.cellPlots }; }
 function raApplyUi(u){
   if (!u) return;
   if (u.speed) raSetting("speed", u.speed); if (u.scale) raSetting("scale", u.scale); if (u.side) raSetting("side", u.side); if (u.mode) raSetting("mode", u.mode);
   if (u.dim != null){ RA.dim = !!u.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); }
+  if (u.spikes != null) setRaSpikes(u.spikes);
+  if (u.cellPlots != null) setRaCellPlots(u.cellPlots);
   if (u.clip != null) RA.clip = String(u.clip);
   if (u.t != null) RA.t = +u.t || 0;
   /* Old scenes have no "playing": a scene saved with Recorded activity on plays, as it did then. */
@@ -5253,6 +5397,10 @@ document.getElementById("raScreen").addEventListener("click", () => setRaScreen(
 document.getElementById("raPlot").addEventListener("click", () => setRaPlot(!RA.plot));
 document.getElementById("raNb").addEventListener("click", raNeighbours);
 document.getElementById("raMode").addEventListener("change", e => raSetting("mode", e.target.value));
+function setRaSpikes(v){ RA.spikes = !!v; document.getElementById("raSpk").classList.toggle("on", RA.spikes); if (typeof MENU !== "undefined") MENU.dirty = true; }
+function setRaCellPlots(v){ RA.cellPlots = !!v; document.getElementById("raCellPl").classList.toggle("on", RA.cellPlots); syncPlots(true); if (typeof MENU !== "undefined") MENU.dirty = true; }
+document.getElementById("raSpk").addEventListener("click", () => setRaSpikes(!RA.spikes));
+document.getElementById("raCellPl").addEventListener("click", () => setRaCellPlots(!RA.cellPlots));
 document.getElementById("raDim").addEventListener("click", () => { RA.dim = !RA.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); if (typeof MENU !== "undefined") MENU.dirty = true; });
 /* &ra=1 in the link (µJump's identity card, or Filter and show with "Was it imaged?"): Recorded
    activity on, the Activity tab open, playing once the cells are in; &raclip=k loops one clip. */
@@ -5699,6 +5847,8 @@ function menuRows(){
         rows.push({ label: "   Recorded plot", on: RA.plot, act: () => setRaPlot(!RA.plot) });
         if (RA.plot) rows.push({ label: "   Plot: " + (RA.mode === "map" ? "activity map (whole movie)" : "traces (this clip)") + "  ▸", act: () => raSetting("mode", RA.mode === "map" ? "traces" : "map") });
         rows.push({ label: "   Dim cells not imaged", on: RA.dim, act: () => { RA.dim = !RA.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); } });
+        rows.push({ label: "   Inferred spikes (guessed)", on: RA.spikes, act: () => setRaSpikes(!RA.spikes) });
+        rows.push({ label: "   Per-cell plots (guessed Vm + recorded Ca²⁺)", on: RA.cellPlots, act: () => setRaCellPlots(!RA.cellPlots) });
         rows.push({ label: "   + Recorded neighbours of the picked cell", act: raNeighbours });
       }
     }
@@ -7735,7 +7885,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { RA, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
