@@ -637,7 +637,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-17 17:37</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-19 02:53</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -749,19 +749,17 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
      control that answers "which kind of cell", and the buttons are two ways of not choosing.
      The id is kept so nothing that refers to this block has to be found and changed. -->
 <div id="randomCellPanel">
-<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type to see or review one, or identify a cell nobody has named</span></label>
-<select id="randomTypeSelect" style="width:100%;margin-top:2px"></select>
-<!-- 2026-10-18, Søren: "I think we could have the community identified button next to the random
-     example. Instead of random example, it should be "Show" and instead of community identified it
-     should be "review" and load a cell identified as the cell type chosen in the dropdown menu, and
-     instead of random unassigned it should be "Identify"." The ids are unchanged, so every handler,
-     check and core/panel.js's jump-to-the-card still finds them. -->
-<div class="row" style="gap:8px;margin-top:8px">
-<button class="idbtn" id="randomOfType" style="flex:1 1 0" title="A random cell of the chosen type &mdash; a new one each click, for learning what the type looks like">Show</button>
-<button class="idbtn" id="randomCommunityId" style="flex:1 1 0" title="A random cell the community has identified as the chosen type &mdash; confirm the call, or challenge it">Review</button>
+<label>Browse a cell <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px">&mdash; pick a type and draw an example, or take a random one</span></label>
+<div class="row" style="gap:8px;margin-top:2px">
+<select id="randomTypeSelect" style="flex:1 1 auto"></select>
+<!-- 2026-09-18 (Søren: "This could be a mouse-over for the random button instead of taking
+     space.") -- the sentence described what pressing THIS button is for, which is what a title on
+     this button is, and it ran to three lines at narrow widths. -->
+<button class="idbtn" id="randomOfType" title="Great for learning what a cell type looks like (a new random example loads each click), or for quickly finding a cell that still needs a first identification.">Random example</button>
 </div>
-<button class="idbtn" id="randomUnclassified" style="width:100%;margin-top:8px;margin-bottom:8px" title="A random cell that nobody has named yet, of any type &mdash; help identify it">Identify</button>
+<button class="idbtn" id="randomUnclassified" style="width:100%;margin-bottom:8px;margin-top:10px">Random unassigned cell &mdash; help identify one</button>
 <p class="hint" id="unclCount" style="margin-top:-4px;margin-bottom:8px"></p>
+<button class="idbtn" id="randomCommunityId" style="width:100%;margin-bottom:2px" title="Jump to a random cell that MICrONS never predicted but the community has since identified — useful for reviewing, confirming or challenging other people's calls">Random community-identified cell &mdash; review someone's call</button>
 </div>
 <!-- SHUT BY DEFAULT, since 2026-09-20 (Søren: "the coordinate should be expandable and
      hidden by default"). Its old <label> is the summary now -- wrapping it and keeping the label
@@ -4257,17 +4255,11 @@ if(randomCommunityIdBtn)randomCommunityIdBtn.addEventListener("click",async()=>{
   if(!window.pickCommunityIdentifiedIndex)return;
   const orig=randomCommunityIdBtn.textContent;
   randomCommunityIdBtn.disabled=true;randomCommunityIdBtn.textContent="Finding one…";
-  /* Review: a cell the community has identified as the type in the dropdown (pickCommunityOfType). */
-  const sel=randomTypeSelect?randomTypeSelect.value:null;
-  const pool=sel?(window.RAND_POOLS||{})[sel]:null;
-  const opt=randomTypeSelect&&randomTypeSelect.selectedOptions[0];
-  const label=(pool&&pool.label)||(opt?String(opt.textContent).replace(/\s*\(\d[\d,]*\)\s*$/,""):"");
-  if(!label||!window.pickCommunityOfType){randomCommunityIdBtn.disabled=false;randomCommunityIdBtn.textContent=orig;alert("Pick a cell type first.");return;}
   let i=-2;
-  try{i=await window.pickCommunityOfType(label);}catch(_){i=-2;}
+  try{i=await window.pickCommunityIdentifiedIndex();}catch(_){i=-2;}
   randomCommunityIdBtn.disabled=false;randomCommunityIdBtn.textContent=orig;
-  if(i===-2){alert("Couldn't reach the list of community reports, so there's no way to tell which cells have been identified.");return;}
-  if(i===-1){alert("Nobody has identified a cell as "+label+" yet. Use Identify to name one.");return;}
+  if(i===-2){alert("Couldn't reach the list of community reports (REPORT_ENDPOINT missing or unreachable), so there's no way to tell which cells have been identified.");return;}
+  if(i===-1){alert("No community-identified cells yet — every cell the community has named will show up here. Use \"Random unassigned cell\" to name the first one.");return;}
   jumpToNucleusIndex(i);
 });
 const randomOfTypeBtn=document.getElementById("randomOfType");
@@ -7370,7 +7362,7 @@ document.addEventListener("click",(e)=>{
     const volNucVolUm3=volBtn.dataset.nucvol?parseFloat(volBtn.dataset.nucvol):null;
     const volNucleusId=volBtn.dataset.nucid||"";
     extrasForButton(volNucleusId,rootId)
-      .then(volExtras=>MeshDL.computeVolume(rootId,(frac,msg)=>{UJ.busy(volBtn,frac,msg);},e.shiftKey,volExtras))
+      .then(volExtras=>MeshDL.computeVolume(rootId,(frac,msg)=>{volBtn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,volExtras))
       .then(info=>{
         /* 2026-08-05 redesign (Søren): the number moves off the button and onto the volume idrow
            (see meshVolRowHtml()/decorateMeshVolButtons()), and the button itself is hidden right
@@ -7492,8 +7484,8 @@ document.addEventListener("click",(e)=>{
      baked-in attribute alone goes stale after a community report resolves. */
   const liveCellType=(btn.dataset.followLive==="1"&&typeof CUR_CELLTYPE_DISPLAY!=="undefined"&&CUR_CELLTYPE_DISPLAY)?CUR_CELLTYPE_DISPLAY:btn.dataset.celltype;
   const task=extrasForButton(btn.dataset.nucid||"",rootId).then(function(dlExtras){
-    return isPptx?MeshDL.downloadRootPptx(rootId,liveCellType,btn.dataset.coords,(frac,msg)=>{UJ.busy(btn,frac,msg);},e.shiftKey,dlExtras)
-                 :MeshDL.downloadRoot(rootId,(frac,msg)=>{UJ.busy(btn,frac,msg);},e.shiftKey,dlExtras);
+    return isPptx?MeshDL.downloadRootPptx(rootId,liveCellType,btn.dataset.coords,(frac,msg)=>{btn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,dlExtras)
+                 :MeshDL.downloadRoot(rootId,(frac,msg)=>{btn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";},e.shiftKey,dlExtras);
   });
   task.then(info=>{
       const vertStr=(info.vertices>=1000?(info.vertices/1000).toFixed(0)+"k":info.vertices)+" verts";
@@ -9249,7 +9241,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     const orig=checkBtn.textContent;checkBtn.disabled=true;typeSel.disabled=true;radiusEl.disabled=true;clusterEl.disabled=true;thresholdEl.disabled=true;
     try{
       const{results,totalFound,checked}=await computeCellContactsOfType(rootId0,i,label,radius,clusterNm/1000,thresholdNm/1000,function(frac,msg){
-        UJ.busy(checkBtn,frac,msg);
+        checkBtn.textContent=(msg||"")+" "+Math.round(frac*100)+"%";
       });
       curRows=results;curThresholdNm=thresholdNm;
       const ccGate=maybeSaveCellContacts(nucleusId,rootId0,cellType,results,clusterNm/1000,thresholdNm/1000);
@@ -10113,7 +10105,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
       }
       const capped=allPoints.slice(0,maxSyn);
       const results=await computeTripartiteSynapses(capped,thresholdUm,radiusUm,function(frac,msg){
-        UJ.busy(statusEl,frac,msg);
+        statusEl.textContent=(msg||"")+" "+Math.round(frac*100)+"%";
       });
       curRows=results;curThresholdNm=Math.round(thresholdUm*1000);
       const triGate=maybeSaveTripartite(nucleusId,rootId0,cellType,results,thresholdUm,radiusUm);
@@ -11243,34 +11235,6 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     const t=unclassifiedTotals();
     const pool=[];
     for(let k=0;k<t.unverifiedIds.length;k++)if(rep.ids.has(t.unverifiedIds[k]))pool.push(t.unverifiedIdx[k]);
-    if(!pool.length)return -1;
-    return pool[Math.floor(Math.random()*pool.length)];
-  };
-  /* REVIEW, BY TYPE (2026-10-18). The cells somebody has identified as the type chosen in the
-     dropdown -- any cell, predicted or not, because a community call on a predicted cell is just as
-     much a call to confirm or challenge. A report counts when its identity is the type's own name,
-     the same name through longName() ("oligo" → "Oligodendrocyte"), the same code in brackets
-     ("23P"), or a qualified form of it ("Mural cell - Pericyte"). -2: the report list could not
-     be reached; -1: nobody has called a cell this type yet. */
-  window.pickCommunityOfType=async function(label){
-    const rep=await fetchAllReports();
-    if(!rep)return -2;
-    const norm=s=>String(s||"").toLowerCase().replace(/\s+/g," ").trim();
-    const code=s=>{const m=/\(([^)]+)\)\s*$/.exec(String(s||""));return m?m[1].toLowerCase():"";};
-    const L=norm(label),LC=code(label);
-    const same=r=>{
-      const R=norm(r);if(!R)return false;
-      if(R===L)return true;
-      try{if(typeof longName==="function"&&norm(longName(r))===L)return true;}catch(_e){}
-      if(LC&&(R===LC||code(r)===LC))return true;
-      return R.endsWith(" - "+L);
-    };
-    if(!window.__NID_INDEX){const m=new Map();for(let i=0;i<N;i++)m.set(String(NID[i]),i);window.__NID_INDEX=m;}
-    const pool=[];
-    rep.byNucleus.forEach((list,nid)=>{
-      if(!Array.isArray(list))return;
-      if(list.some(x=>x&&!x.notNucleus&&same(x.identified))){const i=window.__NID_INDEX.get(String(nid));if(i!=null)pool.push(i);}
-    });
     if(!pool.length)return -1;
     return pool[Math.floor(Math.random()*pool.length)];
   };
@@ -13924,6 +13888,54 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
   const regionOnEl=document.getElementById("filterRegionOn");
   if(regionOnEl)regionOnEl.addEventListener("change",()=>{drawRegionViz();updateRegionUI();});
 })();
+/* ── ?at=x,y,z — a coordinate in somebody's sentence, opened here ─────────────  2026-10-19
+   research.html prints the coordinates its figures were read from, and a printed coordinate that
+   you then have to copy into a box is a coordinate most people will not follow. So a link may
+   carry one.
+
+   IT PRESSES THE PAGE'S OWN BUTTON. There is no second lookup here: this fills #x #y #z and
+   clicks #go, so the nearest nucleus, the cell type, the location diagram and the Neuroglancer
+   link are the ones this page has always built. A parallel implementation would be a second
+   answer to "what is at this place", and this project has paid for that kind of twin four times.
+
+   VOXELS, said out loud. The boxes are read through toVoxels(), which honours the unit toggle, so
+   a visitor who last left the page in nanometres would otherwise land 40,000x away. The unit is
+   set to voxel first, exactly as goToPrevCell() does.
+
+   OUT OF BOTH BOXES IS NOT AN ERROR HERE. UJ.volumes decides; a point outside falls through to
+   showNucleus()'s own "no predictions for this part of the dataset" path, which is the honest
+   answer and already written. minnie35 points land there by design -- there is no nucleus
+   detection over the lower slab. */
+(function(){
+  function run(){
+    var raw=null;
+    try{ raw=new URLSearchParams(location.search).get("at"); }catch(e){}
+    if(!raw)return;
+    var p=String(raw).split(/[^0-9.\-]+/).filter(function(v){return v!=="";}).map(Number);
+    if(p.length!==3||p.some(function(v){return !isFinite(v);}))return;
+    try{
+      if(typeof unit!=="undefined"&&typeof unitsEl!=="undefined"&&unitsEl){
+        unit="voxel";
+        [].slice.call(unitsEl.children).forEach(function(c){
+          c.classList.toggle("on",c.dataset.u==="voxel");
+        });
+      }
+      var panel=document.getElementById("coordPanel");
+      if(panel)panel.open=true;
+      document.getElementById("x").value=p[0];
+      document.getElementById("y").value=p[1];
+      document.getElementById("z").value=p[2];
+      document.getElementById("go").click();
+      if(panel&&panel.scrollIntoView)panel.scrollIntoView({block:"start"});
+    }catch(err){ console.warn("[?at] could not open that coordinate",err); }
+  }
+  /* After the page's own DOMContentLoaded wiring, not racing it: #go's listener is attached in a
+     script block above, and the tab bar and the pad init on DOMContentLoaded themselves. */
+  function later(){ setTimeout(run,0); }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",later);
+  else later();
+})();
+
 </script>
 </body>
 </html>

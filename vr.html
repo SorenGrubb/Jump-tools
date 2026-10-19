@@ -268,6 +268,7 @@
       <option value="1">Input strength: Realistic ×1</option>
       <option value="30">Input strength: Cartoon ×30</option>
     </select>
+    <button id="stimHid" title="Off: only the cells you can see take part — a hidden cell (unticked, or hidden by “only the picked cell”) neither receives synaptic input nor passes a spike on. On: hidden cells take part too, unseen.">Hidden cells too</button>
     <button id="stimReset" title="Stop and clear all activity">Reset</button>
     <button id="plotBtn" class="on" title="A voltage plot above every cell the activity reaches: the soma against the −50 mV threshold, each synapse site (numbered on the cell), and your electrodes">📈 Voltage plots</button>
     <button id="elecBtn" title="Click (or trigger) on a cell to record its membrane voltage at that spot — up to 3 per cell, shown in the cell's voltage plot">📍 Electrode</button>
@@ -392,6 +393,7 @@
   const S = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
   const ICON = window.UI_ICON = {
     eye: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    eyeoff: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>'),
     map: S('<path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>'),
     cube: S('<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/>'),
     bolt: S('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
@@ -454,7 +456,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -517,7 +519,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["synClr", "traceCsv"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["synClr", "traceCsv"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -570,7 +572,7 @@
     orgKind: () => !!(V().ORG && V().ORG.on),
     ptsDir: () => !!(V().PTS && V().PTS.on),
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
-    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on),
+    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on),
     plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on), synClr: () => !!(V().STIM && V().STIM.syn && V().STIM.syn.length),
     spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
@@ -2387,7 +2389,20 @@ setTimeout(() => { trcIndex().then(() => { if (ctxNote.textContent.startsWith("T
    seam. One multi-source Dijkstra then gives every vertex its arrival time; the shader does the
    rest from one clock uniform, so nothing per-vertex happens per frame. */
 const STIM = { on: false, now: 0, running: false, slow: 5000, speed: 500 /* µm per ms = 0.5 m/s */,
-               syn: null, synLoading: false, events: [], markers: null, hud: null };
+               syn: null, synLoading: false, events: [], markers: null, hud: null, withHidden: false };
+/* ONLY WHAT YOU CAN SEE TAKES PART (v59, 2026-10-19, Søren: "even though cells were not visible they
+   were still involved in the spread of the action potential simulation. I want it restricted to only
+   visible cells. There could be a button to also include invisible cells but it should be off by
+   default."). v42 already stopped a HIDDEN cell receiving input, but only a cell unticked in the list:
+   one hidden by "only the picked cell" still received and fired, and any hidden cell already carrying
+   a spike went on passing it to the cells you could see. Now "out of sight" is exactly what applyLook
+   hides -- unticked, or isolated away -- and such a cell neither receives, nor fires, nor passes a
+   spike on, unless "Hidden cells too" is on. */
+function inPlay(c){
+  if (!c) return false;
+  if (STIM.withHidden) return true;
+  return !(c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED !== c.i));
+}
 const SYN_DELAY = 0.5, FIRE_LAG = 1.0;
 
 function cellGraph(c){
@@ -2862,6 +2877,8 @@ function fireCell(c, node, t0){
    cell fires is decided by the voltage, frame by frame, in checkCell. */
 function deliver(s, t){
   const c = CELLS[s.post]; if (!c || !c.mesh) return;
+  /* A spike that set out from a cell you have since hidden goes no further. */
+  if (!inPlay(CELLS[s.pre])) return;
   const G = cellGraph(c);
   if (s.postNode == null){ const near = nearestNode(G, s.p); s.postNode = near.dist <= SYN_TOL ? near.node : -1; }
   if (s.postNode < 0){ noteWhy(c, "off"); return; }
@@ -2871,7 +2888,7 @@ function deliver(s, t){
   if (cellClass(c) === "glia"){ noteWhy(c, "glia"); return; }
   /* A cell you have hidden takes no part (v42): activity no longer runs through cells you cannot
      see -- a hidden partner in a loop looked like a cell exciting itself. */
-  if (c.hidden){ noteWhy(c, "hidden"); return; }
+  if (!inPlay(c)){ noteWhy(c, "hidden"); return; }
   w.from = w.from || {}; w.from[s.pre] = (w.from[s.pre] || 0) + 1;
   addSlot(c, s.postNode, t, inh ? "I" : "E", (inh ? VM.ampI : VM.ampE) * stimGain());
   addSite(c, s.postNode, inh ? "I" : "E");
@@ -2881,6 +2898,7 @@ function deliver(s, t){
    and an action potential when the soma crosses threshold. */
 function checkCell(c, t){
   if (document.getElementById("stimMode").value !== "fire" || cellClass(c) === "glia" || !c.slots || !c.slots.length) return;
+  if (!inPlay(c)) return;                     // hidden after the input arrived: it does not fire
   const soma = somaNode(c, -1);
   /* Dendritic spikes: at each excitatory site far enough from the soma that is not still refractory. */
   c.dspk = (c.dspk || []).filter(d => t - d.t < VM.dspkRef);
@@ -2939,6 +2957,7 @@ async function stimulateCell(c){
 }
 function stimulateAt(c, node){
   if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
+  if (!inPlay(c)){ ctxNote.textContent = c.label + " is hidden, so it takes no part — show it, or turn on “Hidden cells too” (Activity)."; flashWarn(ctxNote.textContent); return; }
   if (!STIM.running) resetActivity();
   const G = cellGraph(c), near = { node };
   window.__lastStim = c.i; MENU.dirty = true;
@@ -3223,7 +3242,7 @@ function runSummary(){
     else if (outs.length && !on) lines.push(shortName(st) + "'s " + outs.length + " output synapse" + (outs.length > 1 ? "s are" : " is") + " not on its loaded mesh — try Detail: full.");
   }
   if (STIM.offPre) lines.push(STIM.offPre + " synapse arrival" + (STIM.offPre === 1 ? " was" : "s were") + " skipped because the synapse lies more than " + SYN_TOL + " µm from the presynaptic mesh — try Detail: full.");
-  const R = { block: "went into depolarisation block (held above −25 mV, so it could not fire)", hidden: "hidden, so it takes no part", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
+  const R = { block: "went into depolarisation block (held above −25 mV, so it could not fire)", hidden: "hidden, so it takes no part (turn on “Hidden cells too” to include it)", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
   for (const k in (STIM.why || {})){
     const c = CELLS[k], w = STIM.why[k]; if (!c || (!w.epsp && !w.ipsp && !w.fired && !Object.keys(w.reasons).length)) continue;
     const ins = (w.epsp ? w.epsp + " EPSP" + (w.epsp === 1 ? "" : "s") : "") + (w.ipsp ? (w.epsp ? ", " : "") + w.ipsp + " IPSP" + (w.ipsp === 1 ? "" : "s") : "")
@@ -3237,7 +3256,7 @@ function runSummary(){
       continue;
     }
     let msg = "✗ " + shortName(c) + ": " + ins;
-    if (w.reasons.glia || w.reasons.off || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
+    if (w.reasons.glia || w.reasons.off || w.reasons.hidden || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
     else if (w.reasons.psp) msg += " — PSP-only mode: synapses never fire the next cell.";
     else {
       const short = VM.thr - w.peak;
@@ -3339,6 +3358,13 @@ function setStim(v){
   MENU.dirty = true;
 }
 document.getElementById("stimBtn").addEventListener("click", () => setStim(!STIM.on));
+function setStimHidden(v, quiet){
+  STIM.withHidden = !!v; document.getElementById("stimHid").classList.toggle("on", STIM.withHidden);
+  if (!quiet) ctxNote.textContent = STIM.withHidden ? "👁 Hidden cells take part too: they receive input and pass spikes on, unseen."
+                                        : "Only the cells you can see take part in the activity.";
+  MENU.dirty = true;
+}
+document.getElementById("stimHid").addEventListener("click", () => setStimHidden(!STIM.withHidden));
 document.getElementById("colourSel").addEventListener("change", e => setColourMode(e.target.value));
 document.getElementById("stimReset").addEventListener("click", resetActivity);
 document.getElementById("plotBtn").addEventListener("click", () => setPlots(!STIM.plots));
@@ -3570,7 +3596,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots,
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden,
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -3690,6 +3716,7 @@ async function openScene(id){
   if (u.stimMode) document.getElementById("stimMode").value = u.stimMode;
   if (u.stimGain && GAIN_NAME[u.stimGain]) document.getElementById("stimGain").value = u.stimGain;
   if (u.plots === false) setPlots(false);
+  setStimHidden(!!u.stimHidden, true);
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -4507,6 +4534,7 @@ function menuRows(){
                 act: () => { const el = document.getElementById("stimMode"); el.value = el.value === "fire" ? "psp" : "fire"; } });
     rows.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸",
                 act: () => { const el = document.getElementById("stimGain"); el.value = ({ "10": "1", "1": "30", "30": "10" })[el.value]; } });
+    rows.push({ label: "Hidden cells take part too", on: !!STIM.withHidden, act: () => setStimHidden(!STIM.withHidden) });
     rows.push({ label: "📈 Voltage plots", on: !!STIM.plots, act: () => setPlots(!STIM.plots) });
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     rows.push({ label: "Reset activity", act: resetActivity });
@@ -6493,7 +6521,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
