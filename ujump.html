@@ -4910,6 +4910,7 @@ function showNucleus(pos){
      is "is this cell in Allen's hand-classified reference column", this one is "which area of
      visual cortex is this part of the volume". */
   if(typeof areaOfIndex==="function")h+=areaBadgeHtml(areaOfIndex(i));
+  if(UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns"))h+='<div class="meta" style="margin-top:6px"><span class="tag" id="recActBadge" style="cursor:pointer;background:var(--line);color:var(--mut)" title="Two-photon recorded activity (MICrONS, DANDI:000402). Click for the details further down.">Recorded activity: checking…</span></div>';
   /* 2026-08-20 (4th-5th pass, RETIRED by the 6th pass): a read-only "id-card" summary used to be
      built here and fed into core/panel.js's renderStepVotePanel() under the step-through card.
      Søren, after seeing it: "I just want a copy... it should just show the same there as in Jump
@@ -8171,6 +8172,15 @@ function loadRecActPanel(id,root,nid,label){
     return;
   }
   const e=UJ.recact.get(root),Z=2;
+  /* The badge at the top of the card says the same in one line. */
+  const bd=document.getElementById("recActBadge");
+  if(bd){
+    const sp0=e?UJ.recact.spans(e,Z):[],cl0=[...new Set(sp0.map(x=>x.clip+1))];
+    bd.textContent=!e?"Recorded activity: not imaged":cl0.length?"Recorded activity: active in clip"+(cl0.length>1?"s ":" ")+cl0.join(", ")+" · r "+(e.os!=null?e.os.toFixed(2):"–"):"Recorded activity: imaged, no strong response · r "+(e.os!=null?e.os.toFixed(2):"–");
+    bd.style.background=!e?"var(--line)":cl0.length?"rgba(63,185,80,.18)":"rgba(210,153,34,.18)";
+    bd.style.color=!e?"var(--mut)":cl0.length?"#3fb950":"#d29922";
+    bd.onclick=()=>{const d=el.querySelector("details");if(d)d.open=true;el.scrollIntoView({behavior:"smooth",block:"center"});};
+  }
   if(!e){
     el.innerHTML='<details class="rv-panel neigh"><summary>Recorded activity <span style="color:var(--mut);font-weight:400">— not imaged</span></summary>'
       +'<div style="margin-top:6px;font-size:12px;color:var(--mut)">This cell has no two-photon recording matched to it. Only excitatory neurons were imaged (GCaMP6s), and about 1,900 of them are matched to their EM cell by the manual co-registration. Filter and show → “Was it imaged?” finds the ones that are.</div></details>';
