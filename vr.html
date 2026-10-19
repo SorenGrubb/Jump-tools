@@ -109,6 +109,12 @@
   .stimOne{border:1px solid var(--line);background:transparent;padding:2px 4px;margin-right:6px;display:inline-flex;align-items:center;color:#ffe11a;flex:none}
   .stimOne svg{width:15px;height:15px;display:block}
   .stimOne:hover{background:#2d2a12}
+  .catick{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px}
+  .catick label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+  .glassOne{border:1px solid var(--line);background:transparent;padding:2px 4px;margin-right:6px;display:inline-flex;align-items:center;color:#8b949e;flex:none;cursor:pointer}
+  .glassOne svg{width:15px;height:15px;display:block}
+  .glassOne.on{color:#9cd1ff;border-color:#58a6ff;background:#13243a}
+  .grp .glassOne{margin-left:auto}
   #lblBtn{position:absolute;right:44px;top:8px;border:0;padding:2px 7px;font-weight:600}
   .helpBox summary{cursor:pointer;color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px;margin-top:10px}
   #tri{font-size:12px;color:var(--mut);margin-top:6px}
@@ -172,6 +178,14 @@
     </select>
     <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
+    <button id="glassOthers" title="Keep the picked cell (or the cells you have marked solid) as they are and make every other cell see-through — they stay in place as context">Others see-through</button>
+    <button id="glassClear" title="Make every cell solid again">All solid</button>
+    <select id="glassLvl" title="How see-through a see-through cell is">
+      <option value="0.12">See-through: faint (12 %)</option>
+      <option value="0.22">See-through: light (22 %)</option>
+      <option value="0.35" selected>See-through: medium (35 %)</option>
+      <option value="0.55">See-through: strong (55 %)</option>
+    </select>
     <button id="resetBtn" title="Put the collection back in front of you">Reset view</button>
     <select id="colourSel" title="Colour the cells by their type, or by excitatory (amber) / inhibitory (lavender) / non-neuronal (green)">
       <option value="type">Colour: by type</option>
@@ -247,6 +261,11 @@
     <button id="orgBtn" title="Community-reported organelles (centrioles, cilia, …) from µJump, inside the box around these cells. Centrioles get a 3D arrow from their cell's nucleus; cilia an arrow from base to tip.">Organelles</button>
     <select id="orgKind" title="Only this kind of reported organelle"><option value="all">All reported kinds</option></select>
   </div>
+  <div class="ctl" id="ctRow">
+    <button id="ctBtn" title="Find where the loaded cells touch — membranes closer than the distance chosen — and mark each contact site: teal if the pair is coupled by the gap-junction rules (Ca²⁺ tab), grey if they only touch">Cell contacts</button>
+    <select id="ctDist" title="How close two membranes must be to count as touching. Meshes are simplified, so at light detail allow more"><option value="0.3">within 0.3 µm</option><option value="0.6">within 0.6 µm</option><option value="1" selected>within 1 µm</option><option value="1.5">within 1.5 µm</option></select>
+    <button id="ctCsv" title="Download every contact site: the two cells, their types, whether coupled, approximate area and position (voxels)">⬇ Contacts CSV</button>
+  </div>
   <div class="ctl" id="ptsRow" style="display:none">
     <button id="ptsBtn" class="on" title="Synapses and touch points added from µJump's Connectivity, Astrocyte–synapse proximity and Cell contacts panels">Synapses &amp; contact points</button>
     <select id="ptsDir" title="Which synapses to show"><option value="both">Inputs and outputs</option><option value="in">Inputs only</option><option value="out">Outputs only</option></select>
@@ -270,11 +289,45 @@
     </select>
     <button id="stimHid" title="Off: only the cells you can see take part — a hidden cell (unticked, or hidden by “only the picked cell”) neither receives synaptic input nor passes a spike on. On: hidden cells take part too, unseen.">Hidden cells too</button>
     <button id="stimReset" title="Stop and clear all activity">Reset</button>
+    <span id="plShow" style="display:inline-flex;gap:6px;flex-wrap:wrap">
+      <button id="plVm" class="on" title="In the plots: the membrane potential at the soma, the threshold, and your electrodes">Membrane potential</button>
+      <button id="plSyn" class="on" title="In the plots: the numbered synapse-site traces (EPSP, IPSP, dendritic spike) — and their number tags on the cells">EPSP / IPSP</button>
+      <button id="plCa" title="In the plots: free Ca²⁺ at the soma, rising with each action potential (schematic). Off by default to keep the plots readable">Ca²⁺</button>
+    </span>
     <button id="plotBtn" class="on" title="A voltage plot above every cell the activity reaches: the soma against the −50 mV threshold, each synapse site (numbered on the cell), and your electrodes">📈 Voltage plots</button>
     <button id="elecBtn" title="Click (or trigger) on a cell to record its membrane voltage at that spot — up to 3 per cell, shown in the cell's voltage plot">📍 Electrode</button>
     <button id="elecClr" title="Remove all electrodes">Clear electrodes</button>
     <button id="synClr" title="Hide the synapse markers (orange balls, purple cubes). Each comes back when an action potential next uses it.">Hide synapses</button>
     <button id="traceCsv" title="Download every voltage trace of this run — soma, synapse sites and electrodes, every 0.1 ms — as a CSV for figures">⬇ Traces CSV</button>
+  </div>
+  <div class="ctl">
+    <button id="caBtn" title="Click (or in VR: right trigger) on ANY cell to start a Ca²⁺ wave there — much slower than an action potential, and it crosses to coupled cells (astrocytes, endothelium, mural cells) at their contacts">Ca²⁺ wave</button>
+    <button id="caReset" title="Stop and clear the Ca²⁺ wave">Reset Ca²⁺</button>
+  </div>
+  <div id="caBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="margin:0 0 6px">
+      <select id="caSpeed" title="Wave speed over the membrane. Astrocyte waves run about 10–20 µm/s (Charles 1998)"><option value="5">Speed 5 µm/s</option><option value="10">Speed 10 µm/s</option><option value="15" selected>Speed 15 µm/s</option><option value="20">Speed 20 µm/s</option><option value="30">Speed 30 µm/s</option></select>
+      <select id="caClock" title="How much faster than real time the Ca²⁺ clock runs"><option value="1">Clock ×1 (real time)</option><option value="2" selected>Clock ×2</option><option value="5">Clock ×5</option><option value="10">Clock ×10</option></select>
+    </div>
+    <div style="font-size:11.5px;color:var(--mut);margin:4px 0 2px">Coupled by gap junctions (assumed from the cell types — EM does not show the junction)</div>
+    <div class="catick">
+      <label><input type="checkbox" data-ca="aa" checked> astrocyte–astrocyte</label>
+      <label><input type="checkbox" data-ca="ee" checked> endothelial–endothelial</label>
+      <label title="Myoendothelial junctions: mural cells (pericytes, smooth muscle) to endothelium"><input type="checkbox" data-ca="me" checked> mural–endothelial (myoendothelial)</label>
+      <label><input type="checkbox" data-ca="mm" checked> mural–mural</label>
+      <label title="Panglial coupling (Cx43/30 to Cx47/32)"><input type="checkbox" data-ca="ao"> astrocyte–oligodendrocyte</label>
+      <label><input type="checkbox" data-ca="any"> any touching cells</label>
+    </div>
+    <div style="font-size:11.5px;color:var(--mut);margin:6px 0 2px">What-if</div>
+    <div class="catick">
+      <label title="Like carbenoxolone: no crossing at contacts"><input type="checkbox" data-ca="gapBlock"> gap junctions blocked</label>
+      <label title="Released ATP reaches non-neuronal cells up to 40 µm away across gaps without contact, at ~5 µm/s"><input type="checkbox" data-ca="atp"> ATP route (extracellular)</label>
+      <label title="No regeneration: the rise stays within a few µm of where it began"><input type="checkbox" data-ca="ip3Block"> IP3 receptors blocked</label>
+    </div>
+    <div class="ctl" style="margin:6px 0 0">
+      <button id="caPlotBtn" class="on" title="A plot of Ca²⁺ (ΔF/F) at each cell's soma, under the clock — seen in the headset too">Ca²⁺ plot</button>
+      <button id="caCsv" title="Download the run: per cell first arrival, amplitude and route, then ΔF/F at each soma every 0.1 s">⬇ Ca²⁺ CSV</button>
+    </div>
   </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
@@ -393,6 +446,8 @@
   const S = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
   const ICON = window.UI_ICON = {
     eye: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    wave: S('<path d="M2 13c2-5 4.5-5 6.5 0s4.5 5 6.5 0 4.5-5 7-1"/><circle cx="8.5" cy="13" r="1.3"/>'),
+    contact: S('<circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/><path d="M12 9.2v5.6" stroke-width="2.4"/>'),
     eyeoff: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>'),
     map: S('<path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>'),
     cube: S('<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/>'),
@@ -450,13 +505,13 @@
 
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
-    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], glassBtn: ["glass", "See-through"], resetBtn: ["reset", "Reset view"],
+    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
     layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -516,10 +571,10 @@
 
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
-    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["colourSel"], ["#lookRow"]]],
+    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
-    ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["synClr", "traceCsv"], ["#caveRow"]]],
+    ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -572,14 +627,14 @@
     orgKind: () => !!(V().ORG && V().ORG.on),
     ptsDir: () => !!(V().PTS && V().PTS.on),
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
-    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on),
+    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on), caReset: () => !!(V().CA && (V().CA.on || V().CA.running)), plShow: () => !!(V().STIM && V().STIM.on && V().STIM.plots), ctCsv: () => !!(V().CT && V().CT.on),
     plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on), synClr: () => !!(V().STIM && V().STIM.syn && V().STIM.syn.length),
     spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
   };
   /* A dot on a tab: a mode is on there that changes what a click does. */
   const MODE = {
-    act: () => !!(V().STIM && V().STIM.on), spray: () => !!(V().SPRAY && V().SPRAY.on),
+    act: () => !!((V().STIM && V().STIM.on) || (V().CA && V().CA.on)), spray: () => !!(V().SPRAY && V().SPRAY.on),
     tools: () => !!((V().MEAS && V().MEAS.on) || (V().EM && V().EM.mesh) || val("cutSel") !== "off"),
     share: () => !!(V().REC && V().REC.on)
   };
@@ -996,6 +1051,10 @@ const listEl = document.getElementById("list");
 const subEl = document.getElementById("sub");
 const triEl = document.getElementById("tri");
 let SEE_THROUGH = false, SHOW_NUC = true, SELECTED = -1, ISOLATE = false;
+/* SEE-THROUGH PER CELL (v60, 2026-10-19, Søren: "a way to make cells transparent so that we can show
+   a single cell or a few cells with the other cells as there but see through"). c.glass marks one
+   cell see-through; "See-through" still makes them all so. GLASS_LEVEL is how see-through, for both. */
+let GLASS_LEVEL = 0.35;
 let LOAD_TOKEN = 0;
 
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
@@ -1026,6 +1085,7 @@ function renderList(){
         <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
         <div><b>${esc(g.name)} <span style="font-weight:400;color:${EI_COL[cls]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cls]}</span></b>
         <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
+        <button class="glassOne${g.cells.every(c => c.glass) ? " on" : ""}" data-gglass="${esc(g.key)}" title="See-through: all ${n} ${esc(g.name)}">${(window.UI_ICON || {}).glass || "◐"}</button>
         <input type="checkbox" data-gvis="${esc(g.key)}" ${shown === n ? "checked" : ""} title="Show / hide all ${n}"></div>`;
     if (!open) return head;
     return head + g.cells.map(c =>
@@ -1033,6 +1093,7 @@ function renderList(){
          <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
          <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
          ${c.mesh && cellClass(c) !== "glia" ? `<button class="stimOne${window.__lastStim === c.i ? " on" : ""}" data-stim="${c.i}" title="Stimulate ${esc(c.root || c.label)} at its soma">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
+         <button class="glassOne${c.glass ? " on" : ""}" data-glass="${c.i}" title="See-through: ${esc(c.root || c.label)}">${(window.UI_ICON || {}).glass || "◐"}</button>
          <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
   }).join("");
   /* A group box is half-ticked when some of its cells are hidden. */
@@ -1066,6 +1127,10 @@ function cellGroups(){
 }
 listEl.addEventListener("click", e => {
   if (e.target.closest("input")) return;
+  const gb = e.target.closest("[data-glass]");
+  if (gb){ const c = CELLS[+gb.dataset.glass]; setCellGlass([c], !c.glass); return; }
+  const gg = e.target.closest("[data-gglass]");
+  if (gg){ const cs = CELLS.filter(c => groupKey(c) === gg.dataset.gglass); setCellGlass(cs, !cs.every(c => c.glass)); e.stopPropagation(); return; }
   const sb = e.target.closest("[data-stim]");
   if (sb){ stimulateCell(CELLS[+sb.dataset.stim]); return; }
   const p = e.target.closest("[data-pick]");
@@ -1101,17 +1166,28 @@ function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
-    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
-      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
+    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
     /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
         if (vPaint.a > 0.5) totalEmissiveRadiance += vPaint.rgb * vGlow * (1.1 + 0.45 * sin(sprayTime * 3.5));
+        {
+          /* Ca²⁺ (section 20): seconds since the wave reached this point; a GCaMP-like rise and
+             decay, plus a bright front so the wave can be followed. */
+          float cs = caNow - vCaT;
+          if (cs > 0.0 && vCaA > 0.01){
+            float f = clamp(caNorm * (exp(-cs / caTd) - exp(-cs / caTr)), 0.0, 1.0) * vCaA;
+            float front = exp(-pow(cs / 0.35, 2.0)) * vCaA;
+            totalEmissiveRadiance += caCol * (1.1 * f + 0.9 * front);
+            diffuseColor.rgb = mix(diffuseColor.rgb, caCol, 0.4 * f);
+          }
+        }
         {
           float a = apNow - vApT;                 // ms since the spike reached this point
           /* MEMBRANE VOLTAGE (v32): warm where depolarised -- orange, turning yellow as it nears the
@@ -1161,6 +1237,8 @@ function addActivityAttributes(g){
   g.setAttribute("vm", new THREE.BufferAttribute(new Float32Array(n), 1));
   g.setAttribute("paint", new THREE.BufferAttribute(new Uint8Array(n * 4), 4, true));
   g.setAttribute("paintGlow", new THREE.BufferAttribute(new Uint8Array(n), 1, true));
+  g.setAttribute("caT", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
+  g.setAttribute("caA", new THREE.BufferAttribute(new Float32Array(n), 1));
 }
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
@@ -1826,6 +1904,12 @@ let _down = null;
 renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 0) return;                       // the right button flies (section 13)
+  if (CA.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
+    const ndc = canvasNdc(e);
+    _mr.setFromCamera(ndc, camera);
+    caWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() });
+    return;
+  }
   if (STIM.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
     const ndc = canvasNdc(e);
     _mr.setFromCamera(ndc, camera);
@@ -2487,25 +2571,26 @@ function bridgeGaps(G, c){
 }
 /* Multi-source Dijkstra on the welded graph. sources: [{node, t0}] with t0 in ms; returns arrival
    time (ms) per NODE, and the distance (µm) to whichever source got there first. */
-function arrival(G, sources, blockT, refMs){
+function arrival(G, sources, blockT, refMs, speed){
+  const SP = speed || STIM.speed;
   /* Float64, not Float32: the heap holds doubles, and a time stored back as float32 compares as
      SMALLER than the same time in the heap, so "t > T[v]" skipped every node after the first. */
-  const T = new Float64Array(G.m).fill(1e9), D = new Float64Array(G.m).fill(1e9);
+  const T = new Float64Array(G.m).fill(1e9), D = new Float64Array(G.m).fill(1e9), S = new Int32Array(G.m).fill(-1);
   const heap = []; // [time, node]
   const push = (t, v) => { heap.push([t, v]); let i = heap.length - 1; while (i){ const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let i = 0; for (;;){ const l = 2*i+1, r = l+1; let s = i; if (l < heap.length && heap[l][0] < heap[s][0]) s = l; if (r < heap.length && heap[r][0] < heap[s][0]) s = r; if (s === i) break; [heap[s], heap[i]] = [heap[i], heap[s]]; i = s; } } return top; };
-  for (const s of sources){ if (s.t0 < T[s.node]){ T[s.node] = s.t0; D[s.node] = 0; push(s.t0, s.node); } }
+  sources.forEach((s, k) => { if (s.t0 < T[s.node]){ T[s.node] = s.t0; D[s.node] = 0; S[s.node] = k; push(s.t0, s.node); } });
   while (heap.length){
     const [t, v] = pop(); if (t > T[v]) continue;
     for (let k = G.off[v]; k < G.off[v+1]; k++){
-      const u = G.nb[k], tt = t + G.w[k] / STIM.speed;
+      const u = G.nb[k], tt = t + G.w[k] / SP;
       /* A membrane still refractory from the previous spike stops this one (2026-10-15): a second
          wave cannot run over the first, it dies where the first one has just passed. */
       if (blockT && blockT[u] < 1e8 && tt >= blockT[u] && tt < blockT[u] + refMs) continue;
-      if (tt < T[u]){ T[u] = tt; D[u] = D[v] + G.w[k]; push(tt, u); }
+      if (tt < T[u]){ T[u] = tt; D[u] = D[v] + G.w[k]; S[u] = S[v]; push(tt, u); }
     }
   }
-  return { T, D };
+  return { T, D, S };
 }
 function nearestNode(G, p){
   let best = -1, bd = Infinity;
@@ -2783,7 +2868,7 @@ function resetActivity(){
   STIM.why = {}; STIM.offPre = 0; STIM.started = null; STIM.logRows = 0; STIM.active = new Set(); STIM.slowLog = Math.log(STIM.slow);
   for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry.attributes.apT) continue;
     const a = c.mesh.geometry.attributes.apT; a.array.fill(1e9); a.needsUpdate = true; clearVm(c);
-    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.log = null; c.refrNoted = false; }
+    c.apNodeT = null; c.apLast = 0; c.pendingFire = false; c.nFired = 0; c.adaptV = 0; c.blocked = false; c.slots = []; c.dspk = []; c.sites = []; c.trace = null; c.log = null; c.refrNoted = false; c.spikesAt = null; }
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker) s.marker.scale.setScalar(1); });
   clearSiteTags();
   CELLS.forEach(c => { if (c.electrodes && c.electrodes.length) STIM.active.add(c); });
@@ -2851,6 +2936,7 @@ function fireCell(c, node, t0){
   STIM.slowLog = Math.log(STIM.slow);
   /* The afterhyperpolarisation at the soma, once the spike has been there. */
   const soma = somaNode(c, node);
+  if (T[soma] < 1e8 && T[soma] >= t0) (c.spikesAt = c.spikesAt || []).push(T[soma]);
   if (T[soma] < 1e8){
     /* One afterhyperpolarisation at a time: a new spike replaces the old one rather than adding a
        slot each time -- at high rates the AHP slots were pushing the synaptic inputs out of the
@@ -3010,7 +3096,7 @@ function placeTags(){
   STIM.tags.visible = !!STIM.plots;
   const xr = renderer.xr.isPresenting, tanH = Math.tan(THREE.MathUtils.degToRad((camera.fov || 50) / 2));
   for (const s of STIM.tags.children){ const c = CELLS[s.userData.cell]; if (!c || !c.graph){ s.visible = false; continue; }
-    s.visible = c.mesh.visible; s.position.copy(content.localToWorld(nodePos(c, s.userData.node)));
+    s.visible = c.mesh.visible && (s.userData.elec ? PLOT_SHOW.vm : PLOT_SHOW.syn); s.position.copy(content.localToWorld(nodePos(c, s.userData.node)));
     /* 2.2 cm in the headset; on a screen ~2 % of the view's height, so a tag never hides the cell. */
     const h = xr ? 0.022 : 0.04 * camera.position.distanceTo(s.position) * tanH;
     s.scale.set(h * s.userData.aspect, h, 1); }
@@ -3078,9 +3164,37 @@ function exportTraces(){
 function plotCells(){
   return [...(STIM.active || [])].filter(c => c.mesh && cellClass(c) !== "glia" || (c.electrodes && c.electrodes.length)).slice(0, VM.plotMax);
 }
+/* WHAT THE PLOTS SHOW (v62, 2026-10-19, Søren: "the cells that have action potentials could have an
+   option to show Ca2+ signal in the graph. By default off, so that the graphs are not too crowded.
+   Epsp and ipsp should also be possible to turn off, also the membrane potential if you only want to
+   show calcium signal."). Ca²⁺ gets its own strip under the voltage, never a second axis on it.
+   THE Ca²⁺ HERE is free Ca²⁺ at the soma from voltage-gated entry during each action potential:
+   +200 nM per spike over a 50 nM rest, rising in ~2 ms and falling with τ ≈ 70 ms -- inside the
+   150–300 nM and "<100 ms" Helmchen, Imoto & Sakmann (1996) measured in pyramidal-cell dendrites
+   with the dye extrapolated away. A genetically encoded indicator such as GCaMP is far slower. */
+const PLOT_SHOW = { vm: true, syn: true, ca: false };
+const CA_AP = { rest: 50, step: 200, tr: 2, td: 70 };
+function caApAt(c, t){
+  let v = CA_AP.rest;
+  const S = c.spikesAt; if (!S) return v;
+  for (let k = S.length - 1; k >= 0 && k >= S.length - 40; k--){ const s = t - S[k]; if (s > 0) v += CA_AP.step * psShape(s, CA_AP.tr, CA_AP.td); }
+  return v;
+}
+function setPlotShow(k, v){
+  PLOT_SHOW[k] = !!v;
+  const id = { vm: "plVm", syn: "plSyn", ca: "plCa" }[k], b = document.getElementById(id); if (b) b.classList.toggle("on", PLOT_SHOW[k]);
+  CELLS.forEach(c => { if (c.plot) drawPlot(c); });
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("plVm").addEventListener("click", () => setPlotShow("vm", !PLOT_SHOW.vm));
+document.getElementById("plSyn").addEventListener("click", () => setPlotShow("syn", !PLOT_SHOW.syn));
+document.getElementById("plCa").addEventListener("click", () => setPlotShow("ca", !PLOT_SHOW.ca));
 function drawPlot(c){
   const P = c.plot, g = P.ctx, W = P.cv.width, H = P.cv.height;
-  const L = 100, R = 16, T = 96, B = 40, pw = W - L - R, ph = H - T - B;
+  const L = 100, R = 16, T = 96, B = 40, pw = W - L - R, PH = H - T - B;
+  const showV = PLOT_SHOW.vm || PLOT_SHOW.syn, showC = PLOT_SHOW.ca;
+  /* Voltage on top, Ca²⁺ in its own strip below; either alone gets the whole area. */
+  const ph = showV ? (showC ? PH * 0.64 : PH) : 0, cT = T + (showV ? ph + 22 : 0), cH = showC ? (showV ? PH - ph - 22 : PH) : 0;
   /* THE TOP OF THE PLOT (v44, Søren: "it starts capping its AP… Why?"). It was fixed at −10 mV, so
      a 2 mV EPSP stayed visible -- and every spike (to +30 mV) was cut off flat at the top. Now the
      top follows what is in the window: −10 mV while there are only synaptic potentials, up to
@@ -3094,10 +3208,19 @@ function drawPlot(c){
   g.beginPath(); g.roundRect(3, 3, W - 6, H - 6, 22); g.fill(); g.stroke();
   const soma = somaNode(c, -1), tr = c.trace;
   const vNow = soma >= 0 ? vmAt(c, soma, STIM.now) : null;
+  if (!showV && !showC){
+    g.font = "600 34px system-ui, sans-serif"; g.fillStyle = "#e6edf3"; g.fillText(shortName(c), 22, 42, W - 44);
+    g.font = "28px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.fillText("Nothing chosen — turn on Membrane potential, EPSP / IPSP or Ca²⁺", 22, 120, W - 44);
+    P.tex.needsUpdate = true; return;
+  }
   g.font = "600 34px system-ui, sans-serif"; g.fillStyle = "#e6edf3";
   g.fillText(shortName(c) + "  ·  " + GAIN_NAME[String(stimGain())], 22, 42, W - 44);
   g.font = "30px system-ui, sans-serif";
-  if (vNow != null){
+  if (!PLOT_SHOW.vm){
+    g.fillStyle = "#7dffa6";
+    if (showC) g.fillText("Ca²⁺ at the soma " + Math.round(caApAt(c, STIM.now)) + " nM · " + (c.spikesAt ? c.spikesAt.length : 0) + " spike" + ((c.spikesAt || []).length === 1 ? "" : "s"), 22, 76, W - 44);
+    else { g.fillStyle = "#c9d1d9"; g.fillText("Synapse sites (EPSP / IPSP)", 22, 76); }
+  } else if (vNow != null){
     const need = VM.thr - vNow;
     g.fillStyle = need <= 0 ? "#ffe11a" : "#c9d1d9";
     g.fillText("Soma " + mV(vNow) + " mV · threshold " + mV(VM.thr) + " · " + (need <= 0 ? "at threshold" : "needs +" + need.toFixed(need < 10 ? 1 : 0) + " mV"), 22, 76, W - 44);
@@ -3105,14 +3228,17 @@ function drawPlot(c){
   if (c.somaSrc === "est"){ g.fillStyle = "#f0883e"; g.font = "22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("soma estimated — nucleus not loaded", W - R - 6, T + 22); g.textAlign = "left"; }
   /* axes: rest and threshold */
   g.font = "22px system-ui, sans-serif"; g.lineWidth = 2;
-  [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"], [-30, "#30363d", "−30"], [-80, "#30363d", "−80"]].concat(vHi > 0 ? [[0, "#30363d", "0"], [VM.blockV, "#f85149", "block"]] : []).forEach(([v, col, lab]) => {
+  /* With the Ca²⁺ strip below, the voltage area is shorter: only the lines that carry meaning. */
+  if (showV) [[VM.rest, "#8b949e", "rest −70"], [VM.thr, "#ffe11a", "thr −50"]].concat(showC ? [] : [[-30, "#30363d", "−30"], [-80, "#30363d", "−80"]]).concat(vHi > 0 ? (showC ? [[VM.blockV, "#f85149", "block"]] : [[0, "#30363d", "0"], [VM.blockV, "#f85149", "block"]]) : []).forEach(([v, col, lab]) => {
     g.strokeStyle = col; g.setLineDash(v === VM.thr ? [10, 8] : v === VM.rest ? [3, 6] : []);
     g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke();
     g.fillStyle = col === "#30363d" ? "#6e7681" : col; g.fillText(lab, 10, y(v) + 7);
   });
   g.setLineDash([]);
   g.fillStyle = "#6e7681"; g.fillText("−" + VM.window + " ms", L, H - 12); g.fillText("now", W - R - 40, H - 12);
-  if (!tr || !tr.t.length){ g.strokeStyle = "#e6edf3"; g.lineWidth = 3; g.beginPath(); g.moveTo(L, y(VM.rest)); g.lineTo(W - R, y(VM.rest)); g.stroke(); }
+  if (showC) drawCaStrip(c, g, L, R, W, cT, cH, tr);
+  if (!showV){}
+  else if (!tr || !tr.t.length){ g.strokeStyle = "#e6edf3"; g.lineWidth = 3; g.beginPath(); g.moveTo(L, y(VM.rest)); g.lineTo(W - R, y(VM.rest)); g.stroke(); }
   else {
     const line = (get, col, w) => {
       g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
@@ -3120,20 +3246,35 @@ function drawPlot(c){
         const X = x(tr.t[i]), Y = y(v); on ? g.lineTo(X, Y) : g.moveTo(X, Y); on = true; }
       g.stroke();
     };
-    (c.sites || []).forEach((s, k) => line(i => tr.site[i][k], SITE_COL[s.kind], 2.5));
-    (c.electrodes || []).forEach((e, k) => line(i => tr.el[i][k], ELEC_COL[e.k], 2.5));
-    line(i => tr.soma[i], "#f0f6fc", 4.5);
+    if (PLOT_SHOW.syn) (c.sites || []).forEach((s, k) => line(i => tr.site[i][k], SITE_COL[s.kind], 2.5));
+    if (PLOT_SHOW.vm){ (c.electrodes || []).forEach((e, k) => line(i => tr.el[i][k], ELEC_COL[e.k], 2.5));
+      line(i => tr.soma[i], "#f0f6fc", 4.5); }
     /* spikes run off the top: say so */
     g.fillStyle = "#fff6c8"; g.font = "600 20px system-ui, sans-serif";
-    for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > 10 && !(tr.soma[i - 1] > 10) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
-    if (c.blocked){ g.fillStyle = "#f85149"; g.font = "600 22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("depolarisation block — cannot fire", W - R - 6, H - 12 - 24); g.textAlign = "left"; }
+    if (PLOT_SHOW.vm) for (let i = 1; i < tr.t.length; i++) if (tr.soma[i] != null && tr.soma[i] > 10 && !(tr.soma[i - 1] > 10) && tr.t[i] >= STIM.now - VM.window) g.fillText("AP", x(tr.t[i]) - 12, T - 6);
+    if (c.blocked && PLOT_SHOW.vm){ g.fillStyle = "#f85149"; g.font = "600 22px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("depolarisation block — cannot fire", W - R - 6, T + ph - 8); g.textAlign = "left"; }
   }
   /* legend */
-  const items = [["soma", "#f0f6fc"]].concat((c.sites || []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP") + (soma >= 0 ? " · " + Math.round(distFrom(c, s.node)[soma]) + " µm" : ""), SITE_COL[s.kind]]),
-                                             (c.electrodes || []).map(e => ["📍" + "abc"[e.k], ELEC_COL[e.k]]));
+  const items = (PLOT_SHOW.vm ? [["soma", "#f0f6fc"]] : []).concat((PLOT_SHOW.syn ? (c.sites || []) : []).map(s => [s.n + (s.kind === "D" ? " dend. spike" : s.kind === "I" ? " IPSP" : " EPSP") + (soma >= 0 ? " · " + Math.round(distFrom(c, s.node)[soma]) + " µm" : ""), SITE_COL[s.kind]]),
+                                             (PLOT_SHOW.vm ? (c.electrodes || []) : []).map(e => ["📍" + "abc"[e.k], ELEC_COL[e.k]]),
+                                             showC ? [["Ca²⁺", "#7dffa6"]] : []);
   g.font = "24px system-ui, sans-serif"; let lx = L + 6;
   items.forEach(([t, col]) => { const wd = g.measureText(t).width; if (lx + wd > W - R) return; g.fillStyle = col; g.fillText(t, lx, T + 22); lx += wd + 16; });
   P.tex.needsUpdate = true;
+}
+/* The Ca²⁺ strip: free Ca²⁺ at the soma over the same 40 ms window, in nM. */
+function drawCaStrip(c, g, L, R, W, cT, cH, tr){
+  const t0 = STIM.now - VM.window, n = 120;
+  let hi = 400; for (let i = 0; i <= n; i++) hi = Math.max(hi, caApAt(c, t0 + VM.window * i / n));
+  hi = Math.ceil(hi * 1.1 / 100) * 100;
+  const X = t => L + (W - L - R) * (t - t0) / VM.window, Y = v => cT + cH * (1 - Math.min(1, v / hi));
+  g.strokeStyle = "#30363d"; g.lineWidth = 2; g.font = "20px system-ui, sans-serif";
+  [[CA_AP.rest, "rest"], [hi, hi + " nM"]].forEach(([v, lab]) => { g.setLineDash(v === CA_AP.rest ? [3, 6] : []); g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke(); g.fillStyle = "#6e7681"; g.fillText(lab, 10, Y(v) + 7); });
+  g.setLineDash([]);
+  g.fillStyle = "#7dffa6"; g.textAlign = "right"; g.fillText("Ca²⁺ at soma (free, schematic)", W - R - 6, cT + 20); g.textAlign = "left";
+  g.strokeStyle = "#3fe07a"; g.lineWidth = 3.5; g.beginPath();
+  for (let i = 0; i <= n; i++){ const t = t0 + VM.window * i / n, x = X(t), y = Y(caApAt(c, t)); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
 }
 function makePlot(c){
   const cv = document.createElement("canvas"); cv.width = 760; cv.height = 430;
@@ -3353,6 +3494,7 @@ function stackCards(){
 }
 function setStim(v){
   STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
+  try { if (v && CA.on) setCa(false); } catch (e){}
   if (v){ if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
   else if (STIM.electrode) setElectrode(false);
   MENU.dirty = true;
@@ -3592,11 +3734,11 @@ function captureScene(){
   const sc = {
     v: 1, savedAt: new Date().toISOString(),
     timeline: (tlCount()) ? tlData() : undefined,
-    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden },
+    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass },
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
-    ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, isolate: ISOLATE,
+    ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden,
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -3717,6 +3859,8 @@ async function openScene(id){
   if (u.stimGain && GAIN_NAME[u.stimGain]) document.getElementById("stimGain").value = u.stimGain;
   if (u.plots === false) setPlots(false);
   setStimHidden(!!u.stimHidden, true);
+  if (u.plotShow) ["vm", "syn", "ca"].forEach(k => { if (u.plotShow[k] != null) setPlotShow(k, u.plotShow[k]); });
+  try { caApplyUi(u.ca); } catch (e){ console.warn("[vr] Ca²⁺ settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -3727,7 +3871,8 @@ async function applyScene(sc){
   const u = sc.ui || {};
   if (u.bg) setBackground(u.bg);
   if (u.grid != null) setGrid(u.grid);
-  CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; });
+  CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; if (sc.cells[i] && sc.cells[i].glass) c.glass = true; });
+  if (u.glassLevel) setGlassLevel(u.glassLevel);
   if (u.colour === "ei") setColourMode("ei");
   setNuclei(u.nuc !== false);
   if (!!u.glass !== SEE_THROUGH) toggleGlass();
@@ -4148,6 +4293,415 @@ function buildRegionBoxes(){
 function setRegionBoxes(v){ RBOX.on = v; buildRegionBoxes(); }
 document.getElementById("rboxBtn").addEventListener("click", () => setRegionBoxes(!RBOX.on));
 
+/* ── 20. CALCIUM WAVES AND CELL CONTACTS ────────────────────────────────────  2026-10-19 (v61)
+   Søren: *"a way to show Ca2+ waves in the cells. In contrast to action potentials, all cells can
+   have Ca2+ waves. The wave is much slower than an AP. Cells that are normally connected by gap
+   junctions like astrocytes should be able to spread the calcium waves. This means we also need to
+   be able to add cell contacts to VR. Remember also that myoendothelial junctions couple mural
+   cells and endothelial cells."* -- and, of the suggestions, the contact table, the blocking
+   switches and the Ca²⁺ plots with it.
+
+   WHAT IS REAL AND WHAT IS A CARTOON
+   · REAL: where cells touch -- read from the loaded meshes themselves (membranes closer than the
+     chosen distance), and the path a wave takes over a cell (along the membrane, as for the AP).
+   · ASSUMED: which touching pairs are coupled. EM at this resolution does not show a gap junction,
+     so coupling is decided by cell type (the ticks): astrocyte–astrocyte (Cx43/Cx30),
+     endothelial–endothelial, mural–endothelial (myoendothelial junctions) and mural–mural on;
+     astrocyte–oligodendrocyte (panglial) and "any touching cells" off.
+   · SCHEMATIC numbers, from Charles 1998 (Glia 24:39–49): a wave of ~10–20 µm/s (15 by default),
+     0.5–1 s to start in the next cell (0.75 s), reaching up to ~250 µm -- here each crossing keeps
+     80 % of the amplitude and a wave below 25 % stops. The ATP route crosses cell-free gaps at
+     ~5 µm/s (5.4 µm/s in Charles 1998), up to 40 µm, at 60 % amplitude, onto non-neuronal cells.
+     The transient rises over ~0.5 s and decays over ~4 s (a GCaMP-like ΔF/F, shape only).
+   · Its own clock, in real seconds, shown sped up ×1–×10 -- nothing like the AP's 5000× slow-down. */
+const CA = { on: false, now: 0, running: false, events: [], speed: 15, clock: 2, jDelay: 0.75, hop: 0.8, minAmp: 0.25,
+             tr: 0.5, td: 4.0, gapBlock: false, atp: false, ip3Block: false, atpV: 5, atpR: 40, atpAmp: 0.6, localUm: 8,
+             rules: { aa: true, ee: true, me: true, mm: true, ao: false, any: false }, plot: true, hud: null, last: 0,
+             seen: new Set(), near: new Map(), log: [] };
+const CT = { on: false, dist: 1.0, pairs: [], sig: "", group: null };
+AP_UNI.caNow = { value: -1e9 };
+AP_UNI.caCol = { value: new THREE.Color(0.25, 1.0, 0.45) };
+AP_UNI.caTr = { value: CA.tr }; AP_UNI.caTd = { value: CA.td }; AP_UNI.caNorm = { value: 1 };
+function caShapeNorm(){ const tp = CA.tr * CA.td / (CA.td - CA.tr) * Math.log(CA.td / CA.tr); return 1 / (Math.exp(-tp / CA.td) - Math.exp(-tp / CA.tr)); }
+AP_UNI.caNorm.value = caShapeNorm();
+
+/* What a cell is, for coupling. OPC is tested before "oligo" -- "oligodendrocyte precursor" has both. */
+function caKind(c){
+  if (c.caKindC) return c.caKindC;
+  const l = String(c.label || "");
+  const k = /\bOPC\b|precursor|NG2/i.test(l) ? "opc" : /astro/i.test(l) ? "astro" : /oligo/i.test(l) ? "oligo"
+          : /microglia|macrophage|\bPVM\b/i.test(l) ? "micro" : /endothel/i.test(l) ? "endo"
+          : /pericyte|smooth muscle|\bSMC\b|mural|\bvSMC\b/i.test(l) ? "mural"
+          : (cellClass(c) === "exc" || cellClass(c) === "inh") ? "neuron" : "other";
+  return (c.caKindC = k);
+}
+const CA_KIND_NAME = { astro: "astrocyte", oligo: "oligodendrocyte", opc: "OPC", micro: "microglia", endo: "endothelial", mural: "mural", neuron: "neuron", other: "other" };
+/* Which rule (if any) couples two cells. */
+function coupledBy(a, b){
+  const x = caKind(a), y = caKind(b), has = (p, q) => (x === p && y === q) || (x === q && y === p);
+  if (CA.rules.aa && has("astro", "astro")) return "astrocyte–astrocyte gap junctions";
+  if (CA.rules.ee && has("endo", "endo")) return "endothelial gap junctions";
+  if (CA.rules.me && has("mural", "endo")) return "myoendothelial junctions";
+  if (CA.rules.mm && has("mural", "mural")) return "mural–mural gap junctions";
+  if (CA.rules.ao && has("astro", "oligo")) return "panglial (astrocyte–oligodendrocyte) junctions";
+  if (CA.rules.any) return "touching (any cells)";
+  return "";
+}
+
+/* ── contacts: where the loaded meshes come within CT.dist µm of each other ── */
+function ctSig(){ return CELLS.map(c => c.mesh ? (c.graph ? c.graph.m : "u") + ":" + c.mesh.geometry.attributes.position.count : "-").join(",") + "@" + CT.dist; }
+function nodeArea(c){
+  if (c._nodeArea != null && c._nodeAreaM === c.graph.m) return c._nodeArea;
+  const P = c.mesh.geometry.attributes.position.array, I = c.mesh.geometry.index.array;
+  let A = 0;
+  for (let t = 0; t < I.length; t += 3){
+    const a = I[t]*3, b = I[t+1]*3, d = I[t+2]*3;
+    const ux = P[b]-P[a], uy = P[b+1]-P[a+1], uz = P[b+2]-P[a+2], vx = P[d]-P[a], vy = P[d+1]-P[a+1], vz = P[d+2]-P[a+2];
+    A += 0.5 * Math.hypot(uy*vz - uz*vy, uz*vx - ux*vz, ux*vy - uy*vx);
+  }
+  c._nodeAreaM = c.graph.m;
+  return (c._nodeArea = A / Math.max(1, c.graph.m));
+}
+function findContacts(){
+  const sig = ctSig();
+  if (CT.sig === sig) return CT.pairs;
+  const list = CELLS.filter(c => c.mesh);
+  const d = CT.dist, d2 = d * d, inv = 1 / d;
+  let N = 0; const off = [];
+  for (const c of list){ cellGraph(c); off.push(N); N += c.graph.m; }
+  /* One hash over every node of every cell: linked lists in typed arrays, so a million nodes cost
+     a few MB and no strings. Collisions are harmless -- every candidate is measured. */
+  const size = 1 << Math.min(22, Math.max(12, Math.ceil(Math.log2(N * 2)))), mask = size - 1;
+  const head = new Int32Array(size).fill(-1), next = new Int32Array(N), cellOf = new Int32Array(N), nodeOf = new Int32Array(N);
+  const hk = (x, y, z) => (((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0) & mask;
+  list.forEach((c, ci) => { const G = c.graph; for (let v = 0; v < G.m; v++){
+    const g = off[ci] + v, h = hk(Math.floor(G.pos[v*3] * inv), Math.floor(G.pos[v*3+1] * inv), Math.floor(G.pos[v*3+2] * inv));
+    cellOf[g] = ci; nodeOf[g] = v; next[g] = head[h]; head[h] = g; } });
+  const byPair = new Map();
+  list.forEach((c, ci) => { const G = c.graph; for (let v = 0; v < G.m; v++){
+    const x = G.pos[v*3], y = G.pos[v*3+1], z = G.pos[v*3+2], gx = Math.floor(x * inv), gy = Math.floor(y * inv), gz = Math.floor(z * inv);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      for (let g = head[hk(gx+dx, gy+dy, gz+dz)]; g >= 0; g = next[g]){
+        const cj = cellOf[g]; if (cj <= ci) continue;
+        const H = list[cj].graph, u = nodeOf[g];
+        const ex = H.pos[u*3]-x, ey = H.pos[u*3+1]-y, ez = H.pos[u*3+2]-z, q = ex*ex + ey*ey + ez*ez;
+        if (q > d2) continue;
+        const key = ci + "," + cj; let P = byPair.get(key); if (!P){ P = { ci, cj, a: new Map(), b: new Set() }; byPair.set(key, P); }
+        const prev = P.a.get(v); if (!prev || q < prev.q) P.a.set(v, { u, q });
+        P.b.add(u);
+      }
+    }
+  } });
+  /* Sites: the touching nodes of the first cell, gathered on a 2 µm grid. */
+  const pairs = [];
+  for (const P of byPair.values()){
+    const A = list[P.ci], B = list[P.cj], G = A.graph, cells = new Map();
+    for (const [v, m] of P.a){
+      const k = Math.floor(G.pos[v*3] / 2) + "," + Math.floor(G.pos[v*3+1] / 2) + "," + Math.floor(G.pos[v*3+2] / 2);
+      let s = cells.get(k); if (!s){ s = { n: 0, x: 0, y: 0, z: 0, na: v, nb: m.u, q: m.q }; cells.set(k, s); }
+      s.n++; s.x += G.pos[v*3]; s.y += G.pos[v*3+1]; s.z += G.pos[v*3+2];
+      if (m.q < s.q){ s.q = m.q; s.na = v; s.nb = m.u; }
+    }
+    const sites = [...cells.values()].map(s => ({ p: new THREE.Vector3(s.x / s.n, s.y / s.n, s.z / s.n), na: s.na, nb: s.nb, n: s.n,
+                                                  area: s.n * nodeArea(A) }));
+    pairs.push({ a: A.i, b: B.i, sites, area: sites.reduce((t, s) => t + s.area, 0), nb: P.b.size });
+  }
+  pairs.sort((x, y) => y.area - x.area);
+  CT.pairs = pairs; CT.sig = sig; CA.near.clear();
+  return pairs;
+}
+function buildContacts(){
+  disposeGroup(CT.group); CT.group = null;
+  if (!CT.on) return;
+  const pairs = findContacts();
+  const grp = new THREE.Group(), M4 = new THREE.Matrix4(), col = new THREE.Color(), geo = new THREE.IcosahedronGeometry(0.45, 1);
+  const n = pairs.reduce((t, P) => t + P.sites.length, 0);
+  if (n){
+    const inst = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.35, emissive: 0x113322 }), n);
+    let k = 0; CT.index = [];
+    pairs.forEach((P, pi) => {
+      const on = !!coupledBy(CELLS[P.a], CELLS[P.b]) && !CA.gapBlock;
+      P.sites.forEach((s, si) => { M4.makeTranslation(s.p.x, s.p.y, s.p.z); inst.setMatrixAt(k, M4); inst.setColorAt(k, col.set(on ? "#2dd4bf" : "#8b949e")); CT.index.push([pi, si]); s.k = k; k++; });
+    });
+    inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    grp.add(inst); CT.inst = inst;
+  }
+  CT.group = grp; content.add(grp); applyContactsLook();
+  const coupled = pairs.filter(P => coupledBy(CELLS[P.a], CELLS[P.b]));
+  ctxNote.textContent = pairs.length
+    ? "Contacts: " + pairs.length + " touching pair" + (pairs.length === 1 ? "" : "s") + " (" + n + " site" + (n === 1 ? "" : "s") + ", membranes within " + CT.dist + " µm) — "
+      + coupled.length + " coupled by the gap-junction rules (teal" + (CA.gapBlock ? ", but blocked" : "") + "), the rest grey. Touching in the mesh is not a seen gap junction."
+    : "Contacts: no two loaded cells come within " + CT.dist + " µm of each other. Try a larger distance, Detail: full, or load cells that touch.";
+}
+function applyContactsLook(){
+  if (!CT.group || !CT.inst) return;
+  /* A site shows only while both of its cells do. */
+  const M4 = new THREE.Matrix4(), Z = new THREE.Matrix4().makeScale(0, 0, 0);
+  CT.pairs.forEach(P => {
+    const vis = !gone(CELLS[P.a]) && !gone(CELLS[P.b]);
+    P.sites.forEach(s => { if (s.k == null) return; if (vis){ M4.makeTranslation(s.p.x, s.p.y, s.p.z); CT.inst.setMatrixAt(s.k, M4); } else CT.inst.setMatrixAt(s.k, Z); });
+  });
+  CT.inst.instanceMatrix.needsUpdate = true;
+  function gone(c){ return !c || c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED !== c.i); }
+}
+function setContacts(v){
+  CT.on = v; document.getElementById("ctBtn").classList.toggle("on", v);
+  if (v){ ctxNote.textContent = "Finding where the loaded cells touch…"; setTimeout(buildContacts, 30); } else buildContacts();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function contactsCsv(){
+  const pairs = findContacts();
+  if (!pairs.length){ ctxNote.textContent = "No contacts between the loaded cells at " + CT.dist + " µm."; return; }
+  const vox = (c, p) => { const r = (VR_DATASETS[c.ds] || VR_DATASETS.microns).res || [4, 4, 40]; return [p.x * 1000 / r[0], p.y * 1000 / r[1], p.z * 1000 / r[2]].map(Math.round); };
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const rows = [["cell_a", "root_a", "type_a", "cell_b", "root_b", "type_b", "coupled_by_rule", "site", "site_area_um2_approx", "pair_area_um2_approx", "x_vox", "y_vox", "z_vox"]];
+  pairs.forEach(P => { const A = CELLS[P.a], B = CELLS[P.b], rule = coupledBy(A, B);
+    P.sites.forEach((s, k) => { const v = vox(A, s.p); rows.push([q(shortName(A)), q(A.root), CA_KIND_NAME[caKind(A)], q(shortName(B)), q(B.root), CA_KIND_NAME[caKind(B)], q(rule), k + 1, s.area.toFixed(2), P.area.toFixed(2), v[0], v[1], v[2]]); }); });
+  csvDownload(rows, "vr-contacts-");
+  ctxNote.textContent = "Saved " + (rows.length - 1) + " contact sites between " + pairs.length + " pairs. Areas are approximate: the touching membrane nodes × the mesh's area per node, at " + CT.dist + " µm.";
+}
+function csvDownload(rows, prefix){
+  const csv = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = recFileName("csv").replace(/^vr-/, prefix); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/* ── the wave ── */
+function caReset(){
+  CA.events = []; CA.now = 0; CA.running = false; CA.seen = new Set(); CA.last = 0; CA.log = [];
+  for (const c of CELLS){ c.ca = null; if (c.mesh && c.mesh.geometry.attributes.caT){ c.mesh.geometry.attributes.caT.array.fill(1e9); c.mesh.geometry.attributes.caT.needsUpdate = true; c.mesh.geometry.attributes.caA.array.fill(0); c.mesh.geometry.attributes.caA.needsUpdate = true; } }
+  AP_UNI.caNow.value = -1e9;
+  if (CA.hud && CA.hud.spr){ scene.remove(CA.hud.spr); CA.hud.spr.material.map.dispose(); CA.hud.spr.material.dispose(); }
+  CA.hud = null; caPlotDraw(true);
+}
+/* A source on a cell: the wave is recomputed from all its sources, so two waves meeting in one cell
+   merge rather than overwrite. */
+function caAddSource(c, node, t, amp, via, from){
+  if (!c || !c.mesh || node == null || node < 0) return false;
+  const G = cellGraph(c);
+  c.ca = c.ca || { src: [], first: t, amp: 0, via, from, hops: 0 };
+  if (c.ca.T && c.ca.T[node] <= t) return false;              // already there by then
+  c.ca.src.push({ node, t0: t, amp });
+  if (t < c.ca.first || c.ca.src.length === 1){ c.ca.first = t; c.ca.via = via; c.ca.from = from; }
+  c.ca.amp = Math.max(c.ca.amp, amp);
+  const { T, D, S } = arrival(G, c.ca.src.map(s => ({ node: s.node, t0: s.t0 })), null, 0, CA.speed);
+  const A = new Float32Array(G.m);
+  for (let i = 0; i < G.m; i++){
+    if (T[i] >= 1e8 || S[i] < 0){ A[i] = 0; continue; }
+    const a0 = c.ca.src[S[i]].amp;
+    /* IP3 receptors blocked: no regeneration -- the rise stays near where it began and fades with
+       distance (a few µm), instead of running over the whole cell. */
+    if (CA.ip3Block){ if (D[i] > CA.localUm){ T[i] = 1e9; A[i] = 0; } else A[i] = a0 * Math.exp(-D[i] / 3); }
+    else A[i] = a0;
+  }
+  c.ca.T = T; c.ca.A = A;
+  writeAttr(c, "caT", T); writeAttr(c, "caA", A);
+  let last = 0; for (let i = 0; i < G.m; i++) if (T[i] < 1e8 && T[i] > last) last = T[i];
+  CA.last = Math.max(CA.last, last);
+  CA.log.push({ cell: c.i, t, node, amp, via, from });
+  caSchedule(c);
+  return true;
+}
+/* Everything this cell's wave can hand on: coupled contacts, and (if on) ATP across a gap. */
+function caSchedule(c){
+  const T = c.ca.T, A = c.ca.A;
+  if (!CA.gapBlock) for (const P of findContacts()){
+    if (P.a !== c.i && P.b !== c.i) continue;
+    const o = CELLS[P.a === c.i ? P.b : P.a], rule = coupledBy(c, o);
+    if (!rule || !inPlay(o)) continue;
+    for (const s of P.sites){
+      const mine = P.a === c.i ? s.na : s.nb, theirs = P.a === c.i ? s.nb : s.na;
+      if (T[mine] >= 1e8) continue;
+      const amp = A[mine] * CA.hop; if (amp < CA.minAmp) continue;
+      const key = c.i + ">" + o.i + "@" + mine; if (CA.seen.has(key)) continue; CA.seen.add(key);
+      CA.events.push({ t: T[mine] + CA.jDelay, cell: o.i, node: theirs, amp, via: rule, from: c.i, site: s });
+    }
+  }
+  if (CA.atp) for (const o of CELLS){
+    if (o === c || !o.mesh || !inPlay(o) || caKind(o) === "neuron") continue;
+    const n = caNear(c, o); if (!n || n.d > CA.atpR) continue;
+    if (T[n.na] >= 1e8) continue;
+    const amp = A[n.na] * CA.atpAmp; if (amp < CA.minAmp) continue;
+    const key = c.i + ">" + o.i + "@atp"; if (CA.seen.has(key)) continue; CA.seen.add(key);
+    CA.events.push({ t: T[n.na] + n.d / CA.atpV, cell: o.i, node: n.nb, amp, via: "ATP across " + n.d.toFixed(1) + " µm", from: c.i });
+  }
+  CA.events.sort((x, y) => x.t - y.t);
+}
+/* The closest two points of two cells, from up to 1500 nodes each -- for the ATP route. */
+function caNear(a, b){
+  const key = Math.min(a.i, b.i) + "," + Math.max(a.i, b.i);
+  if (CA.near.has(key)){ const n = CA.near.get(key); return a.i < b.i ? n : { d: n.d, na: n.nb, nb: n.na }; }
+  const G = cellGraph(a), H = cellGraph(b), sa = Math.max(1, Math.floor(G.m / 1500)), sb = Math.max(1, Math.floor(H.m / 1500));
+  let best = Infinity, na = -1, nb = -1;
+  for (let i = 0; i < G.m; i += sa){ const x = G.pos[i*3], y = G.pos[i*3+1], z = G.pos[i*3+2];
+    for (let j = 0; j < H.m; j += sb){ const dx = H.pos[j*3]-x, dy = H.pos[j*3+1]-y, dz = H.pos[j*3+2]-z, q = dx*dx + dy*dy + dz*dz; if (q < best){ best = q; na = i; nb = j; } } }
+  const r = { d: Math.sqrt(best), na, nb };
+  CA.near.set(key, a.i < b.i ? r : { d: r.d, na: nb, nb: na });
+  return r;
+}
+function caStartAt(c, node){
+  if (!inPlay(c)){ ctxNote.textContent = c.label + " is hidden, so it takes no part — show it, or turn on “Hidden cells too”."; return; }
+  if (!CA.running) caReset();
+  findContacts();
+  caAddSource(c, node, CA.now, 1, "started here", null);
+  CA.running = true; CA.started = c.i;
+  ctxNote.textContent = "Ca²⁺ wave started in " + shortName(c) + " (" + CA_KIND_NAME[caKind(c)] + ") — " + CA.speed + " µm/s"
+    + (CA.gapBlock ? ", gap junctions blocked" : "") + (CA.ip3Block ? ", IP3 receptors blocked" : "") + (CA.atp ? ", ATP route on" : "") + ".";
+}
+function caStartCell(c){ if (!c || !c.mesh) return; if (!CA.on) setCa(true); caStartAt(c, somaNode(c, 0)); }
+function caWithRay(r){
+  _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
+  const targets = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh);
+  const hit = _mr.intersectObjects(targets, false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0)[0];
+  if (!hit){ ctxNote.textContent = "Ca²⁺ wave: point at a cell."; return; }
+  const c = CELLS[hit.object.userData.cell];
+  caStartAt(c, nearestNode(cellGraph(c), content.worldToLocal(hit.point.clone())).node);
+}
+function caFrame(dt){
+  if (!CA.running){ caHudPlace(); return; }
+  CA.now += dt * CA.clock;
+  while (CA.events.length && CA.events[0].t <= CA.now){
+    const e = CA.events.shift(), o = CELLS[e.cell];
+    if (!o || !inPlay(o) || (e.from != null && !inPlay(CELLS[e.from]))) continue;
+    if (caAddSource(o, e.node, e.t, e.amp, e.via, e.from) && e.site && CT.inst && e.site.k != null){
+      CT.flash = CT.flash || []; CT.flash.push({ k: e.site.k, until: performance.now() + 900 });
+    }
+  }
+  AP_UNI.caNow.value = CA.now;
+  caContactFlash(); caHudPlace();
+  const pnow = performance.now();
+  if (!CA._hudAt || pnow - CA._hudAt > 150){ CA._hudAt = pnow; caHud(); if (CA.plot) caPlotDraw(); }
+  if (!CA.events.length && CA.now > CA.last + 3 * CA.td){ CA.running = false; caHud(); if (CA.plot) caPlotDraw(); caSummary(); }
+}
+function caContactFlash(){
+  if (!CT.flash || !CT.inst) return;
+  const now = performance.now(), M4 = new THREE.Matrix4();
+  CT.flash = CT.flash.filter(f => {
+    const [pi, si] = CT.index[f.k] || []; const s = CT.pairs[pi] && CT.pairs[pi].sites[si]; if (!s) return false;
+    const live = now < f.until, sc = live ? 1 + 1.6 * (f.until - now) / 900 : 1;
+    M4.makeScale(sc, sc, sc).setPosition(s.p); CT.inst.setMatrixAt(f.k, M4); CT.inst.instanceMatrix.needsUpdate = true;
+    return live;
+  });
+}
+function caCells(){ return CELLS.filter(c => c.ca && c.ca.T); }
+function caHud(){
+  const n = caCells().length;
+  const txt = "Ca²⁺ t = " + CA.now.toFixed(1) + " s (×" + CA.clock + ") · " + n + " cell" + (n === 1 ? "" : "s") + " · " + CA.speed + " µm/s" + (CA.running ? "" : " · done");
+  if (CA.hud && CA.hud.last === txt){ caHudPlace(); return; }
+  if (CA.hud && CA.hud.spr){ scene.remove(CA.hud.spr); CA.hud.spr.material.map.dispose(); CA.hud.spr.material.dispose(); }
+  const spr = textSprite([txt, "green — Ca²⁺ rise (ΔF/F), front brightest", "teal ball — coupled contact, pulses as the wave crosses"],
+                         { fit: true, border: "#3fe07a", colors: [null, "#7dffa6", "#2dd4bf"] });
+  const h = 0.02 * 3 * 0.75; spr.scale.set(h * spr.userData.aspect, h, 1);
+  scene.add(spr); CA.hud = { last: txt, spr }; caHudPlace();
+}
+/* Under the AP clock when that is up, otherwise where it would be (under the scale bar). */
+function caHudPlace(){
+  if (!CA.hud || !CA.hud.spr) return;
+  /* Below whichever card is lowest: the AP clock, or a warning / summary card under it. */
+  const ap = STIM.warn && STIM.warn.parent ? STIM.warn : (STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null), s = CA.hud.spr;
+  if (ap) s.position.copy(ap.position).add(new THREE.Vector3(0, -ap.scale.y / 2 - 0.008 - s.scale.y / 2, 0));
+  else s.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - s.scale.y / 2, 0));
+  if (CA.plotSpr && CA.plotSpr.visible) CA.plotSpr.position.copy(s.position).add(new THREE.Vector3(0, -s.scale.y / 2 - 0.008 - CA.plotSpr.scale.y / 2, 0));
+}
+/* ΔF/F at a cell's soma (or where its wave began, for a cell with no soma estimate). */
+function caTrace(c, t){
+  if (!c.ca || !c.ca.T) return 0;
+  const n = c.ca.somaN != null ? c.ca.somaN : (c.ca.somaN = somaNode(c, c.ca.src[0].node));
+  const s = t - c.ca.T[n]; if (!(s > 0)) return 0;
+  return c.ca.A[n] * AP_UNI.caNorm.value * (Math.exp(-s / CA.td) - Math.exp(-s / CA.tr));
+}
+function caPlotDraw(clear){
+  if (clear || !CA.plot || !caCells().length){ if (CA.plotSpr) CA.plotSpr.visible = false; return; }
+  const W = 760, H = 430;
+  if (!CA.plotCv){ CA.plotCv = document.createElement("canvas"); CA.plotCv.width = W; CA.plotCv.height = H; }
+  const g = CA.plotCv.getContext("2d"), cells = caCells().slice(0, 8);
+  const t1 = Math.max(10, CA.now + 1), t0 = Math.max(0, t1 - 30);
+  g.fillStyle = "rgba(10,14,18,0.92)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#3fe07a"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 26px system-ui, sans-serif"; g.fillText("Ca²⁺ at each soma (ΔF/F, schematic)", 18, 34);
+  const L = 70, R = W - 200, T = 56, B = H - 50;
+  g.strokeStyle = "#30363d"; g.lineWidth = 1; g.font = "18px system-ui, sans-serif"; g.fillStyle = "#8b949e";
+  for (let k = 0; k <= 4; k++){ const y = B - (B - T) * k / 4; g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); g.fillText((k / 4).toFixed(2), 14, y + 6); }
+  for (let s = Math.ceil(t0 / 5) * 5; s <= t1; s += 5){ const x = L + (R - L) * (s - t0) / (t1 - t0); g.fillText(s + " s", x - 12, B + 26); }
+  cells.forEach((c, k) => {
+    g.strokeStyle = "#" + new THREE.Color(c.colour).getHexString(); g.lineWidth = 3; g.beginPath();
+    for (let i = 0; i <= 160; i++){ const t = t0 + (t1 - t0) * i / 160; if (t > CA.now) break; const v = caTrace(c, t), x = L + (R - L) * i / 160, y = B - (B - T) * Math.min(1, v); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+    g.fillStyle = g.strokeStyle; g.fillRect(R + 16, T + k * 34, 18, 18);
+    g.fillStyle = "#c9d1d9"; g.fillText(shortName(c).slice(0, 16), R + 42, T + k * 34 + 16);
+  });
+  const x = L + (R - L) * (Math.min(CA.now, t1) - t0) / (t1 - t0); g.strokeStyle = "#7dffa6"; g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke();
+  if (!CA.plotSpr){
+    const tex = new THREE.CanvasTexture(CA.plotCv); tex.colorSpace = THREE.SRGBColorSpace;
+    CA.plotSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    CA.plotSpr.renderOrder = 30; scene.add(CA.plotSpr);
+  }
+  CA.plotSpr.material.map.needsUpdate = true; CA.plotSpr.visible = true;
+  const h = 0.12; CA.plotSpr.scale.set(h * W / H, h, 1); caHudPlace();
+}
+function caSummary(){
+  const cs = caCells().sort((a, b) => a.ca.first - b.ca.first);
+  if (!cs.length) return;
+  const lines = cs.slice(0, 10).map(c => shortName(c) + " (" + CA_KIND_NAME[caKind(c)] + "): " + c.ca.first.toFixed(1) + " s, " + Math.round(c.ca.amp * 100) + " %"
+    + (c.ca.from != null ? " — via " + c.ca.via + " from " + shortName(CELLS[c.ca.from]) : ""));
+  const stopped = [];
+  if (CA.gapBlock) stopped.push("gap junctions are blocked");
+  if (CA.ip3Block) stopped.push("IP3 receptors are blocked, so the rise stayed local");
+  const lonely = findContacts().filter(P => (CELLS[P.a].ca || CELLS[P.b].ca) && !coupledBy(CELLS[P.a], CELLS[P.b])).length;
+  if (lonely) stopped.push(lonely + " touching pair" + (lonely === 1 ? "" : "s") + " not coupled by the rules");
+  ctxNote.textContent = "Ca²⁺ wave reached " + cs.length + " cell" + (cs.length === 1 ? "" : "s") + ". " + lines.join(" · ") + (stopped.length ? " — " + stopped.join("; ") + "." : "");
+  flashWarn(["Ca²⁺ wave: " + cs.length + " cell" + (cs.length === 1 ? "" : "s")].concat(lines).concat(stopped.length ? [stopped.join("; ")] : []), 12000, "#3fe07a");
+}
+function caCsv(){
+  const cs = caCells();
+  if (!cs.length){ ctxNote.textContent = "No Ca²⁺ wave yet — start one on a cell first."; return; }
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const rows = [["cell", "root_id", "type", "first_arrival_s", "amplitude", "via", "from_cell", "soma_peak_s", "soma_peak_dff"]];
+  cs.sort((a, b) => a.ca.first - b.ca.first).forEach(c => {
+    let pk = 0, pt = 0; for (let t = c.ca.first; t < c.ca.first + 30; t += 0.05){ const v = caTrace(c, t); if (v > pk){ pk = v; pt = t; } }
+    rows.push([q(shortName(c)), q(c.root), CA_KIND_NAME[caKind(c)], c.ca.first.toFixed(3), c.ca.amp.toFixed(3), q(c.ca.via), q(c.ca.from != null ? shortName(CELLS[c.ca.from]) : ""), pt.toFixed(2), pk.toFixed(3)]);
+  });
+  rows.push([]); rows.push(["time_s"].concat(cs.map(c => q(shortName(c)))));
+  const tEnd = Math.max(CA.now, CA.last + 3 * CA.td);
+  for (let t = 0; t <= tEnd; t += 0.1) rows.push([t.toFixed(1)].concat(cs.map(c => caTrace(c, t).toFixed(4))));
+  csvDownload(rows, "vr-calcium-");
+  ctxNote.textContent = "Saved the Ca²⁺ run: one row per cell (first arrival, amplitude, how it got there, soma peak), then ΔF/F at each soma every 0.1 s.";
+}
+function setCa(v){
+  CA.on = v; document.getElementById("caBtn").classList.toggle("on", v);
+  document.getElementById("caBox").style.display = v ? "" : "none";
+  if (v){ if (STIM.on) setStim(false); if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off");
+          ctxNote.textContent = "Ca²⁺ wave: click (or trigger) on any cell — neurons, glia and vascular cells alike. It spreads over the cell at " + CA.speed + " µm/s and crosses coupled contacts."; }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function caSetting(k, v){
+  if (k in CA.rules) CA.rules[k] = !!v; else CA[k] = v;
+  if (k === "speed" || k === "clock"){ const el = document.getElementById(k === "speed" ? "caSpeed" : "caClock"); if (el) el.value = String(v); }
+  const box = document.querySelector('#caBox [data-ca="' + k + '"]'); if (box) box.checked = !!v;
+  if (CT.on) buildContacts();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("caBtn").addEventListener("click", () => setCa(!CA.on));
+document.getElementById("caReset").addEventListener("click", caReset);
+document.getElementById("caSpeed").addEventListener("change", e => caSetting("speed", +e.target.value));
+document.getElementById("caClock").addEventListener("change", e => caSetting("clock", +e.target.value));
+document.querySelectorAll("#caBox [data-ca]").forEach(el => el.addEventListener("change", () => caSetting(el.dataset.ca, el.checked)));
+document.getElementById("caPlotBtn").addEventListener("click", () => { CA.plot = !CA.plot; document.getElementById("caPlotBtn").classList.toggle("on", CA.plot); caPlotDraw(!CA.plot); });
+document.getElementById("caCsv").addEventListener("click", caCsv);
+document.getElementById("ctBtn").addEventListener("click", () => setContacts(!CT.on));
+document.getElementById("ctDist").addEventListener("change", e => { CT.dist = +e.target.value; CT.sig = ""; if (CT.on) setContacts(true); });
+document.getElementById("ctCsv").addEventListener("click", contactsCsv);
+function caUi(){ return { speed: CA.speed, clock: CA.clock, rules: Object.assign({}, CA.rules), gap: CA.gapBlock, atp: CA.atp, ip3: CA.ip3Block, plot: CA.plot, ct: CT.on, ctDist: CT.dist }; }
+function caApplyUi(u){
+  if (!u) return;
+  if (u.speed) caSetting("speed", u.speed); if (u.clock) caSetting("clock", u.clock);
+  if (u.rules) for (const k in u.rules) caSetting(k, u.rules[k]);
+  caSetting("gapBlock", !!u.gap); caSetting("atp", !!u.atp); caSetting("ip3Block", !!u.ip3);
+  if (u.ctDist){ CT.dist = u.ctDist; document.getElementById("ctDist").value = String(u.ctDist); CT.sig = ""; }
+  if (!!u.ct !== CT.on) setContacts(!!u.ct);
+}
+
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
    output synapses found to VR" -- and the same from Astrocyte–synapse proximity and Cell contacts.
@@ -4216,9 +4770,9 @@ function applyLook(){
     if (c.mesh){
       const m = c.mesh.material;
       c.mesh.visible = !gone;
-      const glass = SEE_THROUGH || dim;
+      const see = SEE_THROUGH || !!c.glass, glass = see || dim;
       m.transparent = glass;
-      m.opacity = dim ? 0.08 : (SEE_THROUGH ? 0.35 : 1);
+      m.opacity = dim ? Math.min(0.08, GLASS_LEVEL) : (see ? GLASS_LEVEL : 1);
       m.depthWrite = !glass;
       m.emissive.set(SELECTED === c.i ? c.colour : 0x000000);
       m.emissiveIntensity = SELECTED === c.i ? 0.25 : 0;
@@ -4233,6 +4787,7 @@ function applyLook(){
   /* Transparent things draw back to front; the nuclei should draw before the glassy cells. */
   for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
   applyClip(); applyTracedLook(); applyPointsLook();
+  try { applyContactsLook(); } catch (e){}
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
@@ -4242,6 +4797,33 @@ document.getElementById("detail").addEventListener("change", loadAll);
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
 document.getElementById("nucBtn").addEventListener("click", () => setNuclei(!SHOW_NUC));
 function syncVisChecks(){ renderList(); }
+function setCellGlass(list, v){
+  list.forEach(c => { if (c) c.glass = !!v; });
+  renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+/* Others see-through: the picked cell stays solid and every other cell becomes see-through. For a
+   few solid cells: pick one, press it, then ◐ the others back to solid. */
+function glassOthers(){
+  if (SELECTED < 0){ ctxNote.textContent = "Pick a cell first (click it) — it stays solid and the others become see-through. To keep a few solid: pick one, press this, then click the see-through button beside each of the others you want solid."; return; }
+  const keep = new Set([SELECTED]);
+  if (SEE_THROUGH) toggleGlass();
+  CELLS.forEach(c => { c.glass = !keep.has(c.i); });
+  renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true;
+  ctxNote.textContent = keep.size + " cell" + (keep.size === 1 ? "" : "s") + " solid, the other " + (CELLS.length - keep.size) + " see-through. The see-through button beside each cell in the list toggles it; “All solid” undoes this.";
+}
+function glassClear(){
+  CELLS.forEach(c => { c.glass = false; });
+  if (SEE_THROUGH) toggleGlass(); else { renderList(); applyLook(); }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setGlassLevel(v){
+  GLASS_LEVEL = Math.max(0.05, Math.min(0.9, +v || 0.35));
+  const sel = document.getElementById("glassLvl"); if (sel && +sel.value !== GLASS_LEVEL) sel.value = String(GLASS_LEVEL);
+  applyLook();
+}
+document.getElementById("glassOthers").addEventListener("click", glassOthers);
+document.getElementById("glassClear").addEventListener("click", glassClear);
+document.getElementById("glassLvl").addEventListener("change", e => setGlassLevel(e.target.value));
 const glassBtn = document.getElementById("glassBtn");
 function toggleGlass(){ SEE_THROUGH = !SEE_THROUGH; glassBtn.classList.toggle("on", SEE_THROUGH); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true; }
 glassBtn.addEventListener("click", toggleGlass);
@@ -4333,6 +4915,7 @@ function selectWith(h){
   const tool = isToolHand(h);
   if (FLY.trigger && tool){ flyWithHand(h); return; }
   if (SPRAY.on && tool){ h.spraying = true; return; }
+  if (CA.on && tool){ caWithRay(rayOf(h)); return; }
   if (STIM.on && tool){ stimulateWithRay(rayOf(h)); return; }
   if (MEAS.on && tool){ measureWithRay(rayOf(h)); return; }
   if ((CUT.mode === "hand" || CUT.mode === "frozen") && tool){
@@ -4530,12 +5113,28 @@ function menuRows(){
     }
   } else if (t === "Tools"){
     rows.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
+    rows.push({ label: "Ca²⁺ wave (trigger on any cell)", on: CA.on, act: () => setCa(!CA.on) });
+    if (CA.on || CA.running){
+      rows.push({ label: "   Ca²⁺ speed: " + CA.speed + " µm/s  ▸", act: () => caSetting("speed", ({ 5: 10, 10: 15, 15: 20, 20: 30, 30: 5 })[CA.speed] || 15) });
+      rows.push({ label: "   Ca²⁺ clock: ×" + CA.clock + "  ▸", act: () => caSetting("clock", ({ 1: 2, 2: 5, 5: 10, 10: 1 })[CA.clock] || 2) });
+      rows.push({ label: "   Gap junctions blocked", on: CA.gapBlock, act: () => caSetting("gapBlock", !CA.gapBlock) });
+      rows.push({ label: "   ATP route (extracellular)", on: CA.atp, act: () => caSetting("atp", !CA.atp) });
+      rows.push({ label: "   IP3 receptors blocked", on: CA.ip3Block, act: () => caSetting("ip3Block", !CA.ip3Block) });
+      rows.push({ label: "   Ca²⁺ plot", on: CA.plot, act: () => { CA.plot = !CA.plot; document.getElementById("caPlotBtn").classList.toggle("on", CA.plot); caPlotDraw(!CA.plot); } });
+      rows.push({ label: "   Reset Ca²⁺", act: caReset });
+    }
+    rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
     rows.push({ label: "Synapses fire the next cell", on: document.getElementById("stimMode").value === "fire",
                 act: () => { const el = document.getElementById("stimMode"); el.value = el.value === "fire" ? "psp" : "fire"; } });
     rows.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸",
                 act: () => { const el = document.getElementById("stimGain"); el.value = ({ "10": "1", "1": "30", "30": "10" })[el.value]; } });
     rows.push({ label: "Hidden cells take part too", on: !!STIM.withHidden, act: () => setStimHidden(!STIM.withHidden) });
     rows.push({ label: "📈 Voltage plots", on: !!STIM.plots, act: () => setPlots(!STIM.plots) });
+    if (STIM.plots){
+      rows.push({ label: "   Plot: membrane potential", on: PLOT_SHOW.vm, act: () => setPlotShow("vm", !PLOT_SHOW.vm) });
+      rows.push({ label: "   Plot: EPSP / IPSP sites", on: PLOT_SHOW.syn, act: () => setPlotShow("syn", !PLOT_SHOW.syn) });
+      rows.push({ label: "   Plot: Ca²⁺", on: PLOT_SHOW.ca, act: () => setPlotShow("ca", !PLOT_SHOW.ca) });
+    }
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     rows.push({ label: "Reset activity", act: resetActivity });
     rows.push({ label: STIM.synCleared ? "Show all synapse markers" : "Hide synapse markers (until used)", act: () => setSynCleared(!STIM.synCleared) });
@@ -4552,6 +5151,9 @@ function menuRows(){
                 act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
     rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
     rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
+    rows.push({ label: SELECTED >= 0 ? "Others see-through (picked stays solid)" : "Others see-through (pick a cell first)", act: glassOthers });
+    if (SELECTED >= 0 && CELLS[SELECTED]) rows.push({ label: "Picked cell see-through", on: !!CELLS[SELECTED].glass, act: () => setCellGlass([CELLS[SELECTED]], !CELLS[SELECTED].glass) });
+    if (CELLS.some(c => c.glass)) rows.push({ label: "All cells solid", act: glassClear });
     rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
     rows.push({ label: "Fly with the trigger / pinch", on: !!FLY.trigger, act: () => { FLY.trigger = !FLY.trigger; } });
     if (DS_HAS.nb) rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
@@ -4593,7 +5195,8 @@ function menuRows(){
       const allShown = g.cells.every(c => !c.hidden);
       rows.push({ label: "◂ All types", act: () => { MENU.cellGroup = null; MENU.cellPage = 0; } });
       rows.push({ label: "All " + g.cells.length + " " + g.name, on: allShown, swatch: g.cells[0].colour,
-                  act: () => { g.cells.forEach(c => c.hidden = allShown); syncVisChecks(); applyLook(); } });
+                  act: () => { g.cells.forEach(c => c.hidden = allShown); syncVisChecks(); applyLook(); },
+                  right: g.cells.every(c => c.glass) ? "◐ solid" : "◐ see-through", act2: () => setCellGlass(g.cells, !g.cells.every(c => c.glass)) });
       const pages = Math.max(1, Math.ceil(g.cells.length / (per - 2)));
       MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
       g.cells.slice(MENU.cellPage * (per - 2), MENU.cellPage * (per - 2) + per - 2).forEach(c => rows.push({
@@ -5444,7 +6047,7 @@ function tlCaptureView(){
   return { nuc: SHOW_NUC, glass: SEE_THROUGH, iso: ISOLATE, colour: COLOUR_MODE, layers: layersOn(),
            vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, skel: SKEL.mode,
            org: ORG.on, traced: TRC.on, cvec: VEC.cent, lvec: VEC.cil, pts: PTS.on, sbar: SBAR.on, rbox: RBOX.on,
-           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), bg: LOOK.bg, grid: LOOK.grid };
+           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), glassCells: CELLS.map(c => !!c.glass), glassLevel: GLASS_LEVEL, plotShow: Object.assign({}, PLOT_SHOW), bg: LOOK.bg, grid: LOOK.grid };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
@@ -5453,6 +6056,9 @@ function tlApplyView(v){
   if (v.grid != null && v.grid !== LOOK.grid) setGrid(v.grid);
   if (v.nuc !== SHOW_NUC) setNuclei(v.nuc);
   if (v.glass !== SEE_THROUGH) toggleGlass();
+  if (Array.isArray(v.glassCells) && CELLS.some((c, i) => !!c.glass !== !!v.glassCells[i])){ CELLS.forEach((c, i) => { c.glass = !!v.glassCells[i]; }); renderList(); applyLook(); }
+  if (v.glassLevel && v.glassLevel !== GLASS_LEVEL) setGlassLevel(v.glassLevel);
+  if (v.plotShow) ["vm", "syn", "ca"].forEach(k => { if (v.plotShow[k] != null && !!v.plotShow[k] !== PLOT_SHOW[k]) setPlotShow(k, v.plotShow[k]); });
   if (v.iso !== ISOLATE) toggleIsolate();
   if (v.colour && v.colour !== COLOUR_MODE) setColourMode(v.colour);
   if (v.layers !== layersOn()) setLayers(v.layers);
@@ -5582,6 +6188,7 @@ function fxFrame(W, H){
 function tlStimCells(k){ return Array.isArray(k.cells) && k.cells.length ? k.cells : [k.cell]; }
 function tlFireStim(k, ci){
   const c = CELLS[ci == null ? k.cell : ci]; if (!c || !c.mesh) return;
+  if (k.kind === "ca"){ caStartCell(c); return; }
   if (k.gain && GAIN_NAME[k.gain]) document.getElementById("stimGain").value = k.gain;
   if (k.mode) document.getElementById("stimMode").value = k.mode;
   stimulateCell(c);
@@ -5773,6 +6380,7 @@ function tlBuild(){
   bar.querySelector("#tlAddView").onclick = () => tlAdd("view", { v: tlCaptureView(), fade: 0.5 });
   bar.querySelector("#tlAddStim").onclick = () => {
     const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : CELLS.findIndex(c => c.mesh && cellClass(c) !== "glia");
+    if (CA.on){ const p2 = SELECTED >= 0 && CELLS[SELECTED] && CELLS[SELECTED].mesh ? SELECTED : CELLS.findIndex(c => c.mesh); if (p2 >= 0){ tlAdd("stim", { cell: p2, kind: "ca", n: 1, every: 5 }); return; } }
     if (pick < 0){ ctxNote.textContent = "No neuron is loaded to stimulate."; return; }
     tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 });
   };
@@ -5863,9 +6471,11 @@ function tlEditor(){
   if (k.lane === "view") h += ` <button id="tlKset">Set to what is shown now</button>
            fade <input id="tlKfade" type="number" min="0" max="5" step="0.25" value="${k.fade != null ? k.fade : 0.5}"> s`;
   if (k.lane === "stim"){
+    const isCa = k.kind === "ca", okCell = c => c.mesh && (isCa || cellClass(c) !== "glia");
+    h += ` <select id="tlKkind" title="An action potential (neurons) or a Ca²⁺ wave (any cell)"><option value="ap"${!isCa ? " selected" : ""}>⚡ action potential</option><option value="ca"${isCa ? " selected" : ""}>Ca²⁺ wave</option></select>`;
     const opts = CELLS.map((c, i) => c.mesh && cellClass(c) !== "glia" ? `<option value="${i}"${i === k.cell ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
     const cs = tlStimCells(k);
-    const mopts = CELLS.map((c, i) => c.mesh && cellClass(c) !== "glia" ? `<option value="${i}"${cs.includes(i) ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
+    const mopts = CELLS.map((c, i) => okCell(c) ? `<option value="${i}"${cs.includes(i) ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
     h += ` cells <select id="tlKcell" multiple size="3" title="Ctrl-click to fire several cells together (a stimulus pattern)">${mopts}</select>
            <span title="With several cells: each fires this long after the one before it (0 = all at once — coincidence)">stagger <input id="tlKstag" type="number" min="0" max="5" step="0.05" value="${k.stagger || 0}"> s</span>
            strength <select id="tlKgain">${["1", "10", "30"].map(g => `<option value="${g}"${g === String(k.gain) ? " selected" : ""}>×${g}</option>`).join("")}</select>
@@ -5908,6 +6518,7 @@ function tlEditor(){
   $e("tlKt").onchange = e => { k.t = Math.max(0, Math.min(TL.dur, +e.target.value || 0)); tlSort(); tlSave(); tlSync(); };
   if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ Object.assign(k, tlCaptureCam()); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
   if (k.lane === "stim"){
+    $e("tlKkind").onchange = e => { k.kind = e.target.value === "ca" ? "ca" : undefined; tlSave(); tlSync(); };
     $e("tlKcell").onchange = e => { const v = [...e.target.selectedOptions].map(o => +o.value); if (v.length){ k.cells = v; k.cell = v[0]; } tlSave(); tlDraw(); };
     $e("tlKstag").onchange = e => { k.stagger = Math.max(0, +e.target.value || 0); tlSave(); tlDraw(); };
     $e("tlKgain").onchange = e => { k.gain = e.target.value; tlSave(); };
@@ -6089,6 +6700,7 @@ renderer.setAnimationLoop(() => {
   scaleBarFrame();
   measureFrame();
   stimFrame(TL.frozen ? 0 : dt);                            // a freeze effect holds the spike clock
+  caFrame(TL.frozen ? 0 : dt);                              // …and the Ca²⁺ clock
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
@@ -6521,7 +7133,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
