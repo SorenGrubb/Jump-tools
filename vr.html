@@ -5093,10 +5093,20 @@ function raMapDraw(){
 function raScreenEnsure(){
   if (RA.scr || !RA.meta || !RA.meta.movie) return !!RA.scr;
   const v = document.createElement("video");
-  /* VP9 where the browser has it (smaller, and every Chromium has it); the H.264 file otherwise. */
-  const webm = RA.meta.movie_webm && v.canPlayType('video/webm; codecs="vp9"');
+  /* H.264 wherever it plays -- every phone, Safari, Chrome, Edge and the Quest browser; the VP9
+     copy only for a browser without it (v66: on the iPhone the VP9 copy showed its first frame and
+     then stood still). */
+  const mp4ok = v.canPlayType('video/mp4; codecs="avc1.42E01E"');
+  const webm = RA.meta.movie_webm && !mp4ok && v.canPlayType('video/webm; codecs="vp9"');
   v.src = RA.base + (webm ? RA.meta.movie_webm : RA.meta.movie); v.muted = true; v.playsInline = true; v.crossOrigin = "anonymous"; v.preload = "auto"; v.loop = false;
-  v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
+  v.setAttribute("playsinline", ""); v.setAttribute("muted", ""); v.setAttribute("webkit-playsinline", "");
+  /* In the page, tiny and nearly invisible: iOS Safari does not advance a video that is not in the
+     document, and a WebGL texture of it then keeps its first frame. */
+  v.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1";
+  document.body.appendChild(v);
+  /* If the browser refuses to start it without a tap, the next tap anywhere starts it. */
+  const kick = () => { if (RA.wantVideo) v.play().catch(() => {}); };
+  ["pointerdown", "touchend", "keydown"].forEach(ev => addEventListener(ev, kick, { passive: true }));
   RA.video = v;
   RA.tex = new THREE.VideoTexture(v); RA.tex.colorSpace = THREE.SRGBColorSpace;
   const geo = new THREE.PlaneGeometry(1, 288 / 512);
@@ -5137,13 +5147,17 @@ function raScreenFrame(){
     const diff = Math.abs(v.currentTime - RA.t);
     if (run){
       const rate = RA.tlKey ? 1 : RA.speed; if (v.playbackRate !== rate) v.playbackRate = rate;
-      if (v.paused) v.play().catch(() => {});
+      RA.wantVideo = true;
+      if (v.paused && !RA._playing){ RA._playing = true; v.play().then(() => { RA._playing = false; }, () => { RA._playing = false; }); }
       if (diff > 0.25 && !v.seeking) v.currentTime = RA.t;
     } else {
+      RA.wantVideo = false;
       if (!v.paused) v.pause();
       if (diff > 0.02 && !v.seeking) v.currentTime = RA.t;
     }
   }
+  /* Not every browser tells the texture a new frame arrived (iOS, and after a seek while paused). */
+  if (v.readyState >= 2) RA.tex.needsUpdate = true;
   /* The caption under the screen: which clip this is. */
   const { k } = raClipAt(RA.t), C = RA.meta.clips[k], key = k + "|" + RA.place;
   if (RA.capKey !== key){
@@ -5213,12 +5227,19 @@ function raCsv(){
   csvDownload(rows, "vr-recorded-");
   ctxNote.textContent = "Saved the recorded responses of " + cs.length + " cell" + (cs.length === 1 ? "" : "s") + ": who they are (session, scan, unit, oracle score, tuning), then each clip's mean trace every 0.1 s.";
 }
-function raUi(){ return { on: RA.on, clip: RA.clip, speed: RA.speed, scale: RA.scale, plot: RA.plot, screen: RA.screen, side: RA.side, mode: RA.mode, dim: RA.dim }; }
+/* A scene keeps whether the recordings were playing, and where (v66, Søren: a saved scene with the
+   movie "running in the background" reopened with the movie stuck on its first frame -- the scene
+   switched Recorded activity on but never pressed Play). */
+function raUi(){ return { on: RA.on, clip: RA.clip, speed: RA.speed, scale: RA.scale, plot: RA.plot, screen: RA.screen, side: RA.side, mode: RA.mode, dim: RA.dim,
+                          playing: !!RA.playing, t: +RA.t.toFixed(2) }; }
 function raApplyUi(u){
   if (!u) return;
   if (u.speed) raSetting("speed", u.speed); if (u.scale) raSetting("scale", u.scale); if (u.side) raSetting("side", u.side); if (u.mode) raSetting("mode", u.mode);
   if (u.dim != null){ RA.dim = !!u.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); }
   if (u.clip != null) RA.clip = String(u.clip);
+  if (u.t != null) RA.t = +u.t || 0;
+  /* Old scenes have no "playing": a scene saved with Recorded activity on plays, as it did then. */
+  if (u.on && u.playing !== false) RA.wantPlay = true;
   setRaPlot(u.plot !== false); setRaScreen(!!u.screen);
   if (!!u.on !== RA.on) setRa(!!u.on, true);
 }
@@ -7714,7 +7735,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { RA, raFrame, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { RA, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
