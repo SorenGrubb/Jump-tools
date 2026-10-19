@@ -117,68 +117,178 @@ try{var _t=localStorage.getItem("ujump_theme");
  .ptchip .lvl{font-weight:650;color:var(--accent)}
  .ptchip .pts{color:var(--mut)}
  .idhead{margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+ /* ── THE FAMILY'S LAYOUT (2026-10-19) -- µJump's header, tab bar and buttons. ── */
+ :root{--accent-dim:#4a3a0c}
+ @media(prefers-color-scheme:light){:root:not([data-theme="dark"]){--accent-dim:#fbf0d9}}
+ :root[data-theme="light"]{--accent-dim:#fbf0d9}
+ .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+ .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+ .buildline{margin:2px 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
+ .buildline .hint{font-size:12px}
+ .dsbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ .dsbar select{flex:1 1 260px;width:auto;min-width:0;max-width:100%}
+ .dsbar .dsmore{flex:1 1 100%}
+ .dsbar .dsmore summary{font-size:13px;color:var(--ink)}
+ .dsbar .dsmore summary .hint{margin-left:4px}
+ .tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
+ .tabbtn{display:inline-block;font:inherit;font-size:12px;color:var(--mut);background:transparent;
+   border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;width:auto}
+ .tabbtn:hover{color:var(--ink);border-color:var(--accent)}
+ .tabbtn.active{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
+ .tabpanel{display:none} .tabpanel.active{display:block}
+ .lblsub{font-weight:400;text-transform:none;letter-spacing:normal;color:var(--mut);font-size:12px}
+ .idbtn{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);
+   border-radius:7px;padding:8px 13px;font-size:13px;cursor:pointer;white-space:nowrap}
+ .idbtn:hover{filter:brightness(1.12)}
+ .idbtn:disabled{background:transparent;color:var(--mut);border-color:var(--line);cursor:not-allowed;filter:none}
+ .brow{gap:8px;margin-top:8px} .brow .idbtn{flex:1 1 0;min-width:0}
+ #randomTypeSelect{margin-top:2px}
+ .navctrl{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+ .navctrl button{flex:none;padding:6px 12px;font-size:12px}
+ .rv-panel{margin-top:10px}
+ .rv-panel .sumtxt{font-size:14px;color:var(--ink)}
+ .rv-panel>summary{display:block}
+ .rv-panel>summary::before{display:inline-block;width:14px}
+ .recent{display:flex;gap:6px;flex-wrap:wrap}
+ .recent button{font-size:12.5px;padding:5px 10px;width:auto}
+ .card{scroll-margin-top:12px}
+ @keyframes wjflash{0%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 3px transparent}}
+ .flash{animation:wjflash 1.3s ease-out}
+ /* The statistics tab: one stacked bar for agreement, plain bars for names and organelles. */
+ .sbar{display:flex;gap:2px;height:16px;border-radius:4px;overflow:hidden;margin:8px 0}
+ .sbar i{display:block;height:100%;min-width:3px}
+ .slegend{display:flex;gap:6px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--mut)}
+ .hbars{display:grid;grid-template-columns:minmax(90px,max-content) 1fr auto;gap:5px 10px;
+   align-items:center;font-size:13px;margin-top:8px}
+ .hbars .t{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+ .hbars .b{height:10px;background:var(--line);border-radius:0 4px 4px 0;overflow:hidden}
+ .hbars .b i{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+ .hbars .v{color:var(--mut);font-variant-numeric:tabular-nums}
+ .shead{font-size:12px;color:var(--mut);margin:16px 0 0;font-weight:600}
+ @media(max-width:560px){.wrap{padding:16px 16px 60px}.logo{font-size:32px}}
 </style></head><body>
 
 <div class="wrap">
-<div class="top">
-  <div>
-    <a href="#" id="logoHome" style="text-decoration:none;color:inherit;display:inline-block"
-       title="Reload &omega;Jump"><h1 class="logo"><span class="mu">&omega;</span><span
-       class="jm">Jump</span></h1></a>
-    <p class="sub">Find the cells &middot; Janelia OpenOrganelle FIB-SEM &middot;
-    <span id="dslabel"></span> &middot; <span class="build" title="When this file was built. If it
-    does not match the file you think you are looking at, your browser is showing you a cached copy
-    &mdash; reload with ctrl-shift-R.">build 2026-10-17 17:38</span></p>
-  </div>
-  <div style="text-align:right">
+<!-- ── THE FAMILY'S LAYOUT  2026-10-19 ─────────────────────────────────────────────────────
+     Header, tab bar and Browse card in µJump's shape. See wjump_looks_like_the_family.py. -->
+<div class="topbar">
+  <a href="#" id="logoHome" style="text-decoration:none;color:inherit;display:inline-block"
+     title="Reload &omega;Jump"><h1 class="logo"><span class="mu">&omega;</span><span
+     class="jm">Jump</span></h1></a>
+  <div class="topbar-right">
     <button type="button" id="themeToggleBtn" title="Switch between dark and light mode"
             aria-label="Toggle light/dark theme"><span id="themeToggleIcon">🌙</span>
       <span id="themeToggleLabel">Dark</span></button>
     <div id="gameChipSlot"></div>
-    <div id="gsiButton" style="margin-top:6px"></div>
-    <p class="hint" id="whoami" style="margin:6px 0 0">not signed in</p>
+    <div id="gsiButton"></div>
   </div>
 </div>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match
+the file you think you are looking at, your browser is showing you a cached copy &mdash; reload
+with ctrl-shift-R.">build 2026-10-19 03:54</span> <span class="hint" id="whoami">not signed in</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 
-<div class="card">
-  <label>Dataset</label>
-  <select id="dataset"></select>
-  <!-- Filled by renderSpeciesLegend(). An emoji on its own is a rebus; this is what makes it
-       readable, and it lists only the species actually on the open roster. -->
-  <p class="hint" id="dsspecies" style="margin:6px 0 0"></p>
-  <p class="hint" id="dstier" style="margin:8px 0 0"></p>
+<!-- THE VOLUME. Above the tabs, because every tab is about whichever volume is open. -->
+<div class="dsbar">
+  <select id="dataset" aria-label="Volume" title="Which volume to work in. Every tab follows this choice."></select>
+  <details class="dsmore" id="dsMore">
+    <summary><span id="dslabel"></span><span class="hint">&middot; species key and size</span></summary>
+    <p class="hint" id="dsspecies" style="margin:8px 0 0"></p>
+    <p class="hint" id="dstier" style="margin:6px 0 0"></p>
+  </details>
 </div>
 
-<div class="card">
-  <label>Progress</label>
-  <div class="stats" id="stats"></div>
-  <div class="bar" style="margin-top:12px"><i id="pbar" style="width:0%"></i></div>
-  <p class="hint" style="margin-bottom:0">These volumes have no published list of cells. This is
-  the map being drawn.</p>
+<div class="tabbar" id="mainTabs" role="tablist">
+<button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">🔍 Jump</button>
+<button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false" title="Filter the nuclei found in this volume by name, agreement, organelles, neighbours and region &mdash; and every nucleus found here">📥 Filter and show</button>
+<button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false" title="Where this volume comes from, its licence, every source on &omega;Jump, and guides to recognising organelles and cells">📚 References</button>
+<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas &mdash; one discussion shared with every Jump, filed under the volume you have open">💬 Discussion</button>
+<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="What the community has found and named in this volume, and your own stats and the leaderboard">📊 Statistics dashboard</button>
 </div>
+<script>
+/* The tab bar. µJump's lives in core/stepthrough.js, which ωJump does not carry; this is the same
+   behaviour -- .active on the button and on [data-tabpanel] -- plus wjShowCard, which is how every
+   "go to that card" on this page gets there: it switches to the card's tab first, opens it if it
+   folds, scrolls only when the card is not already at the top, and flashes it, as core/panel.js
+   does for the random-cell buttons on the other tools. */
+(function(){
+  var bar = document.getElementById("mainTabs"); if (!bar) return;
+  function activate(name){
+    bar.querySelectorAll(".tabbtn").forEach(function(b){
+      var on = b.getAttribute("data-tab") === name;
+      b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll(".tabpanel").forEach(function(p){
+      p.classList.toggle("active", p.getAttribute("data-tabpanel") === name);
+    });
+    try { document.dispatchEvent(new CustomEvent("wjump:tab", { detail: name })); } catch (e){}
+  }
+  bar.addEventListener("click", function(e){
+    var b = e.target && e.target.closest ? e.target.closest(".tabbtn") : null;
+    if (b) activate(b.getAttribute("data-tab"));
+  });
+  window.__wjumpActivateTab = activate;
+  window.wjShowCard = function(id){
+    var c = document.getElementById(id); if (!c) return;
+    var p = c.closest ? c.closest(".tabpanel") : null;
+    if (p && !p.classList.contains("active")) activate(p.getAttribute("data-tabpanel"));
+    if (c.tagName === "DETAILS") c.open = true;
+    var r = c.getBoundingClientRect ? c.getBoundingClientRect() : { top: 0 };
+    if ((r.top < 0 || r.top > 80) && c.scrollIntoView){
+      try { c.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e){ c.scrollIntoView(); }
+    }
+    c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash");
+    setTimeout(function(){ c.classList.remove("flash"); }, 1400);
+  };
+})();
+</script>
 
-<!-- SIDE BY SIDE WHERE THERE IS ROOM.  2026-10-11
-     Søren: *"The Explore part should be right next to the boxes, and that is the part that should
-     update when you select the boxes in the model."* The x–z and y–z panels are shallow, so
-     everything to the right of x–y is empty on a wide screen; Explore moves out of the middle of
-     the page and into that column. Below the map on a narrow one, where there is no such space
-     and pretending otherwise would squeeze both. -->
-<div class="mapexplore">
-<div class="card" id="map-card">
-  <label>Map of this volume</label>
-  <div id="volmap"><p class="hint" style="margin:0">Loading&hellip;</p></div>
-  <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
-    <label for="jump-coord">Have a coordinate? Find the nearest nucleus</label>
-    <div class="row">
+<!-- ════ JUMP ════ -->
+<div class="tabpanel active" data-tabpanel="jump">
+<div class="card" id="browseCard">
+  <label>Browse a cell <span class="lblsub">&mdash; pick a type to see or review one, identify a
+  nucleus nobody has named, or explore for new ones</span></label>
+  <select id="randomTypeSelect" aria-label="Cell type" title="The cell types the community has settled on in this volume, with how many nuclei are filed under each"></select>
+  <div class="row brow">
+    <button type="button" class="idbtn" id="randomOfType" title="A nucleus two or more people agree is the chosen type &mdash; a new one each click, for learning what the type looks like here">Show</button>
+    <button type="button" class="idbtn" id="randomCommunityId" title="A nucleus only one person has called the chosen type, or one where it is tied with another name &mdash; agree, or say what it is instead">Review</button>
+  </div>
+  <div class="row brow">
+    <button type="button" class="idbtn" id="randomUnclassified" title="A nucleus nobody has named yet &mdash; be the first opinion on it">Identify</button>
+    <button type="button" class="idbtn" id="exploreBtn" title="Open &ldquo;where is there a nucleus?&rdquo; &mdash; the box nobody has searched that is furthest from every box already searched, to find nuclei nobody has recorded">Explore</button>
+  </div>
+  <p class="hint" id="unclCount" style="margin:10px 0 0"></p>
+  <p class="hint" id="browseMsg" style="margin:6px 0 0"></p>
+  <details class="rv-panel" id="coordPanel">
+    <summary><span class="sumtxt">Or jump to a coordinate</span> <span class="hint">&mdash; paste one
+    from Neuroglancer or WEBKNOSSOS to find the nearest nucleus</span></summary>
+    <div class="row" style="margin-top:8px">
       <input type="text" id="jump-coord" style="flex:1 1 240px"
              placeholder="x, y, z in voxels &mdash; or paste a Neuroglancer link">
       <button id="jump-go" style="width:auto">Find it</button>
     </div>
     <p class="hint" id="jump-msg" style="margin:8px 0 0"></p>
+  </details>
+  <div class="navctrl">
+    <button type="button" class="idbtn" id="navBackBtn" title="Go back to the previous nucleus you viewed" disabled>&#8592; Back</button>
+    <button type="button" class="idbtn" id="navFwdBtn" title="Go forward again" disabled>Forward &#8594;</button>
   </div>
+  <details class="rv-panel" id="recentlyViewedPanel">
+    <summary><span class="sumtxt">Recently viewed cells</span> <span class="hint" id="recentCount"></span></summary>
+    <div id="recentList" style="margin-top:8px"></div>
+  </details>
 </div>
-<details class="card" id="explore-card" open>
+
+<div class="card" id="identify-card">
+  <label>Cell identity <span class="lblsub">&mdash; what kind of cell is this?</span></label>
+  <div id="identify"><p class="hint" style="margin:0">Loading&hellip;</p></div>
+</div>
+<div class="mapexplore">
+<div class="card" id="map-card">
+  <label>Map of this volume</label>
+  <div id="volmap"><p class="hint" style="margin:0">Loading&hellip;</p></div>
+</div>
+<details class="card" id="explore-card">
   <summary><span class="lbl">Explore &mdash; where is there a nucleus?</span>
     <span class="hint" id="boxsummary"></span></summary>
   <div id="boxinfo" class="hint" style="margin-top:12px"></div>
@@ -204,32 +314,16 @@ try{var _t=localStorage.getItem("ujump_theme");
   <p class="hint" id="msg" style="margin-bottom:0"></p>
 </details>
 </div>
-
-<div class="card" id="identify-card">
-  <label>Identify &mdash; what kind of cell is that?</label>
-  <div id="identify"><p class="hint" style="margin:0">Loading&hellip;</p></div>
-</div>
 <!-- Trace a cell or organelle: core/tracingcard.js, the card every tool carries. -->
 <div class="card" id="tracingCard"></div>
 <!-- Bulk organelle annotation: core/bulkorgan.js, as on seven other tools. 2026-09-21 -->
 <style>#bulkOrganCard textarea{width:100%;min-height:70px;box-sizing:border-box}.idf-flag{border:1px solid var(--line);border-radius:8px;padding:8px 10px}</style>
 <div class="card" id="bulkOrganCard"></div>
-
-
-
-<div class="card">
-  <label>Every nucleus found here</label>
-  <div id="found-list"><p class="hint" style="margin:0">None yet.</p></div>
 </div>
 
-<!-- Filter and show (2026-08-31). The other five tools put this behind a tab; ωJump has no tab
-     bar, so it is a card in the flow like everything else here. Collapsed by default because on a
-     volume nobody has worked yet it has nothing to filter, and an empty panel of controls between
-     the found-list and the About card is noise on exactly the datasets that need the least of it.
-
-     WHAT IT FILTERS ON is what this tool actually has. No cell-type table, no layers, no detector
-     output -- see filterNuclei()'s comment in wjump_logic.js. -->
-<details class="card" id="filter-card">
+<!-- ════ FILTER AND SHOW ════ -->
+<div class="tabpanel" data-tabpanel="filter">
+<details class="card" id="filter-card" open>
   <summary><span class="lbl">Filter and show</span>
     <span class="hint" id="filtersummary"></span></summary>
 
@@ -311,19 +405,45 @@ try{var _t=localStorage.getItem("ujump_theme");
   <div id="f-results"></div>
 </details>
 
+<div class="card">
+  <label>Every nucleus found here</label>
+  <div id="found-list"><p class="hint" style="margin:0">None yet.</p></div>
+</div>
+</div>
 
-
-<!-- ── THE DISCUSSION ─────────────────────────────  2026-10-13
-     One forum shared by every Jump (core/forum.js). A card rather than a tab, because this page
-     has no tab bar; closed, because the forum is one more read of the backend and a page nobody
-     has opened it on should not pay for it. See src/wjump_joins_the_discussion.py. -->
-<details class="card" id="forum-card">
-  <summary><span class="lbl">Discussion</span>
-    <span class="hint">Findings, bugs and ideas &mdash; shared with every Jump</span></summary>
-  <div id="forumCard" style="margin-top:12px"></div>
-</details>
-
-
+<!-- ════ REFERENCES ════ -->
+<div class="tabpanel" data-tabpanel="refs">
+<div class="card">
+  <label>This volume</label>
+  <p class="hint" id="attribution" style="margin-top:0"></p>
+</div>
+<div class="card">
+  <label>Recognising organelles and cells</label>
+  <p class="hint" style="margin-top:0">Electron-microscopy atlas of cells, tissues and organelles:
+  <a class="ref" href="http://www.drjastrow.de/WAI/EM/EMAtlas.html" target="_blank" rel="noopener">Jastrow,
+  &ldquo;Electron Microscopic Atlas of Cells, Tissues and Organs&rdquo;</a>.</p>
+  <p class="hint">Organelle segmentation in FIB-SEM whole cells &mdash; the class definitions behind
+  OpenOrganelle&rsquo;s predictions: <a class="ref" href="https://doi.org/10.1038/s41586-021-03977-3"
+  target="_blank" rel="noopener">Heinrich et al., &ldquo;Whole-cell organelle segmentation in volume
+  electron microscopy,&rdquo; Nature 599, 141&ndash;146 (2021)</a>.</p>
+  <p class="hint">The OpenOrganelle volumes: <a class="ref" href="https://doi.org/10.1038/s41586-021-03992-4"
+  target="_blank" rel="noopener">Xu et al., &ldquo;An open-access volume electron microscopy atlas of
+  whole cells and tissues,&rdquo; Nature 599, 147&ndash;151 (2021)</a>.</p>
+  <p class="hint">Brain ultrastructure overview: <a class="ref" href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7930431/"
+  target="_blank" rel="noopener">&ldquo;Brain Ultrastructure: Putting the Pieces Together,&rdquo; PMC7930431</a>.</p>
+  <p class="hint">Classifying cells from the ultrastructure around the nucleus: <a class="ref"
+  href="https://www.nature.com/articles/s41586-024-07765-7" target="_blank" rel="noopener">Elabbady et al.,
+  &ldquo;Perisomatic ultrastructure efficiently classifies cells in mouse cortex,&rdquo; Nature 640,
+  478&ndash;486 (2025)</a>.</p>
+  <p class="hint">Public volume EM as a resource: <a class="ref"
+  href="https://www.frontiersin.org/journals/cell-and-developmental-biology/articles/10.3389/fcell.2022.849469/full"
+  target="_blank" rel="noopener">&ldquo;Public Volume Electron Microscopy Data: An Essential Resource to
+  Study the Brain Microvasculature,&rdquo; Frontiers in Cell and Developmental Biology (2022)</a>.</p>
+</div>
+<div class="card">
+  <label>Every source on &omega;Jump</label>
+  <div id="wjSources"><p class="hint" style="margin:0">Loading&hellip;</p></div>
+</div>
 <div class="card">
   <label>About this tool</label>
   <p class="hint" style="margin-top:0">Every other tool in this family classifies a nucleus table
@@ -353,7 +473,7 @@ try{var _t=localStorage.getItem("ujump_theme");
        come from the same array the picker reads, so they cannot drift again. -->
   <p class="hint">62 volumes are open, listed smallest first with the number of
   40&nbsp;&micro;m boxes each one takes &mdash; 1 for the smallest, 3,672 for the
-  largest, 16,298 across the roster. The map above sizes itself to whichever volume you pick
+  largest, 16,298 across the roster. The map on the Jump tab sizes itself to whichever volume you pick
   and keeps one scale across its panels, so a distance in one is the same distance in another.</p>
   <p class="hint"><b>Nothing you name here is scored.</b> There is no ground truth for cell
   identity in these volumes &mdash; only what the community converges on. Organelles are a
@@ -363,7 +483,33 @@ try{var _t=localStorage.getItem("ujump_theme");
        OpenOrganelle text while the whole roster was OpenOrganelle; a volume from another
        publisher makes a fixed credit line a false statement about whatever is on screen, and the
        field it would be false about is the licence. -->
-  <p class="hint" id="attribution"></p>
+</div>
+</div>
+
+<!-- ════ DISCUSSION ════ -->
+<div class="tabpanel" data-tabpanel="forum">
+<div id="forumCard"></div>
+</div>
+
+<!-- ════ STATISTICS ════ -->
+<div class="tabpanel" data-tabpanel="dashboard">
+<div class="card">
+  <label>Progress</label>
+  <div class="stats" id="stats"></div>
+  <div class="bar" style="margin-top:12px"><i id="pbar" style="width:0%"></i></div>
+  <p class="hint" style="margin-bottom:0">These volumes have no published list of cells. This is
+  the map being drawn.</p>
+</div>
+<div class="card">
+  <label>What the community has said <span class="lblsub" id="wjStatsVol"></span></label>
+  <div id="wjStatsBody"><p class="hint" style="margin:0">Loading&hellip;</p></div>
+</div>
+<div class="card">
+  <label>You and the leaderboard</label>
+  <p class="hint" style="margin-top:0">Your points, what you have contributed, your favourites and
+  the top ten &mdash; the same panel the points chip opens, shared by every Jump.</p>
+  <button type="button" class="idbtn" id="wjOpenMyStats">Open my stats &amp; the leaderboard</button>
+</div>
 </div>
 </div>
 
@@ -5395,7 +5541,9 @@ UJ.app = (function(){
        it during the re-render it triggered -- the tally appeared for one frame and the vote was
        recorded as unanchored. A guard that quietly fails open is worse than none, because the
        column would have looked like evidence. */
+    var prev = CURID;
     CURID = id; REVEALED = false;
+    try { noteViewed(prev); } catch (e){}
   }
   function step(d){
     if (!WALK.ids.length) return;
@@ -5418,7 +5566,7 @@ UJ.app = (function(){
 
     if (!STATE.nuclei.length){
       host.innerHTML = "<p class='hint' style='margin:0'>No nuclei have been found in this dataset "
-        + "yet. Find one above and it will appear here to be named.</p>";
+        + "yet. Press <b>Explore</b> to find one, and it will appear here to be named.</p>";
       return;
     }
     if (!WALK.ids.length || !byId(WALK.ids[WALK.i])) refreshWalk();
@@ -6128,6 +6276,7 @@ UJ.app = (function(){
         SEL[ax] = a; SEL[ay] = b;
       }
       pickBox();
+      if (SEL && el("explore-card")) el("explore-card").open = true;
     });
   }
   function renderMap(){
@@ -6328,9 +6477,8 @@ UJ.app = (function(){
     host.querySelectorAll("[data-ask]").forEach(function(b){
       b.addEventListener("click", function(){
         delete SKIPPED[b.dataset.ask];
-        CURID = b.dataset.ask; REVEALED = false;
-        renderIdentify();
-        var c = el("identify-card"); if (c && c.scrollIntoView) c.scrollIntoView({ behavior:"smooth" });
+        jumpTo(b.dataset.ask);
+        showCard("identify-card");
       });
     });
   }
@@ -6385,7 +6533,7 @@ UJ.app = (function(){
       return;
     }
     jumpTo(r.nucleus.id);
-    var c = el("identify-card"); if (c && c.scrollIntoView) c.scrollIntoView({ behavior:"smooth" });
+    showCard("identify-card");
     say("jump-msg", "Nearest is <code>" + esc(String(r.nucleus.id)) + "</code>, <b>"
       + d.toFixed(1) + " &micro;m</b> from " + where
       + (d < UJ.cfg.explore.dedupUm ? " &mdash; close enough to be the same object." : ".")
@@ -6722,6 +6870,7 @@ UJ.app = (function(){
       + "</b></div>";
     if (el("pbar")) el("pbar").style.width = p.pctVisited + "%";
     renderAttribution(); renderSpeciesLegend();
+    try { renderBrowse(); renderStatsTab(); renderSources(); renderNav(); } catch (e){ console.warn("[wjump] family layout", e); }
     renderIdentify();
     renderMap();
     renderList();
@@ -6898,6 +7047,8 @@ UJ.app = (function(){
     /* A skip is "not this one, right now" -- it is about the sitting, not about the nucleus, and
        carrying it across a dataset switch would silently hide nuclei in the new one. */
     SKIPPED = {}; CURID = null; REVEALED = false; WALK = { mode:"needs", ids:[], i:0 };
+    HIST = { back: [], fwd: [], nav: false, pending: null }; BROWSE_TYPE = "";
+    if (el("browseMsg")) el("browseMsg").innerHTML = "";
     var d = W.byId(id), g = W.gridDims(id);
     if (el("dslabel")) el("dslabel").textContent = d.tissue + " — " + d.species;
     if (el("dstier")) el("dstier").innerHTML =
@@ -6973,6 +7124,7 @@ UJ.app = (function(){
       if (e.key === "Enter") jumpToCoord();
     });
     if (el("found")) el("found").addEventListener("click", submitClicked);
+    wireBrowse();
     if (el("empty")) el("empty").addEventListener("click", submitEmpty);
     /* Wired once; the CONTROLS inside are rebuilt per dataset (renderFilterControls) and the
        region box remounted per dataset (mountRegionBox), both from selectDataset below. */
@@ -6989,7 +7141,276 @@ UJ.app = (function(){
     selectDataset(opening.id);
   }
 
+
+  /* ── THE FAMILY'S JUMP TAB  2026-10-19 ──────────────────────────────────────────────────────
+     Browse a cell, Back / Forward, Recently viewed, and the Statistics and References tabs.
+     See src/wjump_looks_like_the_family.py.
+
+     THE TYPES ARE THIS VOLUME'S. There is no published cell-type list for any ωJump volume, so the
+     picker offers exactly the names the community has SETTLED on here -- W.settledLabel, the same
+     rule the identify walk files nuclei under, so a tie is filed under neither name. */
+  var HIST = { back: [], fwd: [], nav: false, pending: null };
+  var BROWSE_TYPE = "";
+  function showCard(id){
+    if (typeof window.wjShowCard === "function") return window.wjShowCard(id);
+    var c = el(id); if (c && c.scrollIntoView) c.scrollIntoView({ behavior:"smooth" });
+  }
+  function shortId(id){ return String(id).split(":").pop(); }
+
+  /* History is recorded once per action, not once per setCur: jumpTo can pass through another
+     nucleus on its way (a walk rebuilt to "everything"), and that one was never on screen. */
+  function noteViewed(prev){
+    if (HIST.pending) return;
+    HIST.pending = { prev: prev, nav: HIST.nav };
+    Promise.resolve().then(function(){
+      var p = HIST.pending; HIST.pending = null;
+      var id = CURID;
+      if (!p || !id || id === p.prev) return;
+      if (!p.nav && p.prev && byId(p.prev)){
+        HIST.back.push(p.prev); if (HIST.back.length > 60) HIST.back.shift();
+        HIST.fwd = [];
+      }
+      var r = recentRead().filter(function(x){ return x !== id; });
+      r.unshift(id); recentWrite(r);
+      renderNav();
+    });
+  }
+  function recentKey(){ return "wjump_recent_" + DS; }
+  function recentRead(){
+    try { var a = JSON.parse(localStorage.getItem(recentKey()) || "[]");
+          return Array.isArray(a) ? a : []; } catch (e){ return []; }
+  }
+  function recentWrite(a){ try { localStorage.setItem(recentKey(), JSON.stringify(a.slice(0, 12))); } catch (e){} }
+
+  function go(id, nav){
+    if (!id || !byId(id)) return;
+    HIST.nav = !!nav;
+    try { delete SKIPPED[id]; jumpTo(id); } finally { HIST.nav = false; }
+    showCard("identify-card");
+  }
+  function goBack(){
+    while (HIST.back.length && !byId(HIST.back[HIST.back.length - 1])) HIST.back.pop();
+    if (!HIST.back.length) return;
+    var id = HIST.back.pop(); if (CURID) HIST.fwd.push(CURID);
+    go(id, true); renderNav();
+  }
+  function goFwd(){
+    if (!HIST.fwd.length) return;
+    var id = HIST.fwd.pop(); if (CURID) HIST.back.push(CURID);
+    go(id, true); renderNav();
+  }
+  function nucLabel(n){
+    var s = W.tallySummary(n);
+    return s.labels.length ? s.leader : "not yet named";
+  }
+  function renderNav(){
+    if (el("navBackBtn")) el("navBackBtn").disabled = !HIST.back.length;
+    if (el("navFwdBtn"))  el("navFwdBtn").disabled  = !HIST.fwd.length;
+    var host = el("recentList"); if (!host) return;
+    var ids = recentRead().filter(function(id){ return !!byId(id); });
+    if (el("recentCount")) el("recentCount").textContent = ids.length ? "(" + ids.length + ")" : "";
+    host.innerHTML = ids.length
+      ? "<div class='recent'>" + ids.map(function(id){
+          var n = byId(id), s = W.tallySummary(n);
+          return "<button type='button' data-go='" + esc(id) + "' title='Nucleus " + esc(shortId(id))
+            + " at " + esc(voxText(n.pos)) + " " + VOX + "'><span class='dot' style='background:"
+            + (STATUS_COLOUR[s.status] || "var(--mut)") + "'></span>" + esc(nucLabel(n))
+            + " &middot; " + esc(shortId(id)) + "</button>"; }).join("") + "</div>"
+      : "<p class='hint' style='margin:0'>Nothing yet in this volume. The nuclei you open here are "
+        + "listed in this browser, newest first.</p>";
+    host.querySelectorAll("[data-go]").forEach(function(b){
+      b.addEventListener("click", function(){ go(b.getAttribute("data-go")); });
+    });
+  }
+
+  function typesHere(){
+    return W.walkModes(STATE.nuclei).filter(function(m){ return String(m.mode).indexOf("type:") === 0; })
+      .sort(function(a, b){ return b.n - a.n || (a.label < b.label ? -1 : 1); });
+  }
+  function ofType(t, statuses){
+    t = String(t || "").toLowerCase();
+    return STATE.nuclei.filter(function(n){
+      var s = W.tallySummary(n);
+      return statuses.indexOf(s.status) >= 0 && s.leader.toLowerCase() === t;
+    });
+  }
+  function tiedWith(t){
+    t = String(t || "").toLowerCase();
+    return STATE.nuclei.filter(function(n){
+      if (W.identifyNeed(n) !== 2) return false;
+      var tl = n.tally || [];
+      return tl.slice(0, 2).some(function(x){ return String(x.label).toLowerCase() === t; });
+    });
+  }
+  function renderBrowse(){
+    var sel = el("randomTypeSelect"); if (!sel) return;
+    var ts = typesHere();
+    if (BROWSE_TYPE && !ts.some(function(t){ return t.label === BROWSE_TYPE; })) BROWSE_TYPE = "";
+    if (!BROWSE_TYPE && ts.length) BROWSE_TYPE = ts[0].label;
+    sel.innerHTML = ts.length
+      ? ts.map(function(t){
+          return "<option value=\"" + esc(t.label) + "\"" + (t.label === BROWSE_TYPE ? " selected" : "")
+            + ">" + esc(t.label) + " (" + t.n + ")</option>"; }).join("")
+      : "<option value=''>No cell type named here yet</option>";
+    sel.disabled = !ts.length;
+    if (el("randomOfType")) el("randomOfType").disabled = !ts.length;
+    if (el("randomCommunityId")) el("randomCommunityId").disabled = !ts.length;
+    var p = W.progress(DS, STATE.visited, STATE.nuclei);
+    var named = 0, unnamed = 0;
+    STATE.nuclei.forEach(function(n){
+      var need = W.identifyNeed(n);
+      if (need === 3) unnamed++; else if (need >= 0) named++;
+    });
+    if (el("unclCount")) el("unclCount").innerHTML = STATE.nuclei.length
+      ? "<b>" + named + "</b> named by the community &middot; <b>" + unnamed + "</b> still unnamed "
+        + "&middot; <b>" + p.identified + "</b> agreed by 2+ &middot; <b>" + p.visited + " / "
+        + p.total + "</b> boxes explored"
+      : "No nucleus has been found in this volume yet &mdash; <b>Explore</b> to find the first. "
+        + "<b>" + p.visited + " / " + p.total + "</b> boxes explored.";
+    if (el("randomUnclassified")) el("randomUnclassified").disabled = !STATE.nuclei.length;
+  }
+  function pickOne(pool){
+    var c = pool.filter(function(n){ return n.id !== CURID; });
+    if (!c.length) c = pool;
+    return c.length ? c[Math.floor(Math.random() * c.length)] : null;
+  }
+  /* Put the identify card on this nucleus, inside the walk that names it, so its own back/next
+     steps through more of the same. */
+  function openIn(n, mode, note){
+    if (!n){ say("browseMsg", note || "", false); return; }
+    startWalk(mode, false);
+    var j = WALK.ids.indexOf(n.id);
+    if (j < 0){ startWalk("all", false); j = Math.max(0, WALK.ids.indexOf(n.id)); }
+    WALK.i = j; delete SKIPPED[n.id]; setCur(n.id);
+    renderIdentify(); renderMap();
+    say("browseMsg", note || "", !note);
+    if (!note && el("browseMsg")) el("browseMsg").innerHTML = "";
+    showCard("identify-card");
+  }
+  function browse(kind){
+    var t = BROWSE_TYPE, n;
+    if (kind === "show"){
+      n = pickOne(ofType(t, ["agreed"]));
+      if (n) return openIn(n, "type:" + t);
+      n = pickOne(ofType(t, ["single"]));
+      return openIn(n, "type:" + t, n ? "No <b>" + esc(t) + "</b> has two people agreeing yet &mdash; "
+        + "this one was named once. Agree if you see it too." : "Nothing is filed under that name.");
+    }
+    if (kind === "review"){
+      var single = ofType(t, ["single"]), tied = tiedWith(t);
+      n = pickOne(single.concat(tied));
+      if (n) return openIn(n, single.indexOf(n) >= 0 ? "type:" + t : "contested");
+      n = pickOne(ofType(t, ["agreed"]));
+      return openIn(n, "type:" + t, n ? "No <b>" + esc(t) + "</b> is waiting for a second opinion "
+        + "&mdash; here is an agreed one you can question." : "Nothing is filed under that name.");
+    }
+    if (kind === "identify"){
+      var un = STATE.nuclei.filter(function(m){ return W.identifyNeed(m) === 3 && !SKIPPED[m.id]; });
+      if (!un.length) un = STATE.nuclei.filter(function(m){ return W.identifyNeed(m) === 3; });
+      n = pickOne(un);
+      if (n) return openIn(n, "unnamed");
+      var need = STATE.nuclei.filter(function(m){ var k = W.identifyNeed(m); return k === 1 || k === 2; });
+      n = pickOne(need);
+      if (n) return openIn(n, "needs", "Every nucleus here has a name &mdash; this one has only one "
+        + "vote or a tie, so a second opinion is what it needs.");
+      say("browseMsg", STATE.nuclei.length
+        ? "Every nucleus found here is settled. <b>Explore</b> finds the ones nobody has recorded."
+        : "No nucleus has been found here yet. <b>Explore</b> finds the first.", false);
+      return;
+    }
+    if (kind === "explore"){
+      var ec = el("explore-card"); if (ec) ec.open = true;
+      showCard("explore-card");
+    }
+  }
+  function wireBrowse(){
+    var sel = el("randomTypeSelect");
+    if (sel) sel.addEventListener("change", function(){ BROWSE_TYPE = sel.value; });
+    [["randomOfType","show"],["randomCommunityId","review"],["randomUnclassified","identify"],
+     ["exploreBtn","explore"]].forEach(function(p){
+      if (el(p[0])) el(p[0]).addEventListener("click", function(){ browse(p[1]); });
+    });
+    if (el("navBackBtn")) el("navBackBtn").addEventListener("click", goBack);
+    if (el("navFwdBtn"))  el("navFwdBtn").addEventListener("click", goFwd);
+    if (el("wjOpenMyStats")) el("wjOpenMyStats").addEventListener("click", function(){
+      if (window.UJ && UJ.gamify && UJ.gamify.openDashboard) UJ.gamify.openDashboard();
+    });
+  }
+
+  /* ── Statistics ────────────────────────────────────────────────────────────────────────── */
+  var STATUS_WORD = { unnamed:"not yet named", single:"one vote", contested:"tied",
+                      agreed:"agreed by 2+", retracted:"retracted" };
+  function hbars(rows, max, more){
+    if (!rows.length) return "<p class='hint' style='margin:6px 0 0'>None yet.</p>";
+    return "<div class='hbars'>" + rows.map(function(r){
+      return "<span class='t' title='" + esc(r.label) + "'>" + esc(r.label) + "</span>"
+        + "<span class='b' title='" + esc(r.label) + ": " + r.n + "'><i style='width:"
+        + Math.max(2, Math.round(100 * r.n / max)) + "%'></i></span><span class='v'>" + r.n + "</span>";
+    }).join("") + "</div>" + (more ? "<p class='hint' style='margin:6px 0 0'>&hellip; and " + more
+      + " more</p>" : "");
+  }
+  function renderStatsTab(){
+    var host = el("wjStatsBody"); if (!host) return;
+    var d = W.byId(DS);
+    if (el("wjStatsVol")) el("wjStatsVol").textContent = d ? "\u2014 " + d.tissue + ", " + d.species : "";
+    var ns = STATE.nuclei;
+    if (!ns.length){
+      host.innerHTML = "<p class='hint' style='margin:0'>No nucleus has been found in this volume yet, "
+        + "so there is nothing to count. Explore a box on the Jump tab to find the first.</p>";
+      return;
+    }
+    var c = { unnamed:0, single:0, contested:0, agreed:0, retracted:0 };
+    ns.forEach(function(n){ c[W.tallySummary(n).status]++; });
+    var order = ["agreed","single","contested","unnamed","retracted"].filter(function(k){ return c[k]; });
+    var h = "<div class='shead' style='margin-top:0'>How far the " + ns.length + " nuclei found here are named</div>"
+      + "<div class='sbar' role='img' aria-label='" + order.map(function(k){ return c[k] + " " + STATUS_WORD[k]; }).join(", ") + "'>"
+      + order.map(function(k){
+          return "<i style='flex:" + c[k] + ";background:" + STATUS_COLOUR[k] + "' title='"
+            + STATUS_WORD[k] + ": " + c[k] + " (" + Math.round(100 * c[k] / ns.length) + "%)'></i>"; }).join("")
+      + "</div><div class='slegend'>" + order.map(function(k){
+          return "<span><span class='dot' style='background:" + STATUS_COLOUR[k] + "'></span>"
+            + STATUS_WORD[k] + " <b style='color:var(--ink)'>" + c[k] + "</b></span>"; }).join("") + "</div>";
+    var ts = typesHere();
+    h += "<div class='shead'>Cell types named here (nuclei filed under each)</div>"
+      + hbars(ts.slice(0, 15), ts.length ? ts[0].n : 1, Math.max(0, ts.length - 15));
+    var agg = {};
+    ns.forEach(function(n){ (n.organelles || []).forEach(function(o){
+      if (o && o.kind) agg[o.kind] = (agg[o.kind] || 0) + (o.n || 0); }); });
+    var parts = O.countParts(Object.keys(agg).map(function(k){ return { kind:k, n:agg[k] }; }));
+    h += "<div class='shead'>Organelles logged</div>"
+      + hbars(parts.slice(0, 15).map(function(p){ return { label:p.short, n:p.n }; }),
+              parts.length ? parts[0].n : 1, Math.max(0, parts.length - 15));
+    h += "<p class='hint' style='margin:14px 0 0'>Counted from what has been saved to this volume. "
+      + "Nothing here is scored &mdash; there is no ground truth for cell identity in these volumes, "
+      + "only what the community agrees on.</p>";
+    host.innerHTML = h;
+  }
+
+  /* ── References: every source on the roster, the open one marked ─────────────────────────── */
+  function renderSources(){
+    var host = el("wjSources"); if (!host) return;
+    var seen = {}, rows = [];
+    enabled().forEach(function(d){
+      var pr = W.provider(d), key = pr.doi || pr.citation || pr.name;
+      if (!key) return;
+      if (!seen[key]){ seen[key] = { pr: pr, n: 0, open: false }; rows.push(seen[key]); }
+      seen[key].n++;
+      if (d.id === DS) seen[key].open = true;
+    });
+    host.innerHTML = rows.map(function(r){
+      var pr = r.pr;
+      var cite = pr.citation ? (pr.doi ? "<a class='ref' href='" + esc(pr.doi) + "' target='_blank' rel='noopener'>"
+        + esc(pr.citation) + "</a>" : esc(pr.citation)) : "";
+      var name = pr.portal ? "<a href='" + esc(pr.portal) + "' target='_blank' rel='noopener'>" + esc(pr.name) + "</a>"
+        : "<b>" + esc(pr.name || "") + "</b>";
+      return "<p class='hint' style='margin:0 0 8px'>" + name + " &middot; " + r.n + " volume"
+        + (r.n === 1 ? "" : "s") + (r.open ? " &middot; <b style='color:var(--accent)'>the one open now</b>" : "")
+        + (cite ? "<br>" + cite : "") + "</p>";
+    }).join("");
+  }
+
   return { init:init, selectDataset:selectDataset, render:render, pickBox:pickBox,
+           browse: browse, goBack: goBack, goFwd: goFwd,
            renderIdentify:renderIdentify, renderMap:renderMap, renderList:renderList,
            renderOrganBody:renderOrganBody,
            points: function(){ return UJ.gamify.combinedPoints(); },
@@ -27764,18 +28185,18 @@ UJ.forum = { init: init, render: render,
 })();
 </script>
 <script>
+/* The Discussion, read the first time its TAB is opened (2026-10-19; it was a folded card until
+   ωJump got a tab bar). `started` keeps it to one read; the volume is whatever is open then, and
+   selectDataset() keeps it current after that through UJ.forum.volume. */
 (function(){
-  var started=false, card=document.getElementById("forum-card");
-  if(!card)return;
-  /* <details> fires `toggle` on open AND on close; `started` is what makes it one read. The
-     volume comes from UJ.app's own selectDataset(), which has already run by now and will run
-     again on every switch -- init takes whatever is open at this moment. */
-  card.addEventListener("toggle",function(){
-    if(!card.open||started)return; started=true;
+  var started=false;
+  function openForum(){
+    if(started)return; started=true;
     var ds="";
     try{ ds=(window.UJ&&UJ.app&&UJ.app.dataset)?(UJ.app.dataset()||""):""; }catch(e){}
     if(window.UJ&&UJ.forum)UJ.forum.init({tool:"wjump",volume:ds});
-  });
+  }
+  document.addEventListener("wjump:tab",function(e){ if(e&&e.detail==="forum")openForum(); });
 })();
 </script>
 
