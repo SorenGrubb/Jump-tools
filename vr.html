@@ -342,7 +342,9 @@
     <div class="ctl" style="margin:0 0 6px">
       <button id="raScreen" title="A screen in the room playing the clip the mouse was watching, in step with the responses">Movie screen</button>
       <select id="raSide" title="Where the screen stands, seen from where you are when it appears"><option value="behind" selected>behind the cells</option><option value="left">to the left</option><option value="right">to the right</option></select>
-      <button id="raPlot" class="on" title="A plot of the imaged cells' mean responses to the current clip, under the clock — seen in the headset too">Recorded plot</button>
+      <button id="raPlot" class="on" title="A plot under the clock — seen in the headset too">Recorded plot</button>
+      <select id="raMode" title="The activity map: every imaged cell (a row) across the whole movie (columns), coloured by its response — when each cell is active. Traces: the current clip's responses as lines."><option value="map" selected>Activity map (whole movie)</option><option value="traces">Traces (this clip)</option></select>
+      <button id="raDim" class="on" title="Darken the loaded cells that were not imaged, so the ones with recordings stand out">Dim cells not imaged</button>
     </div>
     <div class="ctl" style="margin:0">
       <button id="raNb" title="Bring in the 3 imaged neurons nearest the picked cell (nucleus to nucleus)">+ Recorded neighbours</button>
@@ -535,7 +537,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -651,7 +653,7 @@
     orgKind: () => !!(V().ORG && V().ORG.on),
     ptsDir: () => !!(V().PTS && V().PTS.on),
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
-    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on), caReset: () => !!(V().CA && (V().CA.on || V().CA.running)), plShow: () => !!(V().STIM && V().STIM.on && V().STIM.plots), ctCsv: () => !!(V().CT && V().CT.on), raPlay: () => !!(V().RA && V().RA.on), raSide: () => !!(V().RA && V().RA.screen),
+    stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on), caReset: () => !!(V().CA && (V().CA.on || V().CA.running)), plShow: () => !!(V().STIM && V().STIM.on && V().STIM.plots), ctCsv: () => !!(V().CT && V().CT.on), raPlay: () => !!(V().RA && V().RA.on), raSide: () => !!(V().RA && V().RA.screen), raMode: () => !!(V().RA && V().RA.plot),
     plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on), synClr: () => !!(V().STIM && V().STIM.syn && V().STIM.syn.length),
     spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
@@ -1110,14 +1112,14 @@ function renderList(){
     const head = `<div class="grp" data-grp="${esc(g.key)}">
         <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
         <div><b>${esc(g.name)} <span style="font-weight:400;color:${EI_COL[cls]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cls]}</span></b>
-        <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
+        <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${window.__RA && window.__RA.on && window.__RA.meta ? " · " + g.cells.filter(c => raEntry(c)).length + " imaged" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
         <button class="glassOne${g.cells.every(c => c.glass) ? " on" : ""}" data-gglass="${esc(g.key)}" title="See-through: all ${n} ${esc(g.name)}">${(window.UI_ICON || {}).glass || "◐"}</button>
         <input type="checkbox" data-gvis="${esc(g.key)}" ${shown === n ? "checked" : ""} title="Show / hide all ${n}"></div>`;
     if (!open) return head;
     return head + g.cells.map(c =>
       `<div class="row sub"><span class="sw" style="background:${c.colour}"></span><div>
          <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
-         <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span></div>
+         <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span>${window.__RA && window.__RA.on && raEntry(c) ? `<span title="${esc(raListTitle(c))}">${raMiniSvg(raEntry(c))}</span>` : ""}</div>
          ${c.mesh && cellClass(c) !== "glia" ? `<button class="stimOne${window.__lastStim === c.i ? " on" : ""}" data-stim="${c.i}" title="Stimulate ${esc(c.root || c.label)} at its soma">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
          <button class="glassOne${c.glass ? " on" : ""}" data-glass="${c.i}" title="See-through: ${esc(c.root || c.label)}">${(window.UI_ICON || {}).glass || "◐"}</button>
          <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
@@ -1205,6 +1207,7 @@ function cellMaterial(colour){
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
         if (vPaint.a > 0.5) totalEmissiveRadiance += vPaint.rgb * vGlow * (1.1 + 0.45 * sin(sprayTime * 3.5));
+        if (raA < -0.5) diffuseColor.rgb *= 0.28;   // not imaged, and "Dim cells not imaged" is on
         if (raA > 0.003){
           /* Recorded activity (section 21): the whole cell, as bright as its measured response now. */
           totalEmissiveRadiance += raCol * 1.5 * raA;
@@ -4803,7 +4806,9 @@ function caApplyUi(u){
    root id mod 512, oracle_movie.mp4 = the six clips back to back, first repeat). */
 const RA = { on: false, meta: null, metaP: null, index: null, shards: {}, base: "", t: 0, playing: false, speed: 1, clip: "all",
              scale: "shared", plot: true, screen: false, side: "behind", hud: null, plotSpr: null, plotCv: null, scr: null, video: null,
-             tex: null, cap: null, capKey: "", place: "", tlKey: null, tlScreen: false, loading: false, attachedSig: "", lit: false, err: "" };
+             tex: null, cap: null, capKey: "", place: "", tlKey: null, tlScreen: false, loading: false, attachedSig: "", lit: false, err: "",
+             mode: "map", dim: true, wantPlay: false, warnedSig: "" };
+window.__RA = RA;      // for renderList, which can run before this line has
 AP_UNI.raCol = { value: new THREE.Color(0.35, 1.0, 0.35) };
 function raDs(c){ const d = c && VR_DATASETS[c.ds]; return d && d.activity ? d.activity : null; }
 function raBase(){ for (const c of CELLS){ const b = raDs(c); if (b) return b; } return (VR_DATASETS.microns || {}).activity || null; }
@@ -4857,6 +4862,35 @@ async function raAttach(){
   } finally { RA.attaching = null; RA.loading = false; renderList(); if (typeof MENU !== "undefined") MENU.dirty = true; }
 }
 function raEntry(c){ return c && c.ra ? c.ra.list[c.ra.use] : null; }
+/* One number per second of each clip (6 × 10), the mean response over that second -- the same
+   squares as µJump's identity card (core/recact.js), and its colours. */
+function raSeconds(e){
+  if (e.sec) return e.sec;
+  const G = RA.G, n = G.n, i0 = Math.round(-G.from / G.step), per = Math.round(1 / G.step), out = new Float32Array(60);
+  for (let k = 0; k < 6; k++) for (let t = 0; t < 10; t++){ let a = 0, m = 0; for (let j = 0; j < per; j++){ const i = i0 + t * per + j; if (i < n){ a += e.z[k * n + i]; m++; } } out[k * 10 + t] = m ? a / m : 0; }
+  return (e.sec = out);
+}
+function raSpans(e, z){
+  const S = raSeconds(e), out = [];
+  for (let k = 0; k < 6; k++){ let st = -1; for (let t = 0; t <= 10; t++){ const on = t < 10 && S[k * 10 + t] >= z; if (on && st < 0) st = t; if (!on && st >= 0){ out.push({ clip: k, from: st, to: t }); st = -1; } } }
+  return out;
+}
+function raColour(z){
+  const t = Math.max(0, Math.min(1, z / 5)), st = [[13, 17, 23], [20, 90, 90], [60, 190, 90], [250, 230, 80]];
+  const x = t * 3, i = Math.min(2, Math.floor(x)), f = x - i, a = st[i], b = st[i + 1];
+  return "rgb(" + a.map((v, j) => Math.round(v + (b[j] - v) * f)).join(",") + ")";
+}
+/* A tiny 6 × 10 grid for the cell list. */
+function raMiniSvg(e){
+  const S = raSeconds(e); let h = '<svg width="32" height="20" viewBox="0 0 32 20" style="vertical-align:middle;margin-left:4px;border-radius:2px;background:#0d1117">';
+  for (let k = 0; k < 6; k++) for (let t = 0; t < 10; t++) h += '<rect x="' + (1 + t * 3) + '" y="' + (1 + k * 3) + '" width="3" height="3" fill="' + raColour(S[k * 10 + t]) + '"/>';
+  return h + '</svg>';
+}
+function raListTitle(c){
+  const e = raEntry(c); if (!e) return "";
+  const sp = raSpans(e, 2);
+  return "Recorded: r " + (e.os != null ? e.os.toFixed(2) : "–") + " · active (z ≥ 2): " + (sp.length ? sp.map(x => "clip " + (x.clip + 1) + " " + x.from + "–" + x.to + " s").join(", ") : "none") + " — rows = clips 1–6, columns = seconds";
+}
 function raCells(){ return CELLS.filter(c => c.mesh && raEntry(c)); }
 function raNote(){
   const all = CELLS.filter(c => c.mesh), have = raCells();
@@ -4893,7 +4927,7 @@ function raApplyGlow(on){
   for (const c of CELLS){
     const u = c.mesh && c.mesh.material.userData && c.mesh.material.userData.raU; if (!u) continue;
     const e = raEntry(c);
-    u.value = on && e ? raGlowOf(e, raValue(c, RA.t)) : 0;
+    u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) : (RA.dim && c.raRoot ? -1 : 0);
   }
 }
 /* Is a timeline running a "recorded activity" effect now? */
@@ -4915,6 +4949,15 @@ function raFrame(dt){
   if (!RA.on){ if (RA.lit){ raApplyGlow(false); RA.lit = false; } raScreenFrame(); return; }
   if (RA.attachedSig !== raSig()) raAttach();
   if (!RA.meta){ raScreenFrame(); return; }
+  if (RA.attachedSig === raSig() && CELLS.length && CELLS.every(c => c.mesh || c.err || c.nucMesh)){
+    if (RA.wantPlay){ RA.wantPlay = false; if (raCells().length){ RA.playing = true; raPlayBtn(); } raNote(); renderList(); }
+    if (RA.warnedSig !== RA.attachedSig){
+      RA.warnedSig = RA.attachedSig;
+      if (!raCells().length) flashWarn(["None of the loaded cells were imaged.", "Only about 1,900 excitatory neurons have two-photon recordings matched to them.",
+        "Pick a cell and use “+ Recorded neighbours”, or in µJump: Filter and show → “Was it imaged?” → Show in VR."], 12000, "#9be15d");
+      renderList();
+    }
+  }
   if (RA.playing && !RA.tlKey) RA.t = raWrap(RA.t + dt * RA.speed, RA.clip);
   /* With recorded-activity effects on an open timeline, the cells rest between them. */
   const dark = !RA.tlKey && !RA.playing && raTlKeys().length && TL.open;
@@ -4952,11 +4995,13 @@ function raPlotCells(){
   return cs.slice(0, 8);
 }
 function raPlotDraw(){
+  if (RA.mode === "map") return raMapDraw();
   const cells = raPlotCells();
   if (!RA.on || !RA.meta || !cells.length){ if (RA.plotSpr) RA.plotSpr.visible = false; return; }
   const W = 760, H = 430;
-  if (!RA.plotCv){ RA.plotCv = document.createElement("canvas"); RA.plotCv.width = W; RA.plotCv.height = H; }
+  if (!RA.plotCv || RA.plotCv.width !== W || RA.plotCv.height !== H){ RA.plotCv = document.createElement("canvas"); RA.plotCv.width = W; RA.plotCv.height = H; if (RA.plotSpr){ RA.plotSpr.material.map.dispose(); RA.plotSpr.material.map = new THREE.CanvasTexture(RA.plotCv); RA.plotSpr.material.map.colorSpace = THREE.SRGBColorSpace; RA.plotSpr.material.needsUpdate = true; } }
   const g = RA.plotCv.getContext("2d"), G = RA.G, { k, s } = raClipAt(RA.t), C = RA.meta.clips[k];
+  g.clearRect(0, 0, W, H);
   let ymax = 3; cells.forEach(c => { const e = raEntry(c); for (let i = 0; i < G.n; i++) ymax = Math.max(ymax, e.z[k * G.n + i]); });
   ymax = Math.ceil(ymax); const ymin = -1;
   g.fillStyle = "rgba(10,14,18,0.92)"; g.fillRect(0, 0, W, H);
@@ -4990,6 +5035,59 @@ function raPlotDraw(){
   }
   RA.plotSpr.material.map.needsUpdate = true; RA.plotSpr.visible = true;
   const h = 0.12; RA.plotSpr.scale.set(h * W / H, h, 1);
+}
+/* THE ACTIVITY MAP (v65, Søren: "Could we somehow mark which cells are active during which part
+   of the movie"). One row per imaged cell, the whole movie across (six clips of 10 s, one column
+   per 0.1 s), coloured by the response: dark → teal → green → yellow for z 0 → 5+. Rows are in
+   order of when each cell first reaches z 2, so a wave of activity across the population reads
+   as a diagonal. A dot left of a row = active right now. */
+function raMapDraw(){
+  const all = raCells();
+  if (!RA.on || !RA.meta || !all.length){ if (RA.plotSpr) RA.plotSpr.visible = false; return; }
+  const nRows = Math.min(24, all.length), rh0 = nRows > 12 ? 16 : 28, W = 900, H = 70 + nRows * rh0 + 50;
+  if (!RA.plotCv || RA.plotCv.width !== W || RA.plotCv.height !== H){ RA.plotCv = document.createElement("canvas"); RA.plotCv.width = W; RA.plotCv.height = H; if (RA.plotSpr){ RA.plotSpr.material.map.dispose(); RA.plotSpr.material.map = new THREE.CanvasTexture(RA.plotCv); RA.plotSpr.material.map.colorSpace = THREE.SRGBColorSpace; RA.plotSpr.material.needsUpdate = true; } }
+  const g = RA.plotCv.getContext("2d"), G = RA.G, n = G.n, i0 = Math.round(-G.from / G.step), C = RA.meta.clips;
+  const first = c => { const S = raSeconds(raEntry(c)); for (let i = 0; i < 60; i++) if (S[i] >= 2) return i; return 99; };
+  const cells = all.slice().sort((a, b) => (b.i === SELECTED) - (a.i === SELECTED) || first(a) - first(b) || (raEntry(b).os || 0) - (raEntry(a).os || 0)).slice(0, 24);
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#9be15d"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 24px system-ui, sans-serif";
+  g.fillText("When each imaged cell is active" + (all.length > cells.length ? " (" + cells.length + " of " + all.length + ")" : ""), 18, 32);
+  const L = 190, R = W - 18, T = 70, rh = rh0, B = T + cells.length * rh, per = 100;
+  const X = t => L + (R - L) * t / RA.total;
+  /* the clips */
+  g.font = "15px system-ui, sans-serif";
+  const { k: kNow } = raClipAt(RA.t);
+  C.forEach((cl, k) => {
+    const x0 = X(cl.movie_start), x1 = X(cl.movie_start + cl.duration);
+    g.fillStyle = k === kNow ? "#9be15d" : "#8b949e"; g.fillText((k + 1) + " " + cl.movie.split(/[:(]/)[0].trim().slice(0, 11), x0 + 3, T - 10);
+    if (k) { g.strokeStyle = "#30363d"; g.beginPath(); g.moveTo(x0, T - 6); g.lineTo(x0, B); g.stroke(); }
+  });
+  cells.forEach((c, r) => {
+    const e = raEntry(c), y = T + r * rh;
+    for (let k = 0; k < 6; k++){
+      const cl = C[k], x0 = X(cl.movie_start), w = (X(cl.movie_start + cl.duration) - x0) / per;
+      for (let j = 0; j < per; j++){ const v = e.z[k * n + i0 + j]; g.fillStyle = raColour(v); g.fillRect(x0 + j * w, y + 1, w + 0.6, rh - 2); }
+    }
+    const code = (String(c.label || "").match(/\(([^)]*)\)/) || [])[1] || String(c.label || "cell").split(" ")[0];
+    g.fillStyle = c.i === SELECTED ? "#ffffff" : "#c9d1d9"; g.font = (rh < 18 ? "13px" : "16px") + " system-ui, sans-serif";
+    g.fillText(code.replace(/, MICrONS prediction|MICrONS prediction/, "").slice(0, 6) + " …" + String(c.root).slice(-4) + " r" + (e.os != null ? e.os.toFixed(2) : "–"), 26, y + rh / 2 + 5);
+    g.fillStyle = "#" + new THREE.Color(c.colour).getHexString(); g.fillRect(8, y + rh / 2 - 5, 10, 10);
+    if (raValue(c, RA.t) >= 2){ g.fillStyle = "#faee50"; g.beginPath(); g.arc(L - 9, y + rh / 2, 5, 0, 7); g.fill(); }
+  });
+  const x = X(RA.t); g.strokeStyle = "#ffffff"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, T - 6); g.lineTo(x, B); g.stroke();
+  /* the scale */
+  g.font = "14px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.fillText("z 0", L - 26, B + 30);
+  for (let i = 0; i <= 50; i++){ g.fillStyle = raColour(i / 10); g.fillRect(L + 4 + i * 3, B + 18, 3, 14); }
+  g.fillStyle = "#8b949e"; g.fillText("5+", L + 160, B + 30);
+  g.fillText("mean of 10 repeats · ● active now (z ≥ 2) · top rows active first", L + 196, B + 30);
+  if (!RA.plotSpr){
+    const tex = new THREE.CanvasTexture(RA.plotCv); tex.colorSpace = THREE.SRGBColorSpace;
+    RA.plotSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    RA.plotSpr.renderOrder = 30; scene.add(RA.plotSpr);
+  }
+  RA.plotSpr.material.map.needsUpdate = true; RA.plotSpr.visible = true;
+  const h = 0.13 * W / 900 * H / 470 * (900 / W); RA.plotSpr.scale.set(0.13 * 900 / 470 * (W / 900), h, 1);
 }
 /* ── the movie screen ── */
 function raScreenEnsure(){
@@ -5058,6 +5156,7 @@ function raScreenFrame(){
 }
 /* ── switches ── */
 async function setRa(v, quiet){
+  if (!v) RA.wantPlay = false;
   RA.on = v; document.getElementById("raBtn").classList.toggle("on", v);
   document.getElementById("raBox").style.display = v ? "" : "none";
   if (!v){ RA.playing = false; raPlayBtn(); raApplyGlow(false); if (RA.hud) RA.hud.visible = false; if (RA.plotSpr) RA.plotSpr.visible = false; if (typeof MENU !== "undefined") MENU.dirty = true; return; }
@@ -5080,7 +5179,7 @@ function raSetClip(v){
 }
 function raSetting(k, v){
   RA[k] = v;
-  const id = { speed: "raSpeed", scale: "raScale", side: "raSide" }[k]; if (id){ const el = document.getElementById(id); if (el) el.value = String(v); }
+  const id = { speed: "raSpeed", scale: "raScale", side: "raSide", mode: "raMode" }[k]; if (id){ const el = document.getElementById(id); if (el) el.value = String(v); }
   if (k === "side") RA.place = "";
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -5114,10 +5213,11 @@ function raCsv(){
   csvDownload(rows, "vr-recorded-");
   ctxNote.textContent = "Saved the recorded responses of " + cs.length + " cell" + (cs.length === 1 ? "" : "s") + ": who they are (session, scan, unit, oracle score, tuning), then each clip's mean trace every 0.1 s.";
 }
-function raUi(){ return { on: RA.on, clip: RA.clip, speed: RA.speed, scale: RA.scale, plot: RA.plot, screen: RA.screen, side: RA.side }; }
+function raUi(){ return { on: RA.on, clip: RA.clip, speed: RA.speed, scale: RA.scale, plot: RA.plot, screen: RA.screen, side: RA.side, mode: RA.mode, dim: RA.dim }; }
 function raApplyUi(u){
   if (!u) return;
-  if (u.speed) raSetting("speed", u.speed); if (u.scale) raSetting("scale", u.scale); if (u.side) raSetting("side", u.side);
+  if (u.speed) raSetting("speed", u.speed); if (u.scale) raSetting("scale", u.scale); if (u.side) raSetting("side", u.side); if (u.mode) raSetting("mode", u.mode);
+  if (u.dim != null){ RA.dim = !!u.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); }
   if (u.clip != null) RA.clip = String(u.clip);
   setRaPlot(u.plot !== false); setRaScreen(!!u.screen);
   if (!!u.on !== RA.on) setRa(!!u.on, true);
@@ -5131,6 +5231,16 @@ document.getElementById("raSide").addEventListener("change", e => raSetting("sid
 document.getElementById("raScreen").addEventListener("click", () => setRaScreen(!RA.screen));
 document.getElementById("raPlot").addEventListener("click", () => setRaPlot(!RA.plot));
 document.getElementById("raNb").addEventListener("click", raNeighbours);
+document.getElementById("raMode").addEventListener("change", e => raSetting("mode", e.target.value));
+document.getElementById("raDim").addEventListener("click", () => { RA.dim = !RA.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); if (typeof MENU !== "undefined") MENU.dirty = true; });
+/* &ra=1 in the link (µJump's identity card, or Filter and show with "Was it imaged?"): Recorded
+   activity on, the Activity tab open, playing once the cells are in; &raclip=k loops one clip. */
+(function(){
+  const h = location.hash; if (!/[#&]ra=1\b/.test(h)) return;
+  const m = h.match(/[#&]raclip=(\d)/); if (m) RA.clip = m[1];
+  RA.wantPlay = true; setRa(true, true);
+  try { if (window.uiOpenTab) uiOpenTab("act"); } catch (e){}
+})();
 document.getElementById("raCsv").addEventListener("click", raCsv);
 
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
@@ -5566,6 +5676,8 @@ function menuRows(){
         rows.push({ label: "   Movie screen", on: RA.screen, act: () => setRaScreen(!RA.screen) });
         if (RA.screen) rows.push({ label: "   Screen: " + ({ behind: "behind the cells", left: "left", right: "right" })[RA.side] + "  ▸", act: () => raSetting("side", ({ behind: "left", left: "right", right: "behind" })[RA.side]) });
         rows.push({ label: "   Recorded plot", on: RA.plot, act: () => setRaPlot(!RA.plot) });
+        if (RA.plot) rows.push({ label: "   Plot: " + (RA.mode === "map" ? "activity map (whole movie)" : "traces (this clip)") + "  ▸", act: () => raSetting("mode", RA.mode === "map" ? "traces" : "map") });
+        rows.push({ label: "   Dim cells not imaged", on: RA.dim, act: () => { RA.dim = !RA.dim; document.getElementById("raDim").classList.toggle("on", RA.dim); } });
         rows.push({ label: "   + Recorded neighbours of the picked cell", act: raNeighbours });
       }
     }
@@ -7602,7 +7714,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { RA, raFrame, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { RA, raFrame, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells

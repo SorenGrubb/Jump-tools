@@ -621,6 +621,9 @@ document.addEventListener("DOMContentLoaded", function(){
 <script src="core/stepthrough.js"></script>
 <!-- Previous / Next of the same type on the identity card -- core/typestep.js, 2026-09-21. -->
 <script src="core/typestep.js"></script>
+<!-- MICrONS recorded activity (two-photon, DANDI:000402): identity card + filter -- core/recact.js, 2026-10-19 -->
+<script src="core/recact.js"></script>
+<script>UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns")&&UJ.recact.load();</script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head><body>
@@ -941,6 +944,42 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
 <label style="font-size:12px"><input type="checkbox" id="filterV1ColNonVasc"> V1 column — non-vascular, non-neuronal members</label>
 </div>
 </details>
+<details class="rv-panel filter-section" id="filterSecRec">
+<summary title="MICrONS two-photon recordings (DANDI:000402): the ~1,900 excitatory neurons matched by hand to their EM cell, and when each was active during the six repeated movie clips. Tick the excitatory types above (or &quot;include unclassified&quot;), as for every other filter here.">Was it imaged (recorded activity)?</summary>
+<div style="margin-top:10px;font-size:12px">
+<select id="filterRecAct" style="padding:4px 6px" title="Off by default">
+<option value="">Don't filter on recordings</option>
+<option value="imaged">Imaged (a recording is matched to it)</option>
+<option value="active">Active during the movie (see below)</option>
+<option value="not">Not imaged</option>
+</select>
+<div id="filterRecMore" style="margin-top:8px;display:none">
+<div>Active = mean response of the 10 repeats at least
+<select id="filterRecZ" style="padding:3px 5px"><option value="1">z 1</option><option value="1.5">z 1.5</option><option value="2" selected>z 2</option><option value="3">z 3</option><option value="5">z 5</option></select>
+for at least one second</div>
+<div style="margin-top:6px">during clip(s) <span style="color:var(--mut)">(none ticked = any)</span>:</div>
+<div class="toggles" id="filterRecClips" style="margin-top:4px"></div>
+<div style="margin-top:6px">between <input type="text" id="filterRecT0" value="0" style="width:40px;padding:3px 5px" inputmode="decimal"> and <input type="text" id="filterRecT1" value="10" style="width:40px;padding:3px 5px" inputmode="decimal"> s of the clip</div>
+</div>
+<div style="margin-top:8px">and reliability (oracle score) at least <input type="text" id="filterRecMinR" value="0" style="width:44px;padding:3px 5px" inputmode="decimal" title="How alike the 10 repeats were: 0.3 and up is reliable, below 0.15 weak"></div>
+<div id="filterRecMsg" style="margin-top:6px;color:var(--mut)"></div>
+</div>
+</details>
+<script>
+(function(){
+  const sel=document.getElementById("filterRecAct"),more=document.getElementById("filterRecMore"),box=document.getElementById("filterRecClips"),msg=document.getElementById("filterRecMsg");
+  if(!sel)return;
+  function fill(){
+    const C=(window.UJ&&UJ.recact&&UJ.recact.clips)||[];
+    box.innerHTML=(C.length?C:[1,2,3,4,5,6].map(k=>({movie:"clip "+k,kind:""}))).map((c,k)=>'<label style="font-size:12px" title="'+String(c.movie).replace(/"/g,"&quot;")+'"><input type="checkbox" class="frecclip" value="'+k+'"> '+(k+1)+'. '+String(c.movie).slice(0,30).replace(/</g,"&lt;")+(c.kind?' <span style="color:var(--mut)">('+c.kind+')</span>':'')+'</label>').join("");
+  }
+  fill();document.addEventListener("recact:ready",()=>{fill();msg.textContent="";});
+  sel.addEventListener("change",()=>{
+    more.style.display=sel.value==="active"?"":"none";
+    if(sel.value&&window.UJ&&UJ.recact&&!UJ.recact.ready()){msg.textContent="Reading the recordings index…";UJ.recact.load().then(j=>{msg.textContent=j?"":"The recordings index (data/microns_activity/v1/index.json) could not be read.";});}
+  });
+})();
+</script>
 <details class="rv-panel filter-section" id="filterSecArea">
 <summary title="Restricts matches to one or more of the four visual areas the imaged volume straddles, using the Allen Institute&#39;s own area-boundary meshes (gs://allen-minnie-phase3/areameshes — the layer the Shih lab&#39;s Neuroglancer state switches on). Each mesh is a wall standing from the pia to the white matter, and the walls lean sideways with depth, so every cell is tested at its own cortical depth rather than against a vertical plane. Tick more than one to match either. The meshes carry no names: V1 is identified by holding all 1,899 cells of Allen&#39;s hand-classified V1 column, and the other three by matching the four-way junction to the area map in the MICrONS paper (Nature 2025, Fig. 1a).">Which visual area should the cells be in?</summary>
 <div class="toggles" style="margin-top:10px">
@@ -4938,6 +4977,7 @@ function showNucleus(pos){
       +'</div>';
   }
   h+='</div></details>';
+  h+='<div id="recActPanel" style="margin:6px 0"></div>';
   h+='<div id="connPanel" style="margin:6px 0"></div>';
   h+='<div id="tripartitePanel" style="margin:6px 0"></div>';
   h+='<div id="cellContactsPanel" style="margin:6px 0"></div>';
@@ -4979,6 +5019,7 @@ function showNucleus(pos){
     const locOnlyBtnFar=panel.querySelector("#idfLocOnlyGo");
     if(locOnlyBtnFar)locOnlyBtnFar.addEventListener("click",()=>openLocationOnlyReport(pos));
   }
+  try{loadRecActPanel("recActPanel",root,nid,own?own.type:(ti.cls?longName(ti.name):"Cell"));}catch(_e){}
   window.CUR_POS=pos;loadCommunityReports(nid,pos);loadRootIdPanel(nid);loadIdentityVotesPanel(nid,[ti&&ti.name,(own&&own.fine)]);loadClassificationHistory(nid);
   /* cellType/nucleusId (2026-08-09, "every time a user looks at the connectivity, the data
      should be added to the graph") -- same own-verified > MICrONS-prediction > "Unclassified"
@@ -8105,6 +8146,44 @@ function showRandomLeafExample(slug){
   if(again)again.addEventListener("click",()=>showRandomLeafExample(slug));
 }
 /* tree navigation, leaf search, certainty, override warning moved to core/tree.js (2026-08-18) — see the header there. */
+/* ── RECORDED ACTIVITY on the identity card (2026-10-19) ────────────────────────────────────
+   Søren: "Could we somehow mark which cells are active during which part of the movie. Perhaps
+   also in the cell identity card, so we can see before and after adding it to the VR."
+   Was this cell imaged in the MICrONS two-photon recordings, how reliable is its response, and
+   in which seconds of which of the six repeated movie clips was it active -- as a 6 x 10 grid of
+   squares (one per second), the same colours the VR viewer's activity map uses. Only excitatory
+   neurons were imaged (GCaMP6s), and only ~1,900 of them are matched to EM cells by hand, so
+   most cells say "not imaged" -- which is worth knowing before opening the VR viewer. */
+function loadRecActPanel(id,root,nid,label){
+  const el=document.getElementById(id);if(!el||!UJ.recact)return;
+  if(UJ.cfg&&UJ.cfg.id&&UJ.cfg.id!=="microns"){el.innerHTML="";return;}
+  if(!UJ.recact.ready()){
+    el.innerHTML='<details class="rv-panel neigh"><summary>Recorded activity <span style="color:var(--mut);font-weight:400">— loading…</span></summary></details>';
+    UJ.recact.load().then(()=>{if(typeof CUR_ROOT!=="undefined"&&String(CUR_ROOT)===String(root))loadRecActPanel(id,root,nid,label);});
+    return;
+  }
+  const e=UJ.recact.get(root),Z=2;
+  if(!e){
+    el.innerHTML='<details class="rv-panel neigh"><summary>Recorded activity <span style="color:var(--mut);font-weight:400">— not imaged</span></summary>'
+      +'<div style="margin-top:6px;font-size:12px;color:var(--mut)">This cell has no two-photon recording matched to it. Only excitatory neurons were imaged (GCaMP6s), and about 1,900 of them are matched to their EM cell by the manual co-registration. Filter and show → “Was it imaged?” finds the ones that are.</div></details>';
+    return;
+  }
+  const sp=UJ.recact.spans(e,Z),C=UJ.recact.clips||[];
+  const when=sp.length?sp.map(x=>"clip "+(x.clip+1)+" "+x.from+"–"+x.to+" s").join(", "):"never at z ≥ "+Z+" (a weak or unreliable responder)";
+  const rel=e.os==null?"–":e.os.toFixed(2),relWord=e.os>=0.3?"reliable":e.os>=0.15?"fair":"weak";
+  const ds=(UJ.cfg&&UJ.cfg.id)||"microns";
+  const link=location.href.replace(/[#?].*$/,"").replace(/[^\/]*$/,"")+"vr.html#c="+[ds,String(root),String(nid||""),label||"Cell",""].map(encodeURIComponent).join("~")+"&ra=1";
+  let h='<details class="rv-panel neigh" open><summary>Recorded activity <span style="color:#3fb950;font-weight:400">— '+(sp.length?"active in "+[...new Set(sp.map(x=>x.clip+1))].map(k=>"clip "+k).join(", "):"imaged, no strong response")+'</span></summary>';
+  h+='<div style="margin-top:6px;font-size:12px">';
+  h+='<div style="margin-bottom:6px">Imaged in session '+e.s+', scan '+e.sc+' (unit '+e.u+')'+(e.n>1?' and '+(e.n-1)+' more scan'+(e.n>2?'s':''):'')
+    +' · reliability r <b>'+rel+'</b> ('+relWord+') <span style="color:var(--mut)" title="Oracle score: how alike this cell\'s responses were over the 10 repeats of each clip">ⓘ</span></div>';
+  h+='<div style="color:var(--fg)">'+UJ.recact.barcodeSvg(e,{z:Z})+'</div>';
+  h+='<div style="margin-top:6px">Active (mean z ≥ '+Z+', outlined): '+when+'.</div>';
+  h+='<div style="margin-top:4px;color:var(--mut)">Each square is one second of a 10 s clip; colour = mean response of 10 repeats (robust z of the raw GCaMP6s fluorescence, dark → yellow = 0 → 5+). GCaMP6s trails the movie by ~0.5–1 s. DANDI:000402, MICrONS Consortium, CC-BY-4.0.</div>';
+  h+='<div style="margin-top:8px"><a class="idbtn" href="'+link+'" target="_blank" rel="noopener" title="Opens this cell in the VR viewer with Recorded activity on — the movie, the glow and the activity map. Add imaged neighbours there with “+ Recorded neighbours”.">Show in VR with its activity ↗</a></div>';
+  h+='</div></details>';
+  el.innerHTML=h;
+}
 function renderResult(slug){
   const panel=document.getElementById("idfpanel");
   /* locationOnly (slug===null, ID_CTX.locationOnly===true) is openLocationOnlyReport()'s entry
@@ -11335,6 +11414,15 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     /* WHICH VISUAL AREA (2026-09-28). A set, not a flag: several ticked means either, the way
        every other tick list on this panel reads. Empty means the filter is off. */
     const areaSel=new Set(Array.prototype.map.call(document.querySelectorAll(".farea:checked"),function(e){return +e.value;}));
+    /* RECORDED ACTIVITY (2026-10-19): imaged / active in chosen clips and seconds / not imaged,
+       looked up by root id in core/recact.js's index. */
+    const recSel=document.getElementById("filterRecAct")?document.getElementById("filterRecAct").value:"";
+    const recOn=!!recSel&&!!(UJ.recact&&UJ.recact.ready());
+    const recZ=parseFloat((document.getElementById("filterRecZ")||{}).value)||2;
+    const recClips=Array.prototype.map.call(document.querySelectorAll(".frecclip:checked"),function(e){return +e.value;});
+    const recT0=Math.max(0,parseFloat(((document.getElementById("filterRecT0")||{}).value||"0").replace(",","."))||0);
+    const recT1=Math.min(10,parseFloat(((document.getElementById("filterRecT1")||{}).value||"10").replace(",","."))||10);
+    const recMinR=parseFloat(((document.getElementById("filterRecMinR")||{}).value||"0").replace(",","."))||0;
     const nearOn=document.getElementById("filterNearOn")?document.getElementById("filterNearOn").checked:false;
     const nearDistInput=document.getElementById("filterNearDist");
     const nearMaxUm=nearDistInput&&nearDistInput.value?parseFloat(nearDistInput.value):10;
@@ -11440,6 +11528,15 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
       })();
       if(areaSel.size){
         if(rowArea===null||!areaSel.has(rowArea))return null;
+      }
+      let recAct=null;
+      if(recOn){
+        recAct=UJ.recact.get(rowRootId(row));
+        if(recSel==="not"){if(recAct)return null;}
+        else{
+          if(!recAct||(recAct.os||0)<recMinR)return null;
+          if(recSel==="active"&&!UJ.recact.active(recAct,recZ,recClips,recT0,recT1))return null;
+        }
       }
       /* Vessel type/distance is now always looked up (cheap array reads) so the Excel export
          can always include it -- previously this was only computed while actively filtering
@@ -11591,7 +11688,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
         nearDist=nearestRefDistNm(row);
         if(nearDist===null||nearDist>nearMaxNm)return null;
       }
-      return{row,fine,fineDist,gl,layerLabel,wmDist,v1Bucket,rowArea,regionBoxLabel,hasCil,hasCent,nearDist,isRefRow:!!isRefRow};
+      return{row,fine,fineDist,gl,layerLabel,wmDist,v1Bucket,rowArea,regionBoxLabel,hasCil,hasCent,nearDist,recAct,isRefRow:!!isRefRow};
     }
     const out=[];
     if(attention){
@@ -11683,7 +11780,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
         if(m){out.push(m);seen.add(key);}
       }
     }
-    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive};
+    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive,recActive:recOn&&recSel!=="not",recSel,recClips};
   }
 
   /* Grid-accelerated k-nearest-neighbour lookup for the bulk Excel export. kNearest() above is
@@ -12061,6 +12158,11 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     if(result.glActive)cols.push({header:"Distance to glia limitans (µm)",get:m=>m.gl!=null?(m.gl/1000).toFixed(1):""});
     if(result.wmActive)cols.push({header:"Distance to white matter border (µm)",get:m=>m.wmDist!=null?m.wmDist.toFixed(1):""});
     if(result.v1ColActive)cols.push({header:"V1 column bucket",get:m=>m.v1Bucket==="neuron"?"Neuronal":m.v1Bucket==="nonvascular"?"Non-vascular, non-neuronal":m.v1Bucket==="vascular"?"Vascular (pericyte)":""});
+    if(result.recActive){
+      cols.push({header:"Recording reliability (oracle score)",get:m=>m.recAct&&m.recAct.os!=null?m.recAct.os:""});
+      cols.push({header:"Recording (session / scan / unit)",get:m=>m.recAct?m.recAct.s+" / "+m.recAct.sc+" / "+m.recAct.u:""});
+      cols.push({header:"Active (z ≥ 2) during",get:m=>m.recAct?UJ.recact.spans(m.recAct,2).map(x=>"clip "+(x.clip+1)+" "+x.from+"-"+x.to+" s").join("; "):""});
+    }
     if(result.regionActive)cols.push({header:"Region box",get:m=>m.regionBoxLabel||""});
     if(result.nearActive)cols.push({header:"Distance to nearest matched reference-type cell (µm)",get:m=>m.nearDist!=null?(m.nearDist/1000).toFixed(1):""});
     if(result.nearIncludeRefActive)cols.push({header:"Included as reference-type cell (landmark)?",get:m=>m.isRefRow?"Yes":"No"});
@@ -13280,7 +13382,8 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     vrBtn.disabled=false;vrBtn.textContent=orig;
     if(!parts.length){alert("None of these matches has a root ID with a mesh to show.");return;}
     const base=location.href.replace(/[#?].*$/,"").replace(/[^\/]*$/,"");
-    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:""),"_blank");
+    const ra=lastResult.recActive?"&ra=1"+(lastResult.recClips&&lastResult.recClips.length===1?"&raclip="+lastResult.recClips[0]:""):"";
+    window.open(base+"vr.html#c="+parts.join(",")+(n>VR_MAX?"&of="+n:"")+ra,"_blank");
   });
   if(viewAllBtn)viewAllBtn.addEventListener("click",async()=>{
     if(!lastResult||!lastResult.matches.length)return;
