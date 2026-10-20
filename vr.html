@@ -763,6 +763,7 @@ window.VR_DATASETS = {
     activity: "data/microns_activity/v1/",
     /* Søren's traced vessel network (section 22), from the line annotations in "Vascular outlines". */
     vascNet: "data/vasc_net/v1/",
+    nucRoots: "data/nuc_roots/m1300/v1/",
     /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
        because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
        neuroglancer skeleton for segment 3: uint32 nv, uint32 ne, float32 xyz NANOMETRES, uint32
@@ -1368,7 +1369,10 @@ async function loadOneInner(c, token, light){
   if (!ds){ c.err = true; c.status = "dataset '" + c.ds + "' not supported in the viewer yet"; renderList(); return false; }
   if (ds !== DSX){ c.err = true; c.status = "from " + ds.label + " — this viewer is showing " + DSX.label + "; open that tool's VR collection for it"; renderList(); return false; }
   try {
-    if ((!c.root && !(c.extra && c.extra.length)) || !ds.mesh){
+    const nucRoot = ds.mesh ? await nucRootFor(ds, c.nuc).catch(() => null) : null;
+    c.meshRoot = null;
+    if (!c.root && !(c.extra && c.extra.length) && nucRoot) c.meshRoot = nucRoot;
+    if ((!c.root && !(c.extra && c.extra.length) && !nucRoot) || !ds.mesh){
       /* A cell with no root id -- one traced by hand that the segmentation does not have -- or any
          cell of a dataset with no meshes here: its nucleus and what was traced of it, the traced
          outline BEING the cell (section 7, loadTracedBody). */
@@ -1379,11 +1383,21 @@ async function loadOneInner(c, token, light){
     }
     c.status = "fetching mesh…"; renderList();
     const extras = await extrasFor(c, ds);
-    const geo = await UJ.mesh.fetchCombinedMesh(c.root, (f, msg) => {
+    const prog = (f, msg) => {
       const s = (msg || "") + " " + Math.round(f * 100) + "%";
       if (s !== c.status){ c.status = s; const el = listEl.querySelector(`[data-pick="${c.i}"]`); if (el) el.parentNode.querySelector(".st").textContent = s; }
       loadUi(c, f, msg);
-    }, false, extras, light);
+    };
+    let geo;
+    if (c.meshRoot) geo = await UJ.mesh.fetchCombinedMesh(c.meshRoot, prog, false, [], light);
+    else {
+      try { geo = await UJ.mesh.fetchCombinedMesh(c.root || extras[0], prog, false, c.root ? extras : extras.slice(1), light); }
+      catch (e){
+        if (!nucRoot || nucRoot === String(c.root) || extras.includes(nucRoot)) throw e;
+        geo = await UJ.mesh.fetchCombinedMesh(nucRoot, prog, false, [], light);
+        c.meshRoot = nucRoot;
+      }
+    }
     if (token !== LOAD_TOKEN) return false;
     c.extraUsed = extras; c.graph = null;
     const g = geometryFrom(geo.positions, geo.indices);
@@ -1394,6 +1408,7 @@ async function loadOneInner(c, token, light){
     c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
              + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
              + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "")
+             + (c.meshRoot ? " · drawn from the root ID at its nucleus (" + c.meshRoot + ")" + (c.root ? "; " + c.root + " is not in the seg_m1300 snapshot" : "") : "")
              + (c.neighbourOf != null ? " · neighbour, " + c.dist.toFixed(0) + " µm away" : "");
     await loadNucleus(c, ds, token);
     return true;
@@ -1515,6 +1530,26 @@ async function allProposals(ds){
     ALL_PROPS = r.ok ? (((await r.json()) || {}).byNucleus || {}) : {};
   } catch (e){ ALL_PROPS = {}; }
   return ALL_PROPS;
+}
+/* THE ROOT ID AT THE NUCLEUS (v74, Søren: "many of the neurons fail to show their meshes. I think
+   this is because the root ID has changed"). They have: a cell can arrive with a root id from a
+   newer table (a synapse partner, a functional match), which the frozen seg_m1300 mesh snapshot
+   does not hold. But its NUCLEUS id is the same in every version, and µJump's nucleus table carries
+   the seg_m1300 root id of each nucleus (checked against the seg_m1300 voxels at the centroids).
+   data/nuc_roots/m1300/v1/nuc2root.bin is that table, 144,118 nuclei; when a cell's own root ids
+   find no mesh, the one at its nucleus is used. The cell keeps its own root id everywhere else. */
+const NUCROOT = { p: null };
+async function nucRootFor(ds, nuc){
+  if (!ds.nucRoots || !nuc || nuc === "0") return null;
+  if (!NUCROOT.p) NUCROOT.p = (async () => {
+    const r = await fetch(ds.nucRoots + "nuc2root.bin"); if (!r.ok) throw new Error("HTTP " + r.status);
+    const b = await r.arrayBuffer(), n = new DataView(b).getUint32(0, true);
+    return { n, id: new Uint32Array(b, 4, n), hi: new Uint32Array(b, 4 + 4 * n, n), lo: new Uint32Array(b, 4 + 8 * n, n) };
+  })().catch(e => { NUCROOT.p = null; throw e; });
+  const T = await NUCROOT.p, want = Number(nuc);
+  let a = 0, z = T.n - 1;
+  while (a <= z){ const m = (a + z) >> 1, v = T.id[m]; if (v === want){ if (!T.hi[m] && !T.lo[m]) return null; return (BigInt(T.hi[m]) * 4294967296n + BigInt(T.lo[m])).toString(); } if (v < want) a = m + 1; else z = m - 1; }
+  return null;
 }
 async function extrasFor(c, ds){
   const out = new Set((c.extra || []).map(String));
@@ -8707,7 +8742,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
