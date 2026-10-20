@@ -60,9 +60,19 @@ def edit(path, pairs):
     s = io.open(path, encoding="utf-8").read()
     before = s
     print(os.path.basename(path))
-    for name, old, new in pairs:
+    for name, old, new, marker in ((p + (None,))[:4] for p in pairs):
+        # AN OPTIONAL 4th ELEMENT, THE MARKER, and this file is why. Pair 2 below inserts the
+        # #about teaser by replacing the whole paragraph above it; pair 3, added a day later,
+        # rewrites that same paragraph. After pair 3 has run once, pair 2's "is my output already
+        # here" test is false (its output contained the old paragraph) and so is "is my input
+        # still here" -- so the run asserts on a file that is perfectly correct. The marker is the
+        # one fragment the pair OWNS and nothing else edits: present, and the pair is done.
+        if marker is not None:
+            if marker in s:
+                print("  already there: " + name)
+                continue
         # A removal cannot be guarded by its replacement: the empty string is in every file.
-        if (new and new in s) or (not new and old not in s):
+        elif (new and new in s) or (not new and old not in s):
             print("  already there: " + name)
             continue
         n = s.count(old)
@@ -109,7 +119,8 @@ edit(IDX, [
       the brain's waste-clearance route. The findings, the figures, and the coordinates they were
       read from.
       <a class="morelink" href="/research.html">Research &amp; collaborations &rarr;</a>
-    </p>"""),
+    </p>""",
+     u'class="morelink" href="/research.html"'),
 
     # ── 2026-10-19, later the same day ────────────────────────────────────────────────────────
     # Søren: *"I think it should be clear that I don't have a physical lab and I don't have
@@ -131,6 +142,23 @@ edit(IDX, [
       hobby, built in spare time on electron microscopy volumes that other people collected,
       imaged and released publicly.
     </p>"""),
+
+    # ── 2026-10-20 ────────────────────────────────────────────────────────────────────────────
+    # Adding Stephanie Bonney to the collaborators sent me to look up the Frontiers 2022 review,
+    # and it is NOT Søren's paper: Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller & Shih.
+    # It sat under "Selected publications" between four of his own with no author line, which is
+    # the one place on this site where a reader would reasonably assume authorship. The other
+    # entries name their authors whenever he is not the only one, so this one now does too, and
+    # says what it is doing in the list.
+    (u"the Frontiers review names its authors, because they are not him",
+     u"""        <span class="t">Public volume electron microscopy data: an essential resource to study the brain microvasculature</span>
+        <em>Frontiers in Cell and Developmental Biology</em> (2022).
+        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">doi:10.3389/fcell.2022.849469</a>""",
+     u"""        <span class="t">Public volume electron microscopy data: an essential resource to study the brain microvasculature</span>
+        Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller &amp; Shih.
+        <em>Frontiers in Cell and Developmental Biology</em> (2022).
+        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">doi:10.3389/fcell.2022.849469</a>
+        <span class="note">&mdash; not mine; the review that makes the case this site is built on</span>"""),
 
     (u"a style for that one paragraph",
      u""" /* ── THE MENU ──""",
@@ -264,21 +292,36 @@ PEOPLE = [
               u"imaging in awake mice. The volume EM half, tracing the fibroblast groups over the "
               u"pial surface, was the contribution from this side.",
          paper=u"leptomeninges"),
+    # 2026-10-20. Søren: *"I think Stephanie Bonney should also be mentioned as a main
+    # collaborator. Although we haven't published together yet, we have annotated a lot of
+    # fibroblasts together. She did the perivascular fibroblasts."*
+    #
+    # A collaborator with no joint paper cannot have the card the other three have, and faking
+    # one — linking her to a paper she is not on, or leaving the link off and saying nothing —
+    # would be the two wrong answers. The card says plainly that the work is unpublished, and
+    # links instead to the review she is first author of, which is the argument this whole site
+    # rests on and which was until today sitting unattributed in his publications list.
+    dict(slug="stephanie-bonney", name=u"Stephanie K. Bonney", mono="SB",
+         where=u"University of Colorado Anschutz Medical Campus",
+         what=u"Perivascular fibroblasts. A long run of fibroblast annotation in the MICrONS "
+              u"volume done between the two of us, with the perivascular ones hers. She is also "
+              u"first author of the 2022 review that makes the case for working in public "
+              u"volumes at all — the argument this site is built on.",
+         wip=u"Annotating together — no joint paper yet",
+         href=u"https://doi.org/10.3389/fcell.2022.849469",
+         hreftext=u"Her 2022 review"),
 ]
 
-ALSO = [
-    (u"Chen He", u"University of Copenhagen", u"first author, leptomeningeal fibroblasts"),
-    (u"Vanshika Chaddha", u"NIH, Bethesda", u"co-first author, primary cilia"),
-    (u"Brad A. Sutherland", u"University of Tasmania", u"co-senior author, microglia"),
-    (u"Catherine G. Foster", u"Seattle Children’s Research Institute", u"microglia"),
-    (u"Jennifer Lippincott-Schwartz", u"Janelia Research Campus, HHMI", u"primary cilia"),
-    (u"Carolyn M. Ott", u"Janelia Research Campus, HHMI", u"primary cilia"),
-    (u"Anna Devor", u"Boston University &amp; Martinos Center, MGH", u"leptomeningeal fibroblasts"),
-    (u"Kıvılcım Kılıç", u"Boston University", u"leptomeningeal fibroblasts"),
-    (u"Lechan Tao", u"University of Copenhagen", u"leptomeningeal fibroblasts"),
-    (u"Xiao Zhang", u"University of Copenhagen", u"leptomeningeal fibroblasts"),
-    (u"Neha Zahoor Sheikh", u"University of Copenhagen", u"leptomeningeal fibroblasts"),
-]
+# ── NO "AND WITH" LIST ────────────────────────────────────────────────────────────  2026-10-20
+# There was one: the other eleven authors of the four papers, with their affiliations and which
+# study they were on. Søren, looking at it: *"These people may be on the papers but I haven't
+# collaborated directly with them. So I don't think it is fair they are mentioned."*
+#
+# He is right, and the mistake was mine: being an author on a paper and having worked with
+# somebody are different facts, and a page headed "The people" turns the first into a claim about
+# the second. Nobody loses credit by this going — every author is still named, in full and in
+# order, on their own paper's block below, which is where authorship belongs. The cards are for
+# the four people he actually worked with.
 
 # ── the papers ────────────────────────────────────────────────────────────────────────────────
 # `places` is (label, "x, y, z", volume). volume "" means a volume this site cannot resolve, and
@@ -563,6 +606,13 @@ def paper_block(p):
 
 
 def person_card(d):
+    u"""A card either points at a paper on this page or says there is not one yet. Nothing in
+    between: a collaborator with no joint paper must not be linked to somebody else's."""
+    if d.get("paper"):
+        tail = u'<a href="#p-%s">The paper &rarr;</a>' % d["paper"]
+    else:
+        tail = (u'<p class="wip">%s</p>\n        <a href="%s" rel="noopener">%s &rarr;</a>'
+                % (d["wip"], d["href"], d["hreftext"]))
     return u"""
     <li class="person">
       <span class="face" data-mono="%(mono)s"><img src="/research/people/%(slug)s.jpg" alt="%(name)s"></span>
@@ -570,15 +620,12 @@ def person_card(d):
         <b>%(name)s</b>
         <span class="aff">%(where)s</span>
         <p>%(what)s</p>
-        <a href="#p-%(paper)s">The paper &rarr;</a>
+        %(tail)s
       </div>
-    </li>""" % d
+    </li>""" % dict(d, tail=tail)
 
 
 PEOPLE_HTML = u"".join(person_card(d) for d in PEOPLE)
-ALSO_HTML = u"\n".join(
-    u'      <li><b>%s</b> <span class="aff">%s</span> <span class="role">%s</span></li>' % a
-    for a in ALSO)
 PAPERS_HTML = u"\n".join(paper_block(p) for p in PAPERS)
 
 PAGE_CSS = u"""
@@ -594,8 +641,14 @@ PAGE_CSS = u"""
   .rsec h2{font-size:24px;margin:0 0 6px}
   .rsec .sub{color:var(--muted);max-width:68ch;margin:0 0 18px}
   /* ── the people ─────────────────────────────────────────────────────────────────────────── */
+  /* Two columns rather than three: with four people, three-up leaves an orphan and squeezes
+     every card to about 260 px beside a 72 px portrait. 2026-10-20. */
   .people{display:grid;gap:16px;grid-template-columns:1fr;margin:0;padding:0;list-style:none}
-  @media(min-width:820px){.people{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:760px){.people{grid-template-columns:repeat(2,1fr)}}
+  /* The card for work that has no paper yet. Said on the card, not left to be inferred from a
+     missing link. */
+  .person .wip{display:inline-block;margin:0 0 8px;font-size:12px;color:var(--accent);
+    background:var(--hero);border:1px solid var(--line);border-radius:10px;padding:3px 9px}
   .person{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);
     border-radius:14px;padding:16px}
   .person>div{min-width:0}
@@ -611,9 +664,6 @@ PAGE_CSS = u"""
     background:var(--teal-soft);display:flex;align-items:center;justify-content:center}
   .face::before{content:attr(data-mono);font:600 24px/1 system-ui,sans-serif;color:var(--teal)}
   .face img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .alsolist{columns:2 220px;gap:24px;margin:16px 0 0;padding:0;list-style:none;font-size:14px}
-  .alsolist li{break-inside:avoid;margin:0 0 9px}
-  .alsolist .aff,.alsolist .role{display:block;color:var(--muted);font-size:13px}
   /* ── the papers ─────────────────────────────────────────────────────────────────────────── */
   .paper{background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:22px 22px 10px;margin:0 0 22px}
@@ -717,16 +767,17 @@ page = u"""<!DOCTYPE html>
   <div class="wrap">
     <h2>The people</h2>
     <p class="sub">
-      Three groups brought the questions, the animals and the physiology, and each of them has a
-      laboratory. The volume electron microscopy is the half done on this side: one person, a
-      laptop and a dataset somebody else paid to collect.
+      Four collaborations, three of which have produced a paper. They brought the questions, the
+      animals and the physiology, and each of them has a laboratory. The volume electron
+      microscopy is the half done on this side: one person, a laptop and a dataset somebody else
+      paid to collect.
     </p>
     <ul class="people">%(people)s
     </ul>
-    <h2 style="margin-top:30px;font-size:18px">And with</h2>
-    <ul class="alsolist">
-%(also)s
-    </ul>
+    <p class="sub" style="margin-top:18px">
+      Everyone who wrote each paper is named on it below, in order. Being an author and having
+      worked together are not the same thing, and this page does not treat them as one.
+    </p>
   </div>
 </section>
 
@@ -761,10 +812,12 @@ page = u"""<!DOCTYPE html>
       </p>
       <p>
         The case for working this way at all — that the public volumes already contain more
-        microvascular anatomy than any one lab will ever collect — is set out in
-        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Public volume electron
-        microscopy data: an essential resource to study the brain microvasculature</a>
-        (<em>Frontiers in Cell and Developmental Biology</em>, 2022).
+        microvascular anatomy than any one laboratory will ever collect — is not mine. It is set
+        out in <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Public volume
+        electron microscopy data: an essential resource to study the brain microvasculature</a>
+        by Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller and Shih
+        (<em>Frontiers in Cell and Developmental Biology</em>, 2022), and these tools are in a
+        sense an attempt to do what that review says is possible.
       </p>
       <p>
         The tools: <a href="/ujump.html">µJump</a> (MICrONS minnie65 and minnie35, where four of
@@ -826,7 +879,7 @@ page = u"""<!DOCTYPE html>
 </body>
 </html>
 """ % dict(prepaint=PREPAINT, icon=ICON, style=STYLE, pagecss=PAGE_CSS, brand=BRAND,
-           menu=MENU_OUT, build=BUILD, bars=BARS, people=PEOPLE_HTML, also=ALSO_HTML,
+           menu=MENU_OUT, build=BUILD, bars=BARS, people=PEOPLE_HTML,
            papers=PAPERS_HTML, footer=FOOTER, themefns=THEMEFNS, navjs=NAVJS, pagejs=PAGE_JS)
 
 import datetime

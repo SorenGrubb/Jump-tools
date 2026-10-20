@@ -640,7 +640,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-19 11:08</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-20 11:37</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -965,6 +965,21 @@ for at least one second</div>
 </div>
 <div style="margin-top:8px">and reliability (oracle score) at least <input type="text" id="filterRecMinR" value="0" style="width:44px;padding:3px 5px" inputmode="decimal" title="How alike the 10 repeats were: 0.3 and up is reliable, below 0.15 weak"></div>
 <div id="filterRecMsg" style="margin-top:6px;color:var(--mut)"></div>
+</div>
+</details>
+<details class="rv-panel filter-section" id="filterSecVol">
+<summary title="The whole-cell volume precomputed for every MICrONS nucleus from its seg_m1300 mesh (2026-10-20) -- an estimate, read at a coarse level of detail. Tick the types above (or &quot;include unclassified&quot;), as for every other filter here.">Cell volume</summary>
+<div style="margin-top:10px;font-size:12px">
+<div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
+<label><input type="checkbox" id="filterVolOn"> Whole-cell volume between</label>
+<input type="text" id="filterVolMin" value="0" style="width:64px;padding:4px 6px" inputmode="decimal">
+<span>and</span>
+<input type="text" id="filterVolMax" value="" placeholder="no limit" style="width:72px;padding:4px 6px" inputmode="decimal">
+<span style="color:var(--mut)">µm³</span>
+</div>
+<div style="margin-top:6px"><label><input type="checkbox" id="filterVolNoFrag" checked> leave out fragments (segment smaller than its own nucleus)</label></div>
+<div style="margin-top:4px"><label><input type="checkbox" id="filterVolNoMerge" checked> leave out merges (one segment holding several nuclei)</label></div>
+<div style="margin-top:6px;color:var(--mut)">While this is ticked, cells with no volume (no root ID, or no mesh in the seg_m1300 snapshot) are left out. The volume and its note are always in the Excel download.</div>
 </div>
 </details>
 <script>
@@ -2753,6 +2768,7 @@ const NCV=D.CVB?new Float32Array(b64(D.CVB).buffer):null,NCF=D.CFB?b64(D.CFB):nu
 function cellVolume(i){const v=NCV?NCV[i]:NaN;return Number.isFinite(v)?v:null;}
 function cellVolNote(i){const f=NCF?NCF[i]:0,o=[];
   if(f&8)o.push("root ID found at the nucleus (automatic)");
+  if(f&16)o.push("root ID updated to the seg_m1300 segment at the nucleus (the table's was outdated)");
   if(f&1)o.push("merge: this root holds several nuclei");
   if(f&2)o.push("smaller than its nucleus: a fragment, not the whole cell");
   if(f&4)o.push("no mesh in the seg_m1300 snapshot");
@@ -11480,6 +11496,12 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
     const areaSel=new Set(Array.prototype.map.call(document.querySelectorAll(".farea:checked"),function(e){return +e.value;}));
     /* RECORDED ACTIVITY (2026-10-19): imaged / active in chosen clips and seconds / not imaged,
        looked up by root id in core/recact.js's index. */
+    /* CELL VOLUME (2026-10-20): the precomputed whole-cell volume (cellVolume/cellVolNote near
+       nucVolumeStr). Only "N"-space rows have one. */
+    const volOn=!!(document.getElementById("filterVolOn")||{}).checked;
+    const numIn=(id,dflt)=>{const v=parseFloat(String((document.getElementById(id)||{}).value||"").replace(/\s/g,"").replace(",","."));return Number.isFinite(v)?v:dflt;};
+    const volMin=numIn("filterVolMin",0),volMax=numIn("filterVolMax",Infinity);
+    const volNoFrag=!!(document.getElementById("filterVolNoFrag")||{}).checked,volNoMerge=!!(document.getElementById("filterVolNoMerge")||{}).checked;
     const recSel=document.getElementById("filterRecAct")?document.getElementById("filterRecAct").value:"";
     const recOn=!!recSel&&!!(UJ.recact&&UJ.recact.ready());
     const recZ=parseFloat((document.getElementById("filterRecZ")||{}).value)||2;
@@ -11592,6 +11614,13 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
       })();
       if(areaSel.size){
         if(rowArea===null||!areaSel.has(rowArea))return null;
+      }
+      if(volOn){
+        if(row.space!=="N")return null;
+        const cv=cellVolume(row.i),cf=NCF?NCF[row.i]:0;
+        if(cv==null||cv<volMin||cv>volMax)return null;
+        if(volNoFrag&&(cf&2))return null;
+        if(volNoMerge&&(cf&1))return null;
       }
       let recAct=null;
       if(recOn){
@@ -11844,7 +11873,7 @@ window.VD11_FIX={"OV_FINE_IDX":"OAAAADwAAABIAAAAUAAAAFcAAABgAAAAeQAAAIwAAACNAAAA
         if(m){out.push(m);seen.add(key);}
       }
     }
-    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive,recActive:recOn&&recSel!=="not",recSel,recClips};
+    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive,recActive:recOn&&recSel!=="not",recSel,recClips,volActive:volOn};
   }
 
   /* Grid-accelerated k-nearest-neighbour lookup for the bulk Excel export. kNearest() above is

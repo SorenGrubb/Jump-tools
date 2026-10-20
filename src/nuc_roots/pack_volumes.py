@@ -22,7 +22,17 @@ vol["error"] = vol["error"].fillna("")
 V = {int(r): (float(v) if e_ == "" else None) for r, v, e_ in zip(vol.root_id, vol.cell_volume_um3, vol.error)}
 z = pd.concat([pd.read_csv(f, dtype={"voxel_root_id": str}) for f in sorted(glob.glob(R + "zero_*.csv"))])
 Z = {int(a): (int(r), float(sh)) for a, r, sh in zip(z.nucleus_id, z.voxel_root_id, z.vote_share)}
-flags = np.zeros(N, np.uint8); cv = np.full(N, np.nan, np.float32); added = 0
+flags = np.zeros(N, np.uint8); cv = np.full(N, np.nan, np.float32); added = 0; replaced = 0
+# The notebook's own per-nucleus table (second version reads the segmentation at EVERY nucleus):
+# where it says the table root is outdated, its seg_m1300 root replaces it (flag 16).
+import os
+NR = {}
+if os.path.exists(R + "nuc_roots_m1300.csv"):
+    t = pd.read_csv(R + "nuc_roots_m1300.csv", dtype={"root_id": str, "root_source": str})
+    NR = {int(a): (int(b), s_) for a, b, s_ in zip(t.nucleus_id, t.root_id, t.root_source) if s_ == "voxels (table root outdated)"}
+for i in range(N):
+    if int(nid[i]) in NR and int(root[i]) != 0:
+        root[i] = np.uint64(NR[int(nid[i])][0]); flags[i] |= 16; replaced += 1
 for i in range(N):
     r = int(root[i])
     if r == 0 and int(nid[i]) in Z:
@@ -49,5 +59,5 @@ assert len(HI) < 255
 d["HI"] = HI; d["HB"] = e(nhb); d["LB"] = e(nlo); d["CVB"] = e(cv); d["CFB"] = e(flags)
 s = s[:m.start(2)] + json.dumps(d, separators=(",", ":")) + s[m.end(2):]
 open(P, "w", encoding="utf-8").write(s)
-print("nuclei", N, "| roots added at nucleus", added, "| with cell volume", int(np.isfinite(cv).sum()),
+print("nuclei", N, "| outdated table roots replaced", replaced, "| roots added at nucleus", added, "| with cell volume", int(np.isfinite(cv).sum()),
       "| merge", int((flags & 1 > 0).sum()), "| smaller than nucleus", int((flags & 2 > 0).sum()), "| no mesh", int((flags & 4 > 0).sum()))

@@ -140,6 +140,11 @@
     .volbox{position:absolute;top:26px;right:28px;margin:0;text-align:right}
     .volbox svg{margin-left:auto}
   }
+  /* The three numbers that describe the drawn box, each behind its own symbol (2026-10-18):
+     volume (cube), extent (double arrow), voxel (pixel grid). See the_card_reads_at_a_glance.py. */
+  .volbox .vf{display:flex;align-items:center;gap:6px;line-height:1.55}
+  .volbox .vi{width:12px;height:12px;flex:none;opacity:.8}
+  @media(min-width:820px){ .volbox .vf{justify-content:flex-end} }
   /* featured tool card */
   .feature{
     display:block;margin:32px 0 0;
@@ -440,8 +445,14 @@
   .rsec h2{font-size:24px;margin:0 0 6px}
   .rsec .sub{color:var(--muted);max-width:68ch;margin:0 0 18px}
   /* ── the people ─────────────────────────────────────────────────────────────────────────── */
+  /* Two columns rather than three: with four people, three-up leaves an orphan and squeezes
+     every card to about 260 px beside a 72 px portrait. 2026-10-20. */
   .people{display:grid;gap:16px;grid-template-columns:1fr;margin:0;padding:0;list-style:none}
-  @media(min-width:820px){.people{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:760px){.people{grid-template-columns:repeat(2,1fr)}}
+  /* The card for work that has no paper yet. Said on the card, not left to be inferred from a
+     missing link. */
+  .person .wip{display:inline-block;margin:0 0 8px;font-size:12px;color:var(--accent);
+    background:var(--hero);border:1px solid var(--line);border-radius:10px;padding:3px 9px}
   .person{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);
     border-radius:14px;padding:16px}
   .person>div{min-width:0}
@@ -457,9 +468,6 @@
     background:var(--teal-soft);display:flex;align-items:center;justify-content:center}
   .face::before{content:attr(data-mono);font:600 24px/1 system-ui,sans-serif;color:var(--teal)}
   .face img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .alsolist{columns:2 220px;gap:24px;margin:16px 0 0;padding:0;list-style:none;font-size:14px}
-  .alsolist li{break-inside:avoid;margin:0 0 9px}
-  .alsolist .aff,.alsolist .role{display:block;color:var(--muted);font-size:13px}
   /* ── the papers ─────────────────────────────────────────────────────────────────────────── */
   .paper{background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:22px 22px 10px;margin:0 0 22px}
@@ -555,7 +563,7 @@
       <li><a href="#method">How this became the tools</a></li>
       <li><a href="#credits">Figure credits</a></li>
     </ul>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-19 03:18</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-20 10:27</span></p>
   </div>
 </header>
 
@@ -590,9 +598,10 @@
   <div class="wrap">
     <h2>The people</h2>
     <p class="sub">
-      Three groups brought the questions, the animals and the physiology, and each of them has a
-      laboratory. The volume electron microscopy is the half done on this side: one person, a
-      laptop and a dataset somebody else paid to collect.
+      Four collaborations, three of which have produced a paper. They brought the questions, the
+      animals and the physiology, and each of them has a laboratory. The volume electron
+      microscopy is the half done on this side: one person, a laptop and a dataset somebody else
+      paid to collect.
     </p>
     <ul class="people">
     <li class="person">
@@ -622,21 +631,21 @@
         <a href="#p-leptomeninges">The paper &rarr;</a>
       </div>
     </li>
+    <li class="person">
+      <span class="face" data-mono="SB"><img src="/research/people/stephanie-bonney.jpg" alt="Stephanie K. Bonney"></span>
+      <div>
+        <b>Stephanie K. Bonney</b>
+        <span class="aff">University of Colorado Anschutz Medical Campus</span>
+        <p>Perivascular fibroblasts. A long run of fibroblast annotation in the MICrONS volume done between the two of us, with the perivascular ones hers. She is also first author of the 2022 review that makes the case for working in public volumes at all — the argument this site is built on.</p>
+        <p class="wip">Annotating together — no joint paper yet</p>
+        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Her 2022 review &rarr;</a>
+      </div>
+    </li>
     </ul>
-    <h2 style="margin-top:30px;font-size:18px">And with</h2>
-    <ul class="alsolist">
-      <li><b>Chen He</b> <span class="aff">University of Copenhagen</span> <span class="role">first author, leptomeningeal fibroblasts</span></li>
-      <li><b>Vanshika Chaddha</b> <span class="aff">NIH, Bethesda</span> <span class="role">co-first author, primary cilia</span></li>
-      <li><b>Brad A. Sutherland</b> <span class="aff">University of Tasmania</span> <span class="role">co-senior author, microglia</span></li>
-      <li><b>Catherine G. Foster</b> <span class="aff">Seattle Children’s Research Institute</span> <span class="role">microglia</span></li>
-      <li><b>Jennifer Lippincott-Schwartz</b> <span class="aff">Janelia Research Campus, HHMI</span> <span class="role">primary cilia</span></li>
-      <li><b>Carolyn M. Ott</b> <span class="aff">Janelia Research Campus, HHMI</span> <span class="role">primary cilia</span></li>
-      <li><b>Anna Devor</b> <span class="aff">Boston University &amp; Martinos Center, MGH</span> <span class="role">leptomeningeal fibroblasts</span></li>
-      <li><b>Kıvılcım Kılıç</b> <span class="aff">Boston University</span> <span class="role">leptomeningeal fibroblasts</span></li>
-      <li><b>Lechan Tao</b> <span class="aff">University of Copenhagen</span> <span class="role">leptomeningeal fibroblasts</span></li>
-      <li><b>Xiao Zhang</b> <span class="aff">University of Copenhagen</span> <span class="role">leptomeningeal fibroblasts</span></li>
-      <li><b>Neha Zahoor Sheikh</b> <span class="aff">University of Copenhagen</span> <span class="role">leptomeningeal fibroblasts</span></li>
-    </ul>
+    <p class="sub" style="margin-top:18px">
+      Everyone who wrote each paper is named on it below, in order. Being an author and having
+      worked together are not the same thing, and this page does not treat them as one.
+    </p>
   </div>
 </section>
 
@@ -808,10 +817,12 @@
       </p>
       <p>
         The case for working this way at all — that the public volumes already contain more
-        microvascular anatomy than any one lab will ever collect — is set out in
-        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Public volume electron
-        microscopy data: an essential resource to study the brain microvasculature</a>
-        (<em>Frontiers in Cell and Developmental Biology</em>, 2022).
+        microvascular anatomy than any one laboratory will ever collect — is not mine. It is set
+        out in <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Public volume
+        electron microscopy data: an essential resource to study the brain microvasculature</a>
+        by Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller and Shih
+        (<em>Frontiers in Cell and Developmental Biology</em>, 2022), and these tools are in a
+        sense an attempt to do what that review says is possible.
       </p>
       <p>
         The tools: <a href="/ujump.html">µJump</a> (MICrONS minnie65 and minnie35, where four of
