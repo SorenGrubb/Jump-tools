@@ -38,10 +38,12 @@ figure is therefore shown as published and downscaled, never cropped to the pane
 looked better, and #credits says which licence each one is under. The two that need Søren's
 decision rather than mine are named there too.
 
-THE PORTRAITS ARE NOT HERE. research/people/*.jpg does not exist yet; each card falls back to a
-monogram, so the page is finished today and better the moment three files land. The fallback is
-wired in script rather than in an onerror attribute, for the same reason everything else on this
-site is.
+THE PORTRAITS ARRIVED ON 2026-10-20 and are in research/people/. They are squared and cut down
+by src/make_portraits.py, not by the browser: the circle uses object-fit:cover, which centre-crops,
+and a centre crop of a tall head-and-shoulders photograph takes the chin off. The monogram stays
+underneath as the fallback — a broken image icon on somebody's name is worse than their initials —
+and is wired in script rather than in an onerror attribute, for the same reason everything else on
+this site is.
 
 Check: researchcheck.js (new)
 Run: python3 src/the_research_page_is_about_collaborations.py, then python3 src/build_stamps.py,
@@ -144,13 +146,13 @@ edit(IDX, [
     </p>"""),
 
     # ── 2026-10-20 ────────────────────────────────────────────────────────────────────────────
-    # Adding Stephanie Bonney to the collaborators sent me to look up the Frontiers 2022 review,
+    # Adding Stephanie Bonney to the collaborators sent me to look up the Frontiers 2022 paper,
     # and it is NOT Søren's paper: Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller & Shih.
     # It sat under "Selected publications" between four of his own with no author line, which is
     # the one place on this site where a reader would reasonably assume authorship. The other
     # entries name their authors whenever he is not the only one, so this one now does too, and
     # says what it is doing in the list.
-    (u"the Frontiers review names its authors, because they are not him",
+    (u"the Frontiers paper names its authors, because they are not him",
      u"""        <span class="t">Public volume electron microscopy data: an essential resource to study the brain microvasculature</span>
         <em>Frontiers in Cell and Developmental Biology</em> (2022).
         <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">doi:10.3389/fcell.2022.849469</a>""",
@@ -158,7 +160,18 @@ edit(IDX, [
         Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller &amp; Shih.
         <em>Frontiers in Cell and Developmental Biology</em> (2022).
         <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">doi:10.3389/fcell.2022.849469</a>
-        <span class="note">&mdash; not mine; the review that makes the case this site is built on</span>"""),
+        <span class="note">&mdash; not mine; the paper that makes the case this site is built on</span>""",
+     u"Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller &amp; Shih."),
+
+    # 2026-10-20, an hour later. Søren, with a screenshot of the Frontiers page: *"Bonneys paper
+    # is not a review."* It is filed as ORIGINAL RESEARCH, and I had called it a review in four
+    # places. Its own pair above cannot fix a tree where it has already run -- the note is
+    # written, so neither its input nor its output is present and the run would assert on a file
+    # that is correct apart from one word. This pair repairs that word, and on a fresh checkout
+    # the pair above writes "paper" straight away and the default guard skips this one.
+    (u"...and it is a paper, not a review",
+     u"&mdash; not mine; the review that makes the case this site is built on",
+     u"&mdash; not mine; the paper that makes the case this site is built on"),
 
     (u"a style for that one paragraph",
      u""" /* ── THE MENU ──""",
@@ -271,7 +284,7 @@ MENU_OUT = MENU.replace(u'href="#', u'href="/index.html#')
 assert u'href="/index.html#tools"' in MENU_OUT
 
 # ── the people ────────────────────────────────────────────────────────────────────────────────
-# `pic` is a file that does not exist yet; `mono` is what shows until it does.
+# `slug` names the photograph in research/people/; `mono` is what shows if it will not load.
 PEOPLE = [
     dict(slug="gary-morris", name=u"Gary P. Morris", mono="GM",
          where=u"Tasmanian School of Medicine, University of Tasmania, Hobart",
@@ -299,17 +312,17 @@ PEOPLE = [
     # A collaborator with no joint paper cannot have the card the other three have, and faking
     # one — linking her to a paper she is not on, or leaving the link off and saying nothing —
     # would be the two wrong answers. The card says plainly that the work is unpublished, and
-    # links instead to the review she is first author of, which is the argument this whole site
+    # links instead to the paper she is first author of, which is the argument this whole site
     # rests on and which was until today sitting unattributed in his publications list.
     dict(slug="stephanie-bonney", name=u"Stephanie K. Bonney", mono="SB",
          where=u"University of Colorado Anschutz Medical Campus",
          what=u"Perivascular fibroblasts. A long run of fibroblast annotation in the MICrONS "
               u"volume done between the two of us, with the perivascular ones hers. She is also "
-              u"first author of the 2022 review that makes the case for working in public "
+              u"first author of the 2022 paper that makes the case for working in public "
               u"volumes at all — the argument this site is built on.",
          wip=u"Annotating together — no joint paper yet",
          href=u"https://doi.org/10.3389/fcell.2022.849469",
-         hreftext=u"Her 2022 review"),
+         hreftext=u"Her 2022 paper"),
 ]
 
 # ── NO "AND WITH" LIST ────────────────────────────────────────────────────────────  2026-10-20
@@ -322,6 +335,12 @@ PEOPLE = [
 # the second. Nobody loses credit by this going — every author is still named, in full and in
 # order, on their own paper's block below, which is where authorship belongs. The cards are for
 # the four people he actually worked with.
+#
+# AND THE PAGE DOES NOT EXPLAIN THIS. A paragraph went in saying why the distinction was being
+# drawn; Søren: *"We don't need this comment."* He is right -- it was me narrating a correction
+# of my own on his page, and a reader who never saw the old list has no idea what it is answering.
+# The distinction is kept by where the names sit, not by a sentence about it. The check holds it
+# the same way.
 
 # ── the papers ────────────────────────────────────────────────────────────────────────────────
 # `places` is (label, "x, y, z", volume). volume "" means a volume this site cannot resolve, and
@@ -647,8 +666,12 @@ PAGE_CSS = u"""
   @media(min-width:760px){.people{grid-template-columns:repeat(2,1fr)}}
   /* The card for work that has no paper yet. Said on the card, not left to be inferred from a
      missing link. */
-  .person .wip{display:inline-block;margin:0 0 8px;font-size:12px;color:var(--accent);
-    background:var(--hero);border:1px solid var(--line);border-radius:10px;padding:3px 9px}
+  /* width:fit-content rather than inline-block: inline-block let the link that follows sit on
+     the same line and wrap mid-phrase ("Her" / "2022 paper"), and a plain block would stretch the
+     chip's border the whole width of the card. 2026-10-20. */
+  .person .wip{display:block;width:-moz-fit-content;width:fit-content;margin:0 0 10px;
+    font-size:12px;color:var(--accent);background:var(--hero);border:1px solid var(--line);
+    border-radius:10px;padding:3px 9px}
   .person{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);
     border-radius:14px;padding:16px}
   .person>div{min-width:0}
@@ -657,9 +680,10 @@ PAGE_CSS = u"""
   .person p{margin:0 0 8px;font-size:14px;line-height:1.5}
   .person a{color:var(--teal);text-decoration:none;font-size:13px;font-weight:600}
   .person a:hover{text-decoration:underline}
-  /* THE MONOGRAM IS THE DEFAULT, not the error state: research/people/*.jpg is not in the
-     repository yet, and a broken image icon on somebody's name is worse than their initials. The
-     script at the foot of this page removes the <img> if it fails and leaves this showing. */
+  /* THE MONOGRAM IS THE FALLBACK, not the error state: a broken image icon on somebody's name
+     is worse than their initials, so the circle carries the initials and the photograph is laid
+     over them. The script at the foot of this page removes the <img> if it fails, and the
+     initials are what is left. */
   .face{flex:none;width:72px;height:72px;border-radius:50%;overflow:hidden;position:relative;
     background:var(--teal-soft);display:flex;align-items:center;justify-content:center}
   .face::before{content:attr(data-mono);font:600 24px/1 system-ui,sans-serif;color:var(--teal)}
@@ -706,8 +730,7 @@ PAGE_CSS = u"""
 
 PAGE_JS = u"""
 <script>
-/* The monogram stands unless the photograph loads. research/people/*.jpg is not in the repository
-   yet; when three files land, nothing here changes. An error listener rather than an onerror
+/* The monogram stands unless the photograph loads. An error listener rather than an onerror
    attribute, to keep this page's markup free of inline handlers like every other page here. */
 (function(){
   Array.prototype.forEach.call(document.querySelectorAll(".face img"), function(img){
@@ -774,10 +797,6 @@ page = u"""<!DOCTYPE html>
     </p>
     <ul class="people">%(people)s
     </ul>
-    <p class="sub" style="margin-top:18px">
-      Everyone who wrote each paper is named on it below, in order. Being an author and having
-      worked together are not the same thing, and this page does not treat them as one.
-    </p>
   </div>
 </section>
 
@@ -817,7 +836,7 @@ page = u"""<!DOCTYPE html>
         electron microscopy data: an essential resource to study the brain microvasculature</a>
         by Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller and Shih
         (<em>Frontiers in Cell and Developmental Biology</em>, 2022), and these tools are in a
-        sense an attempt to do what that review says is possible.
+        sense an attempt to do what that paper says is possible.
       </p>
       <p>
         The tools: <a href="/ujump.html">µJump</a> (MICrONS minnie65 and minnie35, where four of

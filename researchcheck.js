@@ -111,8 +111,8 @@ ok("every co-author is still named on their paper",
 ok("...and none of them is listed as somebody he worked with",
    !/alsolist|And with/.test(res) && COAUTHORS.every(n => cards.indexOf(n) < 0),
    /alsolist|And with/.test(res) ? "the list is back" : "cards hold the four only");
-ok("...and the page says why that distinction is being drawn",
-   /Being an author and having\s+worked together are not the same thing/.test(res));
+/* There is deliberately no sentence on the page explaining this -- see the generator. The two
+   assertions above are the guard; a page that argues with itself is not. */
 
 /* A collaborator with no joint paper gets neither a fake link to one nor a silent omission. */
 console.log("\n--- the collaboration with no paper yet ---");
@@ -128,14 +128,14 @@ const bonney = (() => {
 ok("...and does not link to a paper she is not on",
    bonney.length > 200 && bonney.indexOf('href="#p-') < 0
    && bonney.indexOf('href="https://doi.org/10.3389/fcell.2022.849469"') > 0,
-   bonney.indexOf('href="#p-') < 0 ? "links to her own review instead"
+   bonney.indexOf('href="#p-') < 0 ? "links to her own paper instead"
                                    : "links to a paper on this page");
-/* The thing that sent me looking: the Frontiers review is NOT his, and sat unattributed in his
+/* The thing that sent me looking: the Frontiers paper is NOT his, and sat unattributed in his
    publications list between four papers that are. */
-ok("the Frontiers review names Bonney et al. on the front page",
+ok("the Frontiers paper names Bonney et al. on the front page",
    idx.indexOf("Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller &amp; Shih") > 0);
 ok("...and says, there and here, that it is not his",
-   /not mine; the review that makes the case/.test(idx)
+   /not mine; the paper that makes the case/.test(idx)
    && /The case for working this way at all[\s\S]{0,160}is not mine/.test(res));
 
 console.log("\n--- every coordinate on the page lands in a real volume ---");
@@ -193,6 +193,31 @@ ok("...and a credit naming its licence or its terms",
    && res.indexOf("journals-permissions") > 0);
 ok("...and the page says why no figure is cropped",
    /NoDerivatives/.test(res) && /shown whole/.test(res));
+
+console.log("\n--- the portraits ---");
+const PEOPLE_FILES = ["gary-morris", "amreen-mughal", "changsi-cai", "stephanie-bonney"]
+  .map(s => s + ".jpg");
+const pdir = require("path").join(page_.dir(), "research", "people");
+const pmissing = PEOPLE_FILES.filter(f => !fs.existsSync(require("path").join(pdir, f)));
+ok("all four photographs are in the repository", pmissing.length === 0,
+   pmissing.join(", ") || PEOPLE_FILES.map(f =>
+     Math.round(fs.statSync(require("path").join(pdir, f)).size / 1024) + "kB").join(" "));
+/* Squared here rather than by the browser: object-fit:cover centre-crops, and a centre crop of a
+   tall head-and-shoulders photograph takes the chin off. */
+ok("...and each is square, so the circle does not crop a face",
+   PEOPLE_FILES.every(f => {
+     const b = fs.readFileSync(require("path").join(pdir, f));
+     for (let i = 2; i + 9 < b.length; ) {              /* walk the JPEG markers to SOF */
+       if (b[i] !== 0xFF) { i++; continue; }
+       const m = b[i + 1];
+       if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC)
+         return b.readUInt16BE(i + 5) === b.readUInt16BE(i + 7);
+       i += 2 + b.readUInt16BE(i + 2);
+     }
+     return false;
+   }));
+ok("...and the cropper that made them is kept beside the generator",
+   fs.existsSync(require("path").join(page_.dir(), "src", "make_portraits.py")));
 
 console.log("\n--- the chrome was lifted out of index.html, not written again ---");
 const tok = s => (s.match(/--teal:#[0-9a-f]{6}/) || [""])[0]
@@ -298,10 +323,18 @@ function serve(root) {
      imgs.map(i => i.src.split("/").pop() + " " + i.w + "×" + i.h).join(", "));
   const faces = await p.evaluate(() => Array.from(document.querySelectorAll(".face")).map(f => ({
     mono: f.dataset.mono, img: !!f.querySelector("img"),
+    nw: (f.querySelector("img") || {}).naturalWidth || 0,
+    nh: (f.querySelector("img") || {}).naturalHeight || 0,
     w: Math.round(f.getBoundingClientRect().width) })));
-  ok("a portrait that is not there yet leaves a monogram, not a broken image",
-     faces.length === 4 && faces.every(f => f.mono && f.w >= 60),
-     faces.map(f => f.mono + (f.img ? " (photo)" : " (monogram)")).join(", "));
+  /* Both halves: the photograph has to actually arrive, AND the monogram has to still be
+     underneath it. The fallback was the whole card for two days and is what a reader gets if a
+     file is ever renamed or lost, so it must not be thrown away now that the photographs are
+     here. 2026-10-20. */
+  ok("every portrait loads", faces.length === 4 && faces.every(f => f.img && f.w >= 60),
+     faces.map(f => f.mono + " " + (f.nw ? f.nw + "px" : "NO PHOTO")).join(", "));
+  ok("...with the monogram still underneath, in case one ever goes missing",
+     faces.every(f => f.mono && f.mono.length === 2),
+     faces.map(f => f.mono).join(", "));
 
   await p.setViewportSize({ width: 390, height: 780 });
   await p.waitForTimeout(300);
@@ -337,7 +370,7 @@ function serve(root) {
     p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     p.on("pageerror", e => { if (!/atob/.test(e.message)) errs.push("ujump: " + e.message); });
     await p.goto("file://" + page_("ujump.html") + "?at=" + at,
-                 { waitUntil: "domcontentloaded", timeout: 60000 });
+                 { waitUntil: "domcontentloaded", timeout: 20000 });
     await p.waitForTimeout(6000);
     const got = await p.evaluate(() => ({
       x: document.getElementById("x").value, y: document.getElementById("y").value,

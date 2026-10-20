@@ -451,8 +451,12 @@
   @media(min-width:760px){.people{grid-template-columns:repeat(2,1fr)}}
   /* The card for work that has no paper yet. Said on the card, not left to be inferred from a
      missing link. */
-  .person .wip{display:inline-block;margin:0 0 8px;font-size:12px;color:var(--accent);
-    background:var(--hero);border:1px solid var(--line);border-radius:10px;padding:3px 9px}
+  /* width:fit-content rather than inline-block: inline-block let the link that follows sit on
+     the same line and wrap mid-phrase ("Her" / "2022 paper"), and a plain block would stretch the
+     chip's border the whole width of the card. 2026-10-20. */
+  .person .wip{display:block;width:-moz-fit-content;width:fit-content;margin:0 0 10px;
+    font-size:12px;color:var(--accent);background:var(--hero);border:1px solid var(--line);
+    border-radius:10px;padding:3px 9px}
   .person{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);
     border-radius:14px;padding:16px}
   .person>div{min-width:0}
@@ -461,9 +465,10 @@
   .person p{margin:0 0 8px;font-size:14px;line-height:1.5}
   .person a{color:var(--teal);text-decoration:none;font-size:13px;font-weight:600}
   .person a:hover{text-decoration:underline}
-  /* THE MONOGRAM IS THE DEFAULT, not the error state: research/people/*.jpg is not in the
-     repository yet, and a broken image icon on somebody's name is worse than their initials. The
-     script at the foot of this page removes the <img> if it fails and leaves this showing. */
+  /* THE MONOGRAM IS THE FALLBACK, not the error state: a broken image icon on somebody's name
+     is worse than their initials, so the circle carries the initials and the photograph is laid
+     over them. The script at the foot of this page removes the <img> if it fails, and the
+     initials are what is left. */
   .face{flex:none;width:72px;height:72px;border-radius:50%;overflow:hidden;position:relative;
     background:var(--teal-soft);display:flex;align-items:center;justify-content:center}
   .face::before{content:attr(data-mono);font:600 24px/1 system-ui,sans-serif;color:var(--teal)}
@@ -563,7 +568,7 @@
       <li><a href="#method">How this became the tools</a></li>
       <li><a href="#credits">Figure credits</a></li>
     </ul>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-20 10:27</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-20 13:08</span></p>
   </div>
 </header>
 
@@ -636,16 +641,12 @@
       <div>
         <b>Stephanie K. Bonney</b>
         <span class="aff">University of Colorado Anschutz Medical Campus</span>
-        <p>Perivascular fibroblasts. A long run of fibroblast annotation in the MICrONS volume done between the two of us, with the perivascular ones hers. She is also first author of the 2022 review that makes the case for working in public volumes at all — the argument this site is built on.</p>
+        <p>Perivascular fibroblasts. A long run of fibroblast annotation in the MICrONS volume done between the two of us, with the perivascular ones hers. She is also first author of the 2022 paper that makes the case for working in public volumes at all — the argument this site is built on.</p>
         <p class="wip">Annotating together — no joint paper yet</p>
-        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Her 2022 review &rarr;</a>
+        <a href="https://doi.org/10.3389/fcell.2022.849469" rel="noopener">Her 2022 paper &rarr;</a>
       </div>
     </li>
     </ul>
-    <p class="sub" style="margin-top:18px">
-      Everyone who wrote each paper is named on it below, in order. Being an author and having
-      worked together are not the same thing, and this page does not treat them as one.
-    </p>
   </div>
 </section>
 
@@ -822,7 +823,7 @@
         electron microscopy data: an essential resource to study the brain microvasculature</a>
         by Bonney, Coelho-Santos, Huang, Takeno, Kornfeld, Keller and Shih
         (<em>Frontiers in Cell and Developmental Biology</em>, 2022), and these tools are in a
-        sense an attempt to do what that review says is possible.
+        sense an attempt to do what that paper says is possible.
       </p>
       <p>
         The tools: <a href="/ujump.html">µJump</a> (MICrONS minnie65 and minnie35, where four of
@@ -993,8 +994,7 @@ function toggleTheme(){ setTheme(currentTheme() === "dark" ? "light" : "dark"); 
 </script>
 
 <script>
-/* The monogram stands unless the photograph loads. research/people/*.jpg is not in the repository
-   yet; when three files land, nothing here changes. An error listener rather than an onerror
+/* The monogram stands unless the photograph loads. An error listener rather than an onerror
    attribute, to keep this page's markup free of inline handlers like every other page here. */
 (function(){
   Array.prototype.forEach.call(document.querySelectorAll(".face img"), function(img){

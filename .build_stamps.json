@@ -16,8 +16,8 @@
  },
  "index.html": {
   "core": "",
-  "hash": "a3c974e65c21973e7451615582e24fdd7690dddb85df7ff7c2da0460015df145",
-  "stamp": "2026-10-20 11:37"
+  "hash": "c7a2956e71d9930a5a3a042f8f78210c5991da901c36f929c0c875257ce84f27",
+  "stamp": "2026-10-20 12:23"
  },
  "ljump.html": {
   "core": "a90efea7ca",
@@ -31,7 +31,7 @@
  },
  "ujump.html": {
   "core": "a90efea7ca",
-  "hash": "dffa06f8612a948af072244bf0a97e5659a4ef6dfebeeb586a1864c5153bf106",
-  "stamp": "2026-10-20 11:37"
+  "hash": "84b9a86aa6156d737527aba14241303f643769d591985c89f3d9a95bcdeb43f7",
+  "stamp": "2026-10-20 12:23"
  }
 }
