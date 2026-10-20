@@ -5535,11 +5535,21 @@ const NV_SHIH_FIXED = { skelFinal_PAs_v7_connected: 0, skelFinal_terminalPAs_v7:
   skelFinal_CVTs_v7: 6, skelFinal_AVs_v7_connected: 7, skelFinal_terminalAVs_v7: 7, skelFinal_PCVs_v7: 7, skelFinal_deepCVTs_v7: 6, skelFinal_terminalPCVs_v7: 7 };
 async function nvShihPoints(bb){
   const S = 6, cells = new Map(), pts = [], key = (x, y, z) => x + "," + y + "," + z;
+  /* Large vessels (arterioles, venules, principal cortical veins, pial): their skeleton is the
+     centreline, which can lie 20+ µm inside the surface of a deep vein (v73, Søren: "The deep vein
+     is not coloured, that one I know Shih had skeletonised"). So they are also hashed coarsely and
+     looked up to 30 µm when no capillary point is within 6 µm. */
+  const SB = 30, big = new Map();
   const add = (x, y, z, p, a, c) => { if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) return;
-    const j = pts.length; pts.push([x, y, z, p, a, c]); const k = key(Math.floor(x / S), Math.floor(y / S), Math.floor(z / S)); let l = cells.get(k); if (!l){ l = []; cells.set(k, l); } l.push(j); };
+    const j = pts.length; pts.push([x, y, z, p, a, c]); const k = key(Math.floor(x / S), Math.floor(y / S), Math.floor(z / S)); let l = cells.get(k); if (!l){ l = []; cells.set(k, l); } l.push(j);
+    if (p != null){ const kb = key(Math.floor(x / SB), Math.floor(y / SB), Math.floor(z / SB)); let lb = big.get(kb); if (!lb){ lb = []; big.set(kb, lb); } lb.push(j); } };
+  const seeds = [];                                   // [x, y, z, tone] of every artery/vein point, whole volume
   for (const slug in NV_SHIH_FIXED){
-    try { const R = await loadSkel(slug); for (let i = 0; i < R.nv; i++) add(R.pos[i*3], R.pos[i*3+1], R.pos[i*3+2], NV_SHIH_FIXED[slug], null, null); } catch (e){}
+    try { const R = await loadSkel(slug), t = NV_SHIH_FIXED[slug];
+      for (let i = 0; i < R.nv; i++){ add(R.pos[i*3], R.pos[i*3+1], R.pos[i*3+2], t, null, null); if (t === 0 || t === 7) seeds.push([R.pos[i*3], R.pos[i*3+1], R.pos[i*3+2], t]); } } catch (e){}
   }
+  try { NV.pialLab = await nvPialLabels(seeds); for (const p of NV.pialLab.pts) add(p[0], p[1], p[2], p[3], null, null); }
+  catch (e){ NV.pialLab = { err: String(e.message || e) }; }
   ctxNote.textContent = "Vessel colour: reading Shih et al.'s capillary bed (30 MB)…";
   const R = await loadSkel("skelFinal_v7_branch_order");
   for (let i = 0; i < R.nv; i++) add(R.pos[i*3], R.pos[i*3+1], R.pos[i*3+2], null, R.act[i], R.cvt[i]);
@@ -5547,6 +5557,14 @@ async function nvShihPoints(bb){
     const gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S); let best = lim * lim, bj = -1;
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
       const l = cells.get(key(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const j of l){ const p = pts[j], d2 = (p[0]-x)*(p[0]-x) + (p[1]-y)*(p[1]-y) + (p[2]-z)*(p[2]-z); if (d2 < best){ best = d2; bj = j; } }
+    }
+    return bj < 0 ? null : pts[bj];
+  };
+  const nearBig = (x, y, z, lim) => {
+    const gx = Math.floor(x / SB), gy = Math.floor(y / SB), gz = Math.floor(z / SB); let best = lim * lim, bj = -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = big.get(key(gx + dx, gy + dy, gz + dz)); if (!l) continue;
       for (const j of l){ const p = pts[j], d2 = (p[0]-x)*(p[0]-x) + (p[1]-y)*(p[1]-y) + (p[2]-z)*(p[2]-z); if (d2 < best){ best = d2; bj = j; } }
     }
     return bj < 0 ? null : pts[bj];
@@ -5584,7 +5602,51 @@ async function nvShihPoints(bb){
   };
   const agreeLoc = sd => { const a = anc.filter(x => x[3] === sd); return a.length ? Math.round(100 * a.filter(x => Math.abs(x[6] - NV.cal.offAt(x[0], x[1], x[2], sd) - x[5]) <= 1).length / a.length) : null; };
   NV.cal.agreeLocA = agreeLoc("a"); NV.cal.agreeLocV = agreeLoc("v");
-  return { near, pts };
+  return { near, nearBig, pts };
+}
+/* PIAL VESSELS WITHOUT A NAME (v73, Søren: "one of the pial arterioles is not coloured, it is just
+   grey"). Shih et al.'s pial skeleton (skelFinal_BBs_v7) does not say artery or vein, and Søren
+   traced only some of the pial vessels. But a pial artery is the one that feeds penetrating
+   arterioles and a pial vein the one ascending venules drain into. So: every pial skeleton point
+   within 10 µm of a penetrating arteriole (Shih's or his) or of his traced pial arteriole is a
+   red seed, of an ascending venule or his pial venule a purple seed; the label then spreads along
+   the pial skeleton's own edges, each point taking the NEAREST seed by path length. Pial points
+   no seed reaches stay grey. */
+async function nvPialLabels(seeds){
+  const net = NV.net, q = net.q;
+  for (let k = 0, m = net.own.length; k < m; k++){
+    const t = nvToneOf(net.cname(net.own[k])); if (t !== "art" && t !== "ven") continue;
+    seeds.push([net.Dq[k*3] * q, net.Dq[k*3+1] * q, net.Dq[k*3+2] * q, t === "art" ? 0 : 7]);
+  }
+  const S = 10, h = new Map(), key = (x, y, z) => x + "," + y + "," + z;
+  for (const p of seeds){ const k = key(Math.floor(p[0] / S), Math.floor(p[1] / S), Math.floor(p[2] / S)); let l = h.get(k); if (!l){ l = []; h.set(k, l); } l.push(p); }
+  const R = await loadSkel("skelFinal_BBs_v7"), n = R.nv, X = R.pos;
+  const dist = new Float64Array(n).fill(Infinity), lab = new Int8Array(n).fill(-1);
+  const heap = [];                                     // binary heap of [d, i]
+  const push = (d, i) => { heap.push([d, i]); let c = heap.length - 1; while (c > 0){ const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let c = 0; for (;;){ const l = 2*c+1, r = l+1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+  let nSeed = 0;
+  for (let i = 0; i < n; i++){
+    const x = X[i*3], y = X[i*3+1], z = X[i*3+2], gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S);
+    let best = S * S, bt = -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++){
+      const l = h.get(key(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+      for (const p of l){ const d2 = (p[0]-x)**2 + (p[1]-y)**2 + (p[2]-z)**2; if (d2 < best){ best = d2; bt = p[3]; } }
+    }
+    if (bt >= 0){ dist[i] = Math.sqrt(best); lab[i] = bt; push(dist[i], i); nSeed++; }
+  }
+  const adj = Array.from({ length: n }, () => []);
+  for (let e = 0; e < R.ne; e++){ const a = R.edges[2*e], b = R.edges[2*e+1]; adj[a].push(b); adj[b].push(a); }
+  while (heap.length){
+    const [d, i] = pop(); if (d > dist[i]) continue;
+    for (const j of adj[i]){
+      const w = Math.hypot(X[i*3]-X[j*3], X[i*3+1]-X[j*3+1], X[i*3+2]-X[j*3+2]);
+      if (d + w < dist[j]){ dist[j] = d + w; lab[j] = lab[i]; push(dist[j], j); }
+    }
+  }
+  const pts = []; let nA = 0, nV = 0;
+  for (let i = 0; i < n; i++) if (lab[i] >= 0){ pts.push([X[i*3], X[i*3+1], X[i*3+2], lab[i]]); if (lab[i] === 0) nA++; else nV++; }
+  return { pts, nA, nV, nNone: n - nA - nV, nSeed };
 }
 function nvOff(x, y, z, sd){ const c = NV.cal || {}; return c.offAt ? c.offAt(x, y, z, sd) : (sd === "a" ? c.offA || 0 : c.offV || 0); }
 function nvShihTone(p){
@@ -5611,10 +5673,14 @@ async function nvRecolour(){
   }
   if (VASC.mesh !== mesh) return;
   let fromS = 0, fromT = 0, grey = 0, both = 0, agree = 0;
+  const T = new Float32Array(nv).fill(-1);            // the tone each vertex got, -1 = none
   for (let v = 0; v < nv; v++){
     let p = null, c;
-    const hisOk = NV.vTone[v] >= 0 && NV.vDist[v] <= (src === "traced" || !sh ? 12 : 6);
-    const sp = sh ? sh.near(P[v*3], P[v*3+1], P[v*3+2], 6) : null, st = sp ? nvShihTone(sp) : null;
+    /* His outline vessels (arterioles, venules) are drawn section by section, so their surface can
+       lie 6-12 µm from the nearest traced point between sections: they keep his colour to 12 µm. */
+    const hisOk = NV.vTone[v] >= 0 && NV.vDist[v] <= (src === "traced" || !sh || NV.vTone[v] === 0 || NV.vTone[v] === 7 ? 12 : 6);
+    let sp = sh ? sh.near(P[v*3], P[v*3+1], P[v*3+2], 6) : null, st = sp ? nvShihTone(sp) : null;
+    if (st == null && sh && sh.nearBig){ sp = sh.nearBig(P[v*3], P[v*3+1], P[v*3+2], 30); st = sp ? nvShihTone(sp) : null; }
     /* Where both say something: they agree when within one step of the scale (one order). The
        consensus then is his order; where they disagree it is also his (he traced it by eye), and the
        agreement map shows where that happens, for checking. */
@@ -5626,17 +5692,52 @@ async function nvRecolour(){
       if (src !== "shih" && hisOk){ p = NV.vTone[v]; fromT++; }
       else if (st != null){ p = st; fromS++; }
       c = p == null ? NV_TONE.none : nvToneAt(p);
-      if (p == null) grey++;
+      if (p == null) grey++; else T[v] = p;
     }
     col[v*3] = c.r; col[v*3+1] = c.g; col[v*3+2] = c.b;
     if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
   }
+  /* GREY SPECKS (v73, Søren: "It looks like there is a grey mesh under the colored mesh"). There is
+     one mesh; the grey is single vertices or small patches of it that no tracing came near, so each
+     grey triangle corner pulled grey into the colour around it. A grey vertex whose mesh neighbours
+     are coloured takes their mean tone, repeated 12 times -- a few µm of surface. Whole untraced
+     vessels stay grey (their neighbours are grey too). */
+  let filled = 0;
+  if (src !== "agree" && g.index){
+    const I = g.index.array, nb = new Map();
+    const deg = new Uint32Array(nv); for (let t = 0; t < I.length; t++) deg[I[t]] += 2;
+    const off = new Uint32Array(nv + 1); for (let v = 0; v < nv; v++) off[v+1] = off[v] + deg[v];
+    const A = new Uint32Array(off[nv]), fillp = off.slice(0, nv);
+    for (let t = 0; t < I.length; t += 3){ const a = I[t], b = I[t+1], c = I[t+2];
+      A[fillp[a]++] = b; A[fillp[a]++] = c; A[fillp[b]++] = a; A[fillp[b]++] = c; A[fillp[c]++] = a; A[fillp[c]++] = b; }
+    /* Vertices at the same place (seams of the mesh) are one vertex for this purpose. */
+    const weld = new Map(), same = new Int32Array(nv).fill(-1);
+    for (let v = 0; v < nv; v++){ const k = Math.round(P[v*3] * 20) + "," + Math.round(P[v*3+1] * 20) + "," + Math.round(P[v*3+2] * 20); const w = weld.get(k); if (w == null) weld.set(k, v); else same[v] = w; }
+    for (let pass = 0; pass < 12; pass++){
+      const add = [];
+      for (let v = 0; v < nv; v++){
+        if (T[v] >= 0) continue;
+        let sum = 0, cnt = 0;
+        for (let k = off[v]; k < off[v+1]; k++){ const t = T[A[k]]; if (t >= 0){ sum += t; cnt++; } }
+        if (same[v] >= 0 && T[same[v]] >= 0){ sum += T[same[v]]; cnt++; }
+        if (cnt) add.push(v, sum / cnt);
+      }
+      if (!add.length) break;
+      for (let k = 0; k < add.length; k += 2) T[add[k]] = add[k+1];
+      filled += add.length / 2;
+      await new Promise(r => setTimeout(r, 0));
+    }
+    for (let v = 0; v < nv; v++) if (T[v] >= 0){ const c = nvToneAt(T[v]); col[v*3] = c.r; col[v*3+1] = c.g; col[v*3+2] = c.b; }
+    grey -= filled;
+  }
   g.attributes.vnCol.needsUpdate = true;
   const pc = n => Math.round(100 * n / Math.max(1, nv));
+  const pl = NV.pialLab;
   const cal = NV.cal;
   NV.consensus = { both, agree, pct: both ? Math.round(100 * agree / both) : null };
   ctxNote.textContent = (src === "agree" ? "Agreement map: green both agree (within one order), orange they disagree, blue Søren only, light grey Shih only. " : "Vessel colour by order: ")
-    + pc(fromT) + " % from Søren's tracings, " + pc(fromS) + " % from Shih et al., " + pc(grey) + " % neither."
+    + pc(fromT) + " % from Søren's tracings, " + pc(fromS) + " % from Shih et al., " + (filled ? pc(filled) + " % filled in from the surface around, " : "") + pc(grey) + " % neither."
+    + (pl && pl.pts ? " Shih's pial vessels named by what they connect to: " + pl.nA + " points artery, " + pl.nV + " vein, " + pl.nNone + " unconnected (grey)." : pl && pl.err ? " Shih's pial vessels could not be read (" + pl.err + ")." : "")
     + (both ? " Where both exist, " + NV.consensus.pct + " % of the surface agrees within one order; his order is used where they disagree." : "")
     + (cal ? " Shih's count against Søren's: arterial side " + (cal.nA ? "their order = his + " + cal.offA + " box-wide (" + cal.agreeA + " % of his points within one order; " + cal.agreeLocA + " % with the offset set per 100 µm block, " + cal.nA + " points)" : "no overlap here")
       + "; venous side " + (cal.nV ? "+ " + cal.offV + " (" + cal.agreeV + " %; " + cal.agreeLocV + " % per block, " + cal.nV + " points)" : "no overlap here") + "." : "");
