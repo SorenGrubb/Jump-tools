@@ -376,6 +376,8 @@
       <label title="A pulse with every heartbeat (awake mouse ≈ 10 Hz; slowed to ~1 Hz when teaching)"><input type="checkbox" data-nv="pulse" checked> heartbeat</label>
       <label title="Slow rhythmic diameter changes of the arterioles, about 0.1 Hz"><input type="checkbox" data-nv="vaso" checked> vasomotion (0.1 Hz)</label>
       <label title="A plot of the diameter of the chain the picked (or most active) cell drives"><input type="checkbox" data-nv="plot" checked> diameter plot</label>
+      <label title="MODEL Ca²⁺ (green glow), not measured. Mural cells (pericytes, smooth muscle): Ca²⁺ rises as their vessel constricts -- in the vasomotion trough and when it narrows back -- and falls as it dilates. Endothelial cells: Ca²⁺ rises with the coupling signal on their vessel. Astrocytes: Ca²⁺ rises a second or two after neurons within ~50 µm are active. Only loaded cells can glow -- add the mural, endothelial and astrocyte cells near the vessels to see it."><input type="checkbox" data-nv="mc" checked> Ca²⁺ in mural, endothelial and astrocyte cells (model)</label>
+      <label title="Off: the vessel only changes shape. On: the lumen surface also glows red as it dilates (that glow is NOT Ca²⁺ -- vascular Ca²⁺ is in the endothelial and mural cells)"><input type="checkbox" data-nv="tint"> tint the vessel red as it dilates</label>
       <label title="Also use Shih et al.'s ordered capillary bed (How et al. 2026; 30 MB) where Søren traced nothing: the dilation can then start in, and run through, every capillary — his tracing still wins where it exists"><input type="checkbox" data-nv="useShih" checked> Shih et al. for untraced capillaries</label>
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 2px">Driven by</div>
@@ -1232,17 +1234,19 @@ function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
   m.userData.raU = { value: 0 };        // recorded activity (section 21): this cell's glow now, 0–1
   m.userData.raS = { value: new THREE.Vector4(-1, -1, -1, -1) };   // movie-seconds since its last 4 inferred spikes (v67)
+  m.userData.mcU = { value: 0 };        // modelled Ca²⁺ of a mural, endothelial or astrocyte cell (section 23), 0–1
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.raA = m.userData.raU;
     sh.uniforms.raS = m.userData.raS;
+    sh.uniforms.mcA = m.userData.mcU;
     sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nattribute float raD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA; vRaD = raD;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
     /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform float mcA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
@@ -1264,6 +1268,11 @@ function cellMaterial(colour){
           /* Recorded activity (section 21): the whole cell, as bright as its measured response now. */
           totalEmissiveRadiance += raCol * 1.5 * raA;
           diffuseColor.rgb = mix(diffuseColor.rgb, raCol, 0.45 * raA);
+        }
+        if (mcA > 0.003){
+          /* Modelled Ca²⁺ of a mural, endothelial or astrocyte cell (section 23): the whole cell. */
+          totalEmissiveRadiance += caCol * 1.2 * mcA;
+          diffuseColor.rgb = mix(diffuseColor.rgb, caCol, 0.4 * mcA);
         }
         {
           /* Ca²⁺ (section 20): seconds since the wave reached this point; a GCaMP-like rise and
@@ -5519,7 +5528,7 @@ document.getElementById("raCsv").addEventListener("click", raCsv);
      arterioles (Mestre et al. 2018; van Veluw et al. 2020).
    · TEACHING: four times the dilation, slower conduction, the heartbeat slowed to ~1 Hz and
      larger, so each step can be seen. Labelled as such wherever it shows. */
-const NV = { useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
+const NV = { mc: true, tint: false, useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
              net: null, netP: null, err: "", geo: null, nodes: null, tex: null, texData: null, W: 1024, H: 1,
              src: new Map(), spk: new Map(), lastTick: 0, t0: performance.now(), hud: null, plotSpr: null, plotCv: null, hist: [], plot: true, routed: 0 };
 const NV_PRESET = {
@@ -5891,13 +5900,13 @@ function nvStatic(){
 AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0.1 };
 function nvMaterial(mesh){
   const m = mesh.material;
-  if (m.userData.nv){ m.userData.nv.tex.value = NV.tex; m.userData.nv.W.value = NV.W; m.userData.nv.H.value = NV.H; m.userData.nv.col.value = NV.colour ? 1 : 0; return; }
-  const U = { tex: { value: NV.tex }, W: { value: NV.W }, H: { value: NV.H }, col: { value: NV.colour ? 1 : 0 } };
+  if (m.userData.nv){ m.userData.nv.tex.value = NV.tex; m.userData.nv.W.value = NV.W; m.userData.nv.H.value = NV.H; m.userData.nv.col.value = NV.colour ? 1 : 0; m.userData.nv.tint.value = NV.tint ? 1 : 0; return; }
+  const U = { tex: { value: NV.tex }, W: { value: NV.W }, H: { value: NV.H }, col: { value: NV.colour ? 1 : 0 }, tint: { value: NV.tint ? 1 : 0 } };
   m.userData.nv = U;
   const base = m.onBeforeCompile;
   m.onBeforeCompile = sh => {
     base(sh);
-    sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col;
+    sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col; sh.uniforms.nvTint = U.tint;
     sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nvarying float vNvD;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
@@ -5909,11 +5918,11 @@ function nvMaterial(mesh){
           vNvD = q.r; vNvCol = vnCol;
           transformed += objectNormal * vnR * d;
         }`);
-    sh.fragmentShader = "varying float vNvD;\nvarying vec3 vNvCol;\nuniform float nvColOn;\n" + sh.fragmentShader
+    sh.fragmentShader = "varying float vNvD;\nvarying vec3 vNvCol;\nuniform float nvColOn;\nuniform float nvTint;\n" + sh.fragmentShader
       .replace("#include <color_fragment>", `#include <color_fragment>
         if (nvColOn > 0.5) diffuseColor.rgb = vNvCol;`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-        totalEmissiveRadiance += vec3(1.0, 0.25, 0.2) * clamp(vNvD * 2.5, 0.0, 0.8);`);
+        totalEmissiveRadiance += nvTint * vec3(1.0, 0.25, 0.2) * clamp(vNvD * 2.5, 0.0, 0.8);`);
   };
   m.customProgramCacheKey = () => "vessel-nv";
   m.needsUpdate = true;
@@ -6236,16 +6245,18 @@ function setNv(v){
 function nvSetting(k, v){
   if (k in NV.drv) NV.drv[k] = !!v; else NV[k] = v;
   if (k === "preset"){ NV.src.clear(); NV.hist = []; const el = document.getElementById("nvPreset"); if (el) el.value = v; }
+  if (k === "tint" && VASC.mesh && VASC.mesh.material.userData.nv) VASC.mesh.material.userData.nv.tint.value = v ? 1 : 0;
+  if (k === "mc" && !v) mcClear();
   if (k === "useShih"){ NV.geo = null; NV.snet = null; NV.snetFor = null; NV.src.clear(); }      // tie the surface again, with or without their bed
   const box = document.querySelector('#nvBox [data-nv="' + k + '"]'); if (box) box.checked = !!v;
   nvStatic();
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
-function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot, useShih: NV.useShih }; }
+function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot, useShih: NV.useShih, mc: NV.mc, tint: NV.tint }; }
 function nvApplyUi(u){
   if (!u) return;
   if (u.preset) nvSetting("preset", u.preset);
-  ["act", "pulse", "vaso", "plot"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
+  ["act", "pulse", "vaso", "plot", "mc", "tint"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
   if (u.useShih != null && !!u.useShih !== NV.useShih) nvSetting("useShih", !!u.useShih);
   if (u.drv) for (const k in u.drv) nvSetting(k, u.drv[k]);
   if (u.on != null && !!u.on !== NV.on) setNv(u.on);
@@ -6254,6 +6265,115 @@ function nvApplyUi(u){
 document.getElementById("nvBtn").addEventListener("click", () => setNv(!NV.on));
 document.getElementById("nvPreset").addEventListener("change", e => nvSetting("preset", e.target.value));
 document.querySelectorAll("#nvBox [data-nv]").forEach(el => el.addEventListener("change", () => nvSetting(el.dataset.nv, el.checked)));
+
+/* ── 23. Ca²⁺ IN THE CELLS AROUND THE VESSELS, MODELLED ─────────────────────  2026-10-21
+   Søren: "the calcium in [mural] cells increases when the vasculature constricts during vasomotion
+   and neurovascular coupling. Also, the calcium signal of the vasculature should in principle be in
+   the endothelial cells and not in the vascular lumen. When nerve cells are active, this should also
+   give a calcium signal in the nearby astrocytes."
+
+   So the lumen no longer glows (that red tint is now an option, off, and labelled as dilation, not
+   Ca²⁺), and three kinds of LOADED cells get a modelled Ca²⁺ glow, the same green as the Ca²⁺ waves:
+
+   · MURAL cells (pericytes, smooth muscle): Ca²⁺ sets their tone, so it rises as their vessel
+     narrows and falls as it widens -- [Ca²⁺] in arteriolar smooth muscle oscillates with, and
+     slightly ahead of, vasomotion (Mateo 2017 Neuron 96:936),
+     and falls in the mural cells of the dilating vessel during functional hyperaemia (Hall 2014
+     Nature 508:55; Rungta 2018 Neuron 99:362). Here: a resting level of 0.35, lowered by the
+     vessel's coupling dilation and moved up and down with its vasomotion, taken 1 s ahead (Ca²⁺
+     leads the diameter). The heartbeat is passive and leaves it alone.
+   · ENDOTHELIAL cells: Ca²⁺ rises with the coupling signal reaching their segment (capillary
+     endothelial Ca²⁺ signals that grow with neural activity: Longden 2021 Sci Adv 7:eabh0101).
+   · ASTROCYTES: a rise 1.5 s after neurons within 50 µm are active (weight exp(−d/30 µm)), rising
+     over ~1 s and decaying over ~3 s -- astrocyte somatic Ca²⁺ responses to sensory stimulation
+     come seconds after the neurons (Wang 2006 Nat Neurosci 9:816; Stobart 2018 Neuron 98:726 for
+     the faster process signals).
+   All SCHEMATIC: no Ca²⁺ was imaged in these cells. A cell gets its vessel from the nearest traced
+   node within 25 µm of its soma; neuronal activity is the same drive the vessels use (recorded
+   inferred spikes, stimulated spikes). */
+const MC = { lastTick: 0, spk: new Map(), act: new Map(), hist: [], cells: new Map(), lit: false, said: false };
+const MC_DELAY = 1.5, MC_R = 50, MC_LAM = 30;
+function mcClear(){ for (const c of CELLS){ const u = c.mesh && c.mesh.material.userData.mcU; if (u) u.value = 0; } MC.cells.clear(); MC.lit = false; }
+function mcVessel(c){
+  if (!NV.glob || !NV.net) return null;
+  if (c._mc && c._mc.geo === NV.geo && c._mc.n === NV.glob.length) return c._mc.li;
+  const p = nvSoma(c); let best = 25 * 25, bl = -1;
+  if (p) for (let li = 1; li < NV.glob.length; li++){
+    const gi = NV.glob[li]; if (gi < 0) continue;
+    const q = nvPos(gi), d2 = (q[0]-p.x)*(q[0]-p.x) + (q[1]-p.y)*(q[1]-p.y) + (q[2]-p.z)*(q[2]-p.z);
+    if (d2 < best){ best = d2; bl = li; }
+  }
+  c._mc = { geo: NV.geo, n: NV.glob.length, li: bl };
+  return bl;
+}
+function mcDrive(dtS){
+  /* Each neuron's activity now, from the same sources the vessels use, with its own spike count
+     so the vessels' bookkeeping is left alone. */
+  const u = new Map();
+  if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
+    for (const c of raCells()){ const e = raEntry(c); u.set(c, Math.min(1.5, raAt(e, raInfer(e).rate, RA.t) / 8)); }
+  if (NV.drv.stim) for (const c of CELLS){
+    const n = (c.spikesAt || []).length, was = MC.spk.get(c) || 0;
+    if (n > was) u.set(c, (u.get(c) || 0) + 0.35 * (n - was) / Math.max(dtS, 0.05));
+    MC.spk.set(c, n);
+  }
+  return u;
+}
+function mcTick(){
+  const now = performance.now(), dtS = Math.min(0.5, (now - (MC.lastTick || now)) / 1000); MC.lastTick = now;
+  const pr = NV_PRESET[NV.preset];
+  /* neurons: a smoothed activity, kept for MC_DELAY s */
+  const u = mcDrive(dtS);
+  for (const c of CELLS){
+    const k = caKind(c); if (k !== "neuron") continue;
+    const a = MC.act.get(c) || 0, x = u.get(c) || 0;
+    MC.act.set(c, a + (Math.min(1.5, x) - a) * Math.min(1, dtS / 0.5));
+  }
+  MC.hist.push({ t: now / 1000, a: new Map(MC.act) });
+  while (MC.hist.length > 2 && MC.hist[1].t <= now / 1000 - MC_DELAY) MC.hist.shift();
+  const past = MC.hist[0].a;
+  const vesselsOk = NV.on && NV.texData && VASC.mesh && VASC.mesh.geometry.uuid === NV.geo, D = NV.texData;
+  const t = AP_UNI.nvT.value;
+  let lit = 0;
+  for (const c of CELLS){
+    const U = c.mesh && c.mesh.material.userData.mcU; if (!U) continue;
+    const k = caKind(c); let target = null;
+    if ((k === "mural" || k === "endo") && vesselsOk){
+      const li = mcVessel(c);
+      if (li > 0){
+        const cls = nvClass(nvC(NV.glob[li])), g = pr.gain[cls] || 0.05, r = D[li*4], vb = D[li*4+2], ph = D[li*4+3];
+        const drive = NV.act ? r / g : 0;                                        // ≈ 0–1.5
+        if (k === "mural"){
+          const vaso = vb > 0 ? Math.sin(6.2831853 * pr.vf * (t + 1.0) + ph) : 0;    // +1 wide … −1 narrow, 1 s ahead
+          target = 0.35 - 0.45 * Math.min(1, drive) - 0.25 * vaso;
+        } else target = 0.9 * Math.min(1, drive);
+      }
+    } else if (k === "astro"){
+      const p = nvSoma(c); let sum = 0;
+      if (p) for (const [n, a] of past){
+        if (a < 0.01 || !n.mesh) continue;
+        const q = nvSoma(n); if (!q) continue;
+        const d = q.distanceTo(p); if (d < MC_R) sum += a * Math.exp(-d / MC_LAM);
+      }
+      target = Math.min(1, 1.2 * sum);
+    }
+    if (target == null){ if (U.value) U.value = 0; continue; }
+    target = Math.max(0, Math.min(1, target));
+    const tau = k === "astro" ? (target > U.value ? 1.0 : 3.0) : 0.6;
+    U.value += (target - U.value) * Math.min(1, dtS / tau);
+    MC.cells.set(c, U.value); if (U.value > 0.05) lit++;
+  }
+  if (lit && !MC.said){
+    MC.said = true;
+    ctxNote.textContent = "Green glow on mural, endothelial and astrocyte cells: MODELLED Ca²⁺, not measured — mural cells brighten as their vessel narrows, endothelial cells with the coupling signal, astrocytes a second or two after nearby neurons fire.";
+  }
+  MC.lit = lit > 0;
+}
+function mcFrame(){
+  if (!NV.mc){ if (MC.lit || MC.cells.size) mcClear(); return; }
+  const now = performance.now();
+  if (now - (MC._at || 0) > 100){ MC._at = now; mcTick(); }
+}
 
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
@@ -8309,7 +8429,8 @@ renderer.setAnimationLoop(() => {
   stimFrame(TL.frozen ? 0 : dt);                            // a freeze effect holds the spike clock
   caFrame(TL.frozen ? 0 : dt);                              // …and the Ca²⁺ clock
   raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
-  try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }   // …and the vessels move (section 22)
+  try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
+  try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
@@ -8742,7 +8863,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
