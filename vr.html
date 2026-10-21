@@ -388,6 +388,22 @@
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">A model on Søren Grubb's traced vessels (pial and penetrating arterioles, 1st–3rd order capillaries, venules), applied to the TriSAM surface (Wan &amp; Wei 2025). Needs Vessels shown (Map tab).</div>
   </div>
+  <div class="ctl">
+    <button id="slBtn" title="Put the mouse to sleep -- a MODEL: in NREM all the loaded neurons fire together in slow-wave up-states (~0.8 Hz, a wave crossing the block) with spindles on top, and the arterioles swing in a large, very slow (~0.02 Hz) noradrenaline-paced vasomotion; in REM the neurons fire desynchronised on a theta rhythm and the arterioles dilate. Astrocyte Ca²⁺ is lower asleep and flares on waking.">Sleep (model)</button>
+  </div>
+  <div id="slBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="margin:0 0 6px;gap:6px;flex-wrap:wrap">
+      <select id="slState" title="Which brain state">
+        <option value="cycle" selected>Sleep cycle: awake → NREM → REM → awake</option>
+        <option value="nrem">NREM (slow waves)</option>
+        <option value="rem">REM</option>
+        <option value="awake">Awake</option>
+      </select>
+      <label style="font-size:12px" title="Teaching: the spikes are drawn at a quarter speed, the stages last 15–45 s instead of 1–3 minutes, and the slow vasomotion runs at 0.1 Hz instead of 0.02 Hz, so a whole cycle fits in under two minutes"><input type="checkbox" id="slTeach" checked> teaching (faster cycle, slower spikes)</label>
+      <label style="font-size:12px" title="A plot of the model EEG (the loaded neurons' summed firing), the arteriole diameter and the stage"><input type="checkbox" id="slPlot" checked> plot</label>
+    </div>
+    <div id="slNote" style="font-size:11.5px;color:var(--mut)">MODEL, not measured -- the MICrONS mouse was recorded awake. Uses the vessel dilation (on) and the modelled Ca²⁺ of mural, endothelial and astrocyte cells.</div>
+  </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
@@ -3920,7 +3936,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -4045,6 +4061,7 @@ async function openScene(id){
   try { caApplyUi(u.ca); } catch (e){ console.warn("[vr] Ca²⁺ settings", e); }
   try { raApplyUi(u.ra); } catch (e){ console.warn("[vr] recorded-activity settings", e); }
   try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
+  try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -5898,6 +5915,7 @@ function nvStatic(){
   AP_UNI.nvHR.value = pr.hr; AP_UNI.nvVF.value = pr.vf;
 }
 AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0.1 };
+AP_UNI.nvVaA = { value: 1 }; AP_UNI.nvSlA = { value: 0 }; AP_UNI.nvSlPh = { value: 0 };   // sleep (section 24)
 function nvMaterial(mesh){
   const m = mesh.material;
   if (m.userData.nv){ m.userData.nv.tex.value = NV.tex; m.userData.nv.W.value = NV.W; m.userData.nv.H.value = NV.H; m.userData.nv.col.value = NV.colour ? 1 : 0; m.userData.nv.tint.value = NV.tint ? 1 : 0; return; }
@@ -5907,14 +5925,14 @@ function nvMaterial(mesh){
   m.onBeforeCompile = sh => {
     base(sh);
     sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col; sh.uniforms.nvTint = U.tint;
-    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nvarying float vNvD;\n"
+    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nvarying float vNvD;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           vec2 nuv = vec2((mod(vnNode, nvW) + 0.5) / nvW, (floor(vnNode / nvW) + 0.5) / nvH);
           vec4 q = texture2D(nvTex, nuv);
           float ph = fract(nvT * nvHR);
           float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);      // a sharp rise, a slower fall
-          float d = q.r + q.g * beat + q.b * sin(6.2831853 * nvVF * nvT + q.a);
+          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a));
           vNvD = q.r; vNvCol = vnCol;
           transformed += objectNormal * vnR * d;
         }`);
@@ -6105,7 +6123,16 @@ function nvDrives(dtS){
   if (NV.drv.ca) for (const c of caCells()){
     const v = caTrace(c, CA.now); if (v > 0.02) u.set(c, (u.get(c) || 0) + v * (caKind(c) === "astro" ? 1 : 0.5));
   }
+  /* sleep (section 24): the whole block fires at once, so each cell drives at 0.3 of the recorded weight */
+  if (SL.on) for (const [c, r] of SL.rate) if (r > 0.05) u.set(c, (u.get(c) || 0) + 0.3 * Math.min(1.5, r / 8));
   return u;
+}
+/* Each local node's class gain, for the cap below and the REM dilation. */
+function nvGainLi(){
+  if (NV._gli && NV._gli.n === NV.glob.length && NV._gli.p === NV.preset && NV._gli.geo === NV.geo) return NV._gli;
+  const pr = NV_PRESET[NV.preset], g = new Float32Array(NV.glob.length), art = new Uint8Array(NV.glob.length);
+  for (let li = 1; li < NV.glob.length; li++){ const cls = nvClass(nvC(NV.glob[li])); g[li] = pr.gain[cls] || 0; art[li] = NV_ART.has(cls) ? 1 : 0; }
+  return (NV._gli = { n: NV.glob.length, p: NV.preset, geo: NV.geo, g, art });
 }
 function nvTick(){
   if (!NV.on || !NV.texData || !VASC.mesh || VASC.mesh.geometry.uuid !== NV.geo){ return; }
@@ -6131,6 +6158,15 @@ function nvTick(){
         const v = s.hist[(s.h - back + s.hist.length) % s.hist.length];
         D[li*4] += w * Math.min(1.5, v);
       }
+    }
+  }
+  {
+    /* Many cells driving one vessel at once (the whole block in an up-state) add up: no node dilates
+       beyond 1.2 × its class gain. REM (section 24): the arterioles and arterial capillaries dilate. */
+    const G = nvGainLi(), rem = SL.on ? SL.p.remDil : 0;
+    for (let li = 1; li < NV.glob.length; li++){
+      if (rem && G.art[li]) D[li*4] += rem * G.g[li];
+      if (G.g[li] && D[li*4] > 1.2 * G.g[li]) D[li*4] = 1.2 * G.g[li];
     }
   }
   NV.tex.needsUpdate = true;
@@ -6312,6 +6348,7 @@ function mcDrive(dtS){
   const u = new Map();
   if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
     for (const c of raCells()){ const e = raEntry(c); u.set(c, Math.min(1.5, raAt(e, raInfer(e).rate, RA.t) / 8)); }
+  if (SL.on) for (const [c, r] of SL.rate) u.set(c, (u.get(c) || 0) + Math.min(1.5, r / 8));
   if (NV.drv.stim) for (const c of CELLS){
     const n = (c.spikesAt || []).length, was = MC.spk.get(c) || 0;
     if (n > was) u.set(c, (u.get(c) || 0) + 0.35 * (n - was) / Math.max(dtS, 0.05));
@@ -6344,18 +6381,23 @@ function mcTick(){
         const cls = nvClass(nvC(NV.glob[li])), g = pr.gain[cls] || 0.05, r = D[li*4], vb = D[li*4+2], ph = D[li*4+3];
         const drive = NV.act ? r / g : 0;                                        // ≈ 0–1.5
         if (k === "mural"){
-          const vaso = vb > 0 ? Math.sin(6.2831853 * pr.vf * (t + 1.0) + ph) : 0;    // +1 wide … −1 narrow, 1 s ahead
+          const vaso = vb > 0 ? AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * (t + 1.0) + ph)
+                     + AP_UNI.nvSlA.value * Math.sin(AP_UNI.nvSlPh.value + 6.2831853 * SL.p.isf * 1.0 + 0.15 * ph) : 0;    // +1 wide … −1 narrow, 1 s ahead
           target = 0.35 - 0.45 * Math.min(1, drive) - 0.25 * vaso;
         } else target = 0.9 * Math.min(1, drive);
       }
     } else if (k === "astro"){
-      const p = nvSoma(c); let sum = 0;
+      /* the weighted mean activity of the neurons around it, plus a little for how many are active,
+         so a crowd of active neurons does not simply saturate it */
+      const p = nvSoma(c); let sum = 0, wsum = 0;
       if (p) for (const [n, a] of past){
-        if (a < 0.01 || !n.mesh) continue;
+        if (!n.mesh) continue;
         const q = nvSoma(n); if (!q) continue;
-        const d = q.distanceTo(p); if (d < MC_R) sum += a * Math.exp(-d / MC_LAM);
+        const d = q.distanceTo(p); if (d >= MC_R) continue;
+        const w = Math.exp(-d / MC_LAM); wsum += w; sum += a * w;
       }
-      target = Math.min(1, 1.2 * sum);
+      const drive = wsum ? 0.8 * sum / wsum + 0.2 * sum : 0;
+      target = Math.min(1, 1.2 * drive * (SL.on ? SL.p.astro : 1) + (SL.on ? SL.flare : 0));
     }
     if (target == null){ if (U.value) U.value = 0; continue; }
     target = Math.max(0, Math.min(1, target));
@@ -6374,6 +6416,228 @@ function mcFrame(){
   const now = performance.now();
   if (now - (MC._at || 0) > 100){ MC._at = now; mcTick(); }
 }
+
+/* ── 24. SLEEP, MODELLED ─────────────────────────────────────────────────  2026-10-21
+   Søren: "we should also be able to make the mouse sleep. How would the neurons fire in synchrony?
+   How would the vasculature react to this?" -- then: a teaching mode, ~90 % of the loaded neurons (since
+   changed: "Just make all of them fire at some point" -- all of them now)
+   firing, NREM and REM.
+
+   A MODEL (the MICrONS mouse was recorded awake). Each state sets how the neurons fire and how the
+   vessels and astrocytes respond; the parameters glide between states over a few seconds.
+
+   NEURONS (every loaded neuron takes part; SL.frac below 1 would leave a hashed share quiet):
+   · Awake: independent, irregular firing (excitatory ~3 Hz, inhibitory ~10 Hz).
+   · NREM: the slow oscillation -- every ~1.25 s (±20 %) an up-state of ~0.45 s in which all of them
+     fire (excitatory ~12 Hz, inhibitory ~30 Hz and 15 ms later), separated by silent down-states
+     (Steriade 1993 J Neurosci 13:3252). The up-state starts as a wave crossing the block (the slow
+     oscillation is a travelling wave, Massimini 2004 J Neurosci 24:6862); its speed here, 40 mm/s, is
+     a chosen value that makes the order visible across a 1 mm block, not a measured mouse figure. On ~30 % of up-states a spindle (12 Hz for 0.8 s) makes them
+     fire in tight volleys.
+   · REM: desynchronised, near-waking firing (excitatory ~4 Hz, inhibitory ~12 Hz) on a 7 Hz theta
+     rhythm.
+   Drawn the way recorded spikes are (section 21): a band from the soma outward, and a Ca²⁺ glow that
+   rises with each spike and fades over ~1 s.
+
+   VESSELS (section 22):
+   · NREM: a large, very slow, global vasomotion of the arterioles at ~0.02 Hz, paced by oscillating
+     noradrenaline (Kjaerby 2022 Nat Neurosci 25:1059; Hauglund 2025 Cell 188:606), three times the
+     awake vasomotion, which shrinks to 0.4×; each up-state still drives a little coupling.
+   · REM: a sustained dilation of the arterioles and arterial capillaries (half the maximal coupling
+     dilation; larger arterial dilation in sleep than awake, Turner 2020 eLife 9:e62071).
+   · The neurons' firing feeds the coupling as recorded activity does (rate / 8); with the whole block
+     firing at once no vessel node dilates beyond 1.2 × its class gain.
+   MURAL Ca²⁺ (section 23) follows the slow vasomotion too: high as the arterioles narrow.
+   ASTROCYTES: their response to the neurons is halved in NREM and to 0.4 in REM, and they flare on
+   waking (astrocytic Ca²⁺ is reduced during sleep and rises around awakening, Bojarskaite 2020 Nat
+   Commun 11:3240).
+
+   TIME: realistic -- awake 60 s, NREM 180 s, REM 60 s, the slow vasomotion at 0.02 Hz, spikes drawn at
+   the speed the recorded ones are. Teaching -- awake 15 s, NREM 45 s, REM 20 s, the slow vasomotion at
+   0.1 Hz, and the spikes at a quarter speed so each up-state can be followed. */
+const SL_STATE = {
+  awake: { exc: 3, inh: 10, so: 0, rem: 0, vaA: 1, slA: 0, remDil: 0, astro: 1 },
+  nrem:  { exc: 12, inh: 30, so: 1, rem: 0, vaA: 0.4, slA: 3, remDil: 0, astro: 0.5 },
+  rem:   { exc: 4, inh: 12, so: 0, rem: 1, vaA: 0.5, slA: 0, remDil: 0.5, astro: 0.4 }
+};
+const SL_NAME = { awake: "awake", nrem: "NREM sleep", rem: "REM sleep" };
+const SL_COL = { awake: "#e6edf3", nrem: "#4dabf7", rem: "#da77f2" };
+const SL = { on: false, mode: "cycle", teach: true, plot: true, stage: "awake", stageT: 0, sc: 0, t: 0,
+             p: Object.assign({ isf: 0.1 }, SL_STATE.awake), flare: 0, nextUp: 0, upStart: -1, spindle: false,
+             spk: new Map(), rate: new Map(), ca: new Map(), hist: [], eeg: [], frac: 1, said: false };
+function slDur(){ return SL.teach ? { awake: 15, nrem: 45, rem: 20 } : { awake: 60, nrem: 180, rem: 60 }; }
+function slTakesPart(c){
+  if (c._slIn != null && c._slK === SL.frac) return c._slIn;
+  const k = String(c.root || c.nuc || c.i); let h = 2166136261;
+  for (let i = 0; i < k.length; i++){ h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
+  c._slK = SL.frac; return (c._slIn = ((h >>> 0) % 1000) / 1000 < SL.frac);
+}
+function slNeurons(){ return CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron" && slTakesPart(c)); }
+function slSetStage(st){
+  const was = SL.stage; SL.stage = st; SL.stageT = 0;
+  if (st === "awake" && was !== "awake") SL.flare = 0.7;
+  slNoteUpd();
+}
+function slNoteUpd(){
+  const el = document.getElementById("slNote"); if (!el) return;
+  const n = slNeurons().length, all = CELLS.filter(c => c.mesh && caKind(c) === "neuron").length;
+  el.textContent = "Now: " + SL_NAME[SL.stage] + " · " + n + " of " + all + " loaded neurons take part · MODEL, not measured (the MICrONS mouse was recorded awake).";
+}
+function slFire(c, t){ (SL.spk.get(c) || SL.spk.set(c, []).get(c)).push(t); }
+function slTick(dt){
+  /* stage clock (real seconds) */
+  SL.t += dt; SL.stageT += dt;
+  if (SL.mode === "cycle"){ const D = slDur(); if (SL.stageT >= D[SL.stage]) slSetStage(({ awake: "nrem", nrem: "rem", rem: "awake" })[SL.stage]); }
+  else if (SL.stage !== SL.mode) slSetStage(SL.mode);
+  /* parameters glide towards the stage's over ~3 s */
+  const tgt = SL_STATE[SL.stage], a = Math.min(1, dt / 3);
+  for (const k in tgt) SL.p[k] += (tgt[k] - SL.p[k]) * a;
+  SL.p.isf = SL.teach ? 0.1 : 0.02;
+  SL.flare *= Math.exp(-dt / 4);
+  AP_UNI.nvVaA.value = SL.p.vaA; AP_UNI.nvSlA.value = SL.p.slA;
+  AP_UNI.nvSlPh.value = (AP_UNI.nvSlPh.value + 6.2831853 * SL.p.isf * dt) % 6.2831853;
+  /* spike clock (slowed when teaching) */
+  const ds = dt * (SL.teach ? 0.25 : 1), t0 = SL.sc, t1 = SL.sc + ds; SL.sc = t1;
+  const cells = slNeurons();
+  /* the slow oscillation: when does the next up-state start, and is it a spindle? */
+  if (SL.p.so > 0.5){
+    if (SL.nextUp <= t0) SL.nextUp = t0 + 0.2;
+    if (SL.nextUp < t1){ SL.upStart = SL.nextUp; SL.spindle = Math.random() < 0.3; SL.nextUp += 1.25 * (0.8 + 0.4 * Math.random()); }
+  } else SL.upStart = -1;
+  /* the wave crosses the block along x */
+  let xmin = Infinity; const pos = new Map();
+  for (const c of cells){ const p = nvSoma(c); if (p){ pos.set(c, p); if (p.x < xmin) xmin = p.x; } }
+  let nSp = 0;
+  for (const c of cells){
+    const inh = cellClass(c) === "inh";
+    let rate;
+    if (SL.p.so > 0.5 && SL.upStart >= 0){
+      const p = pos.get(c), delay = p ? (p.x - xmin) / 40000 : 0, st = SL.upStart + delay + (inh ? 0.015 : 0);
+      const u = (t1 + t0) / 2 - st, inUp = u >= 0 && u < 0.45;
+      rate = inUp ? (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) : 0;
+      if (inUp && SL.spindle){ const ph = Math.cos(6.2831853 * 12 * u); rate *= Math.max(0, 1 + 1.6 * ph); }
+    } else {
+      rate = inh ? SL.p.inh : SL.p.exc;
+      if (SL.p.rem > 0.5) rate *= Math.max(0, 1 + 0.6 * Math.sin(6.2831853 * 7 * t1));
+    }
+    if (Math.random() < rate * ds){ slFire(c, t0 + Math.random() * ds); nSp++; }
+    const r0 = SL.rate.get(c) || 0; SL.rate.set(c, r0 + (rate - r0) * Math.min(1, dt / 1.0));
+  }
+  for (const c of SL.rate.keys()) if (!cells.includes(c)) SL.rate.delete(c);
+  SL.eeg.push({ t: t1, v: nSp / Math.max(1, cells.length) / Math.max(ds, 1e-3) });
+  while (SL.eeg.length && SL.eeg[0].t < t1 - 6) SL.eeg.shift();
+}
+function slApply(){
+  /* draw: a band from the soma for each of the last 4 spikes, a Ca²⁺ glow that rises with each */
+  for (const c of CELLS){
+    const U = c.mesh && c.mesh.material.userData; if (!U || !U.raU) continue;
+    const S = SL.spk.get(c);
+    if (!S || !S.length){ if (U.raU.value > 0){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); } continue; }
+    while (S.length && SL.sc - S[0] > 3) S.shift();
+    raDistances(c);
+    const v = [-1, -1, -1, -1]; for (let q = 0; q < 4; q++){ const j = S.length - 1 - q; if (j < 0) break; v[q] = SL.sc - S[j]; }
+    U.raS.value.set(v[0], v[1], v[2], v[3]);
+    let ca = 0; for (const ts of S){ const a = SL.sc - ts; if (a > 0) ca += 0.18 * (1 - Math.exp(-a / 0.05)) * Math.exp(-a / 1.0); }
+    U.raU.value = Math.min(1, ca);
+  }
+}
+function slClear(){
+  for (const c of CELLS){ const U = c.mesh && c.mesh.material.userData; if (U && U.raU){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); } }
+  SL.spk.clear(); SL.rate.clear(); SL.eeg = []; SL.hist = [];
+  AP_UNI.nvVaA.value = 1; AP_UNI.nvSlA.value = 0;
+  if (SL.plotSpr) SL.plotSpr.visible = false;
+}
+function setSleep(v){
+  SL.on = !!v; document.getElementById("slBtn").classList.toggle("on", SL.on);
+  document.getElementById("slBox").style.display = SL.on ? "" : "none";
+  if (SL.on){
+    if (typeof RA !== "undefined" && RA.on){ setRa(false); }
+    if (DS_HAS.vasc && !NV.on) setNv(true);
+    SL.t = 0; SL.sc = 0; SL.nextUp = 0; SL.flare = 0;
+    slSetStage(SL.mode === "cycle" ? "awake" : SL.mode);
+    if (!SL.said){ SL.said = true; ctxNote.textContent = "Sleep (MODEL): " + (SL.mode === "cycle" ? "awake → NREM → REM → awake" : SL_NAME[SL.mode]) + ". In NREM the neurons fire together in up-states and the arterioles swing slowly; in REM they fire on a theta rhythm and the arterioles dilate. Not measured — the MICrONS mouse was awake."; }
+  } else slClear();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function slSetting(k, v){
+  if (k === "mode"){ SL.mode = v; const el = document.getElementById("slState"); if (el) el.value = v; if (SL.on) slSetStage(v === "cycle" ? "awake" : v); }
+  if (k === "teach"){ SL.teach = !!v; const el = document.getElementById("slTeach"); if (el) el.checked = SL.teach; }
+  if (k === "plot"){ SL.plot = !!v; const el = document.getElementById("slPlot"); if (el) el.checked = SL.plot; if (!v && SL.plotSpr) SL.plotSpr.visible = false; }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function slUi(){ return { on: SL.on, mode: SL.mode, teach: SL.teach, plot: SL.plot }; }
+function slApplyUi(u){ if (!u) return; if (u.mode) slSetting("mode", u.mode); if (u.teach != null) slSetting("teach", u.teach); if (u.plot != null) slSetting("plot", u.plot); if (u.on != null && !!u.on !== SL.on) setSleep(u.on); }
+/* A representative arteriole: the mean of the penetrating- and pial-arteriole nodes, as the shader moves them. */
+function slArteriole(){
+  if (!NV.texData || !NV.glob) return null;
+  const D = NV.texData, pr = NV_PRESET[NV.preset], t = AP_UNI.nvT.value; let sum = 0, n = 0;
+  for (let li = 1; li < NV.glob.length; li += Math.max(1, Math.floor(NV.glob.length / 400))){
+    const cls = nvClass(nvC(NV.glob[li])); if (cls !== "pa" && cls !== "pial_art") continue;
+    const q = [D[li*4], D[li*4+1], D[li*4+2], D[li*4+3]];
+    sum += q[0] + q[2] * (AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * t + q[3]) + AP_UNI.nvSlA.value * Math.sin(AP_UNI.nvSlPh.value + 0.15 * q[3])); n++;
+  }
+  return n ? sum / n : null;
+}
+function slPlotDraw(){
+  if (!SL.on || !SL.plot){ if (SL.plotSpr) SL.plotSpr.visible = false; return; }
+  const W = 760, H = 420;
+  if (!SL.plotCv){ SL.plotCv = document.createElement("canvas"); SL.plotCv.width = W; SL.plotCv.height = H; }
+  const g = SL.plotCv.getContext("2d");
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = SL_COL[SL.stage]; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif"; g.fillText("Sleep: " + SL_NAME[SL.stage], 16, 32);
+  g.font = "600 16px system-ui, sans-serif"; g.fillStyle = "#f0883e";
+  g.fillText("MODEL, not measured · " + (SL.teach ? "TEACHING: faster cycle, spikes at ¼ speed" : "realistic timing"), 16, 56);
+  const L = 70, R = W - 20;
+  /* model EEG: the population firing rate, last 6 s of spike time */
+  g.fillStyle = "#8b949e"; g.font = "15px system-ui, sans-serif"; g.fillText("model EEG (summed firing), last 6 s", L, 84);
+  const T1 = 92, B1 = 200, e = SL.eeg, tE = e.length ? e[e.length - 1].t : 0;
+  let emax = 5; for (const x of e) emax = Math.max(emax, x.v);
+  g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath();
+  e.forEach((x, k) => { const px = L + (R - L) * (1 - (tE - x.t) / 6), py = B1 - (B1 - T1) * Math.min(1, x.v / emax); k ? g.lineTo(px, py) : g.moveTo(px, py); });
+  g.stroke();
+  /* arteriole diameter and the stage, last 120 s (40 s teaching) of real time */
+  const win = SL.teach ? 40 : 120, T2 = 236, B2 = H - 46, h = SL.hist, tH = h.length ? h[h.length - 1].t : 0;
+  g.fillStyle = "#8b949e"; g.fillText("arteriole diameter (model), last " + win + " s · bar: stage", L, 226);
+  let dmin = -0.02, dmax = 0.02; for (const x of h) if (x.d != null){ dmin = Math.min(dmin, x.d); dmax = Math.max(dmax, x.d); }
+  g.strokeStyle = "#21262d"; g.lineWidth = 1; const y0 = B2 - (B2 - T2) * (0 - dmin) / (dmax - dmin); g.beginPath(); g.moveTo(L, y0); g.lineTo(R, y0); g.stroke();
+  g.fillStyle = "#8b949e"; g.fillText((dmax >= 0 ? "+" : "") + Math.round(dmax * 100) + " %", 8, T2 + 6); g.fillText(Math.round(dmin * 100) + " %", 8, B2);
+  g.strokeStyle = "#f03e3e"; g.lineWidth = 3; g.beginPath(); let first = true;
+  for (const x of h){ if (x.d == null) continue; const px = L + (R - L) * (1 - (tH - x.t) / win), py = B2 - (B2 - T2) * (x.d - dmin) / (dmax - dmin); first ? g.moveTo(px, py) : g.lineTo(px, py); first = false; }
+  g.stroke();
+  for (const x of h){ const px = L + (R - L) * (1 - (tH - x.t) / win); g.fillStyle = SL_COL[x.s]; g.fillRect(px, B2 + 10, Math.max(2, (R - L) / (win * 5)), 10); }
+  g.fillStyle = "#c9d1d9"; g.fillText("awake", L, H - 8); g.fillStyle = SL_COL.nrem; g.fillText("NREM", L + 70, H - 8); g.fillStyle = SL_COL.rem; g.fillText("REM", L + 135, H - 8);
+  if (!SL.plotSpr){
+    const tex = new THREE.CanvasTexture(SL.plotCv); tex.colorSpace = THREE.SRGBColorSpace;
+    SL.plotSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); SL.plotSpr.renderOrder = 30; scene.add(SL.plotSpr);
+  }
+  SL.plotSpr.material.map.needsUpdate = true; SL.plotSpr.visible = true;
+  const hh = 0.115; SL.plotSpr.scale.set(hh * W / H, hh, 1);
+  slPlace();
+}
+function slPlace(){
+  if (!SL.plotSpr || !SL.plotSpr.visible) return;
+  const cand = [STIM.warn && STIM.warn.parent ? STIM.warn : null, STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null,
+                CA.hud && CA.hud.spr && CA.hud.spr.parent ? CA.hud.spr : null, CA.plotSpr && CA.plotSpr.visible ? CA.plotSpr : null,
+                NV.plotSpr && NV.plotSpr.visible ? NV.plotSpr : null].filter(Boolean);
+  let low = null; for (const x of cand) if (!low || x.position.y - x.scale.y / 2 < low.position.y - low.scale.y / 2) low = x;
+  const sp = SL.plotSpr;
+  if (low) sp.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - sp.scale.y / 2, 0));
+  else sp.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - sp.scale.y / 2, 0));
+}
+function slFrame(dt){
+  if (!SL.on) return;
+  slTick(Math.min(0.1, dt));
+  slApply();
+  const now = performance.now();
+  if (now - (SL._hAt || 0) > 200){ SL._hAt = now; SL.hist.push({ t: SL.t, d: slArteriole(), s: SL.stage }); while (SL.hist.length && SL.hist[0].t < SL.t - 130) SL.hist.shift(); }
+  if (now - (SL._pAt || 0) > 200){ SL._pAt = now; slPlotDraw(); }
+  if (now - (SL._nAt || 0) > 2000){ SL._nAt = now; slNoteUpd(); }
+}
+document.getElementById("slBtn").addEventListener("click", () => setSleep(!SL.on));
+document.getElementById("slState").addEventListener("change", e => slSetting("mode", e.target.value));
+document.getElementById("slTeach").addEventListener("change", e => slSetting("teach", e.target.checked));
+document.getElementById("slPlot").addEventListener("change", e => slSetting("plot", e.target.checked));
 
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
@@ -6809,6 +7073,12 @@ function menuRows(){
         rows.push({ label: "   Diameter plot", on: NV.plot, act: () => nvSetting("plot", !NV.plot) });
         rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
+    }
+    rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
+    if (SL.on){
+      rows.push({ label: "   " + ({ cycle: "Cycle: awake → NREM → REM", nrem: "NREM", rem: "REM", awake: "Awake" })[SL.mode] + "  ▸", act: () => slSetting("mode", ({ cycle: "nrem", nrem: "rem", rem: "awake", awake: "cycle" })[SL.mode]) });
+      rows.push({ label: "   Teaching (faster cycle, slower spikes)", on: SL.teach, act: () => slSetting("teach", !SL.teach) });
+      rows.push({ label: "   Sleep plot", on: SL.plot, act: () => slSetting("plot", !SL.plot) });
     }
     if (DS_HAS.ra){
       rows.push({ label: "Recorded activity (MICrONS)", on: RA.on, act: () => setRa(!RA.on) });
@@ -8430,6 +8700,7 @@ renderer.setAnimationLoop(() => {
   caFrame(TL.frozen ? 0 : dt);                              // …and the Ca²⁺ clock
   raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
+  try { slFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] sleep:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
@@ -8863,7 +9134,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
