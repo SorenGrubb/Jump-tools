@@ -1,0 +1,59 @@
+{
+ "made": "2026-10-21",
+ "trisam_vertices": 1392234,
+ "calibration": {
+  "offA": 0,
+  "offV": -1.0,
+  "nA": 26504,
+  "nV": 79937,
+  "agreeA": 72,
+  "agreeV": 79,
+  "agreeLocA": 94,
+  "agreeLocV": 93
+ },
+ "vertices": {
+  "his": 488028,
+  "shih": 824391,
+  "filled": 32829,
+  "unknown": 46986
+ },
+ "agree_where_both_pct": 81,
+ "points": 150131,
+ "median_um": 10.61,
+ "within_um": {
+  "2": 19581,
+  "5": 33094,
+  "10": 70030,
+  "20": 131471,
+  "50": 148525
+ },
+ "fine_counts_within_10um": {
+  "3rd-order arterial capillary": 4967,
+  "2nd-order venous capillary": 10893,
+  "penetrating arteriole": 3538,
+  "ascending venule": 4563,
+  "1st-order arterial capillary": 2161,
+  "pial arteriole": 1412,
+  "pial venule": 3094,
+  "3rd-order venous capillary": 11445,
+  "2nd-order arterial capillary": 3122,
+  "1st-order venous capillary": 8529,
+  "capillary beyond the 3rd order (mid-bed)": 12882,
+  "principal cortical venule": 1015,
+  "unknown": 2409
+ },
+ "FINE_NAMES": [
+  "3rd-order arterial capillary",
+  "2nd-order venous capillary",
+  "penetrating arteriole",
+  "ascending venule",
+  "1st-order arterial capillary",
+  "pial arteriole",
+  "pial venule",
+  "3rd-order venous capillary",
+  "2nd-order arterial capillary",
+  "1st-order venous capillary",
+  "capillary beyond the 3rd order (mid-bed)",
+  "principal cortical venule"
+ ]
+}
