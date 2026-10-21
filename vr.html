@@ -205,6 +205,12 @@
       <option value="box">Vessels: around the cells</option>
       <option value="whole">Vessels: whole volume (PC only, 2.8 M triangles)</option>
     </select>
+    <select id="pvsSel" title="Søren's tracing of the perivascular spaces around the penetrating vessels and of the subarachnoid space between the glia limitans and the arachnoid mater, filled between the curves and with the Wan &amp; Wei vessel lumen subtracted. Its inner side moves with the vessel wall (heartbeat, vasomotion, coupling, sleep); its width can be set, and it widens in NREM sleep.">
+      <option value="off">Perivascular space: off</option>
+      <option value="box">Perivascular space: around the cells</option>
+      <option value="whole">Perivascular space: whole volume</option>
+    </select>
+    <label id="pvsWRow" style="display:none;font-size:12px;align-items:center;gap:6px" title="Width of the perivascular and subarachnoid space, × the traced width (the vessel side stays on the vessel wall)">width <input type="range" id="pvsW" min="0.5" max="2" step="0.05" value="1" style="width:110px"> <span id="pvsWv">×1.00</span></label>
     <select id="vcolSel" title="Colour the vessels by what Søren traced them as: arterioles red, venules purple, and the capillaries in between in steps by order — 1st-order arterial capillaries always the first tone after the arterioles, then 2nd, 3rd, then the venous 3rd, 2nd and 1st order towards the venules. Vessels nobody traced stay grey.">
       <option value="one">Vessel colour: one colour</option>
       <option value="order">Vessel colour: by order — Søren's tracings, Shih et al. for the rest</option>
@@ -626,6 +632,7 @@
     detail: ["", "Detail", { light: ICON.lowres + '<span class="lbl">&nbsp;light</span>', full: ICON.hires + '<span class="lbl">&nbsp;full</span>' }],
     colourSel: ["", "Colour", { type: dot("#f0a742") + dot("#3fb950") + dot("#58a6ff") + '<span class="lbl">&nbsp;type</span>', ei: '<b style="color:#f0a742">E</b>·<b style="color:#b67cff">I</b>' }],
     vascSel: ["vessel", "Vessels", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
+    pvsSel: ["vessel", "Perivascular", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
     vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>', traced: "traced", shih: "Shih", agree: "agree?" }],
     v1Sel: ["column", "V1 column", { off: ICON.off, outline: "outline", cells: "+ cells" }],
     skelSel: ["skel", "Skeletons", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
@@ -662,9 +669,9 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["pvsSel"], ["#pvsWRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -792,6 +799,7 @@ window.VR_DATASETS = {
     activity: "data/microns_activity/v1/",
     /* Søren's traced vessel network (section 22), from the line annotations in "Vascular outlines". */
     vascNet: "data/vasc_net/v1/",
+    pvsMesh: "data/pvs/v1/pvs_mesh.bin",
     nucRoots: "data/nuc_roots/m1300/v1/",
     /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
        because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
@@ -1897,6 +1905,7 @@ function applyClip(){
   const planes = cutActive() ? [CUT.plane] : null;
   for (const c of CELLS) for (const m of [c.mesh, c.nucMesh]) if (m){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; }
   if (VASC.mesh){ VASC.mesh.material.clippingPlanes = planes; VASC.mesh.material.needsUpdate = true; }
+  if (typeof PVS !== "undefined" && PVS.mesh){ PVS.mesh.material.clippingPlanes = planes; PVS.mesh.material.needsUpdate = true; }
   if (typeof TRC !== "undefined" && TRC.group) TRC.group.children.forEach(m => { if (m.isMesh){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; } });
   if (SKEL.group) SKEL.group.children.forEach(m => { if (m.material){ m.material.clippingPlanes = planes; m.material.needsUpdate = true; } });
 }
@@ -3951,7 +3960,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -4078,6 +4087,7 @@ async function openScene(id){
   try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
   try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
   try { lfpApplyUi(u.lfp); } catch (e){ console.warn("[vr] LFP settings", e); }
+  try { if (u.pvs){ setPvsW(u.pvs.w || 1); if (u.pvs.mode && u.pvs.mode !== document.getElementById("pvsSel").value){ document.getElementById("pvsSel").value = u.pvs.mode; buildPvs(); } } } catch (e){ console.warn("[vr] perivascular settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -6949,6 +6959,140 @@ document.getElementById("lfpPlace").addEventListener("click", () => { LFP.arm = 
 document.getElementById("lfpBg").addEventListener("change", e => { LFP.bg = e.target.checked; });
 document.getElementById("lfpPlot").addEventListener("change", e => { LFP.plot = e.target.checked; if (!LFP.plot && LFP.spr) LFP.spr.visible = false; });
 
+/* ── 26. THE PERIVASCULAR AND SUBARACHNOID SPACE ───────────────────────────  2026-10-21
+   Søren: "upload the perivascular space segmentation that I have and make it a layer you can add to
+   the VR ... it should be able to change size and [change] when vasculature changes diameter and the
+   brain 'swells' during e.g. sleep. I think we will have to subtract the Wan et al vessels."
+   His tracing (008 - All perivascular spaces.xyz): the glia limitans and arachnoid mater, long thin
+   curves along the pia, and the perivascular spaces around the penetrating vessels, loops in the same
+   sections. src/pvs/microns_pvs_layer.ipynb fills between the pial curves and inside the loops,
+   subtracts the TriSAM lumen section by section, stacks it at 1 µm and makes data/pvs/v1/pvs_mesh.bin
+   (same format as the vessel mesh).
+
+   In the room: a translucent cyan surface (CSF). Each vertex is tied to the nearest traced vessel
+   point within 30 µm -- its node in the vessel texture (section 22), the vessel's radius there, its
+   distance from the centreline and the direction away from it. Then, every frame, in the shader:
+   · the vessel moves it: the wall shift (radius × the node's dilation, heartbeat and vasomotion
+     included) at the wall, falling off as radius / distance further out -- a dilating vessel pushes
+     into its perivascular space and narrows it (the "perivascular pumping" picture, Mestre 2018 Nat
+     Commun 9:4878);
+   · the width: the part beyond the wall is moved out by (width − 1) × its distance beyond the wall;
+     vertices with no vessel near (the subarachnoid sheet) move along their normal by (width − 1) ×
+     1.5 µm.
+   Width = the slider × a sleep factor: 1.25 in NREM, gliding with the state (an assumption, of the
+   order of the ~60 % larger interstitial space of sleep, Xie 2013 Science 342:373). */
+const PVS = { mesh: null, raw: null, loading: null, w: 1, sleepW: 1, tied: 0, geo: null, tris: 0 };
+async function loadPvsRaw(ds){
+  if (PVS.raw) return PVS.raw;
+  if (!PVS.loading) PVS.loading = (async () => {
+    ctxNote.textContent = "Perivascular space: downloading…";
+    const r = await fetch(ds.pvsMesh); if (!r.ok) throw new Error("HTTP " + r.status);
+    const buf = await r.arrayBuffer(), n = new DataView(buf).getUint32(0, true);
+    const pos = new Float32Array(buf, 4, n * 3), idx = new Uint32Array(buf, 4 + n * 12);
+    const um = new Float32Array(n * 3); for (let k = 0; k < um.length; k++) um[k] = pos[k] / 1000;
+    PVS.raw = { pos: um, idx: idx.slice() }; return PVS.raw;
+  })().catch(e => { PVS.loading = null; throw e; });
+  return PVS.loading;
+}
+AP_UNI.pvW = { value: 1 };
+function pvsMaterial(){
+  const m = new THREE.MeshStandardMaterial({ color: 0x3bc9db, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, AP_UNI);
+    sh.uniforms.nvTex = { get value(){ return NV.tex; } }; sh.uniforms.nvW = { get value(){ return NV.W; } }; sh.uniforms.nvH = { get value(){ return NV.H; } };
+    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform float pvW;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+        {
+          float wall = 0.0;
+          if (pvNode > 0.5){
+            vec2 nuv = vec2((mod(pvNode, nvW) + 0.5) / nvW, (floor(pvNode / nvW) + 0.5) / nvH);
+            vec4 q = texture2D(nvTex, nuv);
+            float ph = fract(nvT * nvHR);
+            float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);
+            float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a));
+            wall = pvR * d * pvR / max(pvD, pvR);
+            transformed += pvDir * (wall + (pvW - 1.0) * max(0.0, pvD - pvR));
+          } else {
+            transformed += objectNormal * (pvW - 1.0) * 1.5;
+          }
+        }`);
+  };
+  m.customProgramCacheKey = () => "pvs";
+  return m;
+}
+async function pvsAttach(){
+  const mesh = PVS.mesh; if (!mesh) return;
+  let net; try { net = await nvNet(); } catch (e){ net = null; }
+  const g = mesh.geometry, P = g.attributes.position.array, nv = P.length / 3;
+  const pvNode = new Float32Array(nv), pvR = new Float32Array(nv), pvD = new Float32Array(nv), pvDir = new Float32Array(nv * 3);
+  let tied = 0;
+  if (net && NV.loc && NV.geo){
+    if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox.clone().expandByScalar(30), q = net.q, S = 10, cells = new Map(), key = (x, y, z) => x + "," + y + "," + z, pts = [];
+    for (let k = 0, m = net.own.length; k < m; k++){
+      const x = net.Dq[k*3] * q, y = net.Dq[k*3+1] * q, z = net.Dq[k*3+2] * q;
+      if (x < bb.min.x || x > bb.max.x || y < bb.min.y || y > bb.max.y || z < bb.min.z || z > bb.max.z) continue;
+      const li = NV.loc.get(net.own[k]); if (li == null) continue;           // only nodes the vessel surface moves
+      const j = pts.length; pts.push([x, y, z, li, net.own[k]]);
+      const kk = key(Math.floor(x / S), Math.floor(y / S), Math.floor(z / S)); let l = cells.get(kk); if (!l){ l = []; cells.set(kk, l); } l.push(j);
+    }
+    for (let v = 0; v < nv; v++){
+      const x = P[v*3], y = P[v*3+1], z = P[v*3+2], gx = Math.floor(x / S), gy = Math.floor(y / S), gz = Math.floor(z / S);
+      let best = 900, bj = -1;
+      for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++){
+        const l = cells.get(key(gx + dx, gy + dy, gz + dz)); if (!l) continue;
+        for (const j of l){ const p = pts[j], d2 = (p[0]-x)*(p[0]-x) + (p[1]-y)*(p[1]-y) + (p[2]-z)*(p[2]-z); if (d2 < best){ best = d2; bj = j; } }
+      }
+      if (bj < 0) continue;
+      const p = pts[bj], d = Math.sqrt(best), cn = net.cname(p[4]);
+      pvNode[v] = p[3]; pvR[v] = /cap/.test(cn) ? 2.5 : Math.max(2, net.rad[p[4]] || 5); pvD[v] = d;
+      if (d > 1e-3){ pvDir[v*3] = (x - p[0]) / d; pvDir[v*3+1] = (y - p[1]) / d; pvDir[v*3+2] = (z - p[2]) / d; }
+      tied++;
+      if ((v & 65535) === 0) await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  g.setAttribute("pvNode", new THREE.BufferAttribute(pvNode, 1)); g.setAttribute("pvR", new THREE.BufferAttribute(pvR, 1));
+  g.setAttribute("pvD", new THREE.BufferAttribute(pvD, 1)); g.setAttribute("pvDir", new THREE.BufferAttribute(pvDir, 3));
+  PVS.tied = tied / Math.max(1, nv); PVS.geo = NV.geo;
+}
+async function buildPvs(){
+  const mode = document.getElementById("pvsSel").value;
+  if (PVS.mesh){ content.remove(PVS.mesh); PVS.mesh.geometry.dispose(); PVS.mesh = null; PVS.tris = 0; }
+  document.getElementById("pvsWRow").style.display = mode === "off" ? "none" : "inline-flex";
+  if (mode === "off" || !CELL_BOX){ updateTri(); return; }
+  const ds = dsOfCells();
+  if (!ds.pvsMesh){ ctxNote.textContent = "No perivascular-space layer for this dataset."; return; }
+  let raw; try { raw = await loadPvsRaw(ds); } catch (e){ ctxNote.textContent = "Perivascular space could not be loaded: " + (e.message || e) + " (is data/pvs/v1/pvs_mesh.bin pushed?)"; return; }
+  if (document.getElementById("pvsSel").value !== mode) return;
+  let pos = raw.pos, idx = raw.idx;
+  if (mode === "box"){
+    const b = regionBox(), Pp = raw.pos, I = raw.idx, inB = new Uint8Array(Pp.length / 3);
+    for (let v = 0, k = 0; v < inB.length; v++, k += 3) inB[v] = Pp[k] >= b.min.x && Pp[k] <= b.max.x && Pp[k+1] >= b.min.y && Pp[k+1] <= b.max.y && Pp[k+2] >= b.min.z && Pp[k+2] <= b.max.z ? 1 : 0;
+    const keep = []; for (let t = 0; t < I.length; t += 3) if (inB[I[t]] || inB[I[t+1]] || inB[I[t+2]]) keep.push(I[t], I[t+1], I[t+2]);
+    const remap = new Int32Array(inB.length).fill(-1), np_ = [], ni = new Uint32Array(keep.length);
+    for (let k = 0; k < keep.length; k++){ const v = keep[k]; if (remap[v] < 0){ remap[v] = np_.length / 3; np_.push(Pp[v*3], Pp[v*3+1], Pp[v*3+2]); } ni[k] = remap[v]; }
+    pos = new Float32Array(np_); idx = ni;
+  }
+  if (!idx.length){ ctxNote.textContent = "No perivascular space inside the box around these cells."; updateTri(); return; }
+  const g = geometryFrom(pos, idx);
+  PVS.mesh = new THREE.Mesh(g, pvsMaterial()); PVS.mesh.renderOrder = 3; PVS.mesh.userData.context = true;
+  PVS.tris = idx.length / 3; content.add(PVS.mesh); applyClip();
+  await pvsAttach();
+  ctxNote.textContent = "Perivascular space: " + (PVS.tris / 1000).toFixed(0) + "k triangles; " + Math.round(PVS.tied * 100) + " % tied to the moving vessels"
+    + (NV.geo ? "" : " (show the vessels with dilation on to make it move)") + " — Søren Grubb's tracing, vessel lumen (Wan & Wei 2025) subtracted.";
+  updateTri();
+}
+function setPvsW(v){ PVS.w = +v; document.getElementById("pvsW").value = PVS.w; document.getElementById("pvsWv").textContent = "×" + PVS.w.toFixed(2); }
+function pvsFrame(dt){
+  const tgt = typeof SL !== "undefined" && SL.on ? ({ nrem: 1.25, rem: 1.0, awake: 1.0 })[SL.stage] : 1;
+  PVS.sleepW += (tgt - PVS.sleepW) * Math.min(1, dt / 3);
+  AP_UNI.pvW.value = PVS.w * PVS.sleepW;
+  /* the vessel surface was tied again (new box, Shih bed): tie this one to the new nodes too */
+  if (PVS.mesh && NV.geo && PVS.geo !== NV.geo && !PVS._busy){ PVS._busy = true; pvsAttach().finally(() => { PVS._busy = false; }); }
+}
+document.getElementById("pvsSel").addEventListener("change", buildPvs);
+document.getElementById("pvsW").addEventListener("input", e => setPvsW(e.target.value));
+
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
    output synapses found to VR" -- and the same from Astrocyte–synapse proximity and Cell contacts.
@@ -7351,6 +7495,10 @@ function menuRows(){
     const vm = document.getElementById("vascSel").value;
     if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
                 on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
+    if (DS_HAS.pvs){ const pm = document.getElementById("pvsSel").value;
+      rows.push({ label: "Perivascular space: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[pm] + "  ▸", on: pm !== "off", act: () => { document.getElementById("pvsSel").value = ({ off: "box", box: "whole", whole: "off" })[pm]; buildPvs(); } });
+      if (pm !== "off"){ rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " − ", act: () => setPvsW(Math.max(0.5, PVS.w - 0.25)) }); rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " + ", act: () => setPvsW(Math.min(2, PVS.w + 0.25)) }); }
+    }
     if (DS_HAS.vasc && vm !== "off") rows.push({ label: "   Vessel colour: " + (!NV.colour ? "one colour" : ({ order: "by order (traced + Shih)", traced: "by order (traced only)", shih: "by order (Shih only)", agree: "where they agree" })[NV.colourSrc || "order"]) + "  ▸",
       on: NV.colour, act: () => setVesselColour(!NV.colour ? "order" : ({ order: "traced", traced: "shih", shih: "agree", agree: "one" })[NV.colourSrc || "order"]) });
     if (DS_HAS.skel) rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
@@ -9018,6 +9166,7 @@ renderer.setAnimationLoop(() => {
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
   try { slFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] sleep:", e); }
   try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
+  try { pvsFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
@@ -9426,7 +9575,7 @@ const panel = document.getElementById("panel"), show = document.getElementById("
    The map of minnie65 (layers, the V1 column, the areas, the vessels and their skeletons), its
    neighbour table and Søren's vectors exist for MICrONS alone. Elsewhere those controls are
    taken away -- in the panel and in the headset palette -- rather than left to fail. */
-const DS_HAS = { layers: !!DSX.layers, v1: !!DSX.v1areas, vasc: !!DSX.vascMesh, skel: !!DSX.vascSkel,
+const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, vasc: !!DSX.vascMesh, skel: !!DSX.vascSkel,
                  nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, mesh: !!DSX.mesh, ra: !!DSX.activity };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
@@ -9451,7 +9600,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
