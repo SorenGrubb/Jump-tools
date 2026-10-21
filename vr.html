@@ -207,7 +207,7 @@
     </select>
     <select id="pvsSel" title="Søren's tracing of the perivascular spaces around the penetrating vessels and of the subarachnoid space between the glia limitans and the arachnoid mater, filled between the curves and with the Wan &amp; Wei vessel lumen subtracted. Its inner side moves with the vessel wall (heartbeat, vasomotion, coupling, sleep); its width can be set, and it widens in NREM sleep.">
       <option value="off">Perivascular space: off</option>
-      <option value="box">Perivascular space: around the cells</option>
+      <option value="box">Perivascular space: around the cells, up to the pia</option>
       <option value="whole">Perivascular space: whole volume</option>
     </select>
     <label id="pvsWRow" style="display:none;font-size:12px;align-items:center;gap:6px" title="Width of the perivascular and subarachnoid space, × the traced width (the vessel side stays on the vessel wall)">width <input type="range" id="pvsW" min="0.5" max="2" step="0.05" value="1" style="width:110px"> <span id="pvsWv">×1.00</span></label>
@@ -557,6 +557,10 @@
     reset: S('<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 3.5v4.8h4.8"/>'),
     layers: S('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 16.5l9 5 9-5" opacity=".55"/>'),
     vessel: S('<path d="M3 21c5-3 6-7 9-9.5S18 9 21 3" stroke-width="2.6"/><path d="M12 11.5c1 3.5 3.5 6.5 7 8.5" stroke-width="1.9"/>'),
+    /* v81, Søren: the perivascular space should not share the vessels' symbol -- "if anything it
+       should be the reverse of the vessels". The same branching vessel, drawn as the sleeve around
+       it: its two walls 2.3 units either side of the vessel's line, the vessel itself left empty. */
+    pvs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + '<path d="M4.2 23 L5 22.4 L5.8 21.9 L6.5 21.3 L7.2 20.7 L7.8 20.2 L8.3 19.6 L8.9 19 L9.3 18.4 L9.8 17.8 L10.2 17.3 L10.6 16.8 L11 16.2 L11.3 15.8"/><path d="M14.8 12.3 L15.3 12 L15.7 11.8 L16.2 11.5 L16.7 11.2 L17.2 10.9 L17.7 10.5 L18.2 10.1 L18.8 9.7 L19.3 9.2 L19.9 8.7 L20.4 8.1 L21 7.4 L21.5 6.7 L22 5.9 L22.5 5 L23 4"/><path d="M11.4 15.8 L11.7 16.3 L12.1 16.9 L12.5 17.4 L12.9 17.9 L13.3 18.4 L13.8 18.9 L14.3 19.4 L14.8 19.8 L15.3 20.3 L15.8 20.7 L16.4 21.1 L17 21.5 L17.6 21.8"/><path d="M1.8 19 L2.5 18.6 L3 18.2 L3.6 17.8 L4.1 17.4 L4.5 16.9 L5 16.5 L5.4 16 L5.8 15.5 L6.1 15.1 L6.5 14.6 L6.9 14.1 L7.2 13.6 L7.6 13.1 L8 12.5 L8.4 12 L8.8 11.5 L9.2 11 L9.7 10.5 L10.2 10 L10.8 9.5 L11.3 9.1 L11.9 8.7 L12.4 8.4 L12.9 8.1 L13.4 7.8 L13.8 7.5 L14.3 7.3 L14.7 7 L15.1 6.8 L15.5 6.5 L15.8 6.2 L16.2 5.9 L16.6 5.5 L16.9 5.1 L17.3 4.6 L17.7 4.1 L18.1 3.5 L18.5 2.8 L19 2"/><path d="M14.8 12.4 L15 12.8 L15.2 13.2 L15.4 13.6 L15.7 14 L16 14.4 L16.3 14.8 L16.6 15.1 L16.9 15.5 L17.2 15.8 L17.6 16.2 L18 16.5 L18.4 16.8 L18.8 17.1 L19.2 17.4 L19.7 17.7 L20.2 18"/>' + '</svg>',
     column: S('<ellipse cx="12" cy="5" rx="6.5" ry="2.5"/><path d="M5.5 5v14M18.5 5v14"/><path d="M5.5 19a6.5 2.5 0 0 0 13 0"/>'),
     rbox: S('<rect x="3.5" y="3.5" width="17" height="17" rx="1" stroke-dasharray="3 2.4"/>'),
     areas: S('<path d="M3 4h8v8H3zM13 4h8v10h-8zM3 14h8v6H3zM13 16h8v4h-8z"/>'),
@@ -633,7 +637,7 @@
     detail: ["", "Detail", { light: ICON.lowres + '<span class="lbl">&nbsp;light</span>', full: ICON.hires + '<span class="lbl">&nbsp;full</span>' }],
     colourSel: ["", "Colour", { type: dot("#f0a742") + dot("#3fb950") + dot("#58a6ff") + '<span class="lbl">&nbsp;type</span>', ei: '<b style="color:#f0a742">E</b>·<b style="color:#b67cff">I</b>' }],
     vascSel: ["vessel", "Vessels", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
-    pvsSel: ["vessel", "Perivascular", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
+    pvsSel: ["pvs", "Perivascular", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
     vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>', traced: "traced", shih: "Shih", agree: "agree?" }],
     v1Sel: ["column", "V1 column", { off: ICON.off, outline: "outline", cells: "+ cells" }],
     skelSel: ["skel", "Skeletons", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
@@ -802,6 +806,7 @@ window.VR_DATASETS = {
     vascNet: "data/vasc_net/v1/",
     pvsMesh: "data/pvs/v1/pvs_mesh.bin",
     pvsNg: "data/pvs/v1/ng/",
+    pvsVr: "data/pvs/v1/vr/",
     nucRoots: "data/nuc_roots/m1300/v1/",
     /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
        because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
@@ -6489,17 +6494,18 @@ function mcFrame(){
    vessels and astrocytes respond; the parameters glide between states over a few seconds.
 
    NEURONS (every loaded neuron takes part; SL.frac below 1 would leave a hashed share quiet):
-   · Awake: independent, irregular firing (excitatory ~3 Hz, inhibitory ~10 Hz).
+   · Awake: independent, irregular, sparse firing (excitatory ~1 Hz, inhibitory ~8 Hz on average,
+     each cell scaled by its own log-normal factor -- v83).
    · NREM: the slow oscillation -- every ~1.25 s (±20 %) an up-state of ~0.45 s in which all of them
-     fire (excitatory ~12 Hz, inhibitory ~30 Hz and 15 ms later), separated by silent down-states
+     fire (excitatory ~3 Hz, inhibitory ~15 Hz on average and 15 ms later; v83), separated by silent down-states
      (Steriade 1993 J Neurosci 13:3252). The up-state starts as a wave crossing the block (the slow
      oscillation is a travelling wave, Massimini 2004 J Neurosci 24:6862); its speed here, 40 mm/s, is
      a chosen value that makes the order visible across a 1 mm block, not a measured mouse figure. On ~30 % of up-states a spindle (12 Hz for 0.8 s) makes them
      fire in tight volleys.
-   · REM: desynchronised, near-waking firing (excitatory ~4 Hz, inhibitory ~12 Hz) on a 7 Hz theta
+   · REM: desynchronised, near-waking firing (excitatory ~1 Hz, inhibitory ~10 Hz; v83) on a 7 Hz theta
      rhythm.
-   Drawn the way recorded spikes are (section 21): a band from the soma outward, and a Ca²⁺ glow that
-   rises with each spike and fades over ~1 s.
+   Drawn the way recorded spikes are (section 21): a band from the soma outward, and a Ca²⁺ glow drawn
+   as ΔF/F against the cell's own baseline (v83, see SL_STATE).
 
    VESSELS (section 22):
    · NREM: a large, very slow, global vasomotion of the arterioles at ~0.02 Hz, paced by oscillating
@@ -6517,15 +6523,41 @@ function mcFrame(){
    TIME: realistic -- awake 60 s, NREM 180 s, REM 60 s, the slow vasomotion at 0.02 Hz, spikes drawn at
    the speed the recorded ones are. Teaching -- awake 15 s, NREM 45 s, REM 20 s, the slow vasomotion at
    0.1 Hz, and the spikes at a quarter speed so each up-state can be followed. */
+/* v83 (Søren: "if you do the sleep mode, neurons are constantly high activity, their calcium almost
+   never drops. With the recorded movie there is only activity once in a while."). Two things were
+   wrong. (1) The rates were too high and the same for every cell: cortical pyramidal cells fire
+   sparsely, most well below 1 Hz awake, with a long-tailed spread across cells (Barth & Poulet 2012,
+   Trends Neurosci 35:345). Now the means are excitatory 1 Hz awake and in REM and 3 Hz inside an
+   NREM up-state (≈ 1 Hz averaged over the slow oscillation, as firing over NREM is about that of
+   waking, Vyazovskiy et al. 2009 Neuron 63:865); inhibitory 8 / 10 / 15 Hz; and each cell's rate is that mean × its own log-normal
+   factor (σ = 1, mean 1, fixed per cell), so a few cells are busy and most are quiet. (2) The glow was
+   the raw summed Ca²⁺, so steady firing made a steady glow. Now it is drawn as the recorded movie
+   draws its ΔF/F: the GCaMP6s-like signal of the spikes (rise 50 ms, decay 1.5 s; the MICrONS mouse
+   expressed GCaMP6s, Chen et al. 2013 Nature 499:295 for its kinetics) relative to the cell's own
+   awake baseline, in units of that baseline's fluctuation -- so ongoing firing reads as background and
+   only bursts and synchronous up-states light the cells, while the NREM down-states go dark. */
 const SL_STATE = {
-  awake: { exc: 3, inh: 10, so: 0, rem: 0, vaA: 1, slA: 0, remDil: 0, astro: 1 },
-  nrem:  { exc: 12, inh: 30, so: 1, rem: 0, vaA: 0.4, slA: 3, remDil: 0, astro: 0.5 },
-  rem:   { exc: 4, inh: 12, so: 0, rem: 1, vaA: 0.5, slA: 0, remDil: 0.5, astro: 0.4 }
+  awake: { exc: 1, inh: 8, so: 0, rem: 0, vaA: 1, slA: 0, remDil: 0, astro: 1 },
+  nrem:  { exc: 3, inh: 15, so: 1, rem: 0, vaA: 0.4, slA: 3, remDil: 0, astro: 0.5 },
+  rem:   { exc: 1, inh: 10, so: 0, rem: 1, vaA: 0.5, slA: 0, remDil: 0.5, astro: 0.4 }
 };
+/* The LFP (section 25) is the synaptic current of the whole population around the probe, all layers,
+   not the sparse spiking of the loaded L2/3-type cells: it keeps the population's drive it was
+   calibrated with (excitatory 3 / 12 / 4 Hz awake / up-state / REM, inhibitory 10 / 30 / 12 Hz). */
+const SL_POP = { awake: { exc: 3, inh: 10 }, nrem: { exc: 12, inh: 30 }, rem: { exc: 4, inh: 12 } };
+/* each cell's own rate factor: log-normal, σ = 1, mean 1, from a hash of its id */
+function slMult(c){
+  if (c._slM != null) return c._slM;
+  const k = "m" + String(c.root || c.nuc || c.i); let h1 = 2166136261, h2 = 5381;
+  for (let i = 0; i < k.length; i++){ h1 ^= k.charCodeAt(i); h1 = Math.imul(h1, 16777619); h2 = Math.imul(h2, 33) ^ k.charCodeAt(i); }
+  const u1 = ((h1 >>> 0) + 1) / 4294967297, u2 = ((h2 >>> 0) % 100000) / 100000;
+  const zz = Math.sqrt(-2 * Math.log(u1)) * Math.cos(6.2831853 * u2);
+  return (c._slM = Math.exp(zz - 0.5));
+}
 const SL_NAME = { awake: "awake", nrem: "NREM sleep", rem: "REM sleep" };
 const SL_COL = { awake: "#e6edf3", nrem: "#4dabf7", rem: "#da77f2" };
 const SL = { on: false, mode: "cycle", teach: true, plot: true, stage: "awake", stageT: 0, sc: 0, t: 0,
-             p: Object.assign({ isf: 0.1 }, SL_STATE.awake), flare: 0, nextUp: 0, upStart: -1, spindle: false,
+             p: Object.assign({ isf: 0.1 }, SL_STATE.awake), pp: Object.assign({}, SL_POP.awake), flare: 0, nextUp: 0, upStart: -1, spindle: false,
              spk: new Map(), rate: new Map(), ca: new Map(), hist: [], eeg: [], frac: 1, said: false };
 function slDur(){ return SL.teach ? { awake: 15, nrem: 45, rem: 20 } : { awake: 60, nrem: 180, rem: 60 }; }
 function slTakesPart(c){
@@ -6554,11 +6586,11 @@ function slPopRate(t, inh){
     /* A population's up-state is not a box: the wave takes ~30 ms to recruit the tissue under the
        probe and the firing dies away over ~100 ms; a spindle modulates the crowd by about half. */
     const x = t - u.t - (inh ? 0.015 : 0); if (x < 0 || x >= 0.8) return 0;
-    let r = (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) * Math.min(1, x / 0.03) * (x < 0.45 ? 1 : Math.exp(-(x - 0.45) / 0.1));
+    let r = (inh ? SL_POP.nrem.inh : SL_POP.nrem.exc) * Math.min(1, x / 0.03) * (x < 0.45 ? 1 : Math.exp(-(x - 0.45) / 0.1));
     if (u.sp && x < 0.8) r *= 1 + 0.5 * Math.cos(6.2831853 * 12 * x);
     return r;
   }
-  let r = inh ? SL.p.inh : SL.p.exc;
+  let r = inh ? SL.pp.inh : SL.pp.exc;
   /* REM theta is a hippocampal rhythm; in the neocortex it is weak, so the population is only 7 %
      modulated by it (the loaded cells' own firing keeps the stronger 60 %). */
   if (SL.p.rem > 0.5) r *= 1 + 0.07 * Math.sin(6.2831853 * 7 * t);
@@ -6573,6 +6605,7 @@ function slTick(dt){
   /* parameters glide towards the stage's over ~3 s */
   const tgt = SL_STATE[SL.stage], a = Math.min(1, dt / 3);
   for (const k in tgt) SL.p[k] += (tgt[k] - SL.p[k]) * a;
+  for (const k in SL_POP[SL.stage]) SL.pp[k] += (SL_POP[SL.stage][k] - SL.pp[k]) * a;
   SL.p.isf = SL.teach ? 0.1 : 0.02;
   SL.flare *= Math.exp(-dt / 4);
   AP_UNI.nvVaA.value = SL.p.vaA; AP_UNI.nvSlA.value = SL.p.slA;
@@ -6596,10 +6629,10 @@ function slTick(dt){
     if (SL.p.so > 0.5 && SL.upStart >= 0){
       const p = pos.get(c), delay = p ? (p.x - xmin) / 40000 : 0, st = SL.upStart + delay + (inh ? 0.015 : 0);
       const u = (t1 + t0) / 2 - st, inUp = u >= 0 && u < 0.45;
-      rate = inUp ? (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) : 0;
+      rate = inUp ? (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) * slMult(c) : 0;
       if (inUp && SL.spindle){ const ph = Math.cos(6.2831853 * 12 * u); rate *= Math.max(0, 1 + 1.6 * ph); }
     } else {
-      rate = inh ? SL.p.inh : SL.p.exc;
+      rate = (inh ? SL.p.inh : SL.p.exc) * slMult(c);
       if (SL.p.rem > 0.5) rate *= Math.max(0, 1 + 0.6 * Math.sin(6.2831853 * 7 * t1));
     }
     if (Math.random() < rate * ds){ slFire(c, t0 + Math.random() * ds); nSp++; }
@@ -6615,12 +6648,17 @@ function slApply(){
     const U = c.mesh && c.mesh.material.userData; if (!U || !U.raU) continue;
     const S = SL.spk.get(c);
     if (!S || !S.length){ if (U.raU.value > 0){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); } continue; }
-    while (S.length && SL.sc - S[0] > 3) S.shift();
+    while (S.length && SL.sc - S[0] > 8) S.shift();
     raDistances(c);
     const v = [-1, -1, -1, -1]; for (let q = 0; q < 4; q++){ const j = S.length - 1 - q; if (j < 0) break; v[q] = SL.sc - S[j]; }
     U.raS.value.set(v[0], v[1], v[2], v[3]);
-    let ca = 0; for (const ts of S){ const a = SL.sc - ts; if (a > 0) ca += 0.18 * (1 - Math.exp(-a / 0.05)) * Math.exp(-a / 1.0); }
-    U.raU.value = Math.min(1, ca);
+    /* GCaMP6s-like: each spike adds 1 (rise 50 ms, decay 1.5 s). Shown like the recorded ΔF/F:
+       z against the cell's own awake baseline (mean r·τ, shot-noise s.d. √(r·τ/2), at least 1 -- a lone spike is faint, as in GCaMP6s),
+       then the recorded movie's mapping (z − 0.5) / 3.5. */
+    const TAU = 1.5, rb = (cellClass(c) === "inh" ? SL_STATE.awake.inh : SL_STATE.awake.exc) * slMult(c);
+    let F = 0; for (const ts of S){ const a = SL.sc - ts; if (a > 0) F += (1 - Math.exp(-a / 0.05)) * Math.exp(-a / TAU); }
+    const z = (F - rb * TAU) / Math.max(1.0, Math.sqrt(rb * TAU / 2));
+    U.raU.value = Math.max(0, Math.min(1, (z - 0.5) / 3.5));
   }
 }
 function slClear(){
@@ -7026,6 +7064,38 @@ async function loadPvsRaw(ds){
        pvs_mesh.bin (which stays as the fallback, and as the source the µJump distances are packed
        from). Unsharded multilod draco, one LOD, one fragment: position = grid origin + chunk shape ×
        (fragment + q / (2^bits − 1)), in nm (src/pvs/make_ng_mesh.py). */
+    /* v82: the VR copy (data/pvs/v1/vr/pvs.drc) carries, per vertex, how it moves when the space
+       widens (src/pvs/anchor.py): sleeve vertices away from the nearest point of the vessel lumen by
+       their distance from it, sheet vertices upward by their height above the glia-limitans side. So
+       the space widens as one -- the inner wall stays on the vessel / the brain, the outer wall moves
+       -- instead of every piece of surface swelling along its own normal. */
+    if (ds.pvsVr) try {
+      const cfg = ds.mesh || {};
+      const [meta, frag, wrap, wasm] = await Promise.all([
+        fetch(ds.pvsVr + "pvs.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+        fetch(ds.pvsVr + "pvs.drc").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); }),
+        fetch(cfg.dracoWrapper).then(r => { if (!r.ok) throw new Error("draco " + r.status); return r.text(); }),
+        fetch(cfg.dracoWasm).then(r => { if (!r.ok) throw new Error("draco " + r.status); return r.arrayBuffer(); })]);
+      const draco = await (new Function(wrap + "\nreturn DracoDecoderModule;")())({ wasmBinary: wasm });
+      const dec = new draco.Decoder(), buf = new draco.DecoderBuffer(), mesh = new draco.Mesh();
+      buf.Init(new Int8Array(frag), frag.byteLength);
+      const st = dec.DecodeBufferToMesh(buf, mesh); if (!st.ok()) throw new Error("draco: " + st.error_msg());
+      const np = mesh.num_points(), nf = mesh.num_faces();
+      const pp = draco._malloc(np * 12); dec.GetAttributeDataArrayForAllPoints(mesh, dec.GetAttribute(mesh, dec.GetAttributeId(mesh, draco.POSITION)), draco.DT_FLOAT32, np * 12, pp);
+      const q = new Float32Array(draco.HEAPF32.buffer, pp, np * 3).slice(); draco._free(pp);
+      let anc = null;
+      for (let i = 0; i < mesh.num_attributes(); i++){
+        const at = dec.GetAttribute(mesh, i); if (at.attribute_type() !== draco.GENERIC) continue;
+        const ap = draco._malloc(np * 4); dec.GetAttributeDataArrayForAllPoints(mesh, at, draco.DT_UINT8, np * 4, ap);
+        anc = new Uint8Array(draco.HEAPU8.buffer, ap, np * 4).slice(); draco._free(ap); break;
+      }
+      const ip = draco._malloc(nf * 12); dec.GetTrianglesUInt32Array(mesh, nf * 12, ip);
+      const idx = new Uint32Array(draco.HEAPU8.buffer, ip, nf * 3).slice(); draco._free(ip);
+      draco.destroy(mesh); draco.destroy(buf); draco.destroy(dec);
+      const Q = 65535, um = new Float32Array(np * 3), lo = meta.lo_nm, side = meta.side_nm;
+      for (let k = 0; k < um.length; k++) um[k] = (lo[k % 3] + side * q[k] / Q) / 1000;
+      PVS.raw = { pos: um, idx, anc, src: "vr" }; return PVS.raw;
+    } catch (e){ console.warn("PVS VR copy failed, trying the Neuroglancer copy:", e); }
     if (ds.pvsNg) try {
       const cfg = ds.mesh || {};
       const [man, frag, wrap, wasm] = await Promise.all([
@@ -7056,16 +7126,16 @@ async function loadPvsRaw(ds){
   })().catch(e => { PVS.loading = null; throw e; });
   return PVS.loading;
 }
-AP_UNI.pvW = { value: 1 };
+AP_UNI.pvW = { value: 1 }; AP_UNI.pvHasA = { value: 0 };
 function pvsMaterial(){
   const m = new THREE.MeshStandardMaterial({ color: 0x3bc9db, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.nvTex = { get value(){ return NV.tex; } }; sh.uniforms.nvW = { get value(){ return NV.W; } }; sh.uniforms.nvH = { get value(){ return NV.H; } };
-    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform float pvW;\n"
+    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nattribute vec4 pvA;\nuniform float pvHasA;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform float pvW;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
-          float wall = 0.0;
+          float wall = 0.0, shift = 0.0;
           if (pvNode > 0.5){
             vec2 nuv = vec2((mod(pvNode, nvW) + 0.5) / nvW, (floor(pvNode / nvW) + 0.5) / nvH);
             vec4 q = texture2D(nvTex, nuv);
@@ -7074,10 +7144,18 @@ function pvsMaterial(){
             float rk = floor(q.a / 6.2831853 + 0.0001);
           float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a))
                   + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh);        // breathing (v80)
-            wall = pvR * d * pvR / max(pvD, pvR);
-            transformed += pvDir * (wall + (pvW - 1.0) * max(0.0, pvD - pvR));
-          } else {
+            wall = pvR * d * pvR / max(pvD, pvR); shift = pvR * d;
+            if (pvHasA < 0.5) transformed += pvDir * (wall + (pvW - 1.0) * max(0.0, pvD - pvR));
+          } else if (pvHasA < 0.5) {
             transformed += objectNormal * (pvW - 1.0) * 1.5;
+          }
+          if (pvHasA > 0.5){
+            /* v82: the whole space widens: each vertex along its anchor by (width − 1) × its distance
+               from the side that stays; sleeve vertices also follow their vessel's wall (whole sleeve
+               moves with it, so its thickness is kept). Sheet marker: (128, 1, 128). */
+            bool sheet = abs(pvA.x - 128.0) < 0.5 && abs(pvA.y - 1.0) < 0.5 && abs(pvA.z - 128.0) < 0.5;
+            vec3 aDir = sheet ? vec3(0.0, -1.0, 0.0) : (pvA.xyz - 128.0) / 127.0;
+            transformed += aDir * ((pvW - 1.0) * pvA.w * 0.2 + (sheet || pvNode < 0.5 ? 0.0 : shift));
           }
         }`);
   };
@@ -7128,17 +7206,24 @@ async function buildPvs(){
   if (!ds.pvsMesh){ ctxNote.textContent = "No perivascular-space layer for this dataset."; return; }
   let raw; try { raw = await loadPvsRaw(ds); } catch (e){ ctxNote.textContent = "Perivascular space could not be loaded: " + (e.message || e) + " (is data/pvs/v1/pvs_mesh.bin pushed?)"; return; }
   if (document.getElementById("pvsSel").value !== mode) return;
-  let pos = raw.pos, idx = raw.idx;
+  let pos = raw.pos, idx = raw.idx, anc = raw.anc || null;
   if (mode === "box"){
+    /* v81 (Søren, on a deep basket cell: "why there are only two PVS and the whole SAS on the surface
+       is missing?"): the box around the cells now reaches up to the pia, so the subarachnoid space
+       above them and the whole length of the sleeves down to them are always in it (y = depth). */
     const b = regionBox(), Pp = raw.pos, I = raw.idx, inB = new Uint8Array(Pp.length / 3);
+    b.min.y = -1e9;
     for (let v = 0, k = 0; v < inB.length; v++, k += 3) inB[v] = Pp[k] >= b.min.x && Pp[k] <= b.max.x && Pp[k+1] >= b.min.y && Pp[k+1] <= b.max.y && Pp[k+2] >= b.min.z && Pp[k+2] <= b.max.z ? 1 : 0;
     const keep = []; for (let t = 0; t < I.length; t += 3) if (inB[I[t]] || inB[I[t+1]] || inB[I[t+2]]) keep.push(I[t], I[t+1], I[t+2]);
     const remap = new Int32Array(inB.length).fill(-1), np_ = [], ni = new Uint32Array(keep.length);
-    for (let k = 0; k < keep.length; k++){ const v = keep[k]; if (remap[v] < 0){ remap[v] = np_.length / 3; np_.push(Pp[v*3], Pp[v*3+1], Pp[v*3+2]); } ni[k] = remap[v]; }
-    pos = new Float32Array(np_); idx = ni;
+    const A0 = raw.anc, na = A0 ? [] : null;
+    for (let k = 0; k < keep.length; k++){ const v = keep[k]; if (remap[v] < 0){ remap[v] = np_.length / 3; np_.push(Pp[v*3], Pp[v*3+1], Pp[v*3+2]); if (na) na.push(A0[v*4], A0[v*4+1], A0[v*4+2], A0[v*4+3]); } ni[k] = remap[v]; }
+    pos = new Float32Array(np_); idx = ni; anc = na ? new Uint8Array(na) : null;
   }
   if (!idx.length){ ctxNote.textContent = "No perivascular space inside the box around these cells."; updateTri(); return; }
   const g = geometryFrom(pos, idx);
+  g.setAttribute("pvA", new THREE.BufferAttribute(anc || new Uint8Array(pos.length / 3 * 4), 4));
+  PVS.hasA = !!anc; AP_UNI.pvHasA.value = anc ? 1 : 0;
   PVS.mesh = new THREE.Mesh(g, pvsMaterial()); PVS.mesh.renderOrder = 3; PVS.mesh.userData.context = true;
   PVS.tris = idx.length / 3; content.add(PVS.mesh); applyClip();
   await pvsAttach();

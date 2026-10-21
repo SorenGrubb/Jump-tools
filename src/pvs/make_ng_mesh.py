@@ -14,7 +14,7 @@ BITS = 16; Q = 2 ** BITS - 1
 lo = np.floor(V.min(0)) - 1000.0; side = float(np.ceil((V.max(0) - lo).max() + 1000.0))
 q = np.rint((V - lo) / side * Q).astype(np.float32)
 frag = DracoPy.encode(q, I, quantization_bits=BITS, compression_level=7,
-                      quantization_range=float(Q), quantization_origin=[0.0, 0.0, 0.0], preserve_order=False)
+                      quantization_range=float(Q), quantization_origin=[0.0, 0.0, 0.0])
 os.makedirs(out, exist_ok=True)
 open(os.path.join(out, "1"), "wb").write(frag)
 man = struct.pack("<3f", side, side, side) + struct.pack("<3f", *lo) + struct.pack("<I", 1) \
@@ -22,12 +22,7 @@ man = struct.pack("<3f", side, side, side) + struct.pack("<3f", *lo) + struct.pa
     + struct.pack("<3I", 0, 0, 0) + struct.pack("<I", len(frag))
 open(os.path.join(out, "1.index"), "wb").write(man)
 json.dump({"@type": "neuroglancer_multilod_draco", "vertex_quantization_bits": BITS,
-           "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], "lod_scale_multiplier": 1.0,
-           "segment_properties": "props"}, open(os.path.join(out, "info"), "w"))
-os.makedirs(os.path.join(out, "props"), exist_ok=True)
-json.dump({"@type": "neuroglancer_segment_properties", "inline": {"ids": ["1"], "properties": [
-    {"id": "label", "type": "label", "values": ["Perivascular space (Søren Grubb's tracing, vessel lumen subtracted)"]}]}},
-    open(os.path.join(out, "props", "info"), "w"), ensure_ascii=False)
+           "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], "lod_scale_multiplier": 1.0}, open(os.path.join(out, "info"), "w"))
 # check: decode and compare
 d = DracoPy.decode(frag); P = np.asarray(d.points, np.float64)
 back = lo + side * P / Q
