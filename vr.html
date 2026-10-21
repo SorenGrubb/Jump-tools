@@ -9531,7 +9531,7 @@ function csdStart(){
   const FAR = 2000;
   CSD.o = new THREE.Vector3(m.x + d[0] * FAR, m.y, m.z + d[1] * FAR); CSD.centre = m;
   CSD.t = (FAR - R - 100) / 50;                     // the front starts 100 µm outside the outermost cell
-  CSD.t0 = CSD.t; CSD.hist = []; CSD.spk.clear();
+  CSD.t0 = CSD.t; CSD.hist = []; CSD.spk.clear(); CSD._h = null;      // v88: a new wave starts the plot afresh
   AP_UNI.csdO.value.copy(CSD.o);
   return true;
 }
@@ -9569,7 +9569,9 @@ function csdFrame(dt){
   }
   /* the plot: the middle of the loaded cells */
   const pt = CSD.centre, tau = csdTau(pt);
-  if (!CSD._h || CSD.t - CSD._h > 0.5){ CSD._h = CSD.t;
+  /* v88: the plot stayed empty after "Again" or a new side -- the clock went back to the start while
+     the last-sample time did not, so no sample was ever due again */
+  if (CSD._h == null || CSD.t < CSD._h || CSD.t - CSD._h > 0.5){ CSD._h = CSD.t;
     CSD.hist.push({ t: CSD.t, dc: csdDC(tau), fr: csdFire(tau), art: csdVes(tau, "art"), cap: csdVes(tau, "cap"), pvs: csdPvs(tau) });
     while (CSD.hist.length && CSD.hist[0].t < CSD.t - 600) CSD.hist.shift(); }
   const nNow = performance.now(); if (CSD.plot && nNow - (CSD._pAt || 0) > 200){ CSD._pAt = nNow; csdPlotDraw(tau); }
