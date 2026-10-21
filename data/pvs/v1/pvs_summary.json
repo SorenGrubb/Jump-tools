@@ -1,0 +1,20 @@
+{
+ "voxel_um": 1.0,
+ "volume_um3": 2711126.0,
+ "sections": 849,
+ "origin_um": [
+  140.0,
+  245.0,
+  307.0
+ ],
+ "shape_zyx": [
+  820,
+  607,
+  1445
+ ],
+ "pial_cols": 31273,
+ "closed_by_us": 5213,
+ "open_drawn": 1357,
+ "loops": 5303,
+ "lumen_removed": 108777
+}

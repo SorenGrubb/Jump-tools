@@ -800,6 +800,7 @@ window.VR_DATASETS = {
     /* Søren's traced vessel network (section 22), from the line annotations in "Vascular outlines". */
     vascNet: "data/vasc_net/v1/",
     pvsMesh: "data/pvs/v1/pvs_mesh.bin",
+    pvsNg: "data/pvs/v1/ng/",
     nucRoots: "data/nuc_roots/m1300/v1/",
     /* The Shih lab's vascular skeletons (How et al. 2026), read through the Cloud Storage JSON API
        because that bucket answers browsers only there (no CORS on storage.googleapis.com). Each is a
@@ -6986,6 +6987,32 @@ async function loadPvsRaw(ds){
   if (PVS.raw) return PVS.raw;
   if (!PVS.loading) PVS.loading = (async () => {
     ctxNote.textContent = "Perivascular space: downloading…";
+    /* The same mesh as Filter and show's Neuroglancer layer, ~1 MB of draco instead of the 31 MB
+       pvs_mesh.bin (which stays as the fallback, and as the source the µJump distances are packed
+       from). Unsharded multilod draco, one LOD, one fragment: position = grid origin + chunk shape ×
+       (fragment + q / (2^bits − 1)), in nm (src/pvs/make_ng_mesh.py). */
+    if (ds.pvsNg) try {
+      const cfg = ds.mesh || {};
+      const [man, frag, wrap, wasm] = await Promise.all([
+        fetch(ds.pvsNg + "1.index").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); }),
+        fetch(ds.pvsNg + "1").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); }),
+        fetch(cfg.dracoWrapper).then(r => { if (!r.ok) throw new Error("draco " + r.status); return r.text(); }),
+        fetch(cfg.dracoWasm).then(r => { if (!r.ok) throw new Error("draco " + r.status); return r.arrayBuffer(); })]);
+      const dv = new DataView(man), cs = [0, 1, 2].map(k => dv.getFloat32(k * 4, true)), go = [0, 1, 2].map(k => dv.getFloat32(12 + k * 4, true));
+      const draco = await (new Function(wrap + "\nreturn DracoDecoderModule;")())({ wasmBinary: wasm });
+      const dec = new draco.Decoder(), buf = new draco.DecoderBuffer(), mesh = new draco.Mesh();
+      const u8 = new Uint8Array(frag); buf.Init(new Int8Array(frag), u8.length);
+      const st = dec.DecodeBufferToMesh(buf, mesh); if (!st.ok()) throw new Error("draco: " + st.error_msg());
+      const np = mesh.num_points(), nf = mesh.num_faces(), att = dec.GetAttribute(mesh, dec.GetAttributeId(mesh, draco.POSITION));
+      const pp = draco._malloc(np * 12); dec.GetAttributeDataArrayForAllPoints(mesh, att, draco.DT_FLOAT32, np * 12, pp);
+      const q = new Float32Array(draco.HEAPF32.buffer, pp, np * 3).slice(); draco._free(pp);
+      const ip = draco._malloc(nf * 12); dec.GetTrianglesUInt32Array(mesh, nf * 12, ip);
+      const idx = new Uint32Array(draco.HEAPU8.buffer, ip, nf * 3).slice(); draco._free(ip);
+      draco.destroy(mesh); draco.destroy(buf); draco.destroy(dec);
+      const Q = 65535, um = new Float32Array(np * 3);
+      for (let k = 0; k < um.length; k++){ const a = k % 3; um[k] = (go[a] + cs[a] * q[k] / Q) / 1000; }
+      PVS.raw = { pos: um, idx, src: "draco" }; return PVS.raw;
+    } catch (e){ console.warn("PVS draco failed, using pvs_mesh.bin:", e); }
     const r = await fetch(ds.pvsMesh); if (!r.ok) throw new Error("HTTP " + r.status);
     const buf = await r.arrayBuffer(), n = new DataView(buf).getUint32(0, true);
     const pos = new Float32Array(buf, 4, n * 3), idx = new Uint32Array(buf, 4 + n * 12);
