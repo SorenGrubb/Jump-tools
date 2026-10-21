@@ -1112,6 +1112,7 @@ for at least one second</div>
 <div class="row" style="margin-top:8px;gap:10px">
 <button class="idbtn" id="filterViewerAll" disabled title="Click &quot;Preview matches&quot; first — opens a zoomed-out 3D view sized to fit every matching cell, one colour-coded layer per cell type plus its own nuclei layer; any &quot;Add to the Neuroglancer view&quot; options checked above (vasculature outline, EM imagery, V1 column boundary, traced vessel lines, organelle points, centriole/cilia vectors) are added as extra toggleable layers, but never change which cells matched or what's in the Excel export." style="flex:1">Open all matches in Neuroglancer (3D)</button>
 <button class="idbtn" id="filterVR" disabled title="Click &quot;Preview matches&quot; first — opens the matching cells together in the VR viewer (vr.html): on the PC with Quest Link press Enter VR, or copy the headset link from there for a standalone Quest" style="flex:0 0 auto">🥽 Show in VR</button>
+<select id="filterVRMax" style="flex:0 0 auto;width:auto;padding:4px 6px;font-size:12px" title="How many of the matches go to the VR viewer at most (evenly spread through the list when there are more). A standalone headset or a laptop manages about 30; a PC with a strong graphics card can draw several hundred at the light level of detail -- the viewer shows how many million triangles it is drawing."><option value="30">up to 30 cells (headset, laptop)</option><option value="60">up to 60</option><option value="100">up to 100</option><option value="200">up to 200 (strong PC)</option><option value="500">up to 500 (strong PC)</option><option value="1000">up to 1000 (very strong PC)</option></select>
 </div>
 <div class="card" id="stepThroughCard" style="margin-top:14px;display:none">
 <label style="font-size:12px" title="Visits every matched cell exactly once, in a fixed order — unlike the random buttons on the Jump tab, nothing is skipped or repeated. Each step loads the cell into the Jump tab's identification panel, same as clicking there directly. Progress (current position + how many you've checked) is remembered in this browser for this exact set of matched cells, so closing the tab and coming back later resumes where you left off — changing the filters above and re-previewing starts a fresh count.">Systematically step through matches</label>
@@ -13480,7 +13481,17 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
   /* "Show in VR" (see its handler below). Declared here, beside its siblings, because
      invalidateFilterResult() and the preview handler touch it too. */
   const vrBtn=document.getElementById("filterVR");
-  const VR_MAX=30;
+  /* 2026-10-21, Søren: "is 30 cells really the maximum for VR? If I have a fat PC, could it run many
+     more cells? If so, could we make that an option?" -- 30 stays the default (the headset's honest
+     ceiling, see "AT MOST VR_MAX CELLS" below); the select beside the button raises it, remembered
+     in this browser. The cells travel in the link, ~80 characters each, so even 1000 stay far below
+     the ~2 MB a browser accepts. */
+  const vrMaxSel=document.getElementById("filterVRMax");
+  let VR_MAX=30;
+  try{const v=+localStorage.getItem("ujump_vr_max");if(v>0)VR_MAX=v;}catch(e){}
+  if(vrMaxSel){vrMaxSel.value=String(VR_MAX);if(vrMaxSel.value!==String(VR_MAX)){VR_MAX=30;vrMaxSel.value="30";}
+    vrMaxSel.addEventListener("change",()=>{VR_MAX=+vrMaxSel.value||30;try{localStorage.setItem("ujump_vr_max",String(VR_MAX));}catch(e){}
+      if(lastResult&&vrBtn){const n=lastResult.matches.length;vrBtn.textContent="\uD83E\uDD7D Show in VR"+(n>VR_MAX?" ("+VR_MAX+" of "+n.toLocaleString()+")":"");}});}
   /* The match count lives ON the "Preview matches" button rather than in a separate line of
      text (per Søren) -- it's the result of pressing that button, so it belongs there, and it
      stays in view next to the Download / 3D buttons it gates instead of sitting further down the
@@ -13504,7 +13515,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     UJ.stepthrough.initStepThrough(null);
   }
   const filterCard=document.getElementById("filterCard");
-  const STALE_IGNORE_IDS=new Set(["filterVasc","filterVascSeg","filterPvsLayer","filterEMOn","filterV1ColOn","filterRun","filterDownload","filterViewerAll","filterVR","regionAddBox",
+  const STALE_IGNORE_IDS=new Set(["filterVRMax","filterVasc","filterVascSeg","filterPvsLayer","filterEMOn","filterV1ColOn","filterRun","filterDownload","filterViewerAll","filterVR","regionAddBox",
     "fvt_pial_arterioles","fvt_penetrating_arterioles","fvt_arterial_cap_order1","fvt_arterial_cap_order2","fvt_arterial_cap_order3",
     "fvt_venous_cap_order3","fvt_venous_cap_order2","fvt_venous_cap_order1","fvt_ascending_venules","fvt_pial_venules",
     /* 2026-09-28: the Shih lab skeletons and the two Allen mesh layers are addresses handed to
@@ -13588,6 +13599,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
   if(vrBtn)vrBtn.addEventListener("click",async()=>{
     if(!lastResult||!lastResult.matches.length)return;
     const all=lastResult.matches,n=all.length,pick=[];
+    if(Math.min(n,VR_MAX)>100&&!confirm(Math.min(n,VR_MAX)+" cells is far more than a headset can draw. It needs a PC with a strong graphics card (open it on the PC; the viewer shows how many million triangles it draws, and \"light\" detail keeps it lowest). Continue?"))return;
     if(n<=VR_MAX)pick.push(...all);
     else for(let k=0;k<VR_MAX;k++)pick.push(all[Math.floor(k*n/VR_MAX)]);
     const orig=vrBtn.textContent;vrBtn.disabled=true;vrBtn.textContent="Preparing\u2026";

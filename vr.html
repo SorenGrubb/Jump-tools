@@ -422,6 +422,18 @@
     </div>
     <div id="lfpNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured. Needs activity: sleep, recorded activity or stimulation.</div>
   </div>
+  <div class="ctl">
+    <button id="csdBtn" title="A cortical spreading depolarization -- a MODEL: a wave of near-complete depolarization of neurons and glia, ~3 mm/min, started outside the loaded cells and passing through them; the neurons burst, fall silent for minutes, and the vessels and the perivascular space respond to it">Spreading depolarization</button>
+    <select id="csdDir" title="The side of the block the wave comes from"><option value="x-">from −x</option><option value="x+">from +x</option><option value="z-">from −z</option><option value="z+">from +z</option></select>
+  </div>
+  <div id="csdBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="catick">
+      <label title="Teaching: the whole event four times faster (wave 12 mm/min, silence ~1 min). Off: real time (3 mm/min; the vessels stay narrowed for tens of minutes)"><input type="checkbox" id="csdTeach" checked> teaching (4× faster)</label>
+      <label><input type="checkbox" id="csdPlot" checked> plot</label>
+      <button id="csdAgain" title="Send another wave">Again</button>
+    </div>
+    <div id="csdNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured.</div>
+  </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
@@ -676,7 +688,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["pvsSel"], ["#pvsWRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -1551,8 +1563,11 @@ async function loadAll(){
   renderList(); updateTri();
   const light = document.getElementById("detail").value === "light";
   const box = new THREE.Box3();
-  for (const c of CELLS){
-    if (token !== LOAD_TOKEN) return;
+  /* v87: several cells at a time (up to 6 fetches in flight), so a large collection from a strong PC
+     (Søren: "If I have a fat PC, could it run many more cells?") loads in minutes, not an hour; the
+     list is redrawn at most every 300 ms instead of after every cell. */
+  let next = 0, lastList = 0;
+  const one = async c => {
     await loadOne(c, token, light);
     if (token !== LOAD_TOKEN) return;
     const cb = cellBoxOf(c); if (cb) box.union(cb);
@@ -1563,8 +1578,13 @@ async function loadAll(){
       FIT_SCALE = TABLE_SIZE / Math.max(size.x, size.y, size.z, 1);
       if (!USER_MOVED) resetStage();
     }
-    renderList(); updateTri(); applyLook();
-  }
+    const now = performance.now();
+    if (now - lastList > 300 || CELLS.length <= 40){ lastList = now; renderList(); updateTri(); applyLook(); }
+  };
+  const worker = async () => { while (next < CELLS.length){ if (token !== LOAD_TOKEN) return; await one(CELLS[next++]); } };
+  await Promise.all(Array.from({ length: Math.min(CELLS.length <= 40 ? 1 : 6, CELLS.length) }, worker));
+  if (token !== LOAD_TOKEN) return;
+  renderList(); updateTri(); applyLook();
   if (token === LOAD_TOKEN && !box.isEmpty()){ CELL_BOX = box.clone(); buildContext(); }
 }
 /* The root IDs the community proposed for this cell -- the same ones µJump's "Show in 3D" and
@@ -5964,7 +5984,8 @@ function nvStatic(){
   const ra = NV.resp ? pr.resp : [0, 0, 0]; AP_UNI.nvRsA.value.set(ra[0], ra[1], ra[2]);
 }
 AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0.1 };
-AP_UNI.nvVaA = { value: 1 }; AP_UNI.nvSlA = { value: 0 }; AP_UNI.nvSlPh = { value: 0 };   // sleep (section 24)
+AP_UNI.nvVaA = { value: 1 }; AP_UNI.nvSlA = { value: 0 }; AP_UNI.nvSlPh = { value: 0 };   // nvSlA = 1 − NE (section 24b)
+AP_UNI.nvNeA = { value: new THREE.Vector3(0.02, 0.06, 0.005) };                                 // per class: capillary, arteriole, venous
 AP_UNI.nvRsA = { value: new THREE.Vector3(-0.001, 0.001, -0.005) }; AP_UNI.nvRPh = { value: 0 };   // breathing (v80)
 /* The breathing rate now: ≈ 3 Hz awake; in sleep slower and regular (NREM) or faster and irregular (REM). */
 function nvBreathRate(dt){
@@ -5988,7 +6009,7 @@ function nvMaterial(mesh){
   m.onBeforeCompile = sh => {
     base(sh);
     sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col; sh.uniforms.nvTint = U.tint;
-    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nvarying float vNvD;\n"
+    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nvarying float vNvD;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           vec2 nuv = vec2((mod(vnNode, nvW) + 0.5) / nvW, (floor(vnNode / nvW) + 0.5) / nvH);
@@ -5996,8 +6017,10 @@ function nvMaterial(mesh){
           float ph = fract(nvT * nvHR);
           float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);      // a sharp rise, a slower fall
           float rk = floor(q.a / 6.2831853 + 0.0001);
-          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a))
-                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh);        // breathing (v80)
+          float d = q.r + q.g * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
+                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh)
+                  + (rk < 0.5 ? nvNeA.x : rk < 1.5 ? nvNeA.y : nvNeA.z) * nvSlA       // noradrenaline tone (v85)
+                  + csdVes(csdT < 0.0 ? -1.0 : csdT - distance(position, csdO) / csdV, rk);   // spreading depolarization (v86)        // breathing (v80)
           vNvD = q.r; vNvCol = vnCol;
           transformed += objectNormal * vnR * d;
         }`);
@@ -6175,21 +6198,35 @@ async function nvShihNet(){
     + Math.round(100 * tied / nv) + " % of the TriSAM surface newly tied to their points (orders calibrated: arterial their = his + " + (c.offA ?? "?") + ", venous + " + (c.offV ?? "?") + ").";
   ctxNote.textContent = "Vessel dilation: " + NV.shihNote;
 }
+/* ONE RULE FOR EVERY NEURON (v85, Søren: "I would like that the vascular and PVS changes, as well as
+   the calcium changes in vascular associated cells are driven by changes in neuronal activity. This
+   should be the same whether it is stimulated by a user, by a recording, or by sleep."). Each neuron's
+   firing rate now -- its recorded (inferred) rate, plus its stimulated and sleep spikes counted into a
+   1 s running rate -- and one drive from it: min(1.5, rate / 8 Hz). The vessels (coupling), the
+   endothelial and mural Ca²⁺ and the astrocytes all read this, never the source. */
+const NR = { est: new Map(), cnt: new Map(), t: 0, out: new Map() };
+function neuronRates(){
+  const now = performance.now() / 1000, dt = Math.min(1, Math.max(0, now - NR.t)); if (dt < 0.02 && NR.t) return NR.out; NR.t = now;
+  const k = Math.exp(-dt / 1.0), out = new Map();
+  for (const [c, r] of NR.est){ const v = r * k; if (v < 0.01) NR.est.delete(c); else NR.est.set(c, v); }
+  for (const c of CELLS){
+    const n = (NV.drv.stim ? (c.spikesAt || []).length : 0) + (c._slN || 0) + (c._csdN || 0), was = NR.cnt.get(c);
+    if (was != null && n > was) NR.est.set(c, (NR.est.get(c) || 0) + (n - was) / 1.0);       // a spike adds 1 / τ
+    NR.cnt.set(c, n);
+  }
+  for (const [c, r] of NR.est) out.set(c, r);
+  if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
+    for (const c of raCells()){ const e = raEntry(c); out.set(c, (out.get(c) || 0) + raAt(e, raInfer(e).rate, RA.t)); }
+  NR.out = out; return out;
+}
+const neuronDrive = r => Math.min(1.5, r / 8);
 function nvDrives(dtS){
   /* Each cell's input this tick, 0–1 (a sum may exceed 1 in a burst). */
   const u = new Map();
-  if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
-    for (const c of raCells()){ const e = raEntry(c); u.set(c, (u.get(c) || 0) + Math.min(1.5, raAt(e, raInfer(e).rate, RA.t) / 8)); }
-  if (NV.drv.stim) for (const c of CELLS){
-    const n = (c.spikesAt || []).length, was = NV.spk.get(c) || 0;
-    if (n > was) u.set(c, (u.get(c) || 0) + 0.35 * (n - was) / Math.max(dtS, 0.05));
-    NV.spk.set(c, n);
-  }
+  for (const [c, r] of neuronRates()) if (caKind(c) === "neuron" && r > 0.05) u.set(c, neuronDrive(r));
   if (NV.drv.ca) for (const c of caCells()){
     const v = caTrace(c, CA.now); if (v > 0.02) u.set(c, (u.get(c) || 0) + v * (caKind(c) === "astro" ? 1 : 0.5));
   }
-  /* sleep (section 24): the whole block fires at once, so each cell drives at 0.3 of the recorded weight */
-  if (SL.on) for (const [c, r] of SL.rate) if (r > 0.05) u.set(c, (u.get(c) || 0) + 0.3 * Math.min(1.5, r / 8));
   return u;
 }
 /* Each local node's class gain, for the cap below and the REM dilation. */
@@ -6228,9 +6265,8 @@ function nvTick(){
   {
     /* Many cells driving one vessel at once (the whole block in an up-state) add up: no node dilates
        beyond 1.2 × its class gain. REM (section 24): the arterioles and arterial capillaries dilate. */
-    const G = nvGainLi(), rem = SL.on ? SL.p.remDil : 0;
+    const G = nvGainLi();
     for (let li = 1; li < NV.glob.length; li++){
-      if (rem && G.art[li]) D[li*4] += rem * G.g[li];
       if (G.g[li] && D[li*4] > 1.2 * G.g[li]) D[li*4] = 1.2 * G.g[li];
     }
   }
@@ -6413,14 +6449,7 @@ function mcDrive(dtS){
   /* Each neuron's activity now, from the same sources the vessels use, with its own spike count
      so the vessels' bookkeeping is left alone. */
   const u = new Map();
-  if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
-    for (const c of raCells()){ const e = raEntry(c); u.set(c, Math.min(1.5, raAt(e, raInfer(e).rate, RA.t) / 8)); }
-  if (SL.on) for (const [c, r] of SL.rate) u.set(c, (u.get(c) || 0) + Math.min(1.5, r / 8));
-  if (NV.drv.stim) for (const c of CELLS){
-    const n = (c.spikesAt || []).length, was = MC.spk.get(c) || 0;
-    if (n > was) u.set(c, (u.get(c) || 0) + 0.35 * (n - was) / Math.max(dtS, 0.05));
-    MC.spk.set(c, n);
-  }
+  for (const [c, r] of neuronRates()) if (caKind(c) === "neuron" && r > 0.05) u.set(c, neuronDrive(r));     // the same rule (v85)
   return u;
 }
 function mcTick(){
@@ -6448,9 +6477,11 @@ function mcTick(){
         const cls = nvClass(nvC(NV.glob[li])), g = pr.gain[cls] || 0.05, r = D[li*4], vb = D[li*4+2], ph = D[li*4+3];
         const drive = NV.act ? r / g : 0;                                        // ≈ 0–1.5
         if (k === "mural"){
-          const vaso = vb > 0 ? AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * (t + 1.0) + ph)
-                     + AP_UNI.nvSlA.value * Math.sin(AP_UNI.nvSlPh.value + 6.2831853 * SL.p.isf * 1.0 + 0.15 * ph) : 0;    // +1 wide … −1 narrow, 1 s ahead
-          target = 0.35 - 0.45 * Math.min(1, drive) - 0.25 * vaso;
+          const vaso = vb > 0 ? AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * (t + 1.0) + ph) : 0;    // +1 wide … −1 narrow, 1 s ahead
+          /* v85: noradrenaline from the LC raises it (and so narrows the vessel), coupling lowers it */
+          target = 0.35 - 0.45 * Math.min(1, drive) - 0.25 * vaso + 0.35 * (LC.ne - 1);
+          /* v86: high while the spreading depolarization makes its vessel constrict */
+          if (CSD.on){ const ct = csdTau(nvSoma(c)); if (ct >= 0) target -= 4 * csdVes(ct, /cap/.test(cls) || cls === "mid" ? "cap" : cls === "ven" ? "ven" : "art"); }
         } else target = 0.9 * Math.min(1, drive);
       }
     } else if (k === "astro"){
@@ -6464,7 +6495,10 @@ function mcTick(){
         const w = Math.exp(-d / MC_LAM); wsum += w; sum += a * w;
       }
       const drive = wsum ? 0.8 * sum / wsum + 0.2 * sum : 0;
-      target = Math.min(1, 1.2 * drive * (SL.on ? SL.p.astro : 1) + (SL.on ? SL.flare : 0));
+      /* v85: NE gates how much an astrocyte answers its neurons, and an NE surge (the LC waking burst) lights it */
+      const gate = 0.3 + 0.7 * Math.min(1.5, LC.ne);
+      target = Math.min(1, 1.2 * drive * gate + 0.5 * Math.max(0, LC.ne - 1.1));
+      if (CSD.on) target = Math.max(target, csdAst(csdTau(nvSoma(c))));       // the astrocyte Ca²⁺ wave with the front (v86)
     }
     if (target == null){ if (U.value) U.value = 0; continue; }
     target = Math.max(0, Math.min(1, target));
@@ -6507,7 +6541,9 @@ function mcFrame(){
    Drawn the way recorded spikes are (section 21): a band from the soma outward, and a Ca²⁺ glow drawn
    as ΔF/F against the cell's own baseline (v83, see SL_STATE).
 
-   VESSELS (section 22):
+   VESSELS (section 22) -- v85: all of the below is now CAUSED, not set: by the loaded neurons' own
+   firing (coupling, one rule for every source) and by the locus coeruleus' noradrenaline (24b).
+   The v76 description that follows is the behaviour it reproduces:
    · NREM: a large, very slow, global vasomotion of the arterioles at ~0.02 Hz, paced by oscillating
      noradrenaline (Kjaerby 2022 Nat Neurosci 25:1059; Hauglund 2025 Cell 188:606), three times the
      awake vasomotion, which shrinks to 0.4×; each up-state still drives a little coupling.
@@ -6569,7 +6605,7 @@ function slTakesPart(c){
 function slNeurons(){ return CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron" && slTakesPart(c)); }
 function slSetStage(st){
   const was = SL.stage; SL.stage = st; SL.stageT = 0;
-  if (st === "awake" && was !== "awake") SL.flare = 0.7;
+  if (st === "awake" && was !== "awake") LC.wake = 3;            // the LC bursts on waking (24b)
   slNoteUpd();
 }
 function slNoteUpd(){
@@ -6596,7 +6632,48 @@ function slPopRate(t, inh){
   if (SL.p.rem > 0.5) r *= 1 + 0.07 * Math.sin(6.2831853 * 7 * t);
   return r;
 }
-function slFire(c, t){ (SL.spk.get(c) || SL.spk.set(c, []).get(c)).push(t); }
+
+/* ── 24b. THE LOCUS COERULEUS AND NORADRENALINE (v85) ──────────────────────────────────────────
+   What sleep does to the vessels, the perivascular space and the vascular-associated cells is now
+   caused by neurons too -- the noradrenergic neurons of the locus coeruleus (LC), in the brainstem,
+   outside the MICrONS block, whose axons release noradrenaline (NE) over the whole cortex:
+   · LC firing: awake tonic ≈ 2 Hz; NREM in infraslow bursts (≈ 0.02 Hz; 0.1 Hz when teaching) with
+     near-silence between; REM silent; a burst on waking (Aston-Jones & Bloom 1981 J Neurosci 1:876;
+     Kjaerby et al. 2022 Nat Neurosci 25:1059; Osorio-Forero et al. 2021 Curr Biol 31:5009).
+   · NE = the LC rate low-passed (τ 4 s; 1.5 s teaching), 1 = awake.
+   · Arterioles constrict with NE and dilate as it falls (α1-adrenergic smooth-muscle tone): the
+     NREM infraslow vasomotion follows the NE oscillation (Kjaerby 2022; Hauglund et al. 2025 Cell
+     188:606), and the REM dilation is the NE-free brain (Turner et al. 2020 eLife 9:e62071).
+     Diameter change = class factor × (1 − NE): arterioles 6 %, capillaries 2 %, venules 0.5 % per unit
+     (×3 teaching) -- sizes are an assumption of the right order.
+   · Mural Ca²⁺ rises with NE (it is what makes them contract); astrocytes answer local neurons only
+     as much as NE lets them (Paukert et al. 2014 Neuron 82:1263) and flare with an NE surge (Ding et
+     al. 2013 Cell Calcium 54:387).
+   · The perivascular / interstitial space widens as NE falls (Xie et al. 2013 Science 342:373: sleep,
+     or NE receptor block, enlarges it ~60 %): width × (1 + 0.35 × (1 − slow NE)), slow NE τ 20 s.
+   Without sleep the LC is tonic, NE = 1, and none of this changes anything. */
+const LC = { rate: 2, ne: 1, neSlow: 1, burstT: 0, wake: 0, hist: [] };
+function lcTick(dt){
+  let r = 2;
+  if (SL.on){
+    const per = SL.teach ? 10 : 50, so = SL.p.so || 0, rem = SL.p.rem || 0;
+    LC.burstT = (LC.burstT + dt) % per;
+    const inBurst = LC.burstT < 0.3 * per;
+    const nrem = inBurst ? 3.0 : 0.15;
+    r = 2 * (1 - so - rem) + nrem * so + 0.02 * rem;
+    if (LC.wake > 0){ r += 6 * Math.min(1, LC.wake / 3); LC.wake -= dt; }
+    r = Math.max(0, r * (1 + 0.15 * (Math.random() - 0.5)));
+  } else LC.wake = 0;
+  LC.rate = r;
+  const tau = SL.on && SL.teach ? 1.5 : 4;
+  LC.ne += (r / 2 - LC.ne) * Math.min(1, dt / tau);
+  LC.neSlow += (LC.ne - LC.neSlow) * Math.min(1, dt / (SL.on && SL.teach ? 5 : 20));
+  const k = NV_PRESET[NV.preset] && NV.preset === "teach" ? 3 : 1;
+  AP_UNI.nvNeA.value.set(0.02 * k, 0.06 * k, 0.005 * k);
+  AP_UNI.nvSlA.value = 1 - LC.ne;                                   // the NE term the shaders read
+  if (SL.on){ const now = SL.t; if (!LC._h || now - LC._h > 0.2){ LC._h = now; LC.hist.push({ t: now, r: LC.rate, ne: LC.ne }); while (LC.hist.length && LC.hist[0].t < now - 130) LC.hist.shift(); } }
+}
+function slFire(c, t){ (SL.spk.get(c) || SL.spk.set(c, []).get(c)).push(t); c._slN = (c._slN || 0) + 1; }
 function slTick(dt){
   /* stage clock (real seconds) */
   SL.t += dt; SL.stageT += dt;
@@ -6607,9 +6684,7 @@ function slTick(dt){
   for (const k in tgt) SL.p[k] += (tgt[k] - SL.p[k]) * a;
   for (const k in SL_POP[SL.stage]) SL.pp[k] += (SL_POP[SL.stage][k] - SL.pp[k]) * a;
   SL.p.isf = SL.teach ? 0.1 : 0.02;
-  SL.flare *= Math.exp(-dt / 4);
-  AP_UNI.nvVaA.value = SL.p.vaA; AP_UNI.nvSlA.value = SL.p.slA;
-  AP_UNI.nvSlPh.value = (AP_UNI.nvSlPh.value + 6.2831853 * SL.p.isf * dt) % 6.2831853;
+  /* v85: the vessels' sleep changes are no longer set here -- they follow the LC's noradrenaline (24b) */
   /* spike clock (slowed when teaching) */
   const ds = dt * (SL.teach ? 0.25 : 1), t0 = SL.sc, t1 = SL.sc + ds; SL.sc = t1;
   const cells = slNeurons();
@@ -6632,7 +6707,7 @@ function slTick(dt){
       rate = inUp ? (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) * slMult(c) : 0;
       if (inUp && SL.spindle){ const ph = Math.cos(6.2831853 * 12 * u); rate *= Math.max(0, 1 + 1.6 * ph); }
     } else {
-      rate = (inh ? SL.p.inh : SL.p.exc) * slMult(c);
+      rate = (inh ? SL.p.inh : SL.p.exc) * slMult(c) * csdGate(c);
       if (SL.p.rem > 0.5) rate *= Math.max(0, 1 + 0.6 * Math.sin(6.2831853 * 7 * t1));
     }
     if (Math.random() < rate * ds){ slFire(c, t0 + Math.random() * ds); nSp++; }
@@ -6664,7 +6739,7 @@ function slApply(){
 function slClear(){
   for (const c of CELLS){ const U = c.mesh && c.mesh.material.userData; if (U && U.raU){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); } }
   SL.spk.clear(); SL.rate.clear(); SL.eeg = []; SL.hist = [];
-  AP_UNI.nvVaA.value = 1; AP_UNI.nvSlA.value = 0;
+  AP_UNI.nvVaA.value = 1;
   if (SL.plotSpr) SL.plotSpr.visible = false;
 }
 function setSleep(v){
@@ -6675,7 +6750,7 @@ function setSleep(v){
     if (DS_HAS.vasc && !NV.on) setNv(true);
     SL.t = 0; SL.sc = 0; SL.nextUp = 0; SL.flare = 0;
     slSetStage(SL.mode === "cycle" ? "awake" : SL.mode);
-    if (!SL.said){ SL.said = true; ctxNote.textContent = "Sleep (MODEL): " + (SL.mode === "cycle" ? "awake → NREM → REM → awake" : SL_NAME[SL.mode]) + ". In NREM the neurons fire together in up-states and the arterioles swing slowly; in REM they fire on a theta rhythm and the arterioles dilate. Not measured — the MICrONS mouse was awake."; }
+    if (!SL.said){ SL.said = true; ctxNote.textContent = "Sleep (MODEL): " + (SL.mode === "cycle" ? "awake → NREM → REM → awake" : SL_NAME[SL.mode]) + ". In NREM the neurons fire together in up-states and the locus coeruleus fires in slow bursts, so noradrenaline rises and falls and the arterioles swing with it; in REM the neurons fire on a theta rhythm, the locus coeruleus is silent and the arterioles dilate. The vessels, the perivascular space and the Ca²⁺ of mural cells and astrocytes follow the neurons (yellow trace in the plot), nothing is set by the sleep stage itself. Not measured — the MICrONS mouse was awake."; }
   } else slClear();
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -6694,7 +6769,7 @@ function slArteriole(){
   for (let li = 1; li < NV.glob.length; li += Math.max(1, Math.floor(NV.glob.length / 400))){
     const cls = nvClass(nvC(NV.glob[li])); if (cls !== "pa" && cls !== "pial_art") continue;
     const q = [D[li*4], D[li*4+1], D[li*4+2], D[li*4+3]];
-    sum += q[0] + q[2] * (AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * t + q[3]) + AP_UNI.nvSlA.value * Math.sin(AP_UNI.nvSlPh.value + 0.15 * q[3])); n++;
+    sum += q[0] + q[2] * AP_UNI.nvVaA.value * Math.sin(6.2831853 * pr.vf * t + q[3]) + AP_UNI.nvNeA.value.y * AP_UNI.nvSlA.value; n++;
   }
   return n ? sum / n : null;
 }
@@ -6716,6 +6791,14 @@ function slPlotDraw(){
   g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath();
   e.forEach((x, k) => { const px = L + (R - L) * (1 - (tE - x.t) / 6), py = B1 - (B1 - T1) * Math.min(1, x.v / emax); k ? g.lineTo(px, py) : g.moveTo(px, py); });
   g.stroke();
+  /* v85: the LC's firing and the noradrenaline it releases, the cause of the vessel changes below */
+  {
+    const win0 = SL.teach ? 40 : 120, lh = LC.hist, tL = lh.length ? lh[lh.length - 1].t : 0;
+    g.fillStyle = "#ffd43b"; g.font = "15px system-ui, sans-serif"; g.fillText("locus coeruleus firing · noradrenaline (yellow), last " + win0 + " s", L + 300, 84);
+    g.strokeStyle = "rgba(255,212,59,0.9)"; g.lineWidth = 2; g.beginPath();
+    lh.forEach((x, k) => { const px = L + (R - L) * (1 - (tL - x.t) / win0), py = 200 - 100 * Math.min(1, x.ne / 1.6); k ? g.lineTo(px, py) : g.moveTo(px, py); });
+    g.stroke();
+  }
   /* arteriole diameter and the stage, last 120 s (40 s teaching) of real time */
   const win = SL.teach ? 40 : 120, T2 = 236, B2 = H - 46, h = SL.hist, tH = h.length ? h[h.length - 1].t : 0;
   g.fillStyle = "#8b949e"; g.fillText("arteriole diameter (model), last " + win + " s · bar: stage", L, 226);
@@ -6746,6 +6829,7 @@ function slPlace(){
   else sp.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - sp.scale.y / 2, 0));
 }
 function slFrame(dt){
+  lcTick(Math.min(0.1, dt));                                        // the LC runs always (tonic when awake)
   if (!SL.on) return;
   slTick(Math.min(0.1, dt));
   slApply();
@@ -7132,7 +7216,7 @@ function pvsMaterial(){
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.nvTex = { get value(){ return NV.tex; } }; sh.uniforms.nvW = { get value(){ return NV.W; } }; sh.uniforms.nvH = { get value(){ return NV.H; } };
-    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nattribute vec4 pvA;\nuniform float pvHasA;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform float pvW;\n"
+    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nattribute vec4 pvA;\nuniform float pvHasA;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nuniform float pvW;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           float wall = 0.0, shift = 0.0;
@@ -7142,8 +7226,10 @@ function pvsMaterial(){
             float ph = fract(nvT * nvHR);
             float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);
             float rk = floor(q.a / 6.2831853 + 0.0001);
-          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a))
-                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh);        // breathing (v80)
+          float d = q.r + q.g * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
+                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh)
+                  + (rk < 0.5 ? nvNeA.x : rk < 1.5 ? nvNeA.y : nvNeA.z) * nvSlA       // noradrenaline tone (v85)
+                  + csdVes(csdT < 0.0 ? -1.0 : csdT - distance(position, csdO) / csdV, rk);   // spreading depolarization (v86)        // breathing (v80)
             wall = pvR * d * pvR / max(pvD, pvR); shift = pvR * d;
             if (pvHasA < 0.5) transformed += pvDir * (wall + (pvW - 1.0) * max(0.0, pvD - pvR));
           } else if (pvHasA < 0.5) {
@@ -7155,7 +7241,8 @@ function pvsMaterial(){
                moves with it, so its thickness is kept). Sheet marker: (128, 1, 128). */
             bool sheet = abs(pvA.x - 128.0) < 0.5 && abs(pvA.y - 1.0) < 0.5 && abs(pvA.z - 128.0) < 0.5;
             vec3 aDir = sheet ? vec3(0.0, -1.0, 0.0) : (pvA.xyz - 128.0) / 127.0;
-            transformed += aDir * ((pvW - 1.0) * pvA.w * 0.2 + (sheet || pvNode < 0.5 ? 0.0 : shift));
+            float ctau = csdT < 0.0 ? -1.0 : csdT - distance(position, csdO) / csdV;
+            transformed += aDir * ((pvW - 1.0 + csdPvs(ctau)) * pvA.w * 0.2 + (sheet || pvNode < 0.5 ? 0.0 : shift));
           }
         }`);
   };
@@ -7233,8 +7320,8 @@ async function buildPvs(){
 }
 function setPvsW(v){ PVS.w = +v; document.getElementById("pvsW").value = PVS.w; document.getElementById("pvsWv").textContent = "×" + PVS.w.toFixed(2); }
 function pvsFrame(dt){
-  const tgt = typeof SL !== "undefined" && SL.on ? ({ nrem: 1.25, rem: 1.0, awake: 1.0 })[SL.stage] : 1;
-  PVS.sleepW += (tgt - PVS.sleepW) * Math.min(1, dt / 3);
+  /* v85: widens as noradrenaline falls (24b), not by a programmed sleep factor */
+  PVS.sleepW = 1 + 0.35 * Math.max(-0.3, Math.min(1, 1 - LC.neSlow));
   AP_UNI.pvW.value = PVS.w * PVS.sleepW;
   /* the vessel surface was tied again (new box, Shih bed): tie this one to the new nodes too */
   if (PVS.mesh && NV.geo && PVS.geo !== NV.geo && !PVS._busy){ PVS._busy = true; pvsAttach().finally(() => { PVS._busy = false; }); }
@@ -7685,6 +7772,12 @@ function menuRows(){
     }
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
     rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
+    rows.push({ label: "Spreading depolarization (model)", on: CSD.on, act: () => setCsd(!CSD.on) });
+    if (CSD.on){
+      rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
+      rows.push({ label: "   Send another wave", act: () => csdStart() });
+      rows.push({ label: "   Teaching (4× faster)", on: CSD.teach, act: () => { CSD.teach = !CSD.teach; document.getElementById("csdTeach").checked = CSD.teach; } });
+    }
     if (LFP.on){
       rows.push({ label: "   Place the probe (then trigger)", on: LFP.arm, act: () => { LFP.arm = !LFP.arm; } });
       rows.push({ label: "   Background population", on: LFP.bg, act: () => { LFP.bg = !LFP.bg; document.getElementById("lfpBg").checked = LFP.bg; } });
@@ -9299,6 +9392,237 @@ addEventListener("keydown", e => {
 addEventListener("resize", () => { if (TL.open) tlSync(); });
 renderer.xr.addEventListener("sessionstart", () => { if (TL.open) setTimeline(false); });
 
+
+/* ── 27. THE VIEW GIZMO (PC) ──────────────────────────────────────────────────  2026-10-21
+   Søren: "a little tool in the top right corner of the screen while on PC just like in blender where
+   you can rotate the view just by clicking and dragging an axis or clicking it to see the opposite
+   view. Not needed in mobile device or in VR."
+   The data's own axes (x, y = depth, z = section), as the collection is turned now. Drag anywhere on
+   it to orbit; click an axis ball to look along that axis at the centre of view; click the axis you
+   are already looking along to see the opposite side. Shown only with a mouse (hover + fine pointer)
+   and never in a headset. */
+const GZ = { cv: null, size: 104, drag: null, anim: null, balls: [] };
+function gizmoOn(){ return !renderer.xr.isPresenting && (window.__gzForce || matchMedia("(hover: hover) and (pointer: fine)").matches); }
+function gizmoInit(){
+  const cv = GZ.cv = document.createElement("canvas");
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  cv.width = cv.height = GZ.size * dpr; cv.style.cssText = "position:fixed;right:10px;width:" + GZ.size + "px;height:" + GZ.size + "px;z-index:5;cursor:grab;touch-action:none;border-radius:50%";
+  cv.title = "View: drag to turn · click an axis to look along it · click it again for the opposite side (y = depth, pia → white matter)";
+  document.body.appendChild(cv);
+  cv.addEventListener("pointerenter", () => { cv.style.background = "rgba(255,255,255,0.06)"; });
+  cv.addEventListener("pointerleave", () => { if (!GZ.drag) cv.style.background = ""; });
+  cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); GZ.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false }; GZ.anim = null; cv.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); });
+  cv.addEventListener("pointermove", e => {
+    const d = GZ.drag; if (!d) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y; d.x = e.clientX; d.y = e.clientY;
+    if (Math.abs(e.clientX - d.x0) + Math.abs(e.clientY - d.y0) > 3) d.moved = true;
+    if (d.moved) gizmoOrbit(dx * 0.012, dy * 0.012);
+  });
+  const up = e => {
+    const d = GZ.drag; if (!d) return; GZ.drag = null; cv.style.cursor = "grab"; cv.style.background = "";
+    if (!d.moved){
+      const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      let best = null, bd = 13 * 13;
+      for (const b of GZ.balls){ const dd = (b.x - px) ** 2 + (b.y - py) ** 2; if (dd < bd && (!best || b.z > best.z - 0.2)) { bd = dd; best = b; } }
+      if (best) gizmoSnap(best.dir.clone());
+    }
+  };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+}
+/* turn the eye around the centre of view: dx about the world's up, dy about the eye's right */
+function gizmoOrbit(ax, ay){
+  const t = controls.target, off = camera.position.clone().sub(t);
+  const upv = camera.up.clone().normalize();
+  off.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(upv, -ax));
+  const right = new THREE.Vector3().crossVectors(upv, off).normalize();
+  const tried = off.clone().applyQuaternion(new THREE.Quaternion().setFromAxisAngle(right, -ay));
+  if (Math.abs(tried.clone().normalize().dot(upv)) < 0.995) off.copy(tried);      // never over the pole
+  camera.position.copy(t).add(off); camera.lookAt(t); controls.update();
+  if (typeof USER_MOVED !== "undefined") USER_MOVED = true;
+}
+/* look along an axis: the eye goes to the centre + that axis × the present distance (glides 0.35 s) */
+function gizmoSnap(dir){
+  const t = controls.target, off = camera.position.clone().sub(t), dist = off.length();
+  const now = off.clone().normalize();
+  if (now.dot(dir) > 0.999) dir.negate();                                           // already there: the other side
+  const upv = camera.up.clone().normalize();
+  if (Math.abs(dir.dot(upv)) > 0.999) dir.add(new THREE.Vector3().crossVectors(upv, new THREE.Vector3(1, 0, 0)).multiplyScalar(0.0015)).normalize();
+  GZ.anim = { from: now, to: dir, dist, t0: performance.now() };
+}
+function gizmoFrame(){
+  if (!GZ.cv){ if (!gizmoOn()) return; gizmoInit(); }
+  const show = gizmoOn() && !(typeof TL !== "undefined" && TL.playing);
+  GZ.cv.style.display = show ? "" : "none"; if (!show) return;
+  /* below the µJump mark, which renderLogo() draws at the top right */
+  const H = innerHeight, top = Math.max(8, H * 0.018) + Math.max(34, H * 0.075) + 10;
+  GZ.cv.style.top = top + "px";
+  if (GZ.anim){
+    const a = GZ.anim, f = Math.min(1, (performance.now() - a.t0) / 350), e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+    const q = new THREE.Quaternion().setFromUnitVectors(a.from, a.to), d = a.from.clone().applyQuaternion(new THREE.Quaternion().slerp(q, e));
+    camera.position.copy(controls.target).addScaledVector(d, a.dist); camera.lookAt(controls.target); controls.update();
+    if (f >= 1) GZ.anim = null;
+  }
+  const cv = GZ.cv, g = cv.getContext("2d"), S = GZ.size, dpr = cv.width / S, c = S / 2, R = S / 2 - 15;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, S, S);
+  /* the data axes in the world, then in the eye's frame */
+  const qc = content.getWorldQuaternion(new THREE.Quaternion()), qv = camera.quaternion.clone().invert();
+  const AX = [["X", new THREE.Vector3(1, 0, 0), "#ff5a5a"], ["Y", new THREE.Vector3(0, 1, 0), "#7ed957"], ["Z", new THREE.Vector3(0, 0, 1), "#5aa9ff"]];
+  const items = [];
+  for (const [n, v, col] of AX) for (const sgn of [1, -1]){
+    const w = v.clone().multiplyScalar(sgn).applyQuaternion(qc).normalize(), e = w.clone().applyQuaternion(qv);
+    items.push({ n: sgn > 0 ? n : "−" + n, pos: sgn > 0, col, x: c + e.x * R, y: c - e.y * R, z: e.z, dir: w });
+  }
+  items.sort((a, b) => a.z - b.z);
+  GZ.balls = items;
+  for (const it of items){
+    if (it.pos){ g.strokeStyle = it.col; g.lineWidth = 2.2; g.globalAlpha = 0.55 + 0.45 * (it.z + 1) / 2; g.beginPath(); g.moveTo(c, c); g.lineTo(it.x, it.y); g.stroke(); }
+    g.globalAlpha = 0.6 + 0.4 * (it.z + 1) / 2;
+    g.beginPath(); g.arc(it.x, it.y, it.pos ? 9 : 7, 0, 6.2832);
+    if (it.pos){ g.fillStyle = it.col; g.fill(); g.fillStyle = "#0b0f14"; g.font = "bold 11px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(it.n, it.x, it.y + 0.5); }
+    else { g.fillStyle = "rgba(11,15,20,0.85)"; g.fill(); g.strokeStyle = it.col; g.lineWidth = 1.6; g.stroke(); }
+  }
+  g.globalAlpha = 1;
+}
+
+/* ── 28. CORTICAL SPREADING DEPOLARIZATION (CSD), MODELLED ─────────────────────────────  2026-10-21
+   Søren: "a cortical spreading depolarization. There should be a plot for that also, and I expect a
+   large effect on vasculature" -- "It should be started outside of the region and just pass through as
+   a wave."
+   A wave of near-complete depolarization of neurons and astrocytes (Leão 1944 J Neurophysiol 7:359),
+   ~3 mm/min (50 µm/s), here started 2 mm outside the loaded cells on the chosen side, so it crosses
+   them as an almost flat front. At each place, from the moment the front arrives (τ = 0):
+   · extracellular DC potential −18 mV for ~50 s, then recovery (Dreier 2011 Nat Med 17:439);
+   · neurons: a 2 s burst (~40 Hz), then silence (depolarization block, the "depression") for ~2 min,
+     recovering over the next ~3 min; their Ca²⁺ is near maximal for ~1 min;
+   · astrocytes: a Ca²⁺ wave with the front (Chuquet et al. 2007 J Neurosci 27:4036);
+   · arterioles (mouse): a brief constriction (−12 %), a hyperaemia (+25 %, ~1 min), then a long
+     oligaemic narrowing (−15 %, decaying over ~20 min); capillaries narrowed by their pericytes
+     (−10 %, ~10 min; Khennouf et al. 2018 Brain 141:2032); venules widen passively a little
+     (Ayata & Lauritzen 2015 Physiol Rev 95:953). Mural Ca²⁺ is high while they constrict.
+   · the perivascular space closes (to half its width), slowly reopening over ~15 min (Schain et al.
+     2017 J Neurosci 37:2904).
+   The depolarization is the neurons' and glia's own; the burst spikes go through the same rule as all
+   other spikes (section 22, v85), and the vessel and PVS response follows the local depolarization.
+   Sizes are of the right order for mouse cortex, not measurements. Teaching: everything 4× faster. */
+const CSD = { on: false, teach: true, plot: true, dir: "x-", o: null, t: -1, t0: 0, hist: [], cv: null, spr: null, spk: new Map(), centre: null };
+AP_UNI.csdO = { value: new THREE.Vector3() }; AP_UNI.csdT = { value: -1 }; AP_UNI.csdV = { value: 50 };
+const csdB = (t, a, b) => (t < a || t > b) ? 0 : Math.sin(Math.PI * (t - a) / (b - a)) ** 2;
+const csdRmp = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
+function csdVes(tau, cls){
+  if (tau < 0) return 0;
+  if (cls === "art") return -0.12 * csdB(tau, 0, 8) + 0.25 * csdB(tau, 8, 70) - 0.15 * csdRmp(tau, 60, 100) * Math.exp(-Math.max(0, tau - 100) / 1200);
+  if (cls === "cap") return -0.10 * csdRmp(tau, 1, 20) * Math.exp(-Math.max(0, tau - 20) / 600) + 0.05 * csdB(tau, 8, 60);
+  return 0.06 * csdB(tau, 10, 70);
+}
+const csdPvs = tau => tau < 0 ? 0 : -0.5 * csdRmp(tau, 5, 40) * Math.exp(-Math.max(0, tau - 40) / 900);
+const csdDC = tau => tau < 0 ? 0 : -18 * (1 - Math.exp(-tau / 1.5)) * (tau < 50 ? 1 : Math.exp(-(tau - 50) / 15));
+const csdFire = tau => tau < 0 ? 1 : tau < 2 ? 40 : tau < 120 ? 0 : tau < 300 ? (tau - 120) / 180 : 1;
+const csdNeuCa = tau => tau < 0.3 ? 0 : tau < 60 ? 1 : Math.exp(-(tau - 60) / 20);
+const csdAst = tau => tau < 1.5 ? 0 : tau < 40 ? 0.9 : 0.9 * Math.exp(-(tau - 40) / 15);
+function csdTau(p){ return !CSD.on || !CSD.o || !p ? -1 : CSD.t - p.distanceTo(CSD.o) / 50; }
+/* how much a neuron may fire now (sleep's firing is multiplied by this): 0 in the block, recovering after */
+function csdGate(c){ if (!CSD.on) return 1; const tau = csdTau(nvSoma(c)); return tau < 2 ? 1 : Math.min(1, csdFire(tau)); }
+function csdStart(){
+  const ps = CELLS.filter(c => c.mesh && inPlay(c)).map(c => nvSoma(c)).filter(Boolean);
+  if (!ps.length){ ctxNote.textContent = "Spreading depolarization: load some cells first."; return false; }
+  const m = ps.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / ps.length);
+  let R = 0; for (const p of ps) R = Math.max(R, Math.hypot(p.x - m.x, p.z - m.z));
+  const d = ({ "x-": [-1, 0], "x+": [1, 0], "z-": [0, -1], "z+": [0, 1] })[CSD.dir] || [-1, 0];
+  const FAR = 2000;
+  CSD.o = new THREE.Vector3(m.x + d[0] * FAR, m.y, m.z + d[1] * FAR); CSD.centre = m;
+  CSD.t = (FAR - R - 100) / 50;                     // the front starts 100 µm outside the outermost cell
+  CSD.t0 = CSD.t; CSD.hist = []; CSD.spk.clear();
+  AP_UNI.csdO.value.copy(CSD.o);
+  return true;
+}
+function setCsd(v){
+  CSD.on = !!v; document.getElementById("csdBtn").classList.toggle("on", CSD.on);
+  document.getElementById("csdBox").style.display = CSD.on ? "" : "none";
+  if (CSD.on){
+    if (!csdStart()){ CSD.on = false; document.getElementById("csdBtn").classList.remove("on"); document.getElementById("csdBox").style.display = "none"; return; }
+    if (DS_HAS.vasc && !NV.on) setNv(true);
+    ctxNote.textContent = "Spreading depolarization (MODEL): a wave coming from " + CSD.dir.replace("-", "−") + " at 3 mm/min" + (CSD.teach ? " (shown 4× faster)" : "") + ". Watch the neurons burst and go dark, the arterioles narrow, widen, then stay narrow, and the perivascular space close.";
+  } else {
+    CSD.t = -1; AP_UNI.csdT.value = -1;
+    for (const c of CELLS){ const U = c.mesh && c.mesh.material.userData; if (U && U.raU && c._csdLit){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); c._csdLit = false; } }
+    if (CSD.spr) CSD.spr.visible = false;
+  }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function csdFrame(dt){
+  if (!CSD.on || !CSD.o) return;
+  const k = CSD.teach ? 4 : 1, dts = dt * k;
+  CSD.t += dts; AP_UNI.csdT.value = CSD.t; AP_UNI.csdV.value = 50;
+  const now = performance.now() / 1000;
+  for (const c of CELLS){
+    const U = c.mesh && c.mesh.material.userData; if (!U || !U.raU) continue;
+    const kind = caKind(c); if (kind !== "neuron") continue;
+    const tau = csdTau(nvSoma(c));
+    if (tau < 0 || tau > 400){ if (c._csdLit){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); c._csdLit = false; } continue; }
+    /* the burst: spikes at the CSD rate, in the event's own time; counted like every other spike */
+    const r = tau < 2 ? csdFire(tau) : 0;
+    if (r > 0 && Math.random() < r * dts){ let l = CSD.spk.get(c); if (!l){ l = []; CSD.spk.set(c, l); } l.push(now); c._csdN = (c._csdN || 0) + 1; while (l.length > 4) l.shift(); }
+    const l = CSD.spk.get(c) || [], v = [-1, -1, -1, -1];
+    for (let q = 0; q < 4; q++){ const j = l.length - 1 - q; if (j < 0) break; const a = now - l[j]; if (a < 2) v[q] = a; }
+    raDistances(c); U.raS.value.set(v[0], v[1], v[2], v[3]);
+    U.raU.value = csdNeuCa(tau); c._csdLit = true;
+  }
+  /* the plot: the middle of the loaded cells */
+  const pt = CSD.centre, tau = csdTau(pt);
+  if (!CSD._h || CSD.t - CSD._h > 0.5){ CSD._h = CSD.t;
+    CSD.hist.push({ t: CSD.t, dc: csdDC(tau), fr: csdFire(tau), art: csdVes(tau, "art"), cap: csdVes(tau, "cap"), pvs: csdPvs(tau) });
+    while (CSD.hist.length && CSD.hist[0].t < CSD.t - 600) CSD.hist.shift(); }
+  const nNow = performance.now(); if (CSD.plot && nNow - (CSD._pAt || 0) > 200){ CSD._pAt = nNow; csdPlotDraw(tau); }
+}
+function csdPlotDraw(tau){
+  const W = 760, H = 470;
+  if (!CSD.cv){ CSD.cv = document.createElement("canvas"); CSD.cv.width = W; CSD.cv.height = H; }
+  const g = CSD.cv.getContext("2d");
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#ff922b"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif"; g.fillText("Spreading depolarization", 16, 32);
+  g.font = "600 16px system-ui, sans-serif"; g.fillStyle = "#f0883e";
+  const front = CSD.o ? (CSD.t * 50 - CSD.o.distanceTo(CSD.centre)) : 0;
+  g.fillText("MODEL · " + (CSD.teach ? "teaching, 4× faster" : "real time") + " · middle of the cells · front " + (front < 0 ? Math.round(-front) + " µm away" : "passed " + Math.round(tau) + " s ago"), 16, 56);
+  const L = 90, R = W - 20, win = 600, h = CSD.hist, tE = CSD.t;
+  const rows = [["DC potential (mV)", "dc", -20, 2, "#e6edf3"], ["neuronal firing (Hz)", "fr", 0, 40, "#ffd43b"],
+                ["arteriole / capillary diameter (%)", "art", -16, 26, "#f03e3e", "cap", "#ff8787"], ["perivascular space width (%)", "pvs", -55, 5, "#3bc9db"]];
+  rows.forEach((rw, i) => {
+    const T = 76 + i * 96, B = T + 76;
+    g.fillStyle = "#8b949e"; g.font = "15px system-ui, sans-serif"; g.fillText(rw[0], L, T + 2);
+    const y = v => B - (B - T - 14) * (v - rw[2]) / (rw[3] - rw[2]);
+    g.strokeStyle = "#21262d"; g.lineWidth = 1; g.beginPath(); g.moveTo(L, y(0)); g.lineTo(R, y(0)); g.stroke();
+    g.fillStyle = "#8b949e"; g.fillText(String(rw[3]), 12, T + 16); g.fillText(String(rw[2]), 12, B);
+    const line = (key, col, sc) => { g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath(); let f = true;
+      for (const x of h){ const px = L + (R - L) * (1 - (tE - x.t) / win); if (px < L) continue; const py = y(x[key] * sc); f ? g.moveTo(px, py) : g.lineTo(px, py); f = false; } g.stroke(); };
+    const sc = rw[1] === "art" || rw[1] === "pvs" ? 100 : 1;
+    line(rw[1], rw[4], sc); if (rw[5]) line(rw[5], rw[6], 100);
+  });
+  g.fillStyle = "#8b949e"; g.fillText("last " + win + " s of the event's own time", L, H - 12);
+  if (!CSD.spr){
+    const tex = new THREE.CanvasTexture(CSD.cv); tex.colorSpace = THREE.SRGBColorSpace;
+    CSD.spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); CSD.spr.renderOrder = 30; scene.add(CSD.spr);
+  }
+  CSD.spr.material.map.needsUpdate = true; CSD.spr.visible = true;
+  const hh = 0.125; CSD.spr.scale.set(hh * W / H, hh, 1);
+  csdPlace();
+}
+function csdPlace(){
+  if (!CSD.spr || !CSD.spr.visible) return;
+  const cand = [STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null, CA.plotSpr && CA.plotSpr.visible ? CA.plotSpr : null,
+                NV.plotSpr && NV.plotSpr.visible ? NV.plotSpr : null, SL.plotSpr && SL.plotSpr.visible ? SL.plotSpr : null,
+                LFP.spr && LFP.spr.visible ? LFP.spr : null].filter(Boolean);
+  let low = null; for (const x of cand) if (!low || x.position.y - x.scale.y / 2 < low.position.y - low.scale.y / 2) low = x;
+  const sp = CSD.spr;
+  if (low) sp.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - sp.scale.y / 2, 0));
+  else sp.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - sp.scale.y / 2, 0));
+}
+document.getElementById("csdBtn").addEventListener("click", () => setCsd(!CSD.on));
+document.getElementById("csdDir").addEventListener("change", e => { CSD.dir = e.target.value; if (CSD.on) csdStart(); });
+document.getElementById("csdTeach").addEventListener("change", e => { CSD.teach = e.target.checked; });
+document.getElementById("csdPlot").addEventListener("change", e => { CSD.plot = e.target.checked; if (!CSD.plot && CSD.spr) CSD.spr.visible = false; });
+document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on) csdStart(); else setCsd(true); });
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
@@ -9315,12 +9639,14 @@ renderer.setAnimationLoop(() => {
   raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
   try { slFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] sleep:", e); }
+  try { csdFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
   try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
   try { pvsFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
+  try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
   if (REC.on && REC.vf && !BLOCK.loading) recCapture(dt);
 });
 addEventListener("resize", () => {
@@ -9750,7 +10076,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
