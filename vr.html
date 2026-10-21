@@ -404,6 +404,17 @@
     </div>
     <div id="slNote" style="font-size:11.5px;color:var(--mut)">MODEL, not measured -- the MICrONS mouse was recorded awake. Uses the vessel dilation (on) and the modelled Ca²⁺ of mural, endothelial and astrocyte cells.</div>
   </div>
+  <div class="ctl">
+    <button id="lfpBtn" title="A 16-contact laminar probe (50 µm apart) recording the local field potential -- a MODEL: the synaptic and return currents of the loaded neurons, placed on their real morphology, plus each nearby cell's own spike, summed at every contact as currents over distance in tissue of 0.3 S/m; optionally a background population at realistic density. Works with sleep, recorded activity and stimulation.">LFP probe (model)</button>
+    <button id="lfpPlace" title="Then click (or trigger) on a cell or vessel: the probe goes in there, vertically (pia to white matter), centred on that point">Place probe</button>
+  </div>
+  <div id="lfpBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="catick">
+      <label title="The loaded cells are a tiny sample of the tissue. With this on, a background population at realistic density (90,000 neurons per mm³, 80 % pyramidal, oriented pia–white matter) fires with the same rates as the loaded cells and adds its synaptic currents as dipoles -- what makes a real LFP hundreds of µV rather than a few"><input type="checkbox" id="lfpBg" checked> background population (realistic density)</label>
+      <label><input type="checkbox" id="lfpPlot" checked> plot (traces + CSD)</label>
+    </div>
+    <div id="lfpNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured. Needs activity: sleep, recorded activity or stimulation.</div>
+  </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
@@ -2052,6 +2063,10 @@ let _down = null;
 renderer.domElement.addEventListener("pointerdown", e => { _down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 0) return;                       // the right button flies (section 13)
+  if (LFP.arm && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
+    const ndc = canvasNdc(e); _mr.setFromCamera(ndc, camera);
+    lfpWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() }); return;
+  }
   if (CA.on && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
     const ndc = canvasNdc(e);
     _mr.setFromCamera(ndc, camera);
@@ -3936,7 +3951,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -4062,6 +4077,7 @@ async function openScene(id){
   try { raApplyUi(u.ra); } catch (e){ console.warn("[vr] recorded-activity settings", e); }
   try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
   try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
+  try { lfpApplyUi(u.lfp); } catch (e){ console.warn("[vr] LFP settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
   await loadAll();
@@ -6483,6 +6499,25 @@ function slNoteUpd(){
   const n = slNeurons().length, all = CELLS.filter(c => c.mesh && caKind(c) === "neuron").length;
   el.textContent = "Now: " + SL_NAME[SL.stage] + " · " + n + " of " + all + " loaded neurons take part · MODEL, not measured (the MICrONS mouse was recorded awake).";
 }
+/* The population's rate at spike-clock time t (Hz) -- what the ~100,000 neurons around do on average,
+   for the LFP's synaptic currents (section 25): the up-states as scheduled, not a handful of cells' noise. */
+function slPopRate(t, inh){
+  if (SL.p.so > 0.5){
+    const ups = SL.ups || []; let u = null; for (let k = ups.length - 1; k >= 0; k--) if (ups[k].t <= t){ u = ups[k]; break; }
+    if (!u) return 0;
+    /* A population's up-state is not a box: the wave takes ~30 ms to recruit the tissue under the
+       probe and the firing dies away over ~100 ms; a spindle modulates the crowd by about half. */
+    const x = t - u.t - (inh ? 0.015 : 0); if (x < 0 || x >= 0.8) return 0;
+    let r = (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) * Math.min(1, x / 0.03) * (x < 0.45 ? 1 : Math.exp(-(x - 0.45) / 0.1));
+    if (u.sp && x < 0.8) r *= 1 + 0.5 * Math.cos(6.2831853 * 12 * x);
+    return r;
+  }
+  let r = inh ? SL.p.inh : SL.p.exc;
+  /* REM theta is a hippocampal rhythm; in the neocortex it is weak, so the population is only 7 %
+     modulated by it (the loaded cells' own firing keeps the stronger 60 %). */
+  if (SL.p.rem > 0.5) r *= 1 + 0.07 * Math.sin(6.2831853 * 7 * t);
+  return r;
+}
 function slFire(c, t){ (SL.spk.get(c) || SL.spk.set(c, []).get(c)).push(t); }
 function slTick(dt){
   /* stage clock (real seconds) */
@@ -6502,7 +6537,8 @@ function slTick(dt){
   /* the slow oscillation: when does the next up-state start, and is it a spindle? */
   if (SL.p.so > 0.5){
     if (SL.nextUp <= t0) SL.nextUp = t0 + 0.2;
-    if (SL.nextUp < t1){ SL.upStart = SL.nextUp; SL.spindle = Math.random() < 0.3; SL.nextUp += 1.25 * (0.8 + 0.4 * Math.random()); }
+    if (SL.nextUp < t1){ SL.upStart = SL.nextUp; SL.spindle = Math.random() < 0.3; SL.nextUp += 1.25 * (0.8 + 0.4 * Math.random());
+      (SL.ups = SL.ups || []).push({ t: SL.upStart, sp: SL.spindle }); while (SL.ups.length > 20) SL.ups.shift(); }
   } else SL.upStart = -1;
   /* the wave crosses the block along x */
   let xmin = Infinity; const pos = new Map();
@@ -6638,6 +6674,280 @@ document.getElementById("slBtn").addEventListener("click", () => setSleep(!SL.on
 document.getElementById("slState").addEventListener("change", e => slSetting("mode", e.target.value));
 document.getElementById("slTeach").addEventListener("change", e => slSetting("teach", e.target.checked));
 document.getElementById("slPlot").addEventListener("change", e => slSetting("plot", e.target.checked));
+
+/* ── 25. THE LOCAL FIELD POTENTIAL, ON A 16-CONTACT LAMINAR PROBE ─────────────  2026-10-21
+   Søren: "Measuring local field potentials of the neurons for teaching how those are integrated
+   signals of many neurons. But it should be realistic." -- with a background population and 16
+   contacts.
+
+   A MODEL, built the way field potentials are computed from network activity (the "hybrid scheme",
+   Hagen 2016 Cereb Cortex 26:4461; Lindén 2011 Neuron 72:859; reviews Buzsáki 2012 Nat Rev Neurosci
+   13:407, Einevoll 2013 Nat Rev Neurosci 14:770): every transmembrane current I at a point r away
+   adds φ = I / (4πσ r), σ = 0.3 S/m -- 265 µV per nA at 1 µm.
+
+   · SYNAPTIC CURRENTS ON THE REAL MORPHOLOGY. Each loaded neuron receives the population's input:
+     excitatory current entering its dendrites (a sink spread over every membrane node more than 30 µm
+     from the soma) and leaving at the soma (the return source); inhibitory current leaving at the soma
+     (perisomatic) and returning over the proximal dendrites (12–80 µm). Positions are the cell's own
+     mesh nodes, so a pyramidal cell with its long apical dendrite makes an open, dipolar field that
+     reverses with depth, and a star-shaped cell a closed one that mostly cancels -- read off the
+     morphology, not assumed. Input current: 0.04 nA per Hz of excitatory population rate (τ 5 ms),
+     0.02 nA per Hz of inhibitory (τ 10 ms).
+   · THE CELLS' OWN SPIKES. An 8 nA sink at the soma for ~0.5 ms, returning over 12–150 µm of
+     dendrite: ~100 µV within ~20 µm, little beyond ~100 µm (Gold 2006 J Neurophysiol 95:3113).
+   · BACKGROUND POPULATION (optional). The loaded cells are a handful of the ~90,000 neurons per mm³.
+     Pyramidal neurons (80 %) within 600 µm of the probe and its depth ± 300 µm, firing at the loaded
+     cells' rates, each a pair of point currents: excitatory sink 100 µm towards the pia (apical) and
+     return at the soma; inhibitory source at the soma and sink 40 µm above. 4000 positions drawn once,
+     each standing for its share of the real count.
+   Rates: the loaded excitatory and inhibitory cells' firing, per ms; with no inhibitory cell loaded
+   their rate is taken as 2.5 × the excitatory (an assumption, said in the note).
+   Time: the clock of whatever is running -- sleep's spike clock, the recorded movie, or the
+   stimulator's milliseconds (then a 200 ms window at 0.25 ms instead of 2 s at 1 ms). */
+const LFP = { on: false, arm: false, top: null, n: 16, pitch: 50, bg: true, plot: true, sig: "", Wc: null, bgW: null, eap: new Map(),
+              group: null, cv: null, spr: null, last: null, _at: 0 };
+const LFP_K = 1000 / (4 * Math.PI * 0.3);        // µV · µm / nA
+/* CALIBRATION. The background's point-dipole currents are a simplification; one factor scales them so
+   an NREM slow wave reaches ~0.8 mV peak to peak on the largest contact, the order of cortical slow
+   waves in the mouse LFP. The geometry -- where it reverses, how it falls off, how much the loaded
+   cells and the spikes add -- is computed, not scaled. */
+let LFP_BG_SCALE = 0.3;
+function lfpContacts(){ const out = []; for (let k = 0; k < LFP.n; k++) out.push(new THREE.Vector3(LFP.top.x, LFP.top.y + k * LFP.pitch, LFP.top.z)); return out; }
+function lfpDraw(){
+  if (LFP.group){ content.remove(LFP.group); LFP.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); LFP.group = null; }
+  if (!LFP.on || !LFP.top) return;
+  const g = new THREE.Group(), C = lfpContacts(), len = (LFP.n - 1) * LFP.pitch + 160;
+  const sh = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, len, 10), new THREE.MeshStandardMaterial({ color: 0xb8c4cc, roughness: 0.4, metalness: 0.5 }));
+  sh.position.set(LFP.top.x, LFP.top.y + (LFP.n - 1) * LFP.pitch / 2 - 40, LFP.top.z); g.add(sh);
+  C.forEach((p, k) => { const d = new THREE.Mesh(new THREE.SphereGeometry(7, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffd43b, emissive: 0x7a5a00 })); d.position.copy(p); g.add(d); });
+  content.add(g); LFP.group = g;
+}
+/* The geometry: per cell, how much φ each contact gets per nA of input (excitatory, inhibitory, spike). */
+function lfpCellW(c, C){
+  const G = cellGraph(c), soma = somaNode(c, 0); if (soma < 0) return null;
+  const { D } = arrival(G, [{ node: soma, t0: 0 }], null, 0, 1);
+  const step = Math.max(1, Math.floor(G.m / 3000));
+  const sets = { som: [], den: [], prox: [], ret: [] };
+  for (let v = 0; v < G.m; v += step){
+    const d = D[v]; if (d >= 1e8) continue;
+    if (d <= 12) sets.som.push(v); else { if (d > 30) sets.den.push(v); if (d <= 80) sets.prox.push(v); if (d <= 150) sets.ret.push(v); }
+  }
+  if (!sets.som.length) sets.som.push(soma);
+  const P = G.pos, field = (list, p) => { if (!list.length) return 0; let s = 0; for (const v of list){ const r = Math.max(5, Math.hypot(P[v*3]-p.x, P[v*3+1]-p.y, P[v*3+2]-p.z)); s += 1 / r; } return LFP_K * s / list.length; };
+  const e = [], i = [], a = [];
+  for (const p of C){
+    const fs = field(sets.som, p), fd = field(sets.den, p), fp = field(sets.prox, p), fr = field(sets.ret, p);
+    e.push(-fd + fs); i.push(fs - fp); a.push(-fs + fr);
+  }
+  return { e, i, a };
+}
+function lfpBackground(C){
+  const R = 600, z0 = LFP.top.y - 300, z1 = LFP.top.y + (LFP.n - 1) * LFP.pitch + 300, N = 4000;
+  const vol = Math.PI * R * R * (z1 - z0) * 1e-9, real = 90000 * vol * 0.8, w = real / N;      // µm³ → mm³
+  let seed = 12345; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const e = new Float64Array(C.length), i = new Float64Array(C.length);
+  for (let n = 0; n < N; n++){
+    const rr = R * Math.sqrt(rnd()), th = 6.2831853 * rnd(), x = LFP.top.x + rr * Math.cos(th), z = LFP.top.z + rr * Math.sin(th), y = z0 + (z1 - z0) * rnd();
+    C.forEach((p, k) => {
+      const f = (yy) => LFP_K / Math.max(15, Math.hypot(x - p.x, yy - p.y, z - p.z));
+      e[k] += w * (-f(y - 100) + f(y));        // apical sink towards the pia (smaller y), return at the soma
+      i[k] += w * (f(y) - f(y - 40));          // perisomatic source, sink 40 µm above
+    });
+  }
+  return { e, i, real: Math.round(real) };
+}
+function lfpWeights(){
+  const cells = CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron");
+  const sig = LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z].map(v => v.toFixed(1)).join(",") + "|" + cells.map(c => c.i + ":" + cellGraph(c).m).join(",") : "";
+  if (sig === LFP.sig) return;
+  LFP.sig = sig; LFP.eap.clear();
+  const C = lfpContacts(), We = new Float64Array(LFP.n), Wi = new Float64Array(LFP.n);
+  for (const c of cells){
+    const w = lfpCellW(c, C); if (!w) continue;
+    for (let k = 0; k < LFP.n; k++){ We[k] += w.e[k]; Wi[k] += w.i[k]; }
+    LFP.eap.set(c, w.a);
+  }
+  LFP.Wc = { e: We, i: Wi, n: cells.length };
+  LFP.bgW = lfpBackground(C);
+}
+/* Which clock, which window, and each cell's spikes in it (seconds). */
+function lfpSpikes(){
+  const list = [];
+  if (typeof SL !== "undefined" && SL.on){
+    for (const [c, S] of SL.spk) list.push([c, S]);
+    return { t1: SL.sc, W: 3, dt: 0.001, list, src: "sleep" };
+  }
+  if (typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey)){
+    for (const c of raCells()){ const e = raEntry(c); list.push([c, raInfer(e).spk]); }
+    return { t1: RA.t, W: 2, dt: 0.001, list, src: "recorded" };
+  }
+  if (typeof STIM !== "undefined" && STIM.on){
+    for (const c of CELLS) if (c.spikesAt && c.spikesAt.length) list.push([c, c.spikesAt.map(t => t / 1000)]);
+    return { t1: STIM.now / 1000, W: 0.2, dt: 0.00025, list, src: "stimulation" };
+  }
+  return null;
+}
+function lfpCompute(){
+  const sp = lfpSpikes(); if (!sp || !LFP.Wc) return null;
+  const n = Math.round(sp.W / sp.dt), t0 = sp.t1 - sp.W, K = LFP.n;
+  const re = new Float64Array(n), ri = new Float64Array(n);
+  let nE = 0, nI = 0;
+  const loaded = CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron");
+  for (const c of loaded) (cellClass(c) === "inh" ? nI++ : nE++);
+  const eapAmp = new Float64Array(n);
+  const phiE = Array.from({ length: K }, () => new Float64Array(n));
+  for (const [c, S] of sp.list){
+    const inh = cellClass(c) === "inh", w = LFP.eap.get(c);
+    for (const ts of S){
+      if (ts < t0 - 0.05 || ts > sp.t1) continue;
+      const b = Math.floor((ts - t0) / sp.dt);
+      if (b >= 0 && b < n) (inh ? ri : re)[b] += 1;
+      if (w) for (let j = 0; j * sp.dt < 0.0025; j++){
+        const bb = b + j; if (bb < 0 || bb >= n) continue;
+        const tm = j * sp.dt * 1000;                             // ms after the spike
+        const I = 8 * (Math.exp(-((tm - 0.4) ** 2) / (2 * 0.15 * 0.15)) - 0.3 * Math.exp(-((tm - 1.0) ** 2) / (2 * 0.35 * 0.35)));
+        for (let k = 0; k < K; k++) phiE[k][bb] += w[k] * I;
+      }
+    }
+  }
+  /* The POPULATION's rates (Hz): in sleep, the rate the state sets for the ~100,000 neurons around
+     (slPopRate); otherwise the loaded cells' own firing, smoothed over ~20 ms -- the loaded cells
+     standing in for the population. A handful of cells' spikes would otherwise read as the whole
+     tissue firing in lock-step. */
+  if (sp.src === "sleep"){
+    for (let b = 0; b < n; b++){ const t = t0 + (b + 0.5) * sp.dt; re[b] = slPopRate(t, false); ri[b] = slPopRate(t, true); }
+  } else {
+    const toRate = (a, N) => { const f = 1 / (Math.max(1, N) * sp.dt); for (let b = 0; b < n; b++) a[b] *= f; };
+    toRate(re, nE); if (nI) toRate(ri, nI); else for (let b = 0; b < n; b++) ri[b] = 2.5 * re[b];
+    const sg = Math.max(1, Math.round(0.02 / sp.dt)), gk = []; for (let j = -2 * sg; j <= 2 * sg; j++) gk.push(Math.exp(-j * j / (2 * sg * sg)));
+    const gs = gk.reduce((x, y) => x + y, 0), sm = a => { const o = new Float64Array(n); for (let b = 0; b < n; b++){ let v = 0; for (let j = -2 * sg; j <= 2 * sg; j++){ const q = b + j; if (q >= 0 && q < n) v += a[q] * gk[j + 2 * sg]; } o[b] = v / gs; } return o; };
+    const se = sm(re), si = sm(ri); re.set(se); ri.set(si);
+  }
+  const Ie = new Float64Array(n), Ii = new Float64Array(n);
+  const de = Math.exp(-sp.dt / 0.005), di = Math.exp(-sp.dt / 0.010), ke = 0.04 * (1 - de), ki = 0.02 * (1 - di);
+  let xe = 0, xi = 0; for (let b = 0; b < n; b++){ xe = xe * de + ke * re[b]; xi = xi * di + ki * ri[b]; Ie[b] = xe; Ii[b] = xi; }
+  /* A recording amplifier high-passes: the steady part of the currents is not seen. Here each part
+     has its mean over the window removed (the window is 3 s in sleep, so the 0.8 Hz slow waves stay). */
+  const mI = a => a.reduce((x, y) => x + y, 0) / a.length, Ie0 = mI(Ie), Ii0 = mI(Ii);
+  const phi = [], parts = { cells: 0, bg: 0, spk: 0 }, bs = LFP_BG_SCALE;
+  for (let k = 0; k < K; k++){
+    const a = new Float64Array(n), s0 = mI(phiE[k]);
+    for (let b = 0; b < n; b++){
+      const ie = Ie[b] - Ie0, ii = Ii[b] - Ii0;
+      const vc = LFP.Wc.e[k] * ie + LFP.Wc.i[k] * ii, vb = LFP.bg ? bs * (LFP.bgW.e[k] * ie + LFP.bgW.i[k] * ii) : 0, vs = phiE[k][b] - s0;
+      a[b] = vc + vb + vs; parts.cells += vc * vc; parts.bg += vb * vb; parts.spk += vs * vs;
+    }
+    phi.push(a);
+  }
+  return { phi, n, dt: sp.dt, W: sp.W, src: sp.src, parts, noInh: sp.src !== "sleep" && !nI, nCells: loaded.length };
+}
+function lfpPlotDraw(R){
+  const W = 760, H = 560;
+  if (!LFP.cv){ LFP.cv = document.createElement("canvas"); LFP.cv.width = W; LFP.cv.height = H; }
+  const g = LFP.cv.getContext("2d");
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#ffd43b"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 22px system-ui, sans-serif"; g.fillText("LFP, 16 contacts · " + (R ? R.src : "no activity"), 16, 30);
+  g.font = "600 15px system-ui, sans-serif"; g.fillStyle = "#f0883e";
+  g.fillText("MODEL, not measured · synaptic currents on the real morphologies" + (LFP.bg ? " + background population" : ""), 16, 52);
+  if (!R){ g.fillStyle = "#8b949e"; g.fillText("Start sleep, recorded activity or stimulation.", 16, 90); }
+  else {
+    const L = 70, Rt = 540, T = 72, B = H - 52, rowH = (B - T) / LFP.n;
+    let mx = 1; for (const a of R.phi) for (let b = 0; b < R.n; b += 2) mx = Math.max(mx, Math.abs(a[b]));
+    const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000].find(v => v >= mx * 0.5) || 5000, sc = rowH * 0.9 / nice;
+    g.font = "13px system-ui, sans-serif";
+    R.phi.forEach((a, k) => {
+      const y0 = T + rowH * (k + 0.5);
+      g.fillStyle = "#8b949e"; g.fillText((k * LFP.pitch) + " µm", 8, y0 + 4);
+      g.strokeStyle = "#e6edf3"; g.lineWidth = 1.2; g.beginPath();
+      const stp = Math.max(1, Math.floor(R.n / 900));
+      for (let b = 0; b < R.n; b += stp){ const x = L + (Rt - L) * b / R.n, y = y0 - a[b] * sc; b ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.stroke();
+    });
+    g.strokeStyle = "#ffd43b"; g.lineWidth = 3; g.beginPath(); g.moveTo(Rt + 6, B); g.lineTo(Rt + 6, B - nice * sc); g.stroke();
+    g.fillStyle = "#ffd43b"; g.fillText(nice + " µV", Rt + 10, B - 4);
+    g.fillStyle = "#8b949e"; g.fillText((R.W >= 1 ? R.W + " s" : R.W * 1000 + " ms") + " · up = positive", L, B + 22);
+    /* CSD: −σ ∂²φ/∂z², from a 5 ms-smoothed φ, on the inner 14 contacts */
+    const X0 = 600, X1 = W - 16, sm = Math.max(1, Math.round(0.005 / R.dt));
+    const smooth = a => { const o = new Float64Array(R.n); let acc = 0; for (let b = 0; b < R.n; b++){ acc += a[b]; if (b >= sm) acc -= a[b - sm]; o[b] = acc / Math.min(b + 1, sm); } return o; };
+    const S = R.phi.map(smooth), cols = 70, csd = [];
+    let cm = 1e-9;
+    for (let k = 1; k < LFP.n - 1; k++){ const row = []; for (let q = 0; q < cols; q++){ const b = Math.floor((q + 0.5) * R.n / cols); const v = -(S[k-1][b] - 2 * S[k][b] + S[k+1][b]); row.push(v); cm = Math.max(cm, Math.abs(v)); } csd.push(row); }
+    csd.forEach((row, kk) => row.forEach((v, q) => {
+      const f = v / cm; g.fillStyle = f < 0 ? "rgba(255,80,60," + Math.min(1, -f) + ")" : "rgba(80,140,255," + Math.min(1, f) + ")";
+      g.fillRect(X0 + (X1 - X0) * q / cols, T + rowH * (kk + 1), (X1 - X0) / cols + 1, rowH + 1);
+    }));
+    g.fillStyle = "#c9d1d9"; g.fillText("CSD", X0, T - 4); g.fillStyle = "#ff6b5a"; g.fillText("sink", X0, B + 22); g.fillStyle = "#6fa0ff"; g.fillText("source", X0 + 44, B + 22);
+    const tot = R.parts.cells + R.parts.bg + R.parts.spk || 1, pc = v => Math.round(100 * v / tot);
+    g.fillStyle = "#8b949e"; g.fillText("power: loaded cells' synapses " + pc(R.parts.cells) + " % · background " + pc(R.parts.bg) + " % · spikes " + pc(R.parts.spk) + " %" + (R.noInh ? " · no inhibitory cell loaded: their rate = 2.5 × excitatory" : ""), 16, H - 10);
+  }
+  if (!LFP.spr){
+    const tex = new THREE.CanvasTexture(LFP.cv); tex.colorSpace = THREE.SRGBColorSpace;
+    LFP.spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); LFP.spr.renderOrder = 30; scene.add(LFP.spr);
+  }
+  LFP.spr.material.map.needsUpdate = true; LFP.spr.visible = true;
+  const hh = 0.13; LFP.spr.scale.set(hh * W / H, hh, 1);
+  lfpPlace();
+}
+function lfpPlace(){
+  if (!LFP.spr || !LFP.spr.visible) return;
+  const cand = [STIM.warn && STIM.warn.parent ? STIM.warn : null, STIM.hud && STIM.hud.spr && STIM.hud.spr.parent ? STIM.hud.spr : null,
+                CA.hud && CA.hud.spr && CA.hud.spr.parent ? CA.hud.spr : null, CA.plotSpr && CA.plotSpr.visible ? CA.plotSpr : null,
+                NV.plotSpr && NV.plotSpr.visible ? NV.plotSpr : null, typeof SL !== "undefined" && SL.plotSpr && SL.plotSpr.visible ? SL.plotSpr : null].filter(Boolean);
+  let low = null; for (const x of cand) if (!low || x.position.y - x.scale.y / 2 < low.position.y - low.scale.y / 2) low = x;
+  const sp = LFP.spr;
+  if (low) sp.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - sp.scale.y / 2, 0));
+  else sp.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - sp.scale.y / 2, 0));
+}
+function lfpPlaceAt(p){
+  LFP.top = new THREE.Vector3(p.x, p.y - (LFP.n - 1) * LFP.pitch / 2, p.z); LFP.sig = ""; LFP.arm = false;
+  document.getElementById("lfpPlace").classList.remove("on");
+  if (!LFP.on) setLfp(true); else lfpDraw();
+  ctxNote.textContent = "LFP probe placed: 16 contacts, 50 µm apart, " + Math.round((LFP.n - 1) * LFP.pitch) + " µm from top to bottom.";
+}
+function lfpAuto(){
+  const ps = CELLS.filter(c => c.mesh && caKind(c) === "neuron").map(c => nvSoma(c)).filter(Boolean);
+  if (!ps.length) return false;
+  const m = ps.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / ps.length);
+  lfpPlaceAt(m.add(new THREE.Vector3(25, 0, 0))); return true;
+}
+function lfpWithRay(r){
+  _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
+  const targets = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh); if (VASC.mesh && VASC.mesh.visible) targets.push(VASC.mesh);
+  const hit = _mr.intersectObjects(targets, false)[0];
+  if (!hit){ ctxNote.textContent = "LFP probe: point at a cell or a vessel."; return; }
+  lfpPlaceAt(content.worldToLocal(hit.point.clone()));
+}
+function setLfp(v){
+  LFP.on = !!v; document.getElementById("lfpBtn").classList.toggle("on", LFP.on);
+  document.getElementById("lfpBox").style.display = LFP.on ? "" : "none";
+  if (LFP.on && !LFP.top && !lfpAuto()){ LFP.on = false; document.getElementById("lfpBtn").classList.remove("on"); ctxNote.textContent = "LFP probe: load some neurons first."; return; }
+  lfpDraw();
+  if (!LFP.on && LFP.spr) LFP.spr.visible = false;
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function lfpFrame(){
+  if (!LFP.on || !LFP.top) return;
+  const now = performance.now(); if (now - LFP._at < 150) return; LFP._at = now;
+  try { lfpWeights(); } catch (e){ console.warn("[vr] LFP weights", e); return; }
+  const R = lfpCompute(); LFP.last = R;
+  if (LFP.plot) lfpPlotDraw(R); else if (LFP.spr) LFP.spr.visible = false;
+  const el = document.getElementById("lfpNote");
+  if (el && LFP.Wc) el.textContent = "MODEL, not measured · " + LFP.Wc.n + " loaded neuron" + (LFP.Wc.n === 1 ? "" : "s") + " on their own morphology"
+    + (LFP.bg ? " + a background of ~" + LFP.bgW.real.toLocaleString("en-US") + " pyramidal neurons around the probe" : "") + (R ? " · source: " + R.src : " · start sleep, recorded activity or stimulation") + ".";
+}
+function lfpUi(){ return { on: LFP.on, bg: LFP.bg, plot: LFP.plot, top: LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z] : null }; }
+function lfpApplyUi(u){
+  if (!u) return;
+  if (u.bg != null){ LFP.bg = !!u.bg; document.getElementById("lfpBg").checked = LFP.bg; }
+  if (u.plot != null){ LFP.plot = !!u.plot; document.getElementById("lfpPlot").checked = LFP.plot; }
+  if (u.top){ LFP.top = new THREE.Vector3(u.top[0], u.top[1], u.top[2]); LFP.sig = ""; }
+  if (u.on != null && !!u.on !== LFP.on) setLfp(u.on); else lfpDraw();
+}
+document.getElementById("lfpBtn").addEventListener("click", () => setLfp(!LFP.on));
+document.getElementById("lfpPlace").addEventListener("click", () => { LFP.arm = !LFP.arm; document.getElementById("lfpPlace").classList.toggle("on", LFP.arm); ctxNote.textContent = LFP.arm ? "LFP probe: click (or trigger) on a cell or vessel to put the probe there." : ""; });
+document.getElementById("lfpBg").addEventListener("change", e => { LFP.bg = e.target.checked; });
+document.getElementById("lfpPlot").addEventListener("change", e => { LFP.plot = e.target.checked; if (!LFP.plot && LFP.spr) LFP.spr.visible = false; });
 
 /* ── 16. SYNAPSES AND CONTACT POINTS BROUGHT FROM µJUMP ──────────────────────  2026-10-15
    Søren: "In connectivity, there should be a +VR button to add the target cell and the input and
@@ -6852,6 +7162,7 @@ function selectWith(h){
   const tool = isToolHand(h);
   if (FLY.trigger && tool){ flyWithHand(h); return; }
   if (SPRAY.on && tool){ h.spraying = true; return; }
+  if (LFP.arm && tool){ lfpWithRay(rayOf(h)); return; }
   if (CA.on && tool){ caWithRay(rayOf(h)); return; }
   if (STIM.on && tool){ stimulateWithRay(rayOf(h)); return; }
   if (MEAS.on && tool){ measureWithRay(rayOf(h)); return; }
@@ -7075,6 +7386,11 @@ function menuRows(){
       }
     }
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
+    rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
+    if (LFP.on){
+      rows.push({ label: "   Place the probe (then trigger)", on: LFP.arm, act: () => { LFP.arm = !LFP.arm; } });
+      rows.push({ label: "   Background population", on: LFP.bg, act: () => { LFP.bg = !LFP.bg; document.getElementById("lfpBg").checked = LFP.bg; } });
+    }
     if (SL.on){
       rows.push({ label: "   " + ({ cycle: "Cycle: awake → NREM → REM", nrem: "NREM", rem: "REM", awake: "Awake" })[SL.mode] + "  ▸", act: () => slSetting("mode", ({ cycle: "nrem", nrem: "rem", rem: "awake", awake: "cycle" })[SL.mode]) });
       rows.push({ label: "   Teaching (faster cycle, slower spikes)", on: SL.teach, act: () => slSetting("teach", !SL.teach) });
@@ -8701,6 +9017,7 @@ renderer.setAnimationLoop(() => {
   raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
   try { slFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] sleep:", e); }
+  try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
@@ -9134,7 +9451,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
