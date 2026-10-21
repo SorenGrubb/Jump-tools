@@ -371,7 +371,7 @@
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">Mean of 10 repeats per clip · excitatory neurons only (GCaMP6s) · DANDI:000402, MICrONS Consortium, CC-BY-4.0 · r = oracle score (how alike the repeats were)</div>
   </div>
   <div class="ctl">
-    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vessel dilation</button>
+    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, breathing, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vessel dilation</button>
   </div>
   <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
@@ -381,6 +381,7 @@
       <label title="Dilation driven by the cells' activity, from the 1st-order capillary outward"><input type="checkbox" data-nv="act" checked> neurovascular coupling</label>
       <label title="A pulse with every heartbeat (awake mouse ≈ 10 Hz; slowed to ~1 Hz when teaching)"><input type="checkbox" data-nv="pulse" checked> heartbeat</label>
       <label title="Slow rhythmic diameter changes of the arterioles, about 0.1 Hz"><input type="checkbox" data-nv="vaso" checked> vasomotion (0.1 Hz)</label>
+      <label title="A small change with every breath, largest in the venules and venous capillaries, which narrow as the mouse breathes in (≈ 3 Hz awake; slower and regular in NREM, faster and irregular in REM; 0.3 Hz and larger when teaching). MODEL -- the sizes are an assumption."><input type="checkbox" data-nv="resp" checked> breathing (≈ 3 Hz)</label>
       <label title="A plot of the diameter of the chain the picked (or most active) cell drives"><input type="checkbox" data-nv="plot" checked> diameter plot</label>
       <label title="MODEL Ca²⁺ (green glow), not measured. Mural cells (pericytes, smooth muscle): Ca²⁺ rises as their vessel constricts -- in the vasomotion trough and when it narrows back -- and falls as it dilates. Endothelial cells: Ca²⁺ rises with the coupling signal on their vessel. Astrocytes: Ca²⁺ rises a second or two after neurons within ~50 µm are active. Only loaded cells can glow -- add the mural, endothelial and astrocyte cells near the vessels to see it."><input type="checkbox" data-nv="mc" checked> Ca²⁺ in mural, endothelial and astrocyte cells (model)</label>
       <label title="Off: the vessel only changes shape. On: the lumen surface also glows red as it dilates (that glow is NOT Ca²⁺ -- vascular Ca²⁺ is in the endothelial and mural cells)"><input type="checkbox" data-nv="tint"> tint the vessel red as it dilates</label>
@@ -5571,17 +5572,32 @@ document.getElementById("raCsv").addEventListener("click", raCsv);
    · The heartbeat (awake mouse ≈ 10 Hz) and ~0.1 Hz vasomotion run all the time, largest in the
      arterioles (Mestre et al. 2018; van Veluw et al. 2020).
    · TEACHING: four times the dilation, slower conduction, the heartbeat slowed to ~1 Hz and
-     larger, so each step can be seen. Labelled as such wherever it shows. */
-const NV = { mc: true, tint: false, useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, drv: { rec: true, stim: true, ca: true },
+     larger, so each step can be seen. Labelled as such wherever it shows.
+   · BREATHING (v80, 2026-10-21, Søren: "include the effect of breathing on the vascular diameter,
+     besides cardiac pulsation and vasomotion"). Breathing pulsations in the brain are mainly venous:
+     inspiration lowers intrathoracic pressure, draws venous blood out and the veins and the space
+     around them change with each breath (Kiviniemi et al. 2016, JCBFM 36:1033; in mice, RBC speed
+     dips with every breath in surface arterioles and venules, Santisakultarm et al. 2012, AJP Heart
+     302:H1367). So: venules and venous capillaries narrow with each inspiration (0.5 % of the
+     radius, the largest), capillaries a little (0.1 %), arterioles least and the other way (0.1 %).
+     These sizes are an ASSUMPTION -- the mouse respiratory band of the diameter is near the limit
+     of what two-photon imaging resolves (Bojarskaite et al. 2023, Nat Commun 14:953). Rate: ≈ 3 Hz
+     awake, slower and very regular in NREM, faster and irregular in REM (the pattern sleep is
+     scored from by plethysmography, Bastianini et al. 2017, Sci Rep 7:41698). Teaching: 0.3 Hz
+     and four times larger. The class is carried in the phase texel as phase + 2π·k (k 0 capillary,
+     1 arteriole, 2 venous) so sin() of the phase is unchanged everywhere. */
+const NV = { mc: true, tint: false, useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, resp: true, rrJit: 0, drv: { rec: true, stim: true, ca: true },
              net: null, netP: null, err: "", geo: null, nodes: null, tex: null, texData: null, W: 1024, H: 1,
              src: new Map(), spk: new Map(), lastTick: 0, t0: performance.now(), hud: null, plotSpr: null, plotCv: null, hist: [], plot: true, routed: 0 };
 const NV_PRESET = {
   real:  { gain: { acap1: 0.15, pa: 0.10, acap2: 0.07, pial_art: 0.06, acap3: 0.03, mid: 0.012, ven: 0.02 },
            pulse: { pial_art: 0.02, pa: 0.02, acap1: 0.010, acap2: 0.006, acap3: 0.004, mid: 0.004, ven: 0.003, none: 0.004 }, hr: 10,
+           resp: [-0.001, 0.001, -0.005], rr: 3,
            vaso: { pial_art: 0.03, pa: 0.03, acap1: 0.015, acap2: 0.008, acap3: 0.004, mid: 0.003, ven: 0.002, none: 0.004 }, vf: 0.1,
            speed: 500, lambda: 600, tau: 0.6, label: "realistic" },
   teach: { gain: { acap1: 0.60, pa: 0.40, acap2: 0.28, pial_art: 0.24, acap3: 0.12, mid: 0.05, ven: 0.08 },
            pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, mid: 0.015, ven: 0.012, none: 0.015 }, hr: 1.2,
+           resp: [-0.004, 0.004, -0.02], rr: 0.3,
            vaso: { pial_art: 0.09, pa: 0.09, acap1: 0.05, acap2: 0.025, acap3: 0.012, mid: 0.01, ven: 0.006, none: 0.01 }, vf: 0.1,
            speed: 120, lambda: 900, tau: 0.9, label: "TEACHING — larger and slower than life" }
 };
@@ -5936,13 +5952,28 @@ function nvStatic(){
     const gi = NV.glob[li], cls = nvClass(nvC(gi));
     D[li*4+1] = NV.pulse ? (pr.pulse[cls] || 0) : 0;
     D[li*4+2] = NV.vaso ? (pr.vaso[cls] || 0) : 0;
-    const vid = gi < 0 ? 7 : gi < net.n ? net.vid[gi] : 100003 + Math.floor((gi - net.n) / 40); D[li*4+3] = ((vid * 2654435761) % 1000) / 1000 * 6.2832;
+    const vid = gi < 0 ? 7 : gi < net.n ? net.vid[gi] : 100003 + Math.floor((gi - net.n) / 40); D[li*4+3] = ((vid * 2654435761) % 1000) / 1000 * 6.2832 + 6.2831853 * (cls === "ven" ? 2 : cls === "pa" || cls === "pial_art" ? 1 : 0);
   }
   NV.tex.needsUpdate = true;
   AP_UNI.nvHR.value = pr.hr; AP_UNI.nvVF.value = pr.vf;
+  const ra = NV.resp ? pr.resp : [0, 0, 0]; AP_UNI.nvRsA.value.set(ra[0], ra[1], ra[2]);
 }
 AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0.1 };
 AP_UNI.nvVaA = { value: 1 }; AP_UNI.nvSlA = { value: 0 }; AP_UNI.nvSlPh = { value: 0 };   // sleep (section 24)
+AP_UNI.nvRsA = { value: new THREE.Vector3(-0.001, 0.001, -0.005) }; AP_UNI.nvRPh = { value: 0 };   // breathing (v80)
+/* The breathing rate now: ≈ 3 Hz awake; in sleep slower and regular (NREM) or faster and irregular (REM). */
+function nvBreathRate(dt){
+  const pr = NV_PRESET[NV.preset];
+  let f = 1;
+  if (typeof SL !== "undefined" && SL.on){
+    const nrem = SL.p.so || 0, rem = SL.p.rem || 0;
+    f = 1 - 0.25 * nrem + 0.1 * rem;
+    NV.rrJit += (Math.random() - 0.5) * 3 * dt - NV.rrJit * dt / 0.8;      // a wandering rate
+    NV.rrJit = Math.max(-0.4, Math.min(0.4, NV.rrJit));
+    f *= 1 + rem * NV.rrJit;
+  } else NV.rrJit = 0;
+  return pr.rr * f;
+}
 function nvMaterial(mesh){
   const m = mesh.material;
   if (m.userData.nv){ m.userData.nv.tex.value = NV.tex; m.userData.nv.W.value = NV.W; m.userData.nv.H.value = NV.H; m.userData.nv.col.value = NV.colour ? 1 : 0; m.userData.nv.tint.value = NV.tint ? 1 : 0; return; }
@@ -5952,14 +5983,16 @@ function nvMaterial(mesh){
   m.onBeforeCompile = sh => {
     base(sh);
     sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col; sh.uniforms.nvTint = U.tint;
-    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nvarying float vNvD;\n"
+    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nvarying float vNvD;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           vec2 nuv = vec2((mod(vnNode, nvW) + 0.5) / nvW, (floor(vnNode / nvW) + 0.5) / nvH);
           vec4 q = texture2D(nvTex, nuv);
           float ph = fract(nvT * nvHR);
           float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);      // a sharp rise, a slower fall
-          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a));
+          float rk = floor(q.a / 6.2831853 + 0.0001);
+          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a))
+                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh);        // breathing (v80)
           vNvD = q.r; vNvCol = vnCol;
           transformed += objectNormal * vnR * d;
         }`);
@@ -6205,6 +6238,8 @@ function nvFrame(){
   if (!NV.on){ if (VASC.mesh && VASC.mesh.material.userData.nv){ AP_UNI.nvT.value = 0; if (NV.texData && NV._cleared !== true){ NV.texData.fill(0); NV.tex.needsUpdate = true; NV._cleared = true; } } nvPlotDraw(true); return; }
   NV._cleared = false;
   if (VASC.mesh && NV.geo !== VASC.mesh.geometry.uuid && !NV._attaching){ NV._attaching = true; nvAttach().finally(() => { NV._attaching = false; }); }
+  { const tn = (performance.now() - NV.t0) / 1000, dt = Math.min(0.1, Math.max(0, tn - AP_UNI.nvT.value));
+    AP_UNI.nvRPh.value = (AP_UNI.nvRPh.value + 6.2831853 * nvBreathRate(dt) * dt) % 6.2831853; NV.rrNow = nvBreathRate(0); }
   AP_UNI.nvT.value = (performance.now() - NV.t0) / 1000;
   if (NV.useShih && NV.act && VASC.mesh && NV.geo === VASC.mesh.geometry.uuid && NV.snetFor !== NV.geo && !NV._snetBusy){
     NV._snetBusy = true; NV.snetFor = NV.geo; nvShihNet().finally(() => { NV._snetBusy = false; });
@@ -6246,7 +6281,7 @@ function nvPlotDraw(hide){
   g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif";
   g.fillText("Vessel diameter, driven by " + shortName(CELLS[last.c]).slice(0, 24), 16, 32);
   g.font = "600 16px system-ui, sans-serif"; g.fillStyle = NV.preset === "teach" ? "#ffb454" : "#f0883e";
-  g.fillText("MODEL, not measured · " + (NV.preset === "teach" ? "TEACHING: larger and slower than life" : "realistic sizes") + " · heartbeat and vasomotion not shown", 16, 56);
+  g.fillText("MODEL, not measured · " + (NV.preset === "teach" ? "TEACHING: larger and slower than life" : "realistic sizes") + " · heartbeat, breathing and vasomotion not shown", 16, 56);
   const L = 70, R = W - 220, T = 74, B = H - 40, X = t => L + (R - L) * (t - t0) / 20, Y = v => B - (B - T) * v / ymax;
   g.font = "16px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.strokeStyle = "#21262d"; g.lineWidth = 1;
   for (let k = 0; k <= 4; k++){ const v = ymax * k / 4, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); g.fillText("+" + Math.round(v * 100) + " %", 8, y + 5); }
@@ -6315,11 +6350,11 @@ function nvSetting(k, v){
   nvStatic();
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
-function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, drv: Object.assign({}, NV.drv), plot: NV.plot, useShih: NV.useShih, mc: NV.mc, tint: NV.tint }; }
+function nvUi(){ return { colour: NV.colour ? (NV.colourSrc || "order") : false, on: NV.on, preset: NV.preset, act: NV.act, pulse: NV.pulse, vaso: NV.vaso, resp: NV.resp, drv: Object.assign({}, NV.drv), plot: NV.plot, useShih: NV.useShih, mc: NV.mc, tint: NV.tint }; }
 function nvApplyUi(u){
   if (!u) return;
   if (u.preset) nvSetting("preset", u.preset);
-  ["act", "pulse", "vaso", "plot", "mc", "tint"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
+  ["act", "pulse", "vaso", "resp", "plot", "mc", "tint"].forEach(k => { if (u[k] != null) nvSetting(k, !!u[k]); });
   if (u.useShih != null && !!u.useShih !== NV.useShih) nvSetting("useShih", !!u.useShih);
   if (u.drv) for (const k in u.drv) nvSetting(k, u.drv[k]);
   if (u.on != null && !!u.on !== NV.on) setNv(u.on);
@@ -7027,7 +7062,7 @@ function pvsMaterial(){
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.nvTex = { get value(){ return NV.tex; } }; sh.uniforms.nvW = { get value(){ return NV.W; } }; sh.uniforms.nvH = { get value(){ return NV.H; } };
-    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform float pvW;\n"
+    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform float pvW;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           float wall = 0.0;
@@ -7036,7 +7071,9 @@ function pvsMaterial(){
             vec4 q = texture2D(nvTex, nuv);
             float ph = fract(nvT * nvHR);
             float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);
-            float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a));
+            float rk = floor(q.a / 6.2831853 + 0.0001);
+          float d = q.r + q.g * beat + q.b * (nvVaA * sin(6.2831853 * nvVF * nvT + q.a) + nvSlA * sin(nvSlPh + 0.15 * q.a))
+                  + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh);        // breathing (v80)
             wall = pvR * d * pvR / max(pvD, pvR);
             transformed += pvDir * (wall + (pvW - 1.0) * max(0.0, pvD - pvR));
           } else {
@@ -7556,6 +7593,7 @@ function menuRows(){
         rows.push({ label: "   Neurovascular coupling", on: NV.act, act: () => nvSetting("act", !NV.act) });
         rows.push({ label: "   Heartbeat", on: NV.pulse, act: () => nvSetting("pulse", !NV.pulse) });
         rows.push({ label: "   Vasomotion (0.1 Hz)", on: NV.vaso, act: () => nvSetting("vaso", !NV.vaso) });
+        rows.push({ label: "   Breathing", on: NV.resp, act: () => nvSetting("resp", !NV.resp) });
         rows.push({ label: "   Diameter plot", on: NV.plot, act: () => nvSetting("plot", !NV.plot) });
         rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
