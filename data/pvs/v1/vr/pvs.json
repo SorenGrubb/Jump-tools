@@ -1,1 +1,1 @@
-{"lo_nm": [164714.0, 254914.0, 312503.0], "side_nm": 1397831.0, "bits": 16, "anchor": "GENERIC uint8x4: (dir+1)*127 rounded (+128 offset), distance in 0.2 um; dir (128,1,128) = sheet, widens upward"}
+{"lo_nm": [163224.0, 254914.0, 312503.0], "side_nm": 1400640.0, "bits": 16, "anchor": "GENERIC uint8x4: (dir+1)*127 rounded (+128 offset), distance in 0.2 um; dir (128,1,128) = sheet, widens upward"}

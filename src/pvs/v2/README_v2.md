@@ -37,3 +37,12 @@ missed the 2-3 µm thin parts. Now:
 - `surf6.py`: as surf4 but with the filled sheet, marching cubes at step 1, then decimated to 1.8M
   triangles (fast-simplification).
 - `anchor.py` uses the filled sheet to tell sheet from sleeve.
+
+## v4 of the sheet (same day, evening)
+Søren: "2/3 of the SAS still looks very patchy." The sheet's traced top and bottom jump by 3-5 µm
+from one section to the next; with a 2-3 µm thin sheet the steps did not touch, and 13 % of the sheet
+seen from above vanished in the smoothed surface. `sheet_smooth.py` smooths the top and bottom maps
+(Gaussian σ z 3, x 1.5 µm, over covered columns), redraws the sheet between them with at least 3 µm
+thickness and takes the lumen out again; the loss falls to 1.5 % (mostly rims of pial-vessel lumen).
+`surf8.py` = surf6 with the smoothed sheet; `anchor.py` classifies against it. The dark gaps that
+remain seen from above are the pial vessels themselves (their lumen is not PVS).
