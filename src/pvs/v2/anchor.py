@@ -10,7 +10,7 @@ MESH, OUT = sys.argv[1], sys.argv[2]
 m = json.load(open('vol_meta.json')); sh = tuple(m['shape']); O = np.array(m['O']); RES = m['RES']
 b = open(MESH, 'rb').read(); b_all = b; n = struct.unpack_from('<I', b)[0]
 V = np.frombuffer(b, np.float32, n * 3, 4).reshape(-1, 3).astype(np.float64) / 1000
-pial = np.unpackbits(np.load('pial_interp_bits.npy'))[:np.prod(sh)].reshape(sh).astype(bool)
+pial = np.unpackbits(np.load('sheet_filled_bits.npy'))[:np.prod(sh)].reshape(sh).astype(bool)
 pz, py, px = np.nonzero(pial)
 P = np.c_[O[0] + px * RES, O[1] + py * RES, O[2] + pz * RES]
 dp, jp = cKDTree(P).query(V, workers=-1)

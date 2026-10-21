@@ -25,3 +25,15 @@ Pipeline (run in this folder, the TriSAM mesh from vessel_inputs.zip):
 6. `make_vr_mesh.py` -> vr/pvs.drc + pvs.json (draco, anchors as a generic attribute) for the VR;
    `make_ng_mesh.py` -> ng/ (Neuroglancer multilod draco); `patch_ujump_pvs.py` refreshes µJump's
    nucleus distances.
+
+## v3 of the sheet (same day)
+Søren: "large parts of the SAS PVS look more patchy than before". Shape-based (SDF) interpolation makes
+a sheet thinner than its own sideways shift between sections vanish half-way, and step-2 marching cubes
+missed the 2-3 µm thin parts. Now:
+- `sheet_interp.py`: per x column, the sheet's top and bottom y in each traced section (thickness
+  ≤ 45 µm), interpolated linearly along z between that column's traced sections ≤ 12 µm apart.
+- `sheet_fill.py`: holes in the sheet's map seen from above that a closing with an 8 µm disk bridges
+  are filled from the surrounding top/bottom (Gaussian σ 4 µm); the lumen is taken out again.
+- `surf6.py`: as surf4 but with the filled sheet, marching cubes at step 1, then decimated to 1.8M
+  triangles (fast-simplification).
+- `anchor.py` uses the filled sheet to tell sheet from sleeve.
