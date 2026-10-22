@@ -579,6 +579,7 @@
       <option value="turn24">Turntable 360°, 24 s</option>
     </select>
     <select id="recSize" title="Movie size. A fixed size letterboxes the view while recording.">
+      <option value="4096">4096 (dome master)</option>
       <option value="2160">3840×2160 (4K)</option>
       <option value="1440">2560×1440 (2K)</option>
       <option value="1080" selected>1920×1080</option>
@@ -589,7 +590,14 @@
       <option value="16:9" selected>16:9</option>
       <option value="1:1">1:1 square</option>
       <option value="9:16">9:16 portrait</option>
+      <option value="dome">Dome (fisheye 180°)</option>
     </select>
+    <select id="domeTilt" style="display:none" title="Planetarium dome: where the camera's view direction lands on the dome. 'Zenith' puts it straight overhead (image centre, a flat dome where the audience lies back); 'front, 35° up' suits a flat dome with upright seats; 'front, 20° up' suits a tilted dome. The bottom of the dome master is the front of the dome.">
+      <option value="0">view → zenith</option>
+      <option value="55" selected>view → front, 35° up</option>
+      <option value="70">view → front, 20° up</option>
+    </select>
+    <button id="domePrev" title="See the view as the dome will get it (a 180° fisheye circle, the front at the bottom) while you set up the camera keys">◯ Dome preview</button>
     <select id="recFps" title="Frames per second. 24 is the film look and the smallest file; 30 suits most slides and web video; 60 makes fast flying and turning smooth, but needs a computer that can draw the view 60 times a second at the chosen size — otherwise the movie repeats frames.">
       <option value="24">24 fps</option>
       <option value="30" selected>30 fps</option>
@@ -745,9 +753,9 @@
     stimGain: ["", "Strength", { "1": "×1", "10": "×10", "30": "×30" }],
     spraySize: ["", "", { s: dot("currentColor").replace("8px;height:8px", "5px;height:5px"), m: dot("currentColor"), l: dot("currentColor").replace(/8px/g, "13px").replace("4px", "7px") }],
     recMode: ["", "", { free: ICON.camera, turn12: ICON.turntable + "12 s", turn24: ICON.turntable + "24 s" }],
-    recSize: ["", "", { "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }],
+    recSize: ["", "", { "4096": "4096", "2160": "4K", "1440": "2K", "1080": "1080p", "720": "720p", window: "window" }],
     recFps: ["", "", { "24": "24", "30": "30", "60": "60 fps" }],
-    recAspect: ["", "", { "16:9": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6.5" width="20" height="11.25" rx="1.5"/></svg>&nbsp;16:9', "1:1": '<svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>&nbsp;1:1', "9:16": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="6.4" y="2" width="11.25" height="20" rx="1.5"/></svg>&nbsp;9:16' }]
+    recAspect: ["", "", { "16:9": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6.5" width="20" height="11.25" rx="1.5"/></svg>&nbsp;16:9', "1:1": '<svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>&nbsp;1:1', "9:16": '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><rect x="6.4" y="2" width="11.25" height="20" rx="1.5"/></svg>&nbsp;9:16', dome: '<svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18" stroke-width="1"/></svg>&nbsp;dome' }]
   };
   const segs = [];
   for (const id in SEG){
@@ -1782,6 +1790,7 @@ async function loadVascRaw(ds){
 }
 async function buildVessels(){
   const mode = document.getElementById("vascSel").value;
+  VASC.tlOff = false;
   if (VASC.mesh){ content.remove(VASC.mesh); VASC.mesh.geometry.dispose(); VASC.mesh = null; VASC.tris = 0; }
   if (mode === "off" || !CELL_BOX){ ctxNote.textContent = ""; updateTri(); return; }
   const ds = dsOfCells();
@@ -8490,7 +8499,7 @@ function recFileName(ext){
    (6 bit per pixel per second, at most 45 Mbit/s: about 340 MB per minute at 4K). Drawing 8 million
    pixels 30 times a second is heavy: on a laptop the frame rate can drop, which the movie shows as
    stutter -- 2K is the safer choice there. */
-const REC_SIZES = { "2160": [3840, 2160], "1440": [2560, 1440], "1080": [1920, 1080], "720": [1280, 720] };
+const REC_SIZES = { "4096": [4096, 4096], "2160": [3840, 2160], "1440": [2560, 1440], "1080": [1920, 1080], "720": [1280, 720] };
 /* THE SHAPE (2026-10-16, Søren: "We also need the option to have a 1:1 aspect ratio"). The size
    names the SHORT side -- 4K square is 2160×2160, 1080 portrait is 1080×1920 -- so every shape keeps
    the detail its name promises. "Window" with 16:9 films the window as it is; with another shape it
@@ -8503,9 +8512,10 @@ function recDims(){
     const dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth * dpr, H = innerHeight * dpr;
     short = asp === "1:1" ? Math.min(W, H) : Math.min(W, H * 9 / 16);
   } else short = (REC_SIZES[size] || REC_SIZES["1080"])[1];
+  if (size === "4096" && asp !== "dome" && asp !== "1:1") short = 2160;      // 4096 is for a square or dome master only
   short = Math.round(short / 2) * 2;                                    // encoders want even sizes
   const long = Math.round(short * 16 / 9 / 2) * 2;
-  return asp === "1:1" ? [short, short] : asp === "9:16" ? [short, long] : [long, short];
+  return asp === "1:1" || asp === "dome" ? [short, short] : asp === "9:16" ? [short, long] : [long, short];
 }
 /* Letterbox the canvas to w×h for the recording; null puts it back. */
 function recSize(wh){
@@ -8549,8 +8559,8 @@ async function startFrameRecorder(fps){
   const W = renderer.domElement.width, H = renderer.domElement.height;
   if (W % 2 || H % 2) return null;
   const bitrate = Math.round(Math.min(60e6, Math.max(4e6, W * H * 6 * fps / 30)));
-  const tries = [["avc1.640034", "avc"], ["avc1.640033", "avc"], ["avc1.64002A", "avc"], ["avc1.640028", "avc"], ["avc1.4D4033", "avc"], ["avc1.42E034", "avc"],
-                 ["vp09.00.51.08", "vp9"], ["vp09.00.41.08", "vp9"]];
+  const tries = [["avc1.64003C", "avc"], ["avc1.64003D", "avc"], ["avc1.640034", "avc"], ["avc1.640033", "avc"], ["avc1.64002A", "avc"], ["avc1.640028", "avc"], ["avc1.4D4033", "avc"], ["avc1.42E034", "avc"],
+                 ["vp09.00.60.08", "vp9"], ["vp09.00.51.08", "vp9"], ["vp09.00.41.08", "vp9"]];
   let cfg = null, kind = null;
   for (const [codec, k] of tries){
     const c = { codec, width: W, height: H, bitrate, framerate: fps };
@@ -8580,6 +8590,7 @@ function recCapture(dt){
 /* The time step the animation may take this frame while a movie is being built. */
 function recDt(dt){
   const v = REC.on && REC.vf; if (!v) return dt;
+  if (TL.rec && tlWaiting()) return 0;                   // something the film needs is still loading: no frame, no time
   if (v.enc.encodeQueueSize > 6) return 0;
   return Math.min(dt, 1 / v.fps);
 }
@@ -8856,7 +8867,9 @@ function capFrame(W, H){
       const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
       const f = Math.min(1, a / 0.4, (k.dur - a) / 0.4);
       const c = capCard(k, H); live.add(k.id);
-      const mg = H * 0.05, y = k.pos === "top" ? H - mg - c.h / 2 - pos.top : k.pos === "middle" ? H / 2 - pos.middle : bot + mg + c.h / 2 + pos.bottom;
+      /* on a dome master the front of the dome is the bottom of the circle: "bottom" captions sit ~20° above the front horizon, "middle" ~45° up, "top" at the zenith */
+      const dm = domeActive(), mg = H * 0.05, y = dm ? (k.pos === "top" ? H / 2 - pos.top : k.pos === "middle" ? H * 0.25 - pos.middle : H * 0.11 + c.h / 2 + pos.bottom)
+        : k.pos === "top" ? H - mg - c.h / 2 - pos.top : k.pos === "middle" ? H / 2 - pos.middle : bot + mg + c.h / 2 + pos.bottom;
       pos[k.pos || "bottom"] += c.h + H * 0.012;                         // two at once stack instead of overlapping
       c.mesh.visible = true; c.mesh.material.opacity = f;
       c.mesh.scale.set(c.w, c.h, 1); c.mesh.position.set(W / 2, y, 0);
@@ -8877,6 +8890,7 @@ function renderLogo(){
   const W = _ls.x, H = _ls.y, h = Math.max(34, H * 0.075), w = h * LOGO.aspect, m = Math.max(8, H * 0.018);
   LOGO.cam.left = 0; LOGO.cam.right = W; LOGO.cam.top = H; LOGO.cam.bottom = 0; LOGO.cam.updateProjectionMatrix();
   LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(W - m - w / 2, H - m - h / 2, 0);
+  if (domeActive()){ const R = Math.min(W, H) / 2 * 0.82; LOGO.mesh.position.set(W / 2 + R * Math.sin(0.55), H / 2 - R * Math.cos(0.55), 0); }   // inside the circle, front right
   if (STIM.plots) edgePlots(W, H);
   fxFrame(W, H); capFrame(W, H);
   const ac = renderer.autoClear; renderer.autoClear = false;
@@ -8915,7 +8929,10 @@ function tlCaptureView(){
   return { nuc: SHOW_NUC, glass: SEE_THROUGH, iso: ISOLATE, colour: COLOUR_MODE, layers: layersOn(),
            vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, skel: SKEL.mode,
            org: ORG.on, traced: TRC.on, cvec: VEC.cent, lvec: VEC.cil, pts: PTS.on, sbar: SBAR.on, rbox: RBOX.on,
-           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), glassCells: CELLS.map(c => !!c.glass), glassLevel: GLASS_LEVEL, plotShow: Object.assign({}, PLOT_SHOW), bg: LOOK.bg, grid: LOOK.grid };
+           plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), glassCells: CELLS.map(c => !!c.glass), glassLevel: GLASS_LEVEL, plotShow: Object.assign({}, PLOT_SHOW), bg: LOOK.bg, grid: LOOK.grid,
+           /* the vessels' story (2026-10-22, the planetarium film): colour, the vascular regulation, the red cells */
+           vcol: NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one", nv: NV.on, rbc: !!(STK.on && STK.rbc),
+           vessels: VASC.tlOff ? "off" : document.getElementById("vascSel").value };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
@@ -8930,7 +8947,10 @@ function tlApplyView(v){
   if (v.iso !== ISOLATE) toggleIsolate();
   if (v.colour && v.colour !== COLOUR_MODE) setColourMode(v.colour);
   if (v.layers !== layersOn()) setLayers(v.layers);
-  if (v.vessels && v.vessels !== document.getElementById("vascSel").value) setVessels(v.vessels);
+  if (v.vessels) tlVessels(v.vessels);
+  if (v.nv != null && v.nv !== NV.on && DS_HAS.vasc) setNv(v.nv);
+  if (v.vcol && v.vcol !== (NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one") && DS_HAS.vasc) setVesselColour(v.vcol);
+  if (v.rbc != null && v.rbc !== !!(STK.on && STK.rbc) && DS_HAS.flow) tlRbc(v.rbc);
   if (v.v1 && v.v1 !== V1COL.mode) setV1Col(v.v1);
   if (v.areas !== AREAS.on) setAreas(v.areas);
   if (v.skel && v.skel !== SKEL.mode) setSkel(v.skel);
@@ -9030,7 +9050,8 @@ const TLFX = { rt: null, mesh: null, black: null, until: 0, dur: 0, start: 0 };
 function tlSnapshot(dur){
   const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
   if (!TLFX.rt || TLFX.rt.width !== sz.x || TLFX.rt.height !== sz.y){ if (TLFX.rt) TLFX.rt.dispose(); TLFX.rt = new THREE.WebGLRenderTarget(sz.x, sz.y); }
-  renderer.setRenderTarget(TLFX.rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  if (domeActive()) domeRender(TLFX.rt); else { renderer.setRenderTarget(TLFX.rt); renderer.render(scene, camera); }
+  renderer.setRenderTarget(null);
   TLFX.start = TL.t; TLFX.dur = dur;
 }
 /* In the overlay pass, under the logo, plots and captions: the dissolve, then the fade to and from
@@ -9065,7 +9086,7 @@ function tlFireStim(k, ci){
 function tlFrame(dt){
   tlEffects();
   if (!TL.playing) return;
-  if (BLOCK.loading){ tlDraw(); return; }
+  if (tlWaiting()){ tlDraw(); return; }
   const t0 = TL.t, t1 = Math.min(TL.dur, TL.t + dt);
   TL.t = t1;
   /* Stimuli in [t0, t1) fire this frame -- the end is open so no pulse fires twice. */
@@ -9082,6 +9103,8 @@ function tlFrame(dt){
 }
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
+  tlStateReset();
+  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepVessels().catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
@@ -9148,6 +9171,7 @@ function tlEffects(){
     if (k.kind === "freeze" && TL.playing) frz = true;
   }
   if (TL.open) tlApplyPeelAt(TL.t);
+  if (TL.open) tlStateFx(TL.t);
   raTlAt(TL.t);
   /* A block still being read holds the clock, so the movie does not run on without it -- and so
      do the recordings while they are read. */
@@ -9363,7 +9387,10 @@ function tlEditor(){
            every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
   }
   if (k.lane === "fx"){
-    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"], ["csd", "spreading depolarization"], ["sleep", "sleep"], ["clock", "set the clock"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    if (k.kind === "csd") h += ` from <select id="tlKcdir">${[["x-", "−x"], ["x+", "+x"], ["z-", "−z"], ["z+", "+z"]].map(([v, l]) => `<option value="${v}"${(k.dir || "x-") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">starts the wave; it ends (and the tissue is reset) when the effect ends</span>`;
+    if (k.kind === "sleep") h += ` <select id="tlKslst">${[["nrem", "NREM (slow waves)"], ["rem", "REM"], ["awake", "awake"], ["cycle", "the whole cycle"]].map(([v, l]) => `<option value="${v}"${(k.st || "nrem") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">sleep keys back to back change the stage; after the last one the mouse is awake again</span>`;
+    if (k.kind === "clock") h += ` brain time runs <select id="tlKclk">${[0.0002, 0.0005, 0.002, 0.01, 0.1, 0.25, 0.5, 1, 2, 4, 5, 10, 20].map(v => `<option value="${v}"${(k.v || 1) === v ? " selected" : ""}>${simFmt(v)}</option>`).join("")}</select> <span class="tlHint">from here until the next clock key</span>`;
     if (k.kind === "rec"){
       const nC = RA.meta ? RA.meta.clips.length : 6, nm = i => RA.meta ? esc(RA.meta.clips[i].movie.slice(0, 30)) : "clip " + (i + 1);
       h += ` clips <select id="tlKrclip"><option value="all"${k.clip == null || k.clip === "all" ? " selected" : ""}>all ${nC}, back to back</option>${Array.from({ length: nC }, (_, i) => `<option value="${i}"${String(k.clip) === String(i) ? " selected" : ""}>${i + 1}. ${nm(i)}</option>`).join("")}</select>
@@ -9371,7 +9398,7 @@ function tlEditor(){
              <button id="tlKrfit" title="Make the effect exactly as long as the chosen clip(s)">Fit length</button>`;
     }
     if (k.kind === "synapses") h += ` <select id="tlKsyn"><option value="hide"${!k.show ? " selected" : ""}>hide them (each returns when a spike uses it)</option><option value="show"${k.show ? " selected" : ""}>show them all</option></select>`;
-    if (k.kind !== "electrodes" && k.kind !== "synapses") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
+    if (k.kind !== "electrodes" && k.kind !== "synapses" && k.kind !== "clock") h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur || 3}"> s`;
     if (k.kind === "rec") h += ` <span class="tlHint">the imaged neurons glow with their recorded mean response; longer than the clips loops them</span>`;
     if (k.kind === "highlight"){
       const opts = CELLS.map((c, i) => c.mesh ? `<option value="${i}"${i === k.cell ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
@@ -9422,6 +9449,9 @@ function tlEditor(){
       if (k.kind === "rec"){ if (k.clip == null) k.clip = "all"; if (k.screen == null) k.screen = true; tlRecFit(k); if (!RA.on) setRa(true, true); }
       if (k.kind === "peel"){ if (!k.blk && BLOCK.spec) k.blk = JSON.parse(JSON.stringify(BLOCK.spec)); if (k.p0 == null) k.p0 = 0; if (k.p1 == null) k.p1 = 100;
         if (!k.axis) k.axis = BLOCK.axis; if (k.seg == null) k.seg = BLOCK.showSeg; if (!(k.dur > 0) || k.dur === 3) k.dur = 6; }
+      if (k.kind === "csd"){ if (!k.dir) k.dir = CSD.dir || "x-"; if (!(k.dur > 3)) k.dur = 25; }
+      if (k.kind === "sleep"){ if (!k.st) k.st = "nrem"; if (!(k.dur > 3)) k.dur = 20; }
+      if (k.kind === "clock"){ if (!k.v) k.v = 1; k.dur = 0.5; }
       tlSave(); tlSync(); };
     if ($e("tlKd")) $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
     if ($e("tlKrclip")) $e("tlKrclip").onchange = e => { k.clip = e.target.value === "all" ? "all" : +e.target.value; tlRecFit(k); tlSave(); tlSync(); };
@@ -9434,6 +9464,9 @@ function tlEditor(){
     if ($e("tlKp0")) $e("tlKp0").onchange = e => { k.p0 = Math.max(0, Math.min(100, +e.target.value || 0)); tlSave(); tlDraw(); };
     if ($e("tlKp1")) $e("tlKp1").onchange = e => { k.p1 = Math.max(0, Math.min(100, +e.target.value)); tlSave(); tlDraw(); };
     if ($e("tlKpseg")) $e("tlKpseg").onchange = e => { k.seg = e.target.checked; tlSave(); };
+    if ($e("tlKcdir")) $e("tlKcdir").onchange = e => { k.dir = e.target.value; tlSave(); tlDraw(); };
+    if ($e("tlKslst")) $e("tlKslst").onchange = e => { k.st = e.target.value; tlSave(); tlDraw(); };
+    if ($e("tlKclk")) $e("tlKclk").onchange = e => { k.v = +e.target.value; tlSave(); tlDraw(); };
     if ($e("tlKpblk")) $e("tlKpblk").onclick = () => { if (BLOCK.spec){ k.blk = JSON.parse(JSON.stringify(BLOCK.spec)); tlSave(); tlSync(); } else blkSay("Build a block first."); };
     if ($e("tlKelset")) $e("tlKelset").onclick = () => { k.el = tlCaptureElectrodes(); TL.elApplied = null; tlSave(); tlSync(); };
   }
@@ -9470,8 +9503,10 @@ function tlDraw(){
       if (lane === "fx"){
         const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")", synapses: k.show ? "● show synapses" : "○ hide synapses",
                       rec: "🎬 recorded: " + (k.clip == null || k.clip === "all" ? "all clips" : RA.meta && RA.meta.clips[k.clip] ? RA.meta.clips[k.clip].movie.slice(0, 24) : "clip " + (+k.clip + 1)),
-                      peel: "▤ peel " + (k.axis === "top" ? "top " : "front ") + (k.p0 || 0) + "→" + (k.p1 != null ? k.p1 : 100) + " %" + (k.blk ? "" : " (no block)") }[k.kind] || k.kind;
-        if (k.kind === "electrodes" || k.kind === "synapses"){
+                      peel: "▤ peel " + (k.axis === "top" ? "top " : "front ") + (k.p0 || 0) + "→" + (k.p1 != null ? k.p1 : 100) + " %" + (k.blk ? "" : " (no block)"),
+                      csd: "⚡ spreading depolarization from " + String(k.dir || "x-").replace("-", "−"), sleep: "☾ " + ({ nrem: "NREM", rem: "REM", awake: "awake", cycle: "sleep cycle" })[k.st || "nrem"],
+                      clock: "⏱ " + simFmt(k.v || 1) }[k.kind] || k.kind;
+        if (k.kind === "electrodes" || k.kind === "synapses" || k.kind === "clock"){
           g.beginPath(); g.arc(x, cy, 6, 0, 7); g.fill(); g.stroke();
           g.fillStyle = "#e6edf3"; g.font = "10px system-ui, sans-serif"; g.fillText(lab, x + 9, cy + 4); continue;
         }
@@ -11866,6 +11901,77 @@ function simUi(force){
   SIM.pop.querySelectorAll("[data-rec]").forEach(b => { const r = SIM_REC.find(x => x.k === b.dataset.rec); b.style.borderColor = Math.abs(Math.log(SIM.speed / r.v)) < 0.05 ? "#f0a742" : "#30363d"; });
 }
 
+/* ── 36. THE DOME (2026-10-22, Søren: "let's get a dome render also" -- the planetarium film) ──────────
+   A planetarium projects a DOME MASTER: one square picture holding the whole hemisphere as a circle, an
+   equidistant (angular) fisheye -- the centre is the zenith, the rim the horizon, 90° from centre to rim --
+   with the FRONT of the dome at the bottom of the picture, seen from below. Made here the standard way:
+   the scene is drawn into the six faces of a cube around the camera (THREE.CubeCamera), and one
+   full-frame pass reads the cube along each pixel's direction. Faces of about half the master's width
+   (2048 for 4096) give the same sharpness at the zenith as at the rim.
+   · Where the view direction goes on the dome is the tilt: overhead, or in front 35° or 20° up (flat
+     domes with upright seats; tilted domes). Camera keys, orbits and the timeline work as before.
+   · Captions: "bottom" sits ~20° above the front horizon, "middle" ~45° up, "top" at the zenith; the logo
+     inside the circle, front right. Plots at the frame's edges fall outside the circle.
+   · Recording: Share → shape "dome" (size 4096 for a 4K dome; the H.264 level is raised so 4096² encodes).
+     "◯ Dome preview" shows the same picture in the window while you set the camera keys. */
+const DOME = { preview: false, rt: null, cam: null, scene: null, ocam: null, mat: null, face: 0 };
+const _dv = new THREE.Vector2();
+function domeActive(){
+  if (renderer.xr.isPresenting) return false;
+  const asp = (document.getElementById("recAspect") || {}).value;
+  return DOME.preview || !!(REC.on && asp === "dome");
+}
+function domeRender(target){
+  renderer.getDrawingBufferSize(_dv);
+  const N = Math.min(_dv.x, _dv.y), max = renderer.capabilities.maxCubemapSize || 4096;
+  let face = 256; while (face < N / 2 && face < max && face < 4096) face *= 2;
+  if (!DOME.rt || DOME.face !== face){
+    if (DOME.rt) DOME.rt.dispose();
+    DOME.rt = new THREE.WebGLCubeRenderTarget(face, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    DOME.cam = new THREE.CubeCamera(camera.near, camera.far, DOME.rt); DOME.face = face;
+  }
+  if (!DOME.scene){
+    DOME.mat = new THREE.ShaderMaterial({
+      uniforms: { env: { value: null }, rot: { value: new THREE.Matrix3() }, tilt: { value: 0 }, sc: { value: new THREE.Vector2(1, 1) } },
+      vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: [
+        "uniform samplerCube env; uniform mat3 rot; uniform float tilt; uniform vec2 sc; varying vec2 vUv;",
+        "void main(){",
+        "  vec2 p = (vUv * 2.0 - 1.0) * sc; float r = length(p);",
+        "  if (r > 1.0){ gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }",
+        "  float th = r * 1.5707963; vec2 q = r > 1e-6 ? p / r : vec2(0.0);",
+        "  vec3 F = vec3(0.0, 0.0, -1.0), U = vec3(0.0, 1.0, 0.0), R = vec3(1.0, 0.0, 0.0);",
+        "  vec3 Z = cos(tilt) * F + sin(tilt) * U, Fr = sin(tilt) * F - cos(tilt) * U;",   // zenith and the dome's front, in camera space
+        "  vec3 d = cos(th) * Z + sin(th) * (q.x * R - q.y * Fr);",                         // image up = the back of the dome
+        "  gl_FragColor = vec4(textureCube(env, rot * d).rgb, 1.0);",
+        "  #include <colorspace_fragment>",
+        "}"].join("\n"),
+      depthTest: false, depthWrite: false });
+    DOME.scene = new THREE.Scene();
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), DOME.mat); q.frustumCulled = false; DOME.scene.add(q);
+    DOME.ocam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+  camera.updateMatrixWorld();
+  DOME.cam.near = camera.near; DOME.cam.far = camera.far;
+  for (const c of DOME.cam.children){ c.near = camera.near; c.far = camera.far; c.updateProjectionMatrix(); }
+  DOME.cam.position.setFromMatrixPosition(camera.matrixWorld); DOME.cam.updateMatrixWorld();
+  DOME.cam.update(renderer, scene);
+  const u = DOME.mat.uniforms;
+  u.env.value = DOME.rt.texture; u.rot.value.setFromMatrix4(camera.matrixWorld);
+  u.tilt.value = (+((document.getElementById("domeTilt") || {}).value) || 0) * Math.PI / 180;
+  const W = target ? target.width : _dv.x, H = target ? target.height : _dv.y;
+  u.sc.value.set(W > H ? W / H : 1, H > W ? H / W : 1);
+  renderer.setRenderTarget(target || null);
+  renderer.render(DOME.scene, DOME.ocam);
+}
+function setDomePreview(v){
+  DOME.preview = !!v; document.getElementById("domePrev").classList.toggle("on", DOME.preview);
+  document.getElementById("domeTilt").style.display = DOME.preview || document.getElementById("recAspect").value === "dome" ? "" : "none";
+  if (DOME.preview) ctxNote.textContent = "Dome preview: the whole hemisphere as the planetarium gets it — centre = overhead, rim = horizon, bottom = the front of the dome. Tilt: where your view direction lands.";
+}
+document.getElementById("domePrev").addEventListener("click", () => setDomePreview(!DOME.preview));
+document.getElementById("recAspect").addEventListener("change", e => { document.getElementById("domeTilt").style.display = e.target.value === "dome" || DOME.preview ? "" : "none"; });
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
@@ -11893,7 +11999,7 @@ renderer.setAnimationLoop(() => {
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
-  renderer.render(scene, camera);
+  if (domeActive()) domeRender(null); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
   try { simUi(); } catch (e){ console.warn("[vr] clock:", e); }
@@ -12274,6 +12380,74 @@ function tlApplyPeelAt(t){
 async function tlPrepBlock(){
   const k = tlPeelKeys().find(x => x.blk);
   if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
+  await tlPrepVessels();
+}
+
+/* ── THE FILM'S BRAIN STATES (2026-10-22, Søren's planetarium film for the NAD annual meeting: the EM block
+   peels, a layer-5 cell fires, the recording plays, the vessels come in coloured by order, turn see-through
+   on their red cells, a spreading depolarization, then sleep) ──
+   · View keys now also carry the vessel colour, the vascular regulation and the red blood cells.
+   · Effects: a spreading depolarization (from a side, for a time), sleep (a stage, for a time; keys back to
+     back change the stage), and clock keys (brain time from here on). Brain states run on the clock, so a
+     clock key before them sets how fast they unfold in the film.
+   · Nothing loads in the middle of a film: before recording, the vessels and the flow model the film will
+     need are read (the vessels are then hidden, not thrown away, where a view key says "off"), and while
+     anything is still loading the film holds -- no frame is written and no time passes. */
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy); }
+function tlVessels(want){
+  const sel = document.getElementById("vascSel");
+  if (want === "off"){
+    if (VASC.mesh && VASC.tlKeep){ VASC.mesh.visible = false; VASC.tlOff = true; return; }
+    if (sel.value !== "off") setVessels("off");
+    return;
+  }
+  if (VASC.tlOff && VASC.mesh && sel.value === want){ VASC.mesh.visible = true; VASC.tlOff = false; return; }
+  VASC.tlOff = false; if (VASC.mesh) VASC.mesh.visible = true;
+  if (sel.value !== want){ sel.value = want; VASC.tlBusy = true; Promise.resolve(buildVessels()).finally(() => { VASC.tlBusy = false; }); }
+}
+function tlRbc(v){
+  if (!v){ setRbcFlow(false); return; }
+  STK.tlBusy = true;
+  (async () => {
+    try { if (!STK.on) await setStroke(true, { quiet: true }); else stkSetting("rbc", true); }
+    finally { STK.tlBusy = false; }
+  })();
+}
+async function tlPrepVessels(){
+  const vs = TL.keys.view.map(k => k.v || {});
+  const mode = (vs.find(v => v.vessels && v.vessels !== "off") || {}).vessels;
+  if (!mode || !DS_HAS.vasc) return;
+  const sel = document.getElementById("vascSel");
+  if (!VASC.mesh || sel.value !== mode){ ctxNote.textContent = "Reading the vessels before recording…"; sel.value = mode; VASC.tlOff = false; await buildVessels(); }
+  VASC.tlKeep = true;
+  if (vs.some(v => v.rbc) && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow before recording…"; await setStroke(true, { quiet: true, rbc: false }); }
+}
+function tlStateReset(){
+  if (TL.fxCsd){ TL.fxCsd = null; if (CSD.on) setCsd(false); }
+  if (TL.fxSleep){ TL.fxSleep = null; if (SL.on) setSleep(false); }
+  TL.fxClock = null;
+}
+function tlStateFx(t){
+  let csd = null, sl = null, clk = null;
+  for (const k of TL.keys.fx){
+    if (k.kind === "clock"){ if (k.t <= t + 1e-6 && (!clk || k.t >= clk.t)) clk = k; continue; }
+    if (!(k.dur > 0) || t < k.t || t >= k.t + k.dur) continue;
+    if (k.kind === "csd" && (!csd || k.t > csd.t)) csd = k;
+    if (k.kind === "sleep" && (!sl || k.t > sl.t)) sl = k;
+  }
+  /* the clock first: the brain states' own suggestions must not win over the film's */
+  if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
+  if (csd && TL.fxCsd !== csd.id){
+    TL.fxCsd = csd.id; CSD.dir = csd.dir || "x-"; const d = document.getElementById("csdDir"); if (d) d.value = CSD.dir;
+    if (CSD.on) setCsd(false); setCsd(true);
+  } else if (!csd && TL.fxCsd){ TL.fxCsd = null; if (CSD.on) setCsd(false); }
+  if (sl){
+    const st = sl.st || "nrem";
+    if (!SL.on){ slSetting("mode", st); setSleep(true); }
+    else if (TL.fxSleep !== sl.id && SL.mode !== st) slSetting("mode", st);
+    TL.fxSleep = sl.id;
+  } else if (TL.fxSleep){ TL.fxSleep = null; if (SL.on) setSleep(false); }
+  if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
 }
 
 document.getElementById("blkSrc").addEventListener("change", blkSrcUI);
@@ -12326,7 +12500,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
