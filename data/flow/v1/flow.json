@@ -1,0 +1,189 @@
+{
+ "version": 1,
+ "made": "2026-10-22",
+ "n": 537371,
+ "chains": 12259,
+ "classes": [
+  "a1",
+  "a2",
+  "a3",
+  "mid",
+  "v3",
+  "v2",
+  "v1",
+  "pa",
+  "act",
+  "cvt",
+  "av",
+  "pcv",
+  "part",
+  "pven",
+  "pial",
+  "unk"
+ ],
+ "quant": 0.025,
+ "origin": [
+  209.0,
+  262.0,
+  315.0
+ ],
+ "radius_unit": 0.125,
+ "pressure_unit_mmHg": 0.01,
+ "layout": [
+  {
+   "name": "pos",
+   "dtype": "uint16",
+   "offset": 0,
+   "count": 1612113
+  },
+  {
+   "name": "rad",
+   "dtype": "uint8",
+   "offset": 3224228,
+   "count": 537371
+  },
+  {
+   "name": "cls",
+   "dtype": "uint8",
+   "offset": 3761600,
+   "count": 537371
+  },
+  {
+   "name": "src",
+   "dtype": "uint8",
+   "offset": 4298972,
+   "count": 537371
+  },
+  {
+   "name": "chainOff",
+   "dtype": "uint32",
+   "offset": 4836344,
+   "count": 12260
+  },
+  {
+   "name": "chainPts",
+   "dtype": "uint32",
+   "offset": 4885384,
+   "count": 553072
+  },
+  {
+   "name": "bcIdx",
+   "dtype": "uint32",
+   "offset": 7097672,
+   "count": 580
+  },
+  {
+   "name": "bcP",
+   "dtype": "uint16",
+   "offset": 7099992,
+   "count": 580
+  }
+ ],
+ "radius_factor_his_over_shih": 1.569,
+ "check_centrioles": {
+  "n": 4963,
+  "upstream": 0.706,
+  "downstream": 0.212,
+  "by_class": {
+   "a1": [
+    224,
+    0.74,
+    0.2
+   ],
+   "a2": [
+    245,
+    0.77,
+    0.17
+   ],
+   "a3": [
+    175,
+    0.8,
+    0.13
+   ],
+   "act": [
+    123,
+    0.75,
+    0.17
+   ],
+   "av": [
+    504,
+    0.77,
+    0.16
+   ],
+   "cvt": [
+    481,
+    0.69,
+    0.18
+   ],
+   "mid": [
+    290,
+    0.73,
+    0.19
+   ],
+   "pa": [
+    540,
+    0.76,
+    0.23
+   ],
+   "part": [
+    164,
+    0.43,
+    0.49
+   ],
+   "pcv": [
+    35,
+    0.8,
+    0.11
+   ],
+   "pial": [
+    3,
+    0.33,
+    0.67
+   ],
+   "pven": [
+    338,
+    0.5,
+    0.39
+   ],
+   "unk": [
+    65,
+    0.69,
+    0.15
+   ],
+   "v1": [
+    684,
+    0.71,
+    0.21
+   ],
+   "v2": [
+    735,
+    0.71,
+    0.19
+   ],
+   "v3": [
+    357,
+    0.73,
+    0.2
+   ]
+  }
+ },
+ "median_speed_mm_s": {
+  "a1": 0.891,
+  "a2": 0.608,
+  "a3": 0.368,
+  "mid": 0.325,
+  "v3": 0.33,
+  "v2": 0.333,
+  "v1": 0.339,
+  "pa": 1.613,
+  "act": 0.76,
+  "cvt": 0.376,
+  "av": 0.926,
+  "pcv": 0.842,
+  "part": 4.508,
+  "pven": 1.497,
+  "pial": 0.027,
+  "unk": 0.109
+ },
+ "source": "Blood-flow network for the VR viewer's stroke model (section 30), 2026-10-22."
+}
