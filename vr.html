@@ -408,6 +408,8 @@
     </div>
     <div class="catick" style="align-items:center">
       <label title="The red cells' speed swings with each heartbeat (43 % arterioles, 28 % capillaries, 10 % venules) and dips before each breath (Santisakultarm et al. 2012)"><input type="checkbox" data-stk="pulse" checked> heartbeat & breathing in the flow</label>
+      <label title="Capillary stalls (Erdener et al. 2019): at any moment ~0.45 % of capillaries in awake mice carry no red cells for ~15 s; the same capillaries stall again and again, more on the venous side. A white blood cell is drawn as the plug."><input type="checkbox" data-stk="stalls" checked> capillary stalls</label>
+      <label title="Precapillary sphincters (Grubb et al. 2020): rings at penetrating-arteriole branch points narrowing the lumen to ~64 %; high resistance, dilate more than the capillary with activity"><input type="checkbox" data-stk="showSph" checked> show sphincters</label>
       <label title="Clouds where the tissue PO2 (MODEL) is below the chosen level: blue < 10, violet < 5, purple < 2 mmHg"><input type="checkbox" data-stk="hyp" checked> hypoxic pockets</label>
       <select id="stkThr" title="Show tissue below this PO2"><option value="10">below 10 mmHg</option><option value="5">below 5 mmHg</option><option value="2">below 2 mmHg</option><option value="20">below 20 mmHg</option></select>
     </div>
@@ -476,9 +478,25 @@
     <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
     <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
   </div>
+  <div class="catick" id="drugRow" style="margin:6px 0;align-items:center">
+    <span style="font-size:12px;color:var(--mut)">Drugs (model):</span>
+    <label title="Tetrodotoxin: blocks voltage-gated Na⁺ channels -- no action potentials anywhere; a spreading depolarization still runs"><input type="checkbox" data-drug="ttx"> TTX</label>
+    <label title="AMPA + NMDA receptor blockers: no excitatory synaptic potentials, firing at a quarter, no spreading depolarization"><input type="checkbox" data-drug="glu"> CNQX + D-APV</label>
+    <label title="Isoflurane ~1.5 %: arterioles dilate, neurovascular coupling halved, autoregulation weakened, firing at 40 %"><input type="checkbox" data-drug="iso"> isoflurane</label>
+  </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
     <button id="caveSave" title="Saved in this browser only (the same key µJump's connectivity panel uses), sent only to CAVE">Save</button>
+  </div>
+  <div id="gameBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="align-items:center"><button id="gameBtn" title="A cell arrives alone and unnamed, with the EM section through its nucleus: say what it is and score points. Half are from Søren's verified dataset, half MICrONS predictions.">Identify a cell (game)</button>
+      <span id="gameScore" style="font-size:12px;color:var(--mut)"></span></div>
+    <div id="gameQ" style="display:none">
+      <div id="gameAsk" style="font-size:13px;margin:6px 0 4px"></div>
+      <div id="gameOpts" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      <div id="gameRes" style="font-size:12.5px;margin-top:6px"></div>
+      <div class="ctl" style="margin-top:6px"><button id="gameNext">Next cell</button></div>
+    </div>
   </div>
   <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
     <div class="ctl" style="margin:0 0 6px;align-items:center">
@@ -730,8 +748,8 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["pvsSel"], ["#pvsWRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#caveRow"]]],
-    ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
+    ["tools", "wrench", "Tools", [["#gameBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
   ];
@@ -1107,12 +1125,24 @@ function cellClass(c){
   return c.cls;
 }
 let COLOUR_MODE = "type";
+/* A LITTLE VARIATION PER CELL (2026-10-22, Søren: "the neurons all have the exact same color, I think
+   that a small color variation would be nice so they can be distinguished"). Each cell's mesh gets its
+   type's (or E/I) colour shifted a little in hue, saturation and lightness, fixed by its root id, so two
+   L2/3 pyramids side by side are told apart but still read as the same type. The list keeps the type
+   colour. */
+function cellTint(c, hex){
+  const col = new THREE.Color(hex), hsl = {}; col.getHSL(hsl);
+  let h = 2166136261; for (const ch of String(c.root || c.nuc || c.label || c.i)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const r = k => (((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ k) >>> 0) / 4294967296) * 2 - 1;
+  col.setHSL((hsl.h + 0.035 * r(1) + 1) % 1, Math.max(0, Math.min(1, hsl.s + 0.12 * r(2))), Math.max(0.12, Math.min(0.88, hsl.l + 0.12 * r(3))));
+  return col;
+}
 function setColourMode(mode){
   COLOUR_MODE = mode;
   document.getElementById("colourSel").value = mode;
   for (const c of CELLS){
     c.colour = mode === "ei" ? EI_COL[cellClass(c)] : c.typeColour;
-    if (c.mesh) c.mesh.material.color.set(c.colour);
+    if (c.mesh) c.mesh.material.color.copy(cellTint(c, c.colour));
   }
   renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -1509,7 +1539,7 @@ async function loadOneInner(c, token, light){
     c.extraUsed = extras; c.graph = null;
     const g = geometryFrom(geo.positions, geo.indices);
     addActivityAttributes(g);
-    const mesh = new THREE.Mesh(g, cellMaterial(c.colour));
+    const mesh = new THREE.Mesh(g, cellMaterial(cellTint(c, c.colour)));
     mesh.userData.cell = c.i;
     content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
     c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
@@ -1570,7 +1600,7 @@ async function loadTracedBody(c, ds, token){
   const g = body.length ? lofted(body) : null;
   if (g){
     addActivityAttributes(g);
-    const mesh = new THREE.Mesh(g, cellMaterial(c.colour)); mesh.material.side = THREE.DoubleSide;
+    const mesh = new THREE.Mesh(g, cellMaterial(cellTint(c, c.colour))); mesh.material.side = THREE.DoubleSide;
     mesh.userData.cell = c.i; mesh.userData.traced = true;
     content.add(mesh); c.mesh = mesh; c.graph = null; c.tris += g.index.count / 3;
     body.forEach(t => c.traceUsed.push(t.structureId));
@@ -3171,6 +3201,7 @@ function somaNode(c, fallback){
   return c.somaNode >= 0 ? c.somaNode : fallback;
 }
 function fireCell(c, node, t0){
+  if (DRUG.ttx){ c.pendingFire = false; if (!fireCell._said || performance.now() - fireCell._said > 4000){ fireCell._said = performance.now(); ctxNote.textContent = "TTX: " + c.label + " cannot fire — its sodium channels are blocked (the synaptic and dendritic potentials remain)."; } return; }
   const G = cellGraph(c);
   const { T } = arrival(G, [{ node, t0 }], c.apNodeT, REF_MS);
   /* Keep the earlier spike where this one did not reach, so its refractory trail is not wiped. */
@@ -3219,6 +3250,7 @@ function deliver(s, t){
   if (s.postNode == null){ const near = nearestNode(G, s.p); s.postNode = near.dist <= SYN_TOL ? near.node : -1; }
   if (s.postNode < 0){ noteWhy(c, "off"); return; }
   const inh = cellClass(CELLS[s.pre]) === "inh";
+  if (DRUG.glu && !inh){ noteWhy(c, "blocked"); return; }                // CNQX + D-APV (section 34)
   if (s.marker){ s.marker.visible = true; s.marker.scale.setScalar(2.2); }   // a cleared synapse comes back when it is used
   const w = why(c); inh ? w.ipsp++ : w.epsp++;
   if (cellClass(c) === "glia"){ noteWhy(c, "glia"); return; }
@@ -3678,7 +3710,7 @@ function runSummary(){
     else if (outs.length && !on) lines.push(shortName(st) + "'s " + outs.length + " output synapse" + (outs.length > 1 ? "s are" : " is") + " not on its loaded mesh — try Detail: full.");
   }
   if (STIM.offPre) lines.push(STIM.offPre + " synapse arrival" + (STIM.offPre === 1 ? " was" : "s were") + " skipped because the synapse lies more than " + SYN_TOL + " µm from the presynaptic mesh — try Detail: full.");
-  const R = { block: "went into depolarisation block (held above −25 mV, so it could not fire)", hidden: "hidden, so it takes no part (turn on “Hidden cells too” to include it)", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
+  const R = { blocked: "its excitatory inputs were blocked (CNQX + D-APV)", block: "went into depolarisation block (held above −25 mV, so it could not fire)", hidden: "hidden, so it takes no part (turn on “Hidden cells too” to include it)", glia: "not a neuron", psp: "PSP-only mode", refr: "still refractory when it crossed threshold", off: "synapse not on its mesh" };
   for (const k in (STIM.why || {})){
     const c = CELLS[k], w = STIM.why[k]; if (!c || (!w.epsp && !w.ipsp && !w.fired && !Object.keys(w.reasons).length)) continue;
     const ins = (w.epsp ? w.epsp + " EPSP" + (w.epsp === 1 ? "" : "s") : "") + (w.ipsp ? (w.epsp ? ", " : "") + w.ipsp + " IPSP" + (w.ipsp === 1 ? "" : "s") : "")
@@ -3694,7 +3726,7 @@ function runSummary(){
     }
     let msg = "✗ " + shortName(c) + ": " + ins;
     if (c.extox) msg += " ⚠ Excitotoxic if sustained — " + c.extox.why + ".";
-    if (w.reasons.glia || w.reasons.off || w.reasons.hidden || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
+    if (w.reasons.glia || w.reasons.off || w.reasons.hidden || w.reasons.blocked || (w.reasons.psp && !w.epsp)) msg += " — " + Object.keys(w.reasons).filter(r => R[r]).map(r => R[r]).join(", ") + ".";
     else if (w.reasons.psp) msg += " — PSP-only mode: synapses never fire the next cell.";
     else {
       const short = VM.thr - w.peak;
@@ -5218,10 +5250,12 @@ function raApplyGlow(on){
     const e = raEntry(c);
     const sp = c.mesh.material.userData.raS;
     if (sp){
-      if (on && e && RA.spikes && RA.meta){ raDistances(c); raRecentSpikes(e, RA.t, sp.value); }
+      if (on && e && RA.spikes && RA.meta && recGate(c) > 0.5){ raDistances(c); raRecentSpikes(e, RA.t, sp.value); }
       else sp.value.set(-1, -1, -1, -1);
     }
-    u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) : (RA.dim && c.raRoot ? -1 : 0);
+    /* v95: the recorded movie as a "what if" -- a drug or the stroke's hypoxia (section 30) dims a cell's
+       recorded activity by how much it could still fire; the data themselves are untouched */
+    u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) * recGate(c) : (RA.dim && c.raRoot ? -1 : 0);
   }
 }
 /* Is a timeline running a "recorded activity" effect now? */
@@ -6267,7 +6301,7 @@ function neuronRates(){
   }
   for (const [c, r] of NR.est) out.set(c, r);
   if (NV.drv.rec && typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey))
-    for (const c of raCells()){ const e = raEntry(c); out.set(c, (out.get(c) || 0) + raAt(e, raInfer(e).rate, RA.t)); }
+    for (const c of raCells()){ const e = raEntry(c); out.set(c, (out.get(c) || 0) + raAt(e, raInfer(e).rate, RA.t) * recGate(c)); }
   NR.out = out; return out;
 }
 const neuronDrive = r => Math.min(1.5, r / 8);
@@ -6309,7 +6343,7 @@ function nvTick(){
       for (const [li, w, dl] of s.route){
         const back = Math.min(s.hist.length - 1, Math.round(dl / Math.max(0.02, dtS)));
         const v = s.hist[(s.h - back + s.hist.length) % s.hist.length];
-        D[li*4] += w * Math.min(1.5, v);
+        D[li*4] += w * Math.min(1.5, v) * drugNvc();
       }
     }
   }
@@ -6769,7 +6803,7 @@ function slTick(dt){
       rate = inUp ? (inh ? SL_STATE.nrem.inh : SL_STATE.nrem.exc) * slMult(c) : 0;
       if (inUp && SL.spindle){ const ph = Math.cos(6.2831853 * 12 * u); rate *= Math.max(0, 1 + 1.6 * ph); }
     } else {
-      rate = (inh ? SL.p.inh : SL.p.exc) * slMult(c) * csdGate(c) * stkGate(c);
+      rate = (inh ? SL.p.inh : SL.p.exc) * slMult(c) * csdGate(c) * stkGate(c) * drugGate(c);
       if (SL.p.rem > 0.5) rate *= Math.max(0, 1 + 0.6 * Math.sin(6.2831853 * 7 * t1));
     }
     if (Math.random() < rate * ds){ slFire(c, t0 + Math.random() * ds); nSp++; }
@@ -7081,7 +7115,20 @@ function lfpPlotDraw(R){
   g.fillStyle = "#e6edf3"; g.font = "600 22px system-ui, sans-serif"; g.fillText("LFP, 16 contacts · " + (R ? R.src : "no activity"), 16, 30);
   g.font = "600 15px system-ui, sans-serif"; g.fillStyle = "#f0883e";
   g.fillText("MODEL, not measured · synaptic currents on the real morphologies" + (LFP.bg ? " + background population" : ""), 16, 52);
-  if (!R){ g.fillStyle = "#8b949e"; g.fillText("Start sleep, recorded activity or stimulation.", 16, 90); }
+  /* v95: the slow DC shift of a spreading depolarization (DC-coupled), at each contact -- the AC traces
+     beside it are high-passed like a normal LFP amplifier and do not show it */
+  const dcOn = CSD.on && CSD.o && LFP.top;
+  if (dcOn){
+    const L0 = 70, T0 = 72, B0 = H - 52, rh = (B0 - T0) / LFP.n;
+    g.font = "600 13px system-ui, sans-serif"; g.fillStyle = "#e6edf3"; g.fillText("DC mV", 544, T0 - 4);
+    for (let k = 0; k < LFP.n; k++){
+      const p = new THREE.Vector3(LFP.top.x, LFP.top.y + k * LFP.pitch, LFP.top.z), tau = CSD.t - p.distanceTo(CSD.o) / 50, dc = csdDC(tau);
+      const y0 = T0 + rh * (k + 0.5), wv = Math.min(1, -dc / 20);
+      g.fillStyle = "rgba(255,110,80," + (0.15 + 0.85 * wv) + ")"; g.fillRect(548, y0 - rh * 0.35, 44 * wv, rh * 0.7);
+      g.fillStyle = "#e6edf3"; g.font = "12px system-ui, sans-serif"; g.fillText(dc.toFixed(0), 552, y0 + 4);
+    }
+  }
+  if (!R){ g.fillStyle = "#8b949e"; g.fillText(dcOn ? "No spikes now — the DC column shows the spreading depolarization." : "Start sleep, recorded activity or stimulation.", 16, 90); }
   else {
     const L = 70, Rt = 540, T = 72, B = H - 52, rowH = (B - T) / LFP.n;
     let mx = 1; for (const a of R.phi) for (let b = 0; b < R.n; b += 2) mx = Math.max(mx, Math.abs(a[b]));
@@ -7837,6 +7884,8 @@ function menuRows(){
           rows.push({ label: "   Colour by flow: " + ({ auto: "speed, then change", speed: "speed", pressure: "pressure", o2: "blood O₂", hct: "haematocrit", change: "change" })[STK.cmode] + "  ▸", act: () => { const o = ["auto", "speed", "pressure", "o2", "hct", "change"]; stkFromPanel("cmode", o[(o.indexOf(STK.cmode) + 1) % o.length]); } });
           rows.push({ label: "   Hypoxic pockets (< " + STK.hypThr + " mmHg)", on: STK.on && STK.hyp, act: () => stkFromPanel("hyp", !(STK.on && STK.hyp)) });
           rows.push({ label: "   Heartbeat in the flow", on: STK.pulse, act: () => stkFromPanel("pulse", !STK.pulse) });
+          rows.push({ label: "   Capillary stalls", on: STK.stalls, act: () => stkFromPanel("stalls", !STK.stalls) });
+          rows.push({ label: "   Show sphincters", on: STK.showSph, act: () => stkFromPanel("showSph", !STK.showSph) });
           rows.push({ label: "   Blood-flow plot", on: STK.on && STK.plot, act: () => stkFromPanel("plot", !(STK.on && STK.plot)) });
           rows.push({ label: "   Ride a red cell", on: RIDE.on, act: () => setRide(!RIDE.on) });
           rows.push({ label: "   CSF tracer", on: CSFT.on, act: () => setCsf(!CSFT.on) });
@@ -7853,6 +7902,23 @@ function menuRows(){
       rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
       rows.push({ label: "   Send another wave", act: () => csdStart() });
     }
+    if (DS_HAS.vec && DS_HAS.nb){
+      rows.push({ label: "Identify a cell (game) — " + GAME.st.pts + " pts, " + gameLevel(GAME.st.pts), on: GAME.on, act: () => setGame(!GAME.on) });
+      if (GAME.on){
+        const p = GAME.pick;
+        if (GAME.busy) rows.push({ label: "   … finding a cell", act: () => {} });
+        else if (p && GAME.step < 2){
+          rows.push({ label: "   " + (GAME.step === 0 ? "What is it?" : "Which type?") + (GAME.last && GAME.step === 1 ? "" : ""), act: () => {} });
+          for (const [k, n] of (GAME.step === 0 ? GAME_CLASSES : GAME_SUBS[p.cls])) rows.push({ label: "      " + n, act: () => gameAnswer(k) });
+        } else if (p){
+          rows.push({ label: "   " + GAME.last.slice(0, 70), act: () => {} });
+          rows.push({ label: "   Next cell", act: () => gameNext() });
+        }
+      }
+    }
+    rows.push({ label: "Drug: TTX", on: DRUG.ttx, act: () => setDrug("ttx", !DRUG.ttx) });
+    rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
+    rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
     rows.push({ label: "Hear spikes", on: SPK.snd, act: () => setSpkSound(!SPK.snd) });
     rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
     if (DS_HAS.flow){
@@ -9622,6 +9688,8 @@ function csdStart(){
 function setCsd(v){
   CSD.on = !!v; document.getElementById("csdBtn").classList.toggle("on", CSD.on);
   document.getElementById("csdBox").style.display = CSD.on ? "" : "none";
+  if (CSD.on && DRUG.glu){ CSD.on = false; document.getElementById("csdBtn").classList.remove("on"); document.getElementById("csdBox").style.display = "none";
+    ctxNote.textContent = "CNQX + D-APV: a spreading depolarization cannot start — NMDA-receptor antagonists block it in healthy cortex."; return; }
   if (CSD.on){
     simRecommend("csd");
     if (!csdStart()){ CSD.on = false; document.getElementById("csdBtn").classList.remove("on"); document.getElementById("csdBox").style.display = "none"; return; }
@@ -9645,7 +9713,7 @@ function csdFrame(dt){
     const tau = csdTau(nvSoma(c));
     if (tau < 0 || tau > 400){ if (c._csdLit){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); c._csdLit = false; } continue; }
     /* the burst: spikes at the CSD rate, in the event's own time; counted like every other spike */
-    const r = tau < 2 ? csdFire(tau) : 0;
+    const r = tau < 2 ? csdFire(tau) * drugFire() : 0;
     if (r > 0 && Math.random() < r * dts){ let l = CSD.spk.get(c); if (!l){ l = []; CSD.spk.set(c, l); } l.push(now); c._csdN = (c._csdN || 0) + 1; while (l.length > 4) l.shift(); }
     const l = CSD.spk.get(c) || [], v = [-1, -1, -1, -1];
     for (let q = 0; q < 4; q++){ const j = l.length - 1 - q; if (j < 0) break; const a = now - l[j]; if (a < 2) v[q] = a; }
@@ -9788,6 +9856,26 @@ document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on
      them falls below ~20 mmHg, by up to 25 % of radius over ~10 s, on top of autoregulation (together at
      most +35 %); penetrating arterioles near an infarct dilate and partly rescue the penumbra (Shih et al.
      2009 J Cereb Blood Flow Metab 29:738). Shown on the vessel surface.
+   v98 HETEROGENEOUS FLOW (Søren: "small diameter capillaries and precapillary sphincters have a high
+   resistance and RBCs sometimes stall there. This should be realistic and based on real studies"):
+   · PRECAPILLARY SPHINCTERS (Grubb et al. 2020 Nat Commun 11:395): at the branch points of penetrating
+     arterioles; 72 % of PAs have at least one and 28 % of their branches do, concentrated in the upper
+     layers (here 45 % of branches in the top 200 µm, 25 % to 400 µm, 10 % deeper). The skeleton does
+     not resolve them (its radius at those branches is not narrowed), so each is added: a 4 µm long
+     ring at the branch's start with a lumen of 3.4/5.3 = 64 % of the 1st-order capillary's (their
+     3.4 µm vs 5.3 µm). It dilates more than the capillary with activity (33.8 % in their whisker
+     stimulation: here 1.5 × the branch's own dilation) and constricts more in a spreading
+     depolarization (×1.3 of the arteriolar response). Their RBC speed through it at rest: 8.7 mm/s.
+     Red cells pass it as bullets.
+   · CAPILLARY STALLS (Erdener et al. 2019 J Cereb Blood Flow Metab 39:886, awake mice): at any moment
+     0.45 % of capillary segments are stalled, each stall ~15 s on average (most < 30 s, a few > 2 min,
+     the long ones only on the venous side); a stalling capillary stalls about once every 4 min, and it
+     is the same capillaries again and again -- here 7.5 % of the capillaries are stall-prone, few of
+     them in the first two orders from the arteriole, more on the venous side. Under isoflurane stalls
+     are about twice as frequent and twice as long (their data: 0.6 → 1.5 %, 23 → 29 s). A stalled
+     piece carries 10⁻³ of its flow; the red cells in it stop, and a white blood cell is drawn as the
+     plug (the cause in healthy cortex is not established; neutrophils plug capillaries in an
+     Alzheimer's model: Cruz Hernández et al. 2019 Nat Neurosci 22:413).
    A CLOT closes the piece between its two branch points (conductance × 10⁻⁴). Pial COLLATERALS: pial-
    artery pieces that close a loop (outside the widest spanning tree), gold; off = closed. */
 const STK = { on: false, net: null, netP: null, clots: [], arm: false, collat: true, rbc: true, colour: true, plot: true, sd: true,
@@ -9796,7 +9884,7 @@ const STK = { on: false, net: null, netP: null, clots: [], arm: false, collat: t
               cs: new Map(), vmap: null, vmapFor: null, rbcMesh: null, parts: null, clotGrp: null, colGrp: null, pockMesh: null, cv: null, spr: null,
               note: "", prevColour: null, wallOp: null, firstAD: false, inBox: null, box: null, grid: null, kap: null, dead: null, hypT: null, kapSolved: 0,
               liChain: null, liFor: "", chainAct: null, rep: null, pul: [], mult: new Float32Array(32), _pk: 0, _pAt: 0, _po: 0,
-              H: null, H0: null, met: null };
+              H: null, H0: null, met: null, sph: null, stall: null, prone: null, stalls: true, showSph: true, sphGrp: null, plugGrp: null };
 const STK_CLS_NAME = { a1: "1st-order arterial capillary", a2: "2nd-order arterial capillary", a3: "3rd-order arterial capillary", mid: "capillary (middle of the bed)",
   v3: "3rd-order venous capillary", v2: "2nd-order venous capillary", v1: "1st-order venous capillary", pa: "penetrating arteriole", act: "arteriole–capillary transition",
   cvt: "capillary–venule transition", av: "ascending venule", pcv: "principal cortical venule", part: "pial arteriole", pven: "pial venule", pial: "pial vessel", unk: "vessel" };
@@ -9867,6 +9955,22 @@ async function stkNet(){
     for (const c of pial){ const a = find(ja[c]), b = find(jb[c]); if (a === b) collat.push(c); else par[a] = b; }
     STK.net = { meta, n, pos, rad, cls, CL, nc, off, cp, arc, G0, len, vol, ccls, mid, kind, autoR, ja, jb, J, nJ, bcP, bcVen, bcPO2, jdeg: deg, jc, hash, S, K, collat: new Set(collat) };
     STK.kap = new Float32Array(nc); STK.dead = new Uint8Array(nc); STK.hypT = new Float32Array(nc);
+    /* precapillary sphincters at PA branch points (Grubb et al. 2020) -- deterministic per piece */
+    { const hash = x => { x = Math.imul(x ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const paK = CL.indexOf("pa"), capK = new Set(["a1", "act", "a2", "a3", "mid", "unk"].map(k => CL.indexOf(k)));
+      const sph = new Map(), PIA = 350;
+      for (let c = 0; c < nc; c++){
+        if (!capK.has(ccls[c])) continue;
+        for (const [jj, end] of [[ja[c], 0], [jb[c], 1]]){
+          let atPA = false; for (let t = deg[jj]; t < deg[jj+1]; t++) if (ccls[jc[t]] === paK) atPA = true;
+          if (!atPA) continue;
+          const pi = J[jj], depth = pos[pi*3+1] - PIA, p = depth < 200 ? 0.45 : depth < 400 ? 0.25 : 0.10;
+          if (hash(c * 2 + end + 7) >= p) continue;
+          const k10 = end === 0 ? Math.min(off[c+1] - 1, off[c] + 7) : Math.max(off[c], off[c+1] - 8);
+          sph.set(c, { end, r0: rad[cp[k10]], L: 4, j: jj });
+        }
+      }
+      STK.sph = sph; }
     return STK.net;
   })();
   try { return await STK.netP; } catch (e){ STK.netP = null; throw e; }
@@ -9928,6 +10032,7 @@ function stkKTarget(){
   const need = Math.pow(80 / Math.max(5, m - 10), 1 / 2.9);
   let k = Math.max(KMIN, Math.min(KMAX, need));
   if (m > 150) k = Math.max(k, KMIN + (1.0 - KMIN) * Math.min(1, (m - 150) / 40));   // breakthrough
+  if (typeof DRUG !== "undefined" && DRUG.iso) k = 1 + (k - 1) * 0.5;                // isoflurane weakens it
   return k;
 }
 function stkChainAct(){
@@ -9956,6 +10061,7 @@ function stkConductances(base){
     let f = 1;
     if (!base){
       if (N.autoR[c]) f *= Math.min(1.35, STK.k * (STK.met ? STK.met[c] : 1));
+      if (DRUG.iso) f *= kd === 1 ? 1.15 : kd === 0 ? 1.05 : 1;
       if (kd === 0 && STK.kap[c] > 0) f *= 1 - STK.kap[c];
       if (act && act[c]) f *= 1 + Math.min(0.5, act[c]);
       if (csd){ const tau = CSD.t - Math.hypot(N.mid[c*3] - CSD.o.x, N.mid[c*3+1] - CSD.o.y, N.mid[c*3+2] - CSD.o.z) / 50; if (tau >= 0) f *= 1 + csdVes(tau, STK_KIND[kd]); }
@@ -9968,7 +10074,17 @@ function stkConductances(base){
       const a = N.cp[k], b = N.cp[k+1], l = Math.max(0.3, N.arc[k+1] - N.arc[k]), r = Math.max(0.5, Math.min(N.rad[a], N.rad[b]) * f);
       Rs += 8 * 1.2e-3 * stkVisc(2 * r, hd) * l / (Math.PI * r ** 4);
     }
+    const sp = STK.sph && STK.sph.get(c);
+    if (sp){                                            // the sphincter: 4 µm at 64 % of the branch's lumen
+      let t = 1;
+      if (!base){ if (act && act[c]) t *= 1 + Math.min(0.75, 1.5 * act[c]);
+        if (csd){ const tau = CSD.t - Math.hypot(N.mid[c*3] - CSD.o.x, N.mid[c*3+1] - CSD.o.y, N.mid[c*3+2] - CSD.o.z) / 50; if (tau >= 0) t *= 1 + 1.3 * csdVes(tau, "art"); }
+        if (DRUG.iso) t *= 1.1; }
+      sp.rs = Math.max(0.6, 0.64 * sp.r0 * f * t);
+      Rs += 8 * 1.2e-3 * stkVisc(2 * sp.rs, hd) * sp.L / (Math.PI * sp.rs ** 4);
+    }
     G[c] = Rs > 0 ? 1 / Rs : 0;
+    if (!base && STK.stall && STK.stall.has(c)) G[c] *= 1e-3;
   }
   if (!base){
     if (!STK.collat) for (const c of N.collat) G[c] *= 1e-4;
@@ -10177,6 +10293,13 @@ function stkInBox(){
   const inb = new Uint8Array(N.nc), v = new THREE.Vector3();
   for (let c = 0; c < N.nc; c++) for (let k = N.off[c]; k < N.off[c+1]; k += 3){ const i = N.cp[k]; if (b.containsPoint(v.set(N.pos[i*3], N.pos[i*3+1], N.pos[i*3+2]))){ inb[c] = 1; break; } }
   STK.inBox = inb; STK.box = b; STK.grid = null;
+  /* stall-prone capillaries (Erdener et al. 2019): 7.5 % overall, rarely in the first two orders, more on the venous side */
+  { const w = { a1: 0.2, act: 0.2, a2: 0.4, a3: 1, mid: 1, unk: 1, v3: 1.5, v2: 1.6, v1: 1.6, cvt: 1.4 }, cand = [];
+    for (let c = 0; c < N.nc; c++) if (inb[c] && N.kind[c] !== 1 && w[N.CL[N.ccls[c]]] != null) cand.push(c);
+    const mw = cand.reduce((a, c) => a + w[N.CL[N.ccls[c]]], 0) / Math.max(1, cand.length);
+    const h = x => { x = Math.imul(x ^ 0x5bd1e995, 0x27d4eb2d); x ^= x >>> 15; return (x >>> 0) / 4294967296; };
+    STK.prone = cand.filter(c => h(c + 101) < 0.075 * w[N.CL[N.ccls[c]]] / mw); STK.nCapBox = cand.length;
+    if (!STK.stall) STK.stall = new Map(); }
   /* the vessels whose red-cell speed the plot follows: the busiest arteriole and venule, a typical capillary */
   let ba = -1, bv = -1, caps = [];
   const Q0 = STK.Q0;
@@ -10228,7 +10351,7 @@ function stkClotDraw(){
 }
 function stkCollatDraw(){
   if (STK.colGrp){ disposeGroup(STK.colGrp); STK.colGrp = null; }
-  if (!STK.on || !STK.net || !STK.inBox) return;
+  if (!STK.on || STK.quiet || !STK.net || !STK.inBox) return;
   const N = STK.net, g = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: STK.collat ? "#ffd43b" : "#6c757d", transparent: true, opacity: 0.9, depthTest: false });
   for (const c of N.collat){
@@ -10239,6 +10362,38 @@ function stkCollatDraw(){
     m.renderOrder = 4; g.add(m);
   }
   STK.colGrp = g; content.add(g);
+}
+/* ── the sphincters and the stalls, drawn ── */
+function stkSphDraw(){
+  if (STK.sphGrp){ disposeGroup(STK.sphGrp); STK.sphGrp = null; }
+  if (!STK.on || !STK.sph || !STK.inBox || !STK.showSph) return;
+  const N = STK.net, g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color: "#20c997", roughness: 0.5, emissive: "#0b4d3a" });
+  for (const [c, sp] of STK.sph){
+    if (!STK.inBox[c]) continue;
+    const k0 = sp.end === 0 ? N.off[c] : N.off[c+1] - 1, k1 = sp.end === 0 ? Math.min(N.off[c+1] - 1, k0 + 2) : Math.max(N.off[c], k0 - 2);
+    const a = N.cp[k0], b = N.cp[k1], t = new THREE.Vector3(N.pos[b*3] - N.pos[a*3], N.pos[b*3+1] - N.pos[a*3+1], N.pos[b*3+2] - N.pos[a*3+2]);
+    if (t.lengthSq() < 1e-6) continue; t.normalize();
+    const rs = sp.rs || 0.64 * sp.r0, m = new THREE.Mesh(new THREE.TorusGeometry(rs + 0.7, 0.7, 8, 20), mat);
+    m.position.set(N.pos[a*3], N.pos[a*3+1], N.pos[a*3+2]).addScaledVector(t, 2); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), t);
+    m.renderOrder = 3; g.add(m);
+  }
+  STK.sphGrp = g; content.add(g);
+}
+function stkStallDraw(){
+  if (STK.plugGrp){ disposeGroup(STK.plugGrp); STK.plugGrp = null; }
+  if (!STK.on || !STK.stall || !STK.stall.size) return;
+  const N = STK.net, g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color: "#f1f3f5", roughness: 0.7, emissive: "#3a3a3a" });
+  for (const [c, st] of STK.stall){
+    if (!STK.inBox[c]) continue;
+    const sAt = st.s * N.len[c]; let k = N.off[c]; while (k < N.off[c+1] - 2 && N.arc[k+1] < sAt) k++;
+    const a = N.cp[k], b = N.cp[k+1], t = new THREE.Vector3(N.pos[b*3] - N.pos[a*3], N.pos[b*3+1] - N.pos[a*3+1], N.pos[b*3+2] - N.pos[a*3+2]);
+    if (t.lengthSq() < 1e-9) t.set(0, 1, 0); t.normalize();
+    const r = Math.max(1.2, Math.min(3.5, N.rad[a] * 0.95)), ax = Math.min(9, 180 / (4.18879 * r * r));      // a ~7 µm leukocyte squeezed to the lumen
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat); m.scale.set(r, ax, r);
+    m.position.set(N.pos[a*3], N.pos[a*3+1], N.pos[a*3+2]); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), t);
+    m.renderOrder = 3; g.add(m);
+  }
+  STK.plugGrp = g; content.add(g);
 }
 /* ── a short report ── */
 function stkReport(){
@@ -10263,6 +10418,9 @@ function stkReport(){
     + "; inflow " + Math.round(pct(inflow, inflow0)) + " % of normal"
     + (STK.H ? "; capillary haematocrit median " + (() => { const a = []; for (let c = 0; c < N.nc; c++) if (N.kind[c] === 0 && Math.abs(Q[c]) > 1) a.push(STK.H[c]); a.sort((x, y) => x - y); return a.length ? a[a.length >> 1].toFixed(2) : "–"; })() : "")
     + (STK.met ? (() => { let m = 1; for (let c = 0; c < N.nc; c++) if (STK.met[c] > m) m = STK.met[c]; return m > 1.01 ? "; hypoxic arterioles dilated up to +" + Math.round((m - 1) * 100) + " %" : ""; })() : "") + ". "
+    + (STK.stalls && STK.nCapBox ? "Stalled capillaries now: " + STK.stall.size + " of " + STK.nCapBox + " in the box (" + (100 * STK.stall.size / STK.nCapBox).toFixed(2) + " %; awake mice 0.45 %). " : "")
+    + (STK.sph ? (() => { const v = []; for (const [c, sp] of STK.sph) if (STK.inBox[c] && sp.rs) v.push(Math.abs(Q[c]) / (Math.PI * sp.rs * sp.rs) / 1000); v.sort((x, y) => x - y);
+        return v.length ? "Precapillary sphincters in the box: " + v.length + ", red cells through them " + v[v.length >> 1].toFixed(1) + " mm/s (median; measured 8.7). " : ""; })() : "")
     + (cs.length ? hyp + " of " + cs.length + " loaded neurons below 10 mmHg O₂, " + anox + " below 2. " : "")
     + (!STK.collat ? "Pial collaterals closed (" + N.collat.size + "). " : "");
   STK.inflowPct = pct(inflow, inflow0);
@@ -10297,6 +10455,7 @@ function stkGate(c){
 }
 function stkCsdFrom(p){
   if (CSD.on || !STK.sd) return;
+  if (DRUG.glu){ ctxNote.textContent = "Anoxic depolarization (MODEL) — with CNQX + D-APV it does not spread as a spreading depolarization."; return; }
   const ps = CELLS.filter(c => c.mesh && inPlay(c)).map(c => nvSoma(c)).filter(Boolean); if (!ps.length) return;
   CSD.on = true; document.getElementById("csdBtn").classList.add("on"); document.getElementById("csdBox").style.display = "";
   CSD.centre = ps.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / ps.length);
@@ -10398,7 +10557,8 @@ function stkRbcFrame(sdt){
     let c = P.c[i], s = P.s[i];
     const o0 = N.off[c], o1 = N.off[c+1];
     let k = o0; while (k < o1 - 2 && N.arc[k+1] < s) k++;
-    const r = Math.max(1, Math.min(N.rad[N.cp[k]], N.rad[N.cp[k+1]]) * (FF ? FF[c] : 1));
+    let r = Math.max(1, Math.min(N.rad[N.cp[k]], N.rad[N.cp[k+1]]) * (FF ? FF[c] : 1));
+    { const sp = STK.sph && STK.sph.get(c); if (sp && sp.rs && (sp.end === 0 ? s < sp.L : s > N.len[c] - sp.L)) r = Math.max(0.6, sp.rs); }
     const v = Math.abs(Q[c]) / (Math.PI * r * r) * M[N.ccls[c]];
     s += v * sdt * (Q[c] >= 0 ? 1 : -1);
     let hops = 0;
@@ -10430,7 +10590,8 @@ function stkRbcFrame(sdt){
     const ia = N.cp[kk], ib = N.cp[Math.min(a1 - 1, kk + 1)], L = Math.max(1e-6, N.arc[Math.min(a1 - 1, kk + 1)] - N.arc[kk]), f = Math.max(0, Math.min(1, (s - N.arc[kk]) / L));
     _sT.set(N.pos[ib*3] - N.pos[ia*3], N.pos[ib*3+1] - N.pos[ia*3+1], N.pos[ib*3+2] - N.pos[ia*3+2]);
     if (_sT.lengthSq() < 1e-9) _sT.set(0, 1, 0); _sT.normalize();
-    const rv = (N.rad[ia] + (N.rad[ib] - N.rad[ia]) * f) * (FF ? FF[c] : 1);
+    let rv = (N.rad[ia] + (N.rad[ib] - N.rad[ia]) * f) * (FF ? FF[c] : 1);
+    { const sp = STK.sph && STK.sph.get(c); if (sp && sp.rs && (sp.end === 0 ? s < sp.L : s > N.len[c] - sp.L)) rv = Math.max(0.6, sp.rs); }
     _sV.set(N.pos[ia*3] + (N.pos[ib*3] - N.pos[ia*3]) * f, N.pos[ia*3+1] + (N.pos[ib*3+1] - N.pos[ia*3+1]) * f, N.pos[ia*3+2] + (N.pos[ib*3+2] - N.pos[ia*3+2]) * f);
     if (Q[c] < 0) _sT.negate();                               // the cell's front faces downstream
     if (RIDE.on && i === RIDE.idx){ RIDE.pos.copy(_sV); RIDE.dir.copy(_sT); RIDE.c = c; RIDE.rv = rv; RIDE.seen = true; continue; }
@@ -10598,7 +10759,7 @@ function stkPlotDraw(){
 function bpFrame(sdt){
   const kt = stkKTarget(); STK.k += (kt - STK.k) * (1 - Math.exp(-Math.max(0, sdt) / 6));
   const show = NV.on || STK.on;
-  AP_UNI.nvArA.value.set(0, show ? STK.k - 1 : 0, 0);
+  AP_UNI.nvArA.value.set(DRUG.iso ? 0.05 : 0, (show ? STK.k - 1 : 0) + (DRUG.iso ? 0.15 : 0), 0);
   const now = performance.now();
   if (now - (STK._bpAt || 0) > 300){ STK._bpAt = now;
     const el = document.getElementById("bpNote");
@@ -10630,6 +10791,18 @@ function stkFrame(sdt){
   if (STK._ps >= 1 && STK.Q){
     const dt = STK._ps; STK._ps = 0;
     const N = STK.net; let ksum = 0;
+    /* capillary stalls: start and end (Erdener et al. 2019) */
+    if (STK.stalls && STK.prone){
+      const iso = DRUG.iso, rate = (iso ? 2 : 1) / 240; let ch = false;
+      for (const [c, s] of STK.stall) if (STK.t >= s.until){ STK.stall.delete(c); ch = true; }
+      for (const c of STK.prone){
+        if (STK.stall.has(c) || Math.random() >= 1 - Math.exp(-dt * rate)) continue;
+        const ven = N.CL[N.ccls[c]][0] === "v" || N.CL[N.ccls[c]] === "cvt";
+        let d = -Math.log(Math.random()) * (ven ? 18 : 10) * (iso ? 2 : 1); d = Math.min(d, ven ? 150 : 60);
+        STK.stall.set(c, { until: STK.t + d, s: 0.2 + 0.6 * Math.random() }); ch = true;
+      }
+      if (ch){ STK.dirty = true; stkStallDraw(); }
+    } else if (STK.stall && STK.stall.size){ STK.stall.clear(); STK.dirty = true; stkStallDraw(); }
     if (STK.peri){
       const gk = STK.grid, St5 = 5;
       for (let c = 0; c < N.nc; c++){
@@ -10745,11 +10918,12 @@ async function setStroke(v, opt){
     await stkUpdate();
     if (!STK.on) return;
     if (STK.colour && !quiet){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); }
-    stkRbcBuild(); stkClotDraw(); stkCollatDraw();
+    stkRbcBuild(); stkClotDraw(); stkCollatDraw(); stkSphDraw();
     if (!quiet){ simRecommend("flow"); ctxNote.textContent = STK.note + " Press “Place a clot” and click a vessel."; }
     else ctxNote.textContent = "Red blood cells (MODEL): " + (STK.parts ? STK.parts.n.toLocaleString("en-US") : 0) + " cells carried by the flow model; dilations and constrictions change their speed. Slow the clock to ×1/10 (bottom) to follow single cells.";
   } else {
     stkRbcClear(); if (STK.clotGrp){ disposeGroup(STK.clotGrp); STK.clotGrp = null; } if (STK.colGrp){ disposeGroup(STK.colGrp); STK.colGrp = null; }
+    if (STK.sphGrp){ disposeGroup(STK.sphGrp); STK.sphGrp = null; } if (STK.plugGrp){ disposeGroup(STK.plugGrp); STK.plugGrp = null; } if (STK.stall) STK.stall.clear();
     if (STK.pockMesh){ content.remove(STK.pockMesh); STK.pockMesh.geometry.dispose(); STK.pockMesh.material.dispose(); STK.pockMesh = null; }
     if (STK.spr) STK.spr.visible = false;
     for (const [c] of STK.cs) if (c._stkLit && c.mesh){ c.mesh.material.userData.raU.value = 0; c._stkLit = false; }
@@ -10776,6 +10950,8 @@ function stkSetting(k, v){
   if (k === "colour"){ if (v){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); } else setVesselColour(STK.prevColour && STK.prevColour !== "flow" ? STK.prevColour : "one"); }
   if (k === "cmode"){ if (!STK.colour) stkSetting("colour", true); else stkRecolour(); }
   if (k === "hyp" || k === "hypThr") stkPockets();
+  if (k === "showSph") stkSphDraw();
+  if (k === "stalls"){ STK.dirty = true; if (!v){ STK.stall && STK.stall.clear(); stkStallDraw(); } }
   if (k === "plot" && !v && STK.spr) STK.spr.visible = false;
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -10788,6 +10964,15 @@ document.getElementById("stkBtn").addEventListener("click", () => {
   if (STK.on && STK.quiet){                         // started for the red cells: now the full model
     STK.quiet = false; stkSetting("plot", true); stkSetting("hyp", true); document.getElementById("stkBox").style.display = ""; document.getElementById("stkBtn").classList.add("on"); if (STK.colour){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); }
     ctxNote.textContent = STK.note + " Press “Place a clot” and click a vessel."; return;
+  }
+  if (STK.on && !STK.quiet && NV.on){                  // stroke off, blood flow stays (vascular panel)
+    STK.clots.length = 0; stkClotDraw(); STK.quiet = true;
+    document.getElementById("stkBox").style.display = "none"; document.getElementById("stkBtn").classList.remove("on");
+    if (NV.colourSrc === "flow") setVesselColour(STK.prevColour && STK.prevColour !== "flow" ? STK.prevColour : "one");
+    stkSetting("plot", false); stkSetting("hyp", false); if (STK.colGrp){ disposeGroup(STK.colGrp); STK.colGrp = null; }
+    STK.arm = false; document.getElementById("stkPlace").classList.remove("on");
+    stkUpdate(); ctxNote.textContent = "Stroke off — the blood flow (and its red cells) keeps running under Vascular regulation & blood flow.";
+    if (typeof MENU !== "undefined") MENU.dirty = true; return;
   }
   setStroke(!STK.on);
 });
@@ -10867,7 +11052,7 @@ function spkCollect(){
     const t = RA.t, tp = SPK.raT;
     if (tp != null && t > tp && t - tp < 1){
       const idx = (S, x) => { let lo = 0, hi = S.length; while (lo < hi){ const m = (lo + hi) >> 1; if (S[m] <= x) lo = m + 1; else hi = m; } return lo; };
-      for (const c of raCells()){ const S = raInfer(raEntry(c)).spk, k = idx(S, t) - idx(S, tp); if (k > 0) out.push([c, Math.min(6, k)]); }
+      for (const c of raCells()){ if (recGate(c) < 0.5) continue; const S = raInfer(raEntry(c)).spk, k = idx(S, t) - idx(S, tp); if (k > 0) out.push([c, Math.min(6, k)]); }
     }
     SPK.raT = t;
   } else SPK.raT = null;
@@ -11147,6 +11332,160 @@ function csfPlace(i, c, s){
 }
 function stkGauss(){ let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2831853 * v); }
 document.getElementById("csfBtn").addEventListener("click", () => setCsf(!CSFT.on));
+
+/* ── 34. DRUGS (MODEL) ────────────────────────────────────────────────────────────────  2026-10-22
+   Three classic experiments as switches; each only changes things the models already have.
+   · TTX (tetrodotoxin, blocks voltage-gated Na⁺ channels): no action potentials -- stimulation,
+     sleep, the recorded movie (as a "what if"), the spreading depolarization's burst -- so no spikes
+     reach the vessels or the LFP. The spreading depolarization itself still runs: it is not blocked by
+     TTX (Ayata & Lauritzen 2015 Physiol Rev 95:953).
+   · CNQX + D-APV (AMPA and NMDA receptor blockers): no excitatory synaptic potentials; network firing
+     falls to a quarter (most cortical firing is driven by synaptic excitation); a spreading
+     depolarization cannot start in healthy cortex (blocked by NMDA-receptor antagonists, Ayata &
+     Lauritzen 2015) -- the anoxic depolarization of a stroke still comes, it does not need NMDA
+     receptors (Murphy et al. 2008 J Neurosci 28:1756), but it no longer spreads.
+   · Isoflurane (~1.5 %): arterioles dilate (+15 % radius, capillaries +5 %), neurovascular coupling
+     halves, autoregulation is halved, neurons fire at ~40 % (Masamoto & Kanno 2012 J Cereb Blood Flow
+     Metab 32:1233). Sizes are of the right order, not measurements. */
+const DRUG = { ttx: false, glu: false, iso: false };
+function drugFire(){ return DRUG.ttx ? 0 : (DRUG.glu ? 0.25 : 1) * (DRUG.iso ? 0.4 : 1); }
+function drugGate(c){ return drugFire(); }
+function drugNvc(){ return (DRUG.iso ? 0.5 : 1) * (DRUG.glu ? 0.6 : 1); }
+function recGate(c){ return drugFire() * (typeof STK !== "undefined" && STK.on ? stkGate(c) : 1); }
+function setDrug(k, v){
+  DRUG[k] = !!v;
+  const el = document.querySelector('[data-drug="' + k + '"]'); if (el) el.checked = DRUG[k];
+  if (k === "glu" && v && CSD.on){ setCsd(false); }
+  if (typeof STK !== "undefined" && STK.on) STK.dirty = true;
+  const on = Object.keys(DRUG).filter(x => DRUG[x]).map(x => ({ ttx: "TTX", glu: "CNQX + D-APV", iso: "isoflurane" })[x]);
+  ctxNote.textContent = on.length ? "Drugs (MODEL): " + on.join(", ") + ". "
+    + (DRUG.ttx ? "No action potentials. " : "") + (DRUG.glu ? "No excitatory synaptic potentials; firing at ¼; no spreading depolarization. " : "")
+    + (DRUG.iso ? "Arterioles dilated, coupling halved, autoregulation weakened, firing at 40 %. " : "") : "Drugs washed out.";
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.querySelectorAll("[data-drug]").forEach(el => el.addEventListener("change", e => setDrug(el.dataset.drug, e.target.checked)));
+
+/* ── 35. IDENTIFY A CELL (GAME) ────────────────────────────────────────────────────────  2026-10-22
+   The project's own idea brought into the headset: a cell arrives alone and unnamed, with the electron
+   micrograph through its nucleus; you say what it is -- first the class, then (where it has one) the
+   type -- and score points. Half the cells are from Søren's VERIFIED dataset (the gold standard: the
+   answer is right or wrong), half are MICrONS predictions (AIBS metamodel: your call agrees with
+   MICrONS or not -- a disagreement is worth a look in µJump, not a mistake). Points and level are kept
+   in this browser. Answers are not sent to the µJump sheets from here: their names are µJump's guided-
+   identification leaves, which the quick VR choices do not map onto one-to-one -- a formal
+   identification is made in µJump. */
+const GAME = { on: false, pick: null, step: 0, busy: false, last: "", st: { pts: 0, n: 0, ok: 0, streak: 0 } };
+try { const g = JSON.parse(localStorage.getItem("vr_game") || "null"); if (g && typeof g.pts === "number") GAME.st = Object.assign(GAME.st, g); } catch (e){}
+const GAME_CLASSES = [["exc", "Excitatory neuron"], ["inh", "Inhibitory neuron"], ["astro", "Astrocyte"], ["oligo", "Oligodendrocyte"], ["opc", "OPC"],
+  ["mglia", "Microglia"], ["macro", "Macrophage"], ["endo", "Endothelial cell"], ["peri", "Pericyte"], ["smc", "Smooth muscle cell"], ["fib", "Fibroblast"],
+  ["imm", "Other immune cell"], ["men", "Meningeal cell"]];
+const GAME_SUBS = {
+  exc: [["23P", "L2/3 pyramidal"], ["4P", "L4 pyramidal"], ["5P-IT", "L5 IT pyramidal"], ["5P-ET", "L5 ET pyramidal"], ["5P-NP", "L5 NP pyramidal"], ["6P-IT", "L6 IT pyramidal"], ["6P-CT", "L6 CT pyramidal"]],
+  inh: [["BC", "Basket cell"], ["MC", "Martinotti cell"], ["BPC", "Bipolar cell"], ["NGC", "Neurogliaform cell"]],
+  smc: [["Smooth muscle cell", "Arteriolar"], ["Venular smooth muscle cell", "Venular"]],
+  fib: [["Pia mater Fibroblast", "Pia mater"], ["Perivascular Fibroblast", "Perivascular"], ["Pial sheath Fibroblast", "Pial sheath"], ["Fibroblast reticular cell", "Reticular"]],
+  men: [["Inner arachnoid fibroblast", "Inner arachnoid fibroblast"], ["Arachnoid barrier cell", "Arachnoid barrier cell"], ["Dural border cell", "Dural border cell"]],
+  imm: [["Lymphocyte", "Lymphocyte"], ["Dendritic cell", "Dendritic cell"]]
+};
+const GAME_MICRONS = { "23P": "exc", "4P": "exc", "5P-IT": "exc", "5P-ET": "exc", "5P-NP": "exc", "6P-IT": "exc", "6P-CT": "exc", BC: "inh", MC: "inh", BPC: "inh", NGC: "inh",
+  OPC: "opc", astrocyte: "astro", microglia: "mglia", oligo: "oligo", pericyte: "peri" };
+const GAME_OWN = { "Endothelial cell": "endo", "Astrocyte": "astro", "Pericyte": "peri", "Smooth muscle cell": "smc", "Venular smooth muscle cell": "smc", "Macrophage": "macro",
+  "Microglia": "mglia", "Pia mater Fibroblast": "fib", "Perivascular Fibroblast": "fib", "Pial sheath Fibroblast": "fib", "Fibroblast reticular cell": "fib",
+  "Inner arachnoid fibroblast": "men", "Arachnoid barrier cell": "men", "Dural border cell": "men", "Lymphocyte": "imm", "Dendritic cell": "imm" };
+const GAME_LEVELS = [[0, "Novice"], [100, "Apprentice"], [300, "Skilled"], [700, "Expert"], [1500, "Master"]];
+const gameLevel = p => { let l = GAME_LEVELS[0][1]; for (const [t, n] of GAME_LEVELS) if (p >= t) l = n; return l; };
+const gameClassName = k => (GAME_CLASSES.find(x => x[0] === k) || [k, k])[1];
+function gameSave(){ try { localStorage.setItem("vr_game", JSON.stringify(GAME.st)); } catch (e){} }
+async function gamePickVerified(){
+  const own = await loadVectors(); const T = own.types || [], seen = new Map();
+  for (const r of own.cent.concat(own.cil)){ const nm = T[r[1]]; if (GAME_OWN[nm] && !seen.has(r[0])) seen.set(r[0], [r[0], nm, r[2], r[3], r[4]]); }
+  const rows = [...seen.values()];
+  /* every class about equally often (endothelial cells would otherwise be half the game) */
+  const byC = new Map(); for (const r of rows){ const k = GAME_OWN[r[1]]; if (!byC.has(k)) byC.set(k, []); byC.get(k).push(r); }
+  const ks = [...byC.keys()];
+  for (let t = 0; t < 12; t++){
+    const L = byC.get(ks[Math.floor(Math.random() * ks.length)]), r = L[Math.floor(Math.random() * L.length)];
+    const root = await nucRootFor(DSX, r[0]).catch(() => null); if (!root) continue;
+    return { nuc: r[0], root, pos: [r[2], r[3], r[4]], cls: GAME_OWN[r[1]], sub: GAME_SUBS[GAME_OWN[r[1]]] ? r[1] : null, src: "verified", name: r[1] };
+  }
+  return null;
+}
+async function gamePickMicrons(){
+  const I = await nucIndex(DSX), keys = I.tiles;
+  const glia = Math.random() < 0.35;
+  for (let t = 0; t < 12; t++){
+    const rows = (await nucTile(DSX, keys[Math.floor(Math.random() * keys.length)])).filter(r => r[5] && r[3] > 0 && GAME_MICRONS[I.types[r[3]]] && (glia ? !/^\d|^(BC|MC|BPC|NGC)$/.test(I.types[r[3]]) : /^\d|^(BC|MC|BPC|NGC)$/.test(I.types[r[3]])));
+    if (!rows.length) continue;
+    const r = rows[Math.floor(Math.random() * rows.length)], code = I.types[r[3]], cls = GAME_MICRONS[code];
+    return { nuc: String(r[4]), root: String(r[5]), pos: [r[0], r[1], r[2]], cls, sub: GAME_SUBS[cls] ? code : null, src: "microns", name: (I.labels && I.labels[code]) || code };
+  }
+  return null;
+}
+async function gameNext(){
+  if (GAME.busy) return; GAME.busy = true;
+  try {
+    gameUi("Finding a cell…");
+    const pick = (Math.random() < 0.5 ? await gamePickVerified() : null) || await gamePickMicrons() || await gamePickVerified();
+    if (!pick){ gameUi("No cell could be found — try again."); return; }
+    GAME.pick = pick; GAME.step = 0; GAME.last = "";
+    for (const c of CELLS || []) for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    CELLS = prepCells([{ ds: Object.keys(VR_DATASETS).find(k => VR_DATASETS[k] === DSX) || "microns", root: pick.root, nuc: String(pick.nuc), label: "Mystery cell", extra: [] }]);
+    CELLS.forEach(c => { c.colour = c.typeColour = "#c0c7d0"; c.game = true; });
+    window.__vr && (window.__vr.CELLS = CELLS);
+    SELECTED = 0; USER_MOVED = false; CELL_BOX = null;
+    renderList(); gameUi();
+    await loadAll();
+    try { await showEM(pick.pos.slice()); } catch (e){}
+    gameUi();
+  } catch (e){ gameUi("Could not load the cell: " + (e.message || e)); }
+  finally { GAME.busy = false; if (typeof MENU !== "undefined") MENU.dirty = true; }
+}
+function gameAnswer(k){
+  const p = GAME.pick; if (!p || GAME.step > 1) return;
+  const st = GAME.st, ver = p.src === "verified";
+  if (GAME.step === 0){
+    GAME.ans = k;
+    if (k === p.cls && p.sub && GAME_SUBS[k]){ GAME.step = 1; GAME.last = "✓ " + gameClassName(k) + " — now the type:"; gameUi(); return; }
+    gameScore(k === p.cls, false);
+  } else gameScore(true, k === p.sub);
+}
+function gameScore(clsOk, subOk){
+  const p = GAME.pick, st = GAME.st, ver = p.src === "verified";
+  let pts = 0;
+  if (clsOk){ pts += ver ? 10 : 6; if (subOk) pts += ver ? 5 : 4; st.streak++; if (st.streak >= 3) pts += 2; } else st.streak = 0;
+  st.pts += pts; st.n++; if (clsOk) st.ok++;
+  gameSave(); GAME.step = 2;
+  const truth = gameClassName(p.cls) + (p.sub ? " · " + ((GAME_SUBS[p.cls] || []).find(x => x[0] === p.sub) || [p.sub, p.sub])[1] : "");
+  GAME.last = (clsOk ? (ver ? "✓ Right" : "✓ You agree with MICrONS") : (ver ? "✗ Not quite" : "✗ MICrONS predicts otherwise"))
+    + " — " + (ver ? "verified: " : "MICrONS prediction: ") + truth + (p.sub && clsOk && !subOk ? " (the type was " + p.sub + ")" : "")
+    + ". +" + pts + " points" + (st.streak >= 3 ? " (streak " + st.streak + ")" : "")
+    + (!clsOk && !ver ? ". If you are sure, identify it in µJump — nucleus " + p.nuc + "." : ".");
+  const c = CELLS[0]; if (c){ c.label = p.name + (ver ? " (verified)" : " (MICrONS prediction)"); c.colour = c.typeColour = colourFor(c.label); if (c.mesh) c.mesh.material.color.copy(cellTint(c, c.colour)); applyLook(); renderList(); updateLabel(); }
+  gameUi();
+}
+function gameUi(msg){
+  const st = GAME.st, sc = document.getElementById("gameScore");
+  if (sc) sc.textContent = st.pts + " points · " + gameLevel(st.pts) + " · " + st.ok + "/" + st.n + " right";
+  const q = document.getElementById("gameQ"); if (!q) return;
+  q.style.display = GAME.on ? "" : "none";
+  const ask = document.getElementById("gameAsk"), opts = document.getElementById("gameOpts"), res = document.getElementById("gameRes");
+  if (msg){ ask.textContent = msg; opts.innerHTML = ""; res.textContent = ""; return; }
+  const p = GAME.pick;
+  ask.textContent = !p ? "" : GAME.step === 0 ? "What is this cell? (" + (p.src === "verified" ? "a verified cell" : "a MICrONS-predicted cell") + " — look at its shape and at the EM section through its nucleus)" : GAME.step === 1 ? "Which type?" : "";
+  const list = !p || GAME.step === 2 ? [] : GAME.step === 0 ? GAME_CLASSES : GAME_SUBS[p.cls];
+  opts.innerHTML = list.map(([k, n]) => '<button data-gk="' + k + '" style="font-size:12px;padding:3px 8px">' + n + '</button>').join("");
+  opts.querySelectorAll("[data-gk]").forEach(b => b.addEventListener("click", () => gameAnswer(b.dataset.gk)));
+  res.textContent = GAME.last;
+  if (GAME.last) ctxNote.textContent = GAME.last;
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setGame(v){
+  GAME.on = !!v; document.getElementById("gameBtn").classList.toggle("on", GAME.on);
+  gameUi(); if (GAME.on) gameNext();
+}
+document.getElementById("gameBtn").addEventListener("click", () => setGame(!GAME.on));
+document.getElementById("gameNext").addEventListener("click", () => gameNext());
+gameUi();
 
 /* ── 29. ONE CLOCK FOR EVERYTHING ────────────────────────────────────────────────  2026-10-22
    Søren: "we have a lot of different activities that happen at different timescales. It can be
@@ -11679,7 +12018,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 (function hideMissing(){
   const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", gameBox: "vec" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
@@ -11698,7 +12037,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
