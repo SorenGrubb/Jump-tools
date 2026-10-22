@@ -372,11 +372,15 @@
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">Mean of 10 repeats per clip · excitatory neurons only (GCaMP6s) · DANDI:000402, MICrONS Consortium, CC-BY-4.0 · r = oracle score (how alike the repeats were)</div>
   </div>
   <div class="ctl">
-    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, breathing, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vessel dilation</button>
+    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, breathing, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vascular regulation &amp; blood flow</button>
   </div>
   <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
       <select id="nvPreset" title="Realistic: sizes and speeds of the right order for an awake mouse. Teaching: four times the dilation and a larger heartbeat and breathing; the timing is set by the clock (bottom centre)"><option value="real" selected>Realistic</option><option value="teach">Teaching (larger)</option></select>
+    </div>
+    <div class="catick" style="align-items:center">
+      <label title="Mean arterial pressure (hypotension … hypertension). The arterioles show the autoregulation (narrower at high pressure, wider at low); with red blood cells or the blood-flow model on, the inflow pressures scale with it (venous pressures stay); with autoregulation the arterioles keep the flow steady between ~60 and ~150 mmHg, below that it falls with pressure, above it the tone gives way (breakthrough). Normal awake mouse: ~90–110 mmHg.">blood pressure <input type="range" id="stkMap" min="20" max="200" step="5" value="90" style="width:110px;vertical-align:middle"> <b id="stkMapV">90 mmHg</b></label> <span id="bpNote" style="font-size:11.5px;color:var(--mut)"></span>
+      <label title="Myogenic autoregulation: the arterioles (pial, penetrating, transitional, 1st order) dilate up to 18 % or narrow up to 19 % to keep the inflow steady, with a ~6 s lag"><input type="checkbox" id="bpAuto" checked> autoregulation</label>
     </div>
     <div class="catick">
       <label title="Dilation driven by the cells' activity, from the 1st-order capillary outward"><input type="checkbox" data-nv="act" checked> neurovascular coupling</label>
@@ -396,6 +400,21 @@
       <label><input type="checkbox" data-nv="ca" checked> Ca²⁺ waves (astrocytes most)</label>
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">A model on Søren Grubb's traced vessels (pial and penetrating arterioles, 1st–3rd order capillaries, venules), applied to the TriSAM surface (Wan &amp; Wei 2025). Needs Vessels shown (Map tab).</div>
+    <div style="font-size:12px;color:var(--mut);margin-top:6px">Blood flow (MODEL: flow on the whole MICrONS vascular network, section 30)</div>
+    <div class="catick" style="align-items:center">
+      <label title="The vessel surface coloured by the model's blood speed -- or, once there is a clot, by the flow against before: reversed, stopped, half, unchanged, more"><input type="checkbox" data-stk="colour" checked> colour vessels by:</label>
+      <select id="stkCol" title="What the vessel surface shows"><option value="auto">vessels: speed, then change</option><option value="speed">vessels: blood speed</option><option value="pressure">vessels: blood pressure</option><option value="o2">vessels: blood O₂</option><option value="hct">vessels: haematocrit</option><option value="change">vessels: change in flow</option></select>
+      <label title="A plot of perfusion, tissue PO2 at the neurons, the neurons' state, the flow, and the red cells' heartbeat-driven speed"><input type="checkbox" data-stk="plot"> blood-flow plot</label>
+    </div>
+    <div class="catick" style="align-items:center">
+      <label title="The red cells' speed swings with each heartbeat (43 % arterioles, 28 % capillaries, 10 % venules) and dips before each breath (Santisakultarm et al. 2012)"><input type="checkbox" data-stk="pulse" checked> heartbeat & breathing in the flow</label>
+      <label title="Clouds where the tissue PO2 (MODEL) is below the chosen level: blue < 10, violet < 5, purple < 2 mmHg"><input type="checkbox" data-stk="hyp" checked> hypoxic pockets</label>
+      <select id="stkThr" title="Show tissue below this PO2"><option value="10">below 10 mmHg</option><option value="5">below 5 mmHg</option><option value="2">below 2 mmHg</option><option value="20">below 20 mmHg</option></select>
+    </div>
+    <div class="ctl" style="margin:4px 0 0">
+      <button id="rideBtn" title="Ride one red blood cell of the flow model from an arteriole through the capillaries to a venule, at a scale where a capillary is ~30 cm across; the clock goes to ×1/100. Esc (or the button) ends the ride.">Ride a red cell</button>
+      <button id="csfBtn" title="CSF tracer (MODEL): particles entering along the pial arteries' perivascular spaces, down the penetrating arterioles and into the tissue -- faster in sleep, slowed by a spreading depolarization or by hypertension">CSF tracer</button>
+    </div>
   </div>
   <div class="ctl">
     <button id="slBtn" title="Put the mouse to sleep -- a MODEL: in NREM all the loaded neurons fire together in slow-wave up-states (~0.8 Hz, a wave crossing the block) with spindles on top, and the arterioles swing in a large, very slow (~0.02 Hz) noradrenaline-paced vasomotion; in REM the neurons fire desynchronised on a theta rhythm and the arterioles dilate. Astrocyte Ca²⁺ is lower asleep and flares on waking.">Sleep (model)</button>
@@ -437,34 +456,25 @@
     <div id="csdNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured.</div>
   </div>
   <div class="ctl">
-    <button id="stkBtn" title="Blood flow and stroke -- a MODEL: blood flow through the whole MICrONS vascular network (Poiseuille flow on Shih et al.'s skeleton, radii from Søren's tracings), red blood cells carried by it, and clots you place; the flow is solved again around each clot, the pial collaterals can be closed, and the loaded neurons fall silent and depolarize where their capillaries lose their flow">Blood flow &amp; stroke</button>
+    <button id="stkBtn" title="Blood flow and stroke -- a MODEL: blood flow through the whole MICrONS vascular network (Poiseuille flow on Shih et al.'s skeleton, radii from Søren's tracings), red blood cells carried by it, and clots you place; the flow is solved again around each clot, the pial collaterals can be closed, and the loaded neurons fall silent and depolarize where their capillaries lose their flow">Stroke</button>
     <button id="stkPlace" title="Then click (or trigger) on a vessel: a clot closes it between its two branch points">Place a clot</button>
   </div>
   <div id="stkBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
-    <div class="catick" style="align-items:center">
-      <label title="Mean arterial pressure. The inflow pressures scale with it (venous pressures stay); with autoregulation the arterioles keep the flow steady between ~60 and ~150 mmHg, below that it falls with pressure, above it the tone gives way (breakthrough). Normal awake mouse: ~90–110 mmHg.">blood pressure <input type="range" id="stkMap" min="20" max="200" step="5" value="90" style="width:110px;vertical-align:middle"> <b id="stkMapV">90 mmHg</b></label>
-      <label title="Myogenic autoregulation: the arterioles (pial, penetrating, transitional, 1st order) dilate up to 18 % or narrow up to 19 % to keep the inflow steady, with a ~6 s lag"><input type="checkbox" data-stk="auto" checked> autoregulation</label>
-    </div>
-    <div class="catick" style="align-items:center">
-      <label title="Clouds where the tissue PO2 (MODEL) is below the chosen level: blue < 10, violet < 5, purple < 2 mmHg"><input type="checkbox" data-stk="hyp" checked> hypoxic pockets</label>
-      <select id="stkThr" title="Show tissue below this PO2"><option value="10">below 10 mmHg</option><option value="5">below 5 mmHg</option><option value="2">below 2 mmHg</option><option value="20">below 20 mmHg</option></select>
-      <select id="stkCol" title="What the vessel surface shows"><option value="auto">vessels: speed, then change</option><option value="speed">vessels: blood speed</option><option value="pressure">vessels: blood pressure</option><option value="o2">vessels: blood O₂</option><option value="hct">vessels: haematocrit</option><option value="change">vessels: change in flow</option></select>
-    </div>
     <div class="catick">
-      <label title="The red cells' speed swings with each heartbeat (43 % arterioles, 28 % capillaries, 10 % venules) and dips before each breath (Santisakultarm et al. 2012)"><input type="checkbox" data-stk="pulse" checked> heartbeat & breathing in the flow</label>
       <label title="Capillary pericytes constrict where the tissue is hypoxic (towards −35 % radius over ~10 min); after 30 min they stay constricted (rigor) -- no-reflow after the clot is removed"><input type="checkbox" data-stk="peri" checked> pericytes constrict in hypoxia</label>
-      <label title="Red blood cells: biconcave discs in wide vessels, parachutes in capillaries, bullets in tight spots (< 4.5 µm); at a branch the share of cells follows the phase-separation law (plasma skimming). The vessel walls turn see-through while they are shown."><input type="checkbox" data-stk="rbc" checked> red blood cells</label>
     </div>
     <div class="catick">
       
-      <label title="The vessel surface coloured by the model's blood speed -- or, once there is a clot, by the flow against before: reversed, stopped, half, unchanged, more"><input type="checkbox" data-stk="colour" checked> colour by flow</label>
       <label title="Pial-artery pieces that close a loop (drawn gold) -- the collaterals that can feed the territory of a clotted branch from another. Off: they are closed too."><input type="checkbox" data-stk="collat" checked> pial collaterals open</label>
       <label title="The first neuron that depolarizes for lack of flow starts a spreading depolarization from there (peri-infarct depolarization)"><input type="checkbox" data-stk="sd" checked> peri-infarct depolarization</label>
-      <label><input type="checkbox" data-stk="plot" checked> plot</label>
       <button id="stkUndo" title="Remove the last clot (reperfusion)">Remove last clot</button>
       <button id="stkClear" title="Remove every clot">Remove all</button>
     </div>
     <div id="stkNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured.</div>
+  </div>
+  <div class="ctl">
+    <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
+    <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
   </div>
   <div class="ctl" id="caveRow" style="display:none">
     <input id="caveTok" type="password" placeholder="CAVE token (for synapses)" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
@@ -655,7 +665,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], nvBtn: ["vessel", "Vessel dilation"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], nvBtn: ["vessel", "Vascular regulation & blood flow"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -720,7 +730,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["pvsSel"], ["#pvsWRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -7812,7 +7822,7 @@ function menuRows(){
     }
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
     if (DS_HAS.vasc){
-      rows.push({ label: "Vessel dilation (model)", on: NV.on, act: () => setNv(!NV.on) });
+      rows.push({ label: "Vascular regulation & blood flow (model)", on: NV.on, act: () => setNv(!NV.on) });
       if (NV.on){
         rows.push({ label: "   " + (NV.preset === "teach" ? "Teaching: larger, slower" : "Realistic sizes") + "  ▸", act: () => nvSetting("preset", NV.preset === "teach" ? "real" : "teach") });
         rows.push({ label: "   Neurovascular coupling", on: NV.act, act: () => nvSetting("act", !NV.act) });
@@ -7821,6 +7831,16 @@ function menuRows(){
         rows.push({ label: "   Breathing", on: NV.resp, act: () => nvSetting("resp", !NV.resp) });
         rows.push({ label: "   Diameter plot", on: NV.plot, act: () => nvSetting("plot", !NV.plot) });
         if (DS_HAS.flow) rows.push({ label: "   Red blood cells", on: STK.on && STK.rbc, act: () => setRbcFlow(!(STK.on && STK.rbc)) });
+        rows.push({ label: "   Blood pressure " + STK.map + " mmHg  ▸", act: () => { const L = [40, 60, 90, 120, 150, 180]; const i = L.findIndex(x => x > STK.map); stkSetting("map", L[i < 0 ? 0 : i]); } });
+        rows.push({ label: "   Autoregulation", on: STK.auto, act: () => stkSetting("auto", !STK.auto) });
+        if (DS_HAS.flow){
+          rows.push({ label: "   Colour by flow: " + ({ auto: "speed, then change", speed: "speed", pressure: "pressure", o2: "blood O₂", hct: "haematocrit", change: "change" })[STK.cmode] + "  ▸", act: () => { const o = ["auto", "speed", "pressure", "o2", "hct", "change"]; stkFromPanel("cmode", o[(o.indexOf(STK.cmode) + 1) % o.length]); } });
+          rows.push({ label: "   Hypoxic pockets (< " + STK.hypThr + " mmHg)", on: STK.on && STK.hyp, act: () => stkFromPanel("hyp", !(STK.on && STK.hyp)) });
+          rows.push({ label: "   Heartbeat in the flow", on: STK.pulse, act: () => stkFromPanel("pulse", !STK.pulse) });
+          rows.push({ label: "   Blood-flow plot", on: STK.on && STK.plot, act: () => stkFromPanel("plot", !(STK.on && STK.plot)) });
+          rows.push({ label: "   Ride a red cell", on: RIDE.on, act: () => setRide(!RIDE.on) });
+          rows.push({ label: "   CSF tracer", on: CSFT.on, act: () => setCsf(!CSFT.on) });
+        }
         rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
     }
@@ -7833,20 +7853,15 @@ function menuRows(){
       rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
       rows.push({ label: "   Send another wave", act: () => csdStart() });
     }
+    rows.push({ label: "Hear spikes", on: SPK.snd, act: () => setSpkSound(!SPK.snd) });
+    rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
     if (DS_HAS.flow){
-      rows.push({ label: "Blood flow & stroke (model)", on: STK.on, act: () => setStroke(!STK.on) });
-      if (STK.on){
+      rows.push({ label: "Stroke (model)", on: STK.on && !STK.quiet, act: () => document.getElementById("stkBtn").click() });
+      if (STK.on && !STK.quiet){
         rows.push({ label: "   Place a clot (then trigger)", on: STK.arm, act: () => { STK.arm = !STK.arm; document.getElementById("stkPlace").classList.toggle("on", STK.arm); } });
         if (STK.clots.length) rows.push({ label: "   Remove the last clot (" + STK.clots.length + ")", act: () => stkUndo(false) });
-        rows.push({ label: "   Blood pressure " + STK.map + " mmHg  ▸", act: () => { const L = [40, 60, 90, 120, 150, 180]; const i = L.findIndex(x => x > STK.map); stkSetting("map", L[i < 0 ? 0 : i]); } });
-        rows.push({ label: "   Autoregulation", on: STK.auto, act: () => stkSetting("auto", !STK.auto) });
-        rows.push({ label: "   Hypoxic pockets (< " + STK.hypThr + " mmHg)", on: STK.hyp, act: () => stkSetting("hyp", !STK.hyp) });
-        rows.push({ label: "   Vessels: " + ({ auto: "speed, then change", speed: "speed", pressure: "pressure", o2: "blood O₂", hct: "haematocrit", change: "change" })[STK.cmode] + "  ▸", act: () => { const o = ["auto", "speed", "pressure", "o2", "hct", "change"]; stkSetting("cmode", o[(o.indexOf(STK.cmode) + 1) % o.length]); } });
-        rows.push({ label: "   Heartbeat in the flow", on: STK.pulse, act: () => stkSetting("pulse", !STK.pulse) });
         rows.push({ label: "   Pericytes constrict", on: STK.peri, act: () => stkSetting("peri", !STK.peri) });
-        rows.push({ label: "   Red blood cells", on: STK.rbc, act: () => stkSetting("rbc", !STK.rbc) });
         rows.push({ label: "   Pial collaterals open", on: STK.collat, act: () => stkSetting("collat", !STK.collat) });
-        rows.push({ label: "   Stroke plot", on: STK.plot, act: () => stkSetting("plot", !STK.plot) });
       }
     }
     if (LFP.on){
@@ -10251,7 +10266,7 @@ function stkReport(){
     + (cs.length ? hyp + " of " + cs.length + " loaded neurons below 10 mmHg O₂, " + anox + " below 2. " : "")
     + (!STK.collat ? "Pial collaterals closed (" + N.collat.size + "). " : "");
   STK.inflowPct = pct(inflow, inflow0);
-  ctxNote.textContent = STK.note;
+  if (!STK.quiet && !RIDE.on) ctxNote.textContent = STK.note;
   const el = document.getElementById("stkNote"); if (el) el.textContent = STK.note + "Flow directions agree with the endothelial centrioles for " + Math.round(100 * N.meta.check_centrioles.upstream) + " % of " + N.meta.check_centrioles.n.toLocaleString("en-US") + " endothelial cells (" + Math.round(100 * N.meta.check_centrioles.downstream) + " % against).";
 }
 /* ── the tissue: perfusion around each neuron (capillary flow within 60 µm against before) ── */
@@ -10338,6 +10353,7 @@ function stkSpawn(P, i){
     if (STK.box.containsPoint(_sV.set(N.pos[ii*3], N.pos[ii*3+1], N.pos[ii*3+2]))) break;
   }
   P.c[i] = c; P.s[i] = s;
+  if (typeof RIDE !== "undefined" && RIDE.on && i === RIDE.idx && P === STK.parts) RIDE.respawn = true;
   const a = Math.random() * 6.2832, rr = Math.sqrt(Math.random()) * 0.5;
   P.ox[i] = Math.cos(a) * rr; P.oy[i] = Math.sin(a) * rr; P.sp[i] = Math.random() * 6.2832;
 }
@@ -10417,6 +10433,7 @@ function stkRbcFrame(sdt){
     const rv = (N.rad[ia] + (N.rad[ib] - N.rad[ia]) * f) * (FF ? FF[c] : 1);
     _sV.set(N.pos[ia*3] + (N.pos[ib*3] - N.pos[ia*3]) * f, N.pos[ia*3+1] + (N.pos[ib*3+1] - N.pos[ia*3+1]) * f, N.pos[ia*3+2] + (N.pos[ib*3+2] - N.pos[ia*3+2]) * f);
     if (Q[c] < 0) _sT.negate();                               // the cell's front faces downstream
+    if (RIDE.on && i === RIDE.idx){ RIDE.pos.copy(_sV); RIDE.dir.copy(_sT); RIDE.c = c; RIDE.rv = rv; RIDE.seen = true; continue; }
     if (rv > 3.5){
       _sU.set(1, 0, 0); if (Math.abs(_sT.x) > 0.9) _sU.set(0, 1, 0); _sU.cross(_sT).normalize(); _sW.crossVectors(_sT, _sU);
       _sV.addScaledVector(_sU, P.ox[i] * (rv - 3)).addScaledVector(_sW, P.oy[i] * (rv - 3));
@@ -10488,7 +10505,7 @@ async function stkRecolour(){
   for (let v = 0; v < nv; v++){ const c = STK.vmap[v]; if (c < 0){ col[v*3] = grey.r; col[v*3+1] = grey.g; col[v*3+2] = grey.b; } else { col[v*3] = perC[c*3]; col[v*3+1] = perC[c*3+1]; col[v*3+2] = perC[c*3+2]; } }
   g.attributes.vnCol.needsUpdate = true;
   if (mesh.material.userData.nv) mesh.material.userData.nv.col.value = 1;
-  stkKey(); if (STK.note) ctxNote.textContent = STK.note;
+  stkKey(); if (STK.note && !STK.quiet && !RIDE.on) ctxNote.textContent = STK.note;
 }
 const STK_RAMPS = {
   change: [[-1, "#22b8cf"], [0, "#101113"], [0.5, "#f76707"], [1, "#868e96"], [1.6, "#2f9e44"]],
@@ -10572,13 +10589,29 @@ function stkPlotDraw(){
   if (low) sp.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - sp.scale.y / 2, 0));
   else sp.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - sp.scale.y / 2, 0));
 }
+/* ── BLOOD PRESSURE AND AUTOREGULATION, for the vessels in general (2026-10-22, Søren: "I wanted the
+   hypertension and hypotension to be a general thing, so it could be a part of the vessel dilation along
+   with autoregulation, and not just in stroke"). The slider and the switch sit with the vessel
+   dilation; the arterioles take their autoregulated tone (shown on the surface) whether or not the flow
+   model runs, and the panel gives the expected inflow from this network's own fit (inflow ∝ (MAP − 10)
+   × r^2.9). With red blood cells or the blood-flow model on, the flow is solved at that pressure. */
+function bpFrame(sdt){
+  const kt = stkKTarget(); STK.k += (kt - STK.k) * (1 - Math.exp(-Math.max(0, sdt) / 6));
+  const show = NV.on || STK.on;
+  AP_UNI.nvArA.value.set(0, show ? STK.k - 1 : 0, 0);
+  const now = performance.now();
+  if (now - (STK._bpAt || 0) > 300){ STK._bpAt = now;
+    const el = document.getElementById("bpNote");
+    if (el){ const fl = Math.max(0, (STK.map - 10) / 80) * Math.pow(STK.k, 2.9) * 100;
+      el.textContent = "arterioles " + (STK.k >= 1 ? "+" : "") + Math.round((STK.k - 1) * 100) + " % · inflow ≈ " + Math.round(fl) + " %"
+        + (STK.map < 60 && STK.auto ? " (below the plateau)" : STK.map > 150 && STK.auto ? " (breakthrough)" : !STK.auto ? " (no autoregulation)" : ""); }
+  }
+}
 /* ── every frame ── */
 function stkFrame(sdt){
-  if (!STK.on){ if (AP_UNI.nvArA && AP_UNI.nvArA.value.y !== 0) AP_UNI.nvArA.value.set(0, 0, 0); return; }
+  if (!STK.on) return;
   STK.t += sdt;
   /* autoregulation: the arterioles move towards their target with a ~6 s lag */
-  const kt = stkKTarget(); STK.k += (kt - STK.k) * (1 - Math.exp(-sdt / 6));
-  AP_UNI.nvArA.value.set(0, STK.k - 1, 0);
   if (Math.abs(STK.k - STK.kSolved) > 0.004) STK.dirty = true;
   if (STK.Q && STK.parts && sdt > 0) stkRbcFrame(sdt);
   /* the tissue PO2 follows its steady state: falls over ~6 s, recovers over ~2 s */
@@ -10693,11 +10726,13 @@ async function setStroke(v, opt){
      effect on vessels reflected in the RBC flow and velocity"): the flow model and its red cells only --
      the vessel colours, the plot and the clock are left as they are */
   const quiet = !!(opt && opt.quiet);
-  if (v && quiet && !STK.rbc){ STK.rbc = true; const el = document.querySelector('#stkBox [data-stk="rbc"]'); if (el) el.checked = true; }
+  if (v && quiet && opt.rbc !== false && !STK.rbc){ STK.rbc = true; const el = document.querySelector('#stkBox [data-stk="rbc"]'); if (el) el.checked = true; }
   STK.quiet = !!v && quiet;
-  if (quiet){ STK.plot = false; const el = document.querySelector('#stkBox [data-stk="plot"]'); if (el) el.checked = false; }
-  STK.on = !!v; document.getElementById("stkBtn").classList.toggle("on", STK.on);
-  document.getElementById("stkBox").style.display = STK.on ? "" : "none";
+  if (quiet && opt.rbc === false){ STK.rbc = false; const el = document.querySelector('[data-stk="rbc"]'); if (el) el.checked = false; }
+  if (quiet){ STK.plot = false; STK.hyp = false; const el = document.querySelector('[data-stk="plot"]'); if (el) el.checked = false; const eh = document.querySelector('[data-stk="hyp"]'); if (eh) eh.checked = false; }
+  STK.on = !!v; document.getElementById("stkBtn").classList.toggle("on", STK.on && !quiet);
+  document.getElementById("stkBox").style.display = STK.on && !quiet ? "" : "none";
+  if (v && !quiet){ for (const k of ["plot", "hyp"]){ STK[k] = true; const el = document.querySelector('[data-stk="' + k + '"]'); if (el) el.checked = true; } }
   if (STK.on){
     if (document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Stroke model: showing the TriSAM vessels around the cells…"; setVessels("box"); }
     ctxNote.textContent = "Stroke model: reading the blood-flow network…";
@@ -10729,7 +10764,8 @@ async function setStroke(v, opt){
 }
 function stkSetting(k, v){
   STK[k] = v;
-  const el = document.querySelector('#stkBox [data-stk="' + k + '"]'); if (el && el.type === "checkbox") el.checked = !!v;
+  const el = document.querySelector('[data-stk="' + k + '"]'); if (el && el.type === "checkbox") el.checked = !!v;
+  if (k === "auto") document.getElementById("bpAuto").checked = !!v;
   if (k === "map"){ document.getElementById("stkMap").value = v; document.getElementById("stkMapV").textContent = v + " mmHg"; }
   if (k === "hypThr"){ document.getElementById("stkThr").value = String(v); }
   if (k === "cmode"){ document.getElementById("stkCol").value = v; }
@@ -10750,7 +10786,7 @@ function stkUndo(all){
 }
 document.getElementById("stkBtn").addEventListener("click", () => {
   if (STK.on && STK.quiet){                         // started for the red cells: now the full model
-    STK.quiet = false; stkSetting("plot", true); if (STK.colour){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); }
+    STK.quiet = false; stkSetting("plot", true); stkSetting("hyp", true); document.getElementById("stkBox").style.display = ""; document.getElementById("stkBtn").classList.add("on"); if (STK.colour){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); }
     ctxNote.textContent = STK.note + " Press “Place a clot” and click a vessel."; return;
   }
   setStroke(!STK.on);
@@ -10768,10 +10804,349 @@ document.getElementById("stkPlace").addEventListener("click", () => {
 });
 document.getElementById("stkUndo").addEventListener("click", () => stkUndo(false));
 document.getElementById("stkClear").addEventListener("click", () => stkUndo(true));
-document.querySelectorAll("#stkBox [data-stk]").forEach(el => el.addEventListener("change", e => stkSetting(el.dataset.stk, e.target.checked)));
+/* in the vessel box: switching on something that needs the flow model starts it quietly */
+function stkFromPanel(k, v){
+  if (v && !STK.on && DSX.flowNet && !["collat", "sd", "peri", "auto", "map"].includes(k)) setStroke(true, { quiet: true, rbc: false }).then(() => stkSetting(k, v));
+  else stkSetting(k, v);
+}
+document.querySelectorAll("[data-stk]").forEach(el => el.addEventListener("change", e => stkFromPanel(el.dataset.stk, e.target.checked)));
 document.getElementById("stkMap").addEventListener("input", e => stkSetting("map", +e.target.value));
-document.getElementById("stkThr").addEventListener("change", e => stkSetting("hypThr", +e.target.value));
-document.getElementById("stkCol").addEventListener("change", e => stkSetting("cmode", e.target.value));
+document.getElementById("bpAuto").addEventListener("change", e => stkSetting("auto", e.target.checked));
+document.getElementById("stkThr").addEventListener("change", e => stkFromPanel("hypThr", +e.target.value));
+document.getElementById("stkCol").addEventListener("change", e => stkFromPanel("cmode", e.target.value));
+
+/* ── 31. SPIKES YOU HEAR AND FEEL ─────────────────────────────────────────────────────  2026-10-22
+   Søren, on what else would work well in VR: "Yes, do that" -- spike sound and touch, riding a red
+   cell, a CSF tracer.
+   HEAR: every spike of a loaded neuron -- stimulated, sleep, spreading depolarization, or inferred from
+   the recorded movie -- is a click from where its soma is, like the audio monitor of an
+   electrophysiology rig, panned in 3D (HRTF) so you hear where it fired. Excitatory cells click low,
+   inhibitory ones high and short. At most 24 clicks a frame (the nearest).
+   FEEL (headset): a controller near a neuron that fires gives a short buzz; a controller held against a
+   vessel beats with the heartbeat, strongly on an arteriole, weakly on a capillary, hardly on a venule
+   (the same pulsatility as the red cells: Santisakultarm et al. 2012). Riding a red cell, both hands
+   feel the beat of the vessel it is in. */
+const SPK = { snd: false, hap: false, ctx: null, master: null, bufE: null, bufI: null, cnt: new Map(), raT: null, lastHap: [0, 0], ph: 0, q: [] };
+function spkAudioInit(){
+  if (SPK.ctx) return true;
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+  const ctx = SPK.ctx = new AC(), sr = ctx.sampleRate;
+  const mk = (f, tau, len) => { const n = Math.round(sr * len), b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++){ const t = i / sr; d[i] = (Math.sin(2 * Math.PI * f * t) * 0.8 + (Math.random() * 2 - 1) * 0.25) * Math.exp(-t / tau) * Math.min(1, t / 0.0002); }
+    return b; };
+  SPK.bufE = mk(1400, 0.0011, 0.008); SPK.bufI = mk(3000, 0.0006, 0.005);
+  SPK.master = ctx.createGain(); SPK.master.gain.value = 0.8; SPK.master.connect(ctx.destination);
+  return true;
+}
+const _qkp = new THREE.Vector3(), _qkq = new THREE.Quaternion(), _qks = new THREE.Vector3(), _qkf = new THREE.Vector3(), _qku = new THREE.Vector3();
+function spkListener(){
+  const L = SPK.ctx.listener, cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  cam.matrixWorld.decompose(_qkp, _qkq, _qks); _qkf.set(0, 0, -1).applyQuaternion(_qkq); _qku.set(0, 1, 0).applyQuaternion(_qkq);
+  if (L.positionX){ const t = SPK.ctx.currentTime; L.positionX.setValueAtTime(_qkp.x, t); L.positionY.setValueAtTime(_qkp.y, t); L.positionZ.setValueAtTime(_qkp.z, t);
+    L.forwardX.setValueAtTime(_qkf.x, t); L.forwardY.setValueAtTime(_qkf.y, t); L.forwardZ.setValueAtTime(_qkf.z, t); L.upX.setValueAtTime(_qku.x, t); L.upY.setValueAtTime(_qku.y, t); L.upZ.setValueAtTime(_qku.z, t); }
+  else { L.setPosition(_qkp.x, _qkp.y, _qkp.z); L.setOrientation(_qkf.x, _qkf.y, _qkf.z, _qku.x, _qku.y, _qku.z); }
+  return _qkp;
+}
+function spkClick(p, inh, when){
+  const ctx = SPK.ctx, s = ctx.createBufferSource(), pn = ctx.createPanner();
+  s.buffer = inh ? SPK.bufI : SPK.bufE;
+  pn.panningModel = "HRTF"; pn.distanceModel = "inverse"; pn.refDistance = 0.12; pn.rolloffFactor = 1.1; pn.maxDistance = 50;
+  if (pn.positionX){ pn.positionX.value = p.x; pn.positionY.value = p.y; pn.positionZ.value = p.z; } else pn.setPosition(p.x, p.y, p.z);
+  s.connect(pn); pn.connect(SPK.master); s.start(ctx.currentTime + (when || 0));
+}
+/* the spikes since the last frame, from every source */
+function spkCollect(){
+  const out = SPK.q; out.length = 0;
+  for (const c of CELLS){
+    if (!c.mesh || caKind(c) !== "neuron") continue;
+    const n = (c.spikesAt || []).length + (c._slN || 0) + (c._csdN || 0), was = SPK.cnt.get(c);
+    SPK.cnt.set(c, n);
+    if (was != null && n > was) out.push([c, Math.min(6, n - was)]);
+  }
+  if (typeof RA !== "undefined" && RA.on && RA.meta && (RA.playing || RA.tlKey)){
+    const t = RA.t, tp = SPK.raT;
+    if (tp != null && t > tp && t - tp < 1){
+      const idx = (S, x) => { let lo = 0, hi = S.length; while (lo < hi){ const m = (lo + hi) >> 1; if (S[m] <= x) lo = m + 1; else hi = m; } return lo; };
+      for (const c of raCells()){ const S = raInfer(raEntry(c)).spk, k = idx(S, t) - idx(S, tp); if (k > 0) out.push([c, Math.min(6, k)]); }
+    }
+    SPK.raT = t;
+  } else SPK.raT = null;
+  return out;
+}
+function spkHaptic(h, a, ms){
+  const gp = h.source && h.source.gamepad; if (!gp) return;
+  try {
+    if (gp.hapticActuators && gp.hapticActuators[0]) gp.hapticActuators[0].pulse(Math.min(1, a), ms);
+    else if (gp.vibrationActuator) gp.vibrationActuator.playEffect("dual-rumble", { duration: ms, strongMagnitude: Math.min(1, a), weakMagnitude: Math.min(1, a) });
+  } catch (e){}
+}
+function spkFrame(){
+  if (!SPK.snd && !SPK.hap){ SPK.cnt.clear(); SPK.raT = null; return; }
+  const sp = spkCollect();
+  const xr = renderer.xr.isPresenting;
+  if (sp.length){
+    const lp = SPK.snd && SPK.ctx ? spkListener() : null;
+    const ev = [];
+    for (const [c, k] of sp){
+      const s0 = nvSoma(c); if (!s0) continue;
+      const w = content.localToWorld(s0.clone()), inh = cellClass(c) === "inh";
+      for (let j = 0; j < k; j++) ev.push([w, inh, j * 0.004]);
+    }
+    if (SPK.snd && SPK.ctx){
+      if (SPK.ctx.state === "suspended") SPK.ctx.resume();
+      if (ev.length > 24) ev.sort((a, b) => a[0].distanceToSquared(lp) - b[0].distanceToSquared(lp));
+      for (const e of ev.slice(0, 24)) spkClick(e[0], e[1], e[2]);
+    }
+    if (SPK.hap && xr){
+      const now = performance.now();
+      hands.forEach((h, k) => {
+        if (!h.source || now - SPK.lastHap[k] < 30) return;
+        const hp = new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld);
+        let best = null; for (const e of ev){ const d = e[0].distanceTo(hp); if (d < 0.08 && (!best || d < best[0])) best = [d, e[1]]; }
+        if (best){ spkHaptic(h, (best[1] ? 0.18 : 0.32) * (1 - best[0] / 0.1), 10); SPK.lastHap[k] = now; }
+      });
+    }
+  }
+  /* the heartbeat in a vessel you hold */
+  if (SPK.hap && xr){
+    if (!STK.net && !STK.netP && DSX.flowNet) stkNet().catch(() => {});
+    const hr = NV_PRESET[NV.preset].hr, ph = (SIM.t * hr) % 1;
+    if (ph < SPK.ph && STK.net){
+      const fade = Math.min(1, 4 / (Math.max(1e-6, SIM.eff || SIM.speed) * hr));
+      const sc = new THREE.Vector3(); content.getWorldScale(sc); const lim = Math.max(3, 0.02 / Math.max(1e-9, sc.x));
+      hands.forEach(h => {
+        if (!h.source) return;
+        let cls = null;
+        if (RIDE.on && RIDE.c >= 0) cls = STK.net.CL[STK.net.ccls[RIDE.c]];
+        else { const lp = content.worldToLocal(new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld)); const n = stkNearest(lp.x, lp.y, lp.z, lim); if (n) cls = STK.net.CL[STK.net.ccls[n.c]]; }
+        if (!cls) return;
+        const sw = (STK_CLS[cls] || STK_CLS.unk)[2];
+        spkHaptic(h, (0.12 + 0.7 * sw / 0.43) * fade, 28);
+      });
+    }
+    SPK.ph = ph;
+  }
+}
+function setSpkSound(v){
+  SPK.snd = !!v && spkAudioInit();
+  if (SPK.snd && SPK.ctx.state === "suspended") SPK.ctx.resume();
+  document.getElementById("sndBtn").classList.toggle("on", SPK.snd);
+  if (v && !SPK.snd) ctxNote.textContent = "This browser has no Web Audio — spikes cannot be heard here.";
+  else if (SPK.snd) ctxNote.textContent = "Hear spikes: every spike of a loaded neuron clicks from where its soma is (low = excitatory, high = inhibitory). Stimulate, play the recording, or start sleep. At slow clock speeds each spike is a single click.";
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setSpkHaptic(v){
+  SPK.hap = !!v; document.getElementById("hapBtn").classList.toggle("on", SPK.hap);
+  if (SPK.hap){ if (DSX.flowNet) stkNet().catch(() => {}); ctxNote.textContent = "Feel (in the headset): a controller near a firing neuron buzzes; held against a vessel it beats with the heart — strong on arterioles, weak on capillaries, faint on venules."; }
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("sndBtn").addEventListener("click", () => setSpkSound(!SPK.snd));
+document.getElementById("hapBtn").addEventListener("click", () => setSpkHaptic(!SPK.hap));
+
+/* ── 32. RIDE A RED BLOOD CELL ───────────────────────────────────────────────────────────  2026-10-22
+   The view rides one red cell of the flow model (section 30) from a penetrating arteriole in the box, at a
+   scale where a capillary is ~30 cm across: through the arteriole, squeezed through the narrow
+   branches as a bullet, through the capillary bed and out by a venule, at the model's speed, surging
+   with each heartbeat. On a screen the camera looks along the way; in the headset the tissue moves past
+   you and you look around freely. The clock goes to ×1/100 (a capillary's 0.3 mm/s becomes ~3 cm/s at
+   this scale); a label in front of you says where you are, how fast, and the blood's PO2 and
+   haematocrit. When the cell leaves the box the ride starts again from an arteriole. */
+const RIDE = { on: false, idx: 0, c: -1, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 1, 0), sdir: new THREE.Vector3(0, 1, 0), rv: 2, respawn: false, scale: 0.08, saved: null, spr: null, cv: null, _at: 0, seen: false };
+function rideSeed(){
+  const N = STK.net, P = STK.parts, Q = STK.Q || STK.Q0; if (!N || !P || !Q) return false;
+  /* start in a penetrating arteriole (it leads down into the capillary bed); else any arteriole */
+  let best = -1; const pa = N.CL.indexOf("pa"), act = N.CL.indexOf("act");
+  for (const want of [pa, act, -1]) {
+    for (let c = 0; c < N.nc; c++) if (STK.inBox[c] && N.kind[c] === 1 && (want < 0 || N.ccls[c] === want) && (best < 0 || Math.abs(Q[c]) > Math.abs(Q[best]))) best = c;
+    if (best >= 0) break;
+  }
+  if (best < 0) for (let c = 0; c < N.nc; c++) if (STK.inBox[c] && (best < 0 || Math.abs(Q[c]) > Math.abs(Q[best]))) best = c;
+  if (best < 0) return false;
+  RIDE.idx = 0; P.c[0] = best; P.s[0] = Q[best] >= 0 ? 0.5 : Math.max(0, N.len[best] - 0.5); P.ox[0] = 0; P.oy[0] = 0;
+  RIDE.respawn = false; RIDE.seen = false; return true;
+}
+async function setRide(v){
+  if (v){
+    if (!DSX.flowNet){ ctxNote.textContent = "Riding a red cell needs the blood-flow network (MICrONS only)."; return; }
+    if (!STK.on) await setStroke(true, { quiet: true });
+    else if (!STK.parts) stkSetting("rbc", true);
+    for (let k = 0; k < 100 && !STK.parts; k++) await new Promise(r => setTimeout(r, 100));
+    if (!STK.parts || !rideSeed()){ ctxNote.textContent = "Ride: no red cells in the box (turn on the vessels around the cells)."; return; }
+    RIDE.saved = { sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.clone(), cp: camera.position.clone(), ct: controls.target.clone(), en: controls.enabled };
+    RIDE.on = true; controls.enabled = false; FLY.on = false;
+    stage.scale.setScalar(RIDE.scale);
+    setSimSpeed(1 / 100, "riding a red cell");
+  } else if (RIDE.on){
+    RIDE.on = false;
+    const s = RIDE.saved; if (s){ stage.position.copy(s.sp); stage.quaternion.copy(s.sq); stage.scale.copy(s.ss); camera.position.copy(s.cp); controls.target.copy(s.ct); controls.enabled = s.en; controls.update(); }
+    if (RIDE.spr) RIDE.spr.visible = false;
+    setSimSpeed(0.1, "blood flow");
+  }
+  document.getElementById("rideBtn").classList.toggle("on", RIDE.on);
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function rideFrame(dt){
+  if (!RIDE.on) return;
+  if (!STK.on || !STK.parts){ setRide(false); return; }
+  if (RIDE.respawn){ rideSeed(); ctxNote.textContent = "Ride: the cell left the box — a new ride from a penetrating arteriole."; }
+  if (!RIDE.seen) return;
+  stage.scale.setScalar(RIDE.scale);
+  RIDE.sdir.lerp(RIDE.dir, Math.min(1, dt * 3)).normalize();
+  const behind = RIDE.pos.clone().addScaledVector(RIDE.sdir, -2.5), ahead = RIDE.pos.clone().addScaledVector(RIDE.sdir, 25);
+  stage.updateMatrixWorld(true);
+  if (renderer.xr.isPresenting){
+    const head = new THREE.Vector3().setFromMatrixPosition(renderer.xr.getCamera().matrixWorld);
+    const w = content.localToWorld(behind.clone()); stage.position.add(head.sub(w));
+  } else {
+    /* keep the stage near the origin, put the camera on the cell */
+    const w = content.localToWorld(behind.clone()); stage.position.sub(w); stage.updateMatrixWorld(true);
+    camera.position.copy(content.localToWorld(behind.clone())); const a = content.localToWorld(ahead.clone());
+    controls.target.copy(a); camera.lookAt(a);
+  }
+  /* the label in front of you */
+  const now = performance.now();
+  if (now - RIDE._at > 250){
+    RIDE._at = now;
+    const N = STK.net, c = RIDE.c; if (c < 0) return;
+    const r = Math.max(1, RIDE.rv), v = Math.abs(STK.Q[c]) / (Math.PI * r * r) / 1000 * (STK.mult ? STK.mult[N.ccls[c]] : 1);
+    const po = STK.Si && !isNaN(STK.Si[c]) ? stkP((STK.Si[c] + STK.So[c]) / 2) : null, ht = STK.H ? STK.H[c] : null;
+    const shape = 2 * r > 7 ? "disc" : 2 * r >= 4.5 ? "parachute" : "bullet";
+    const W = 900, H = 150; if (!RIDE.cv){ RIDE.cv = document.createElement("canvas"); RIDE.cv.width = W; RIDE.cv.height = H; }
+    const g = RIDE.cv.getContext("2d"); g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.82)"; g.fillRect(0, 0, W, H);
+    g.strokeStyle = "#c1121f"; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
+    g.fillStyle = "#e6edf3"; g.font = "600 38px system-ui, sans-serif"; g.fillText("Riding a red cell — " + (STK_CLS_NAME[N.CL[N.ccls[c]]] || "vessel"), 22, 54);
+    g.font = "30px system-ui, sans-serif"; g.fillStyle = "#ffa8a8";
+    g.fillText(v.toFixed(2) + " mm/s · lumen " + (2 * r).toFixed(1) + " µm (" + shape + ")" + (po != null ? " · PO₂ " + Math.round(po) + " mmHg" : "") + (ht != null ? " · Hct " + ht.toFixed(2) : "") + " · " + simFmt(SIM.eff || SIM.speed), 22, 108);
+    if (!RIDE.spr){ const tex = new THREE.CanvasTexture(RIDE.cv); tex.colorSpace = THREE.SRGBColorSpace; RIDE.spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); RIDE.spr.renderOrder = 40; scene.add(RIDE.spr); }
+    RIDE.spr.material.map.needsUpdate = true;
+  }
+  if (RIDE.spr){
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    cam.matrixWorld.decompose(_qkp, _qkq, _qks); _qkf.set(0, -0.32, -1).normalize().applyQuaternion(_qkq);
+    RIDE.spr.position.copy(_qkp).addScaledVector(_qkf, 0.9); RIDE.spr.scale.set(0.42, 0.07, 1); RIDE.spr.visible = true;
+  }
+}
+document.getElementById("rideBtn").addEventListener("click", () => setRide(!RIDE.on));
+addEventListener("keydown", e => { if (e.code === "Escape" && RIDE.on) setRide(false); });
+
+/* ── 33. CSF TRACER THROUGH THE PERIVASCULAR SPACES (MODEL) ───────────────────────────────  2026-10-22
+   Tracer particles enter with the cerebrospinal fluid in the perivascular spaces of the pial arteries
+   and follow them down the penetrating arterioles, in the direction of the blood, at ~19 µm/s on the
+   pia (mean in mouse, pulsing with every heartbeat: Mestre et al. 2018 Nat Commun 9:4878), slower along
+   the penetrating arterioles; on the way, and where the arterial tree ends, they leave into the tissue
+   and spread by diffusion (≈10 µm²/s for a small dextran). The speed follows the perivascular space's
+   width -- wider as noradrenaline falls in sleep (section 24b; more influx in sleep: Xie et al. 2013
+   Science 342:373), narrower where a spreading depolarization closes it (section 28; Schain et al.
+   2017) -- and falls with hypertension, which stiffens the arterial pulse that drives it (Mestre 2018:
+   flow reduced in hypertension; here above 110 mmHg on the blood-pressure slider). Bright green: in a
+   perivascular space; dim green: in the tissue. Recycled to the pia after 15 min of brain time. */
+const CSFT = { on: false, n: 3000, P: null, m1: null, m2: null, src: null, _at: 0 };
+function csfPickSource(){
+  const N = STK.net, Q = STK.Q || STK.Q0, S = CSFT.src; if (!S || !S.list.length) return -1;
+  const u = Math.random() * S.tot; let lo = 0, hi = S.w.length - 1; while (lo < hi){ const m = (lo + hi) >> 1; if (S.w[m] < u) lo = m + 1; else hi = m; } return S.list[lo];
+}
+function csfSpawn(i, anywhere){
+  const P = CSFT.P, N = STK.net;
+  const c = anywhere ? CSFT.art[Math.floor(Math.random() * CSFT.art.length)] : csfPickSource(); if (c < 0) return;
+  P.mode[i] = 0; P.c[i] = c; P.s[i] = Math.random() * N.len[c]; P.th[i] = Math.random() * 6.2832; P.ro[i] = 1 + Math.random() * 3; P.age[i] = 0;
+}
+async function setCsf(v){
+  if (v){
+    if (!DSX.flowNet){ ctxNote.textContent = "The CSF tracer needs the vessel network (MICrONS only)."; return; }
+    if (document.getElementById("vascSel").value === "off") setVessels("box");
+    ctxNote.textContent = "CSF tracer: reading the vessel network…";
+    for (let k = 0; k < 50 && !VASC.mesh; k++) await new Promise(r => setTimeout(r, 200));
+    await stkNet(); if (!STK.Q0) await stkBaseline(); if (!STK.inBox || !STK.on) stkInBox();
+    const N = STK.net, Q = STK.Q || STK.Q0, part = N.CL.indexOf("part"), art = [], list = [], w = []; let tot = 0;
+    for (let c = 0; c < N.nc; c++) if (STK.inBox[c] && N.kind[c] === 1) art.push(c);
+    for (const c of art) if (N.ccls[c] === part){ list.push(c); tot += Math.abs(Q[c]) + 1; w.push(tot); }
+    if (!list.length){ /* no pial artery in the box: the tops of the penetrating arterioles */
+      const top = art.slice().sort((a, b) => N.mid[a*3+1] - N.mid[b*3+1]).slice(0, Math.max(1, art.length >> 3));
+      for (const c of top){ list.push(c); tot += Math.abs(Q[c]) + 1; w.push(tot); }
+    }
+    if (!art.length){ ctxNote.textContent = "CSF tracer: no arteries in the box around these cells."; return; }
+    CSFT.art = art; CSFT.src = { list, w, tot };
+    const n = CSFT.n;
+    CSFT.P = { mode: new Uint8Array(n), c: new Int32Array(n), s: new Float32Array(n), th: new Float32Array(n), ro: new Float32Array(n), age: new Float32Array(n), x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n) };
+    for (let i = 0; i < n; i++) csfSpawn(i, i < n / 3);
+    const geo = new THREE.IcosahedronGeometry(0.9, 0);
+    const mk = (col, op) => { const m = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: op < 1, opacity: op, depthWrite: op >= 1 }), n); m.frustumCulled = false; m.renderOrder = 6; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); content.add(m); return m; };
+    CSFT.m1 = mk("#8ce99a", 1); CSFT.m2 = mk("#2f9e44", 0.55);
+    CSFT.on = true; simRecommend("csf");
+    ctxNote.textContent = "CSF tracer (MODEL): entering along the pial arteries and down the penetrating arterioles, then into the tissue. Try sleep (wider perivascular spaces), a spreading depolarization, or high blood pressure.";
+  } else {
+    CSFT.on = false;
+    for (const m of [CSFT.m1, CSFT.m2]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    CSFT.m1 = CSFT.m2 = null; CSFT.P = null;
+  }
+  document.getElementById("csfBtn").classList.toggle("on", CSFT.on);
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function csfFrame(sdt){
+  if (!CSFT.on || !CSFT.P) return;
+  const N = STK.net, Q = STK.Q || STK.Q0, P = CSFT.P, n = CSFT.n;
+  const hr = NV_PRESET[NV.preset].hr, ph = (SIM.t * hr) % 1, wv = ph < 0.12 ? ph / 0.12 : Math.exp(-(ph - 0.12) / 0.22);
+  const fade = Math.min(1, 4 / (Math.max(1e-6, SIM.eff || SIM.speed) * hr)), pulse = 1 + 3 * fade * (wv - 0.276);
+  const fW = Math.pow(PVS.sleepW || 1, 2), fMap = STK.map > 110 ? 1 - 0.5 * Math.min(1, (STK.map - 110) / 60) : 1;
+  const D = 10 * (1 + 0.6 * Math.max(0, 1 - LC.neSlow)), step = Math.sqrt(2 * D * Math.max(0, sdt));
+  const csd = CSD.on && CSD.o;
+  let n1 = 0, n2 = 0, depth = 0;
+  const m1 = CSFT.m1, m2 = CSFT.m2, b = STK.box;
+  for (let i = 0; i < n; i++){
+    if (sdt > 0){
+      P.age[i] += sdt;
+      if (P.mode[i] === 0){
+        let c = P.c[i], s = P.s[i];
+        const art = N.CL[N.ccls[c]] === "part", U = (art ? 18.7 : 10) * fW * fMap * pulse;
+        let fc = 1; if (csd){ const tau = CSD.t - Math.hypot(N.mid[c*3] - CSD.o.x, N.mid[c*3+1] - CSD.o.y, N.mid[c*3+2] - CSD.o.z) / 50; if (tau >= 0) fc = Math.max(0.05, 1 + 1.8 * csdPvs(tau)); }
+        s += U * fc * sdt * (Q[c] >= 0 ? 1 : -1);
+        /* into the tissue along the way (faster from the penetrating arterioles) */
+        if (Math.random() < 1 - Math.exp(-sdt / (art ? 600 : 60))){ P.mode[i] = 1; csfPlace(i, c, Math.max(0, Math.min(N.len[c], s))); P.mode[i] = 1; continue; }
+        if (s < 0 || s > N.len[c]){
+          const j = s < 0 ? N.ja[c] : N.jb[c], over = s < 0 ? -s : s - N.len[c];
+          let tot = 0; const out = [];
+          for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){ const o = N.jc[t]; if (o === c || N.kind[o] !== 1 || !STK.inBox[o]) continue; const leaves = (N.ja[o] === j && Q[o] > 0) || (N.jb[o] === j && Q[o] < 0); if (leaves){ tot += Math.abs(Q[o]) + 1e-6; out.push(o, tot); } }
+          if (!out.length){ csfPlace(i, c, s < 0 ? 0 : N.len[c]); P.mode[i] = 1; continue; }        // the end of the arterial tree: into the tissue
+          const u = Math.random() * tot; let nx = out[0]; for (let t = 0; t < out.length; t += 2) if (u <= out[t+1]){ nx = out[t]; break; }
+          c = nx; s = N.ja[c] === j ? Math.min(over, N.len[c]) : Math.max(0, N.len[c] - over);
+        }
+        P.c[i] = c; P.s[i] = s; P.th[i] += 0.2 * sdt;
+      } else {
+        P.x[i] += step * stkGauss(); P.y[i] += step * stkGauss(); P.z[i] += step * stkGauss();
+        if (P.age[i] > 900 || (b && !b.containsPoint(_sV.set(P.x[i], P.y[i], P.z[i])))) csfSpawn(i, false);
+      }
+    }
+    /* draw */
+    if (P.mode[i] === 0){
+      const c = P.c[i], s = P.s[i];
+      let kk = N.off[c]; while (kk < N.off[c+1] - 2 && N.arc[kk+1] < s) kk++;
+      const ia = N.cp[kk], ib = N.cp[Math.min(N.off[c+1] - 1, kk + 1)], L = Math.max(1e-6, N.arc[Math.min(N.off[c+1] - 1, kk + 1)] - N.arc[kk]), f = Math.max(0, Math.min(1, (s - N.arc[kk]) / L));
+      _sT.set(N.pos[ib*3] - N.pos[ia*3], N.pos[ib*3+1] - N.pos[ia*3+1], N.pos[ib*3+2] - N.pos[ia*3+2]); if (_sT.lengthSq() < 1e-9) _sT.set(0, 1, 0); _sT.normalize();
+      _sU.set(1, 0, 0); if (Math.abs(_sT.x) > 0.9) _sU.set(0, 1, 0); _sU.cross(_sT).normalize(); _sW.crossVectors(_sT, _sU);
+      const rr = N.rad[ia] * (STK.F ? STK.F[c] : 1) + P.ro[i];
+      _sV.set(N.pos[ia*3] + (N.pos[ib*3] - N.pos[ia*3]) * f, N.pos[ia*3+1] + (N.pos[ib*3+1] - N.pos[ia*3+1]) * f, N.pos[ia*3+2] + (N.pos[ib*3+2] - N.pos[ia*3+2]) * f)
+        .addScaledVector(_sU, Math.cos(P.th[i]) * rr).addScaledVector(_sW, Math.sin(P.th[i]) * rr);
+      _sQ.identity(); _sS.setScalar(1); _sM.compose(_sV, _sQ, _sS); m1.setMatrixAt(n1++, _sM);
+    } else {
+      _sV.set(P.x[i], P.y[i], P.z[i]); _sQ.identity(); _sS.setScalar(0.8); _sM.compose(_sV, _sQ, _sS); m2.setMatrixAt(n2++, _sM);
+      depth += P.age[i];
+    }
+  }
+  m1.count = n1; m2.count = n2; m1.instanceMatrix.needsUpdate = true; m2.instanceMatrix.needsUpdate = true;
+  const now = performance.now();
+  if (now - CSFT._at > 2000 && !STK.on){ CSFT._at = now;
+    ctxNote.textContent = "CSF tracer (MODEL): " + n1 + " in perivascular spaces, " + n2 + " in the tissue · inflow ×" + (fW * fMap).toFixed(2)
+      + " (perivascular width ×" + fW.toFixed(2) + (fMap < 1 ? ", hypertension ×" + fMap.toFixed(2) : "") + ")" + (csd ? " · a spreading depolarization is closing the spaces it passes" : ""); }
+}
+function csfPlace(i, c, s){
+  const N = STK.net, P = CSFT.P;
+  let kk = N.off[c]; while (kk < N.off[c+1] - 2 && N.arc[kk+1] < s) kk++;
+  const ia = N.cp[kk], rr = N.rad[ia] + P.ro[i] + 1;
+  const a = Math.random() * 6.2832, b = Math.acos(2 * Math.random() - 1);
+  P.x[i] = N.pos[ia*3] + rr * Math.sin(b) * Math.cos(a); P.y[i] = N.pos[ia*3+1] + rr * Math.sin(b) * Math.sin(a); P.z[i] = N.pos[ia*3+2] + rr * Math.cos(b);
+}
+function stkGauss(){ let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2831853 * v); }
+document.getElementById("csfBtn").addEventListener("click", () => setCsf(!CSFT.on));
 
 /* ── 29. ONE CLOCK FOR EVERYTHING ────────────────────────────────────────────────  2026-10-22
    Søren: "we have a lot of different activities that happen at different timescales. It can be
@@ -10790,13 +11165,15 @@ const SIM_REC = [
   { k: "ap",   name: "Action potentials",           v: 1 / 5000, why: "a spike crosses a cell in a few ms" },
   { k: "syn",  name: "Synaptic potentials",          v: 1 / 500,  why: "EPSPs and IPSPs last tens of ms" },
   { k: "lfp",  name: "LFP rhythms",                  v: 0.25,     why: "spindles 12 Hz, theta 7 Hz" },
+  { k: "ride", name: "Riding a red cell",            v: 0.01,     why: "a capillary passes at ~3 cm/s" },
   { k: "flow", name: "Blood flow",                   v: 0.1,      why: "red cells move 0.3–5 mm/s" },
   { k: "beat", name: "Heartbeat and breathing",      v: 0.1,      why: "10 Hz and 3 Hz pulsations" },
   { k: "rec",  name: "Recorded activity",            v: 1,        why: "the 2-photon movie in real time" },
   { k: "nvc",  name: "Neurovascular coupling",       v: 1,        why: "dilation rises over ~1–2 s" },
   { k: "ca",   name: "Ca²⁺ waves",                   v: 2,        why: "astrocyte waves cross a cell in seconds" },
   { k: "csd",  name: "Spreading depolarization",     v: 5,        why: "3 mm/min; recovery over minutes" },
-  { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" }
+  { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" },
+  { k: "csf",  name: "CSF tracer",                   v: 10,       why: "~19 µm/s along arteries, minutes into tissue" }
 ];
 const simFmt = v => v >= 1 ? "×" + (v >= 10 ? Math.round(v) : +v.toFixed(v < 3 ? 2 : 1)) : "×1/" + Math.round(1 / v).toLocaleString("en-US");
 function simBrainTime(t){
@@ -10879,7 +11256,11 @@ renderer.setAnimationLoop(() => {
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
   try { slFrame(sdt); } catch (e){ console.warn("[vr] sleep:", e); }
   try { csdFrame(sdt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
+  try { bpFrame(sdt); } catch (e){ console.warn("[vr] blood pressure:", e); }
   try { stkFrame(sdt); } catch (e){ console.warn("[vr] stroke:", e); }
+  try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
+  try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
+  try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
@@ -11298,7 +11679,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 (function hideMissing(){
   const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
@@ -11317,7 +11698,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
