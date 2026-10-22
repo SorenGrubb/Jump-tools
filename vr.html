@@ -543,7 +543,7 @@
     <button id="sprayBtn" title="Paint on the cells and vessels to point things out to others: drag with the mouse, or hold the right trigger in VR">🎨 Spray</button>
     <span id="spraySw" style="display:flex;gap:4px;align-items:center"></span>
     <button id="sprayGlow" title="Paint that glows">Glow</button>
-    <button id="sprayErase" title="Remove paint">Eraser</button>
+    <button id="sprayErase" title="Erase spray: drag (or hold the right trigger) over paint to remove it just there; the nozzle size sets how wide. Pick a colour to paint again.">Eraser</button>
     <select id="spraySize" title="Nozzle size"><option value="s">fine</option><option value="m" selected>medium</option><option value="l">wide</option></select>
     <button id="sprayWipe" title="Remove all paint">Wipe</button>
   </div>
@@ -802,7 +802,7 @@
     vecType: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)), vecCol: () => !!(V().VEC && (V().VEC.cent || V().VEC.cil)),
     stimMode: () => !!(V().STIM && V().STIM.on), stimGain: () => !!(V().STIM && V().STIM.on), stimReset: () => !!(V().STIM && V().STIM.on), stimHid: () => !!(V().STIM && V().STIM.on), caReset: () => !!(V().CA && (V().CA.on || V().CA.running)), plShow: () => !!(V().STIM && V().STIM.on && V().STIM.plots), ctCsv: () => !!(V().CT && V().CT.on), raPlay: () => !!(V().RA && V().RA.on), raSide: () => !!(V().RA && V().RA.screen), raMode: () => !!(V().RA && V().RA.plot),
     plotBtn: () => !!(V().STIM && V().STIM.on), elecBtn: () => !!(V().STIM && V().STIM.on), elecClr: () => !!(V().STIM && V().STIM.on), traceCsv: () => !!(V().STIM && V().STIM.on), synClr: () => !!(V().STIM && V().STIM.syn && V().STIM.syn.length),
-    spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on), sprayErase: () => !!(V().SPRAY && V().SPRAY.on),
+    spraySw: () => !!(V().SPRAY && V().SPRAY.on), sprayGlow: () => !!(V().SPRAY && V().SPRAY.on),
     spraySize: () => !!(V().SPRAY && V().SPRAY.on), sprayWipe: () => !!(V().SPRAY && V().SPRAY.on)
   };
   /* A dot on a tab: a mode is on there that changes what a click does. */
@@ -3989,7 +3989,12 @@ function setSpray(v){
   if (v){ if (STIM.on) setStim(false); if (MEAS.on) setMeasure(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); }
   controls.enabled = !v;               // on a flat screen a drag paints instead of turning the view
   syncSprayUI();
-  if (v) ctxNote.textContent = "Spray: " + (renderer.xr.isPresenting ? "hold the right trigger" : "drag on a cell") + " to paint. Turn Spray off to move the view again.";
+  if (v) sprayNote();
+}
+function sprayNote(){
+  const how = renderer.xr.isPresenting ? "hold the right trigger" : "drag on a cell";
+  ctxNote.textContent = SPRAY.erase ? "Erase spray: " + how + " over paint to remove it there (nozzle size = how wide). Pick a colour to paint again; turn Spray off to move the view."
+                                    : "Spray: " + how + " to paint. Eraser removes paint locally. Turn Spray off to move the view again.";
 }
 function sprayFrame(dt){
   SPRAY.time += dt; AP_UNI.sprayTime.value = SPRAY.time;
@@ -4010,7 +4015,7 @@ SPRAY_COLOURS.forEach(([name, hex]) => {
 });
 document.getElementById("sprayBtn").addEventListener("click", () => setSpray(!SPRAY.on));
 document.getElementById("sprayGlow").addEventListener("click", () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); });
-document.getElementById("sprayErase").addEventListener("click", () => { SPRAY.erase = !SPRAY.erase; syncSprayUI(); });
+document.getElementById("sprayErase").addEventListener("click", () => { SPRAY.erase = SPRAY.on ? !SPRAY.erase : true; if (!SPRAY.on) setSpray(true); else sprayNote(); syncSprayUI(); });
 document.getElementById("spraySize").addEventListener("change", e => { SPRAY.size = e.target.value; syncSprayUI(); });
 document.getElementById("sprayWipe").addEventListener("click", wipePaint);
 const ndcOf = e => canvasNdc(e);
@@ -7996,7 +8001,7 @@ function menuRows(){
     SPRAY_COLOURS.forEach(([name, hex]) => rows.push({ label: name, swatch: hex, picked: SPRAY.colour === hex && !SPRAY.erase,
       act: () => { SPRAY.colour = hex; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); } }));
     rows.push({ label: "Glowing paint", on: SPRAY.glow, act: () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); } });
-    rows.push({ label: "Eraser", on: SPRAY.erase, act: () => { SPRAY.erase = !SPRAY.erase; if (!SPRAY.on) setSpray(true); syncSprayUI(); } });
+    rows.push({ label: "Eraser (erase spray)", on: SPRAY.on && SPRAY.erase, act: () => { SPRAY.erase = SPRAY.on ? !SPRAY.erase : true; if (!SPRAY.on) setSpray(true); else sprayNote(); syncSprayUI(); } });
     rows.push({ label: "Nozzle: " + ({ s: "fine", m: "medium", l: "wide" })[SPRAY.size] + "  ▸", act: () => { SPRAY.size = ({ s: "m", m: "l", l: "s" })[SPRAY.size]; syncSprayUI(); } });
     rows.push({ label: "Wipe all paint", act: wipePaint });
   } else if (t === "EM"){
@@ -11139,8 +11144,25 @@ document.getElementById("hapBtn").addEventListener("click", () => setSpkHaptic(!
    with each heartbeat. On a screen the camera looks along the way; in the headset the tissue moves past
    you and you look around freely. The clock goes to ×1/100 (a capillary's 0.3 mm/s becomes ~3 cm/s at
    this scale); a label in front of you says where you are, how fast, and the blood's PO2 and
-   haematocrit. When the cell leaves the box the ride starts again from an arteriole. */
-const RIDE = { on: false, idx: 0, c: -1, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 1, 0), sdir: new THREE.Vector3(0, 1, 0), rv: 2, respawn: false, scale: 0.08, saved: null, spr: null, cv: null, _at: 0, seen: false };
+   haematocrit. When the cell leaves the box the ride starts again from an arteriole.
+   COMFORT (2026-10-22, Søren: "the viewer will get sick ... smooth it out so the viewer is not tumbling
+   around but is facing the general direction at all times, unless they are looking to the side
+   themselves"): the red cell itself tumbles and the skeleton it follows is jagged, so the view does NOT
+   follow it directly. The eye point is the cell's position low-pass filtered (τ 0.15 s); the facing is the
+   direction travelled over the last ~8 µm of path (not the local segment), turned towards gradually
+   (τ 1.1 s, at most 35°/s); and the view never rolls -- "up" is carried along without twist and eased
+   back towards the pia. In the headset only the tissue turns, slowly, so you keep facing the way you go;
+   your own head movements look around freely. On a screen, drag to look aside; the view eases back. */
+const RIDE = { on: false, idx: 0, c: -1, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 1, 0), sdir: new THREE.Vector3(0, 1, 0), rv: 2, respawn: false, scale: 0.08, saved: null, spr: null, cv: null, _at: 0, seen: false,
+  eye: new THREE.Vector3(), up: new THREE.Vector3(0, -1, 0), pia: new THREE.Vector3(0, -1, 0), hist: [], fresh: true, yaw0: 0, lookY: 0, lookP: 0, drag: null };
+const _rdA = new THREE.Vector3(), _rdB = new THREE.Vector3(), _rdC = new THREE.Vector3(), _rdM = new THREE.Matrix4(), _rdQ = new THREE.Quaternion(), _rdQ2 = new THREE.Quaternion();
+/* Turn unit vector v towards unit vector t by at most `a` radians (in place). */
+function rideTurn(v, t, a){
+  const ang = v.angleTo(t); if (ang < 1e-5) return v.copy(t);
+  if (ang > Math.PI - 1e-3){ _rdC.set(1, 0, 0); if (Math.abs(v.x) > 0.9) _rdC.set(0, 0, 1); _rdC.cross(v).normalize(); }
+  else _rdC.crossVectors(v, t).normalize();
+  return v.applyAxisAngle(_rdC, Math.min(a, ang)).normalize();
+}
 function rideSeed(){
   const N = STK.net, P = STK.parts, Q = STK.Q || STK.Q0; if (!N || !P || !Q) return false;
   /* start in a penetrating arteriole (it leads down into the capillary bed); else any arteriole */
@@ -11152,7 +11174,7 @@ function rideSeed(){
   if (best < 0) for (let c = 0; c < N.nc; c++) if (STK.inBox[c] && (best < 0 || Math.abs(Q[c]) > Math.abs(Q[best]))) best = c;
   if (best < 0) return false;
   RIDE.idx = 0; P.c[0] = best; P.s[0] = Q[best] >= 0 ? 0.5 : Math.max(0, N.len[best] - 0.5); P.ox[0] = 0; P.oy[0] = 0;
-  RIDE.respawn = false; RIDE.seen = false; return true;
+  RIDE.respawn = false; RIDE.seen = false; RIDE.fresh = true; return true;
 }
 async function setRide(v){
   if (v){
@@ -11164,9 +11186,15 @@ async function setRide(v){
     RIDE.saved = { sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.clone(), cp: camera.position.clone(), ct: controls.target.clone(), en: controls.enabled };
     RIDE.on = true; controls.enabled = false; FLY.on = false;
     stage.scale.setScalar(RIDE.scale);
+    /* "up" for the ride = the world's up at the start, in the cells' frame (towards the pia) */
+    stage.updateMatrixWorld(true);
+    RIDE.pia.set(0, 1, 0).transformDirection(_rdM.copy(content.matrixWorld).invert()).normalize();
+    RIDE.lookY = RIDE.lookP = 0; RIDE.fresh = true;
+    if (renderer.xr.isPresenting){ _rdA.set(0, 0, -1).applyQuaternion(renderer.xr.getCamera().quaternion); RIDE.yaw0 = Math.atan2(-_rdA.x, -_rdA.z); } else RIDE.yaw0 = 0;
     setSimSpeed(1 / 100, "riding a red cell");
   } else if (RIDE.on){
     RIDE.on = false;
+    camera.up.set(0, 1, 0);
     const s = RIDE.saved; if (s){ stage.position.copy(s.sp); stage.quaternion.copy(s.sq); stage.scale.copy(s.ss); camera.position.copy(s.cp); controls.target.copy(s.ct); controls.enabled = s.en; controls.update(); }
     if (RIDE.spr) RIDE.spr.visible = false;
     setSimSpeed(0.1, "blood flow");
@@ -11180,16 +11208,48 @@ function rideFrame(dt){
   if (RIDE.respawn){ rideSeed(); ctxNote.textContent = "Ride: the cell left the box — a new ride from a penetrating arteriole."; }
   if (!RIDE.seen) return;
   stage.scale.setScalar(RIDE.scale);
-  RIDE.sdir.lerp(RIDE.dir, Math.min(1, dt * 3)).normalize();
-  const behind = RIDE.pos.clone().addScaledVector(RIDE.sdir, -2.5), ahead = RIDE.pos.clone().addScaledVector(RIDE.sdir, 25);
+  /* 1. smooth eye point and the travelled direction */
+  if (RIDE.fresh){
+    RIDE.eye.copy(RIDE.pos); RIDE.hist = [RIDE.pos.clone()]; RIDE.sdir.copy(RIDE.dir);
+    RIDE.up.copy(RIDE.pia).addScaledVector(RIDE.sdir, -RIDE.pia.dot(RIDE.sdir));
+    if (RIDE.up.lengthSq() < 1e-4) RIDE.up.set(1, 0, 0).addScaledVector(RIDE.sdir, -RIDE.sdir.x);
+    RIDE.up.normalize(); RIDE.fresh = false;
+  }
+  if (RIDE.eye.distanceTo(RIDE.pos) > 30) RIDE.eye.copy(RIDE.pos);           // a jump (respawn): no sweep across the tissue
+  RIDE.eye.lerp(RIDE.pos, 1 - Math.exp(-dt / 0.15));
+  const H = RIDE.hist; if (RIDE.pos.distanceTo(H[H.length - 1]) > 0.5){ H.push(RIDE.pos.clone()); if (H.length > 40) H.shift(); }
+  let back = H[H.length - 1], acc = 0;
+  for (let k = H.length - 1; k > 0 && acc < 8; k--){ acc += H[k].distanceTo(H[k - 1]); back = H[k - 1]; }
+  _rdA.subVectors(RIDE.pos, back);
+  const tgt = acc > 2 ? _rdA.normalize().multiplyScalar(0.8).addScaledVector(RIDE.dir, 0.2).normalize() : _rdA.copy(RIDE.dir);
+  const before = _rdB.copy(RIDE.sdir);
+  rideTurn(RIDE.sdir, tgt, Math.min(RIDE.sdir.angleTo(tgt) * (1 - Math.exp(-dt / 1.1)), dt * 35 * Math.PI / 180));
+  /* 2. carry "up" along without twist, then ease it back towards the pia */
+  _rdQ.setFromUnitVectors(before, RIDE.sdir); RIDE.up.applyQuaternion(_rdQ);
+  RIDE.up.addScaledVector(RIDE.sdir, -RIDE.up.dot(RIDE.sdir)).normalize();
+  _rdC.copy(RIDE.pia).addScaledVector(RIDE.sdir, -RIDE.pia.dot(RIDE.sdir));
+  if (_rdC.lengthSq() > 0.05) rideTurn(RIDE.up, _rdC.normalize(), dt * 0.35);
+  RIDE.up.addScaledVector(RIDE.sdir, -RIDE.up.dot(RIDE.sdir)).normalize();
+  const eyeL = _rdC.copy(RIDE.eye).addScaledVector(RIDE.sdir, -1.5);          // just behind the cell
   stage.updateMatrixWorld(true);
   if (renderer.xr.isPresenting){
+    /* turn the tissue so the way ahead is in front of where you faced at the start, level, then put your head on the cell */
+    const f = _rdA.copy(RIDE.sdir).transformDirection(content.matrixWorld), u = _rdB.copy(RIDE.up).transformDirection(content.matrixWorld);
+    const r = new THREE.Vector3().crossVectors(f, u).normalize(); u.crossVectors(r, f).normalize();
+    _rdM.makeBasis(r, u, f.clone().negate()); _rdQ.setFromRotationMatrix(_rdM).invert();       // current frame -> world axes
+    _rdQ2.setFromAxisAngle(_qku.set(0, 1, 0), RIDE.yaw0).multiply(_rdQ);
+    stage.quaternion.premultiply(_rdQ2); stage.position.applyQuaternion(_rdQ2); stage.updateMatrixWorld(true);
     const head = new THREE.Vector3().setFromMatrixPosition(renderer.xr.getCamera().matrixWorld);
-    const w = content.localToWorld(behind.clone()); stage.position.add(head.sub(w));
+    stage.position.add(head.sub(content.localToWorld(eyeL.clone())));
   } else {
-    /* keep the stage near the origin, put the camera on the cell */
-    const w = content.localToWorld(behind.clone()); stage.position.sub(w); stage.updateMatrixWorld(true);
-    camera.position.copy(content.localToWorld(behind.clone())); const a = content.localToWorld(ahead.clone());
+    /* keep the stage near the origin, put the camera on the cell, facing the way ahead (drag to look aside) */
+    const w = content.localToWorld(eyeL.clone()); stage.position.sub(w); stage.updateMatrixWorld(true);
+    camera.position.copy(content.localToWorld(eyeL.clone()));
+    if (!RIDE.drag){ const k = Math.exp(-dt / 1.2); RIDE.lookY *= k; RIDE.lookP *= k; }
+    const f = _rdA.copy(RIDE.sdir), u = _rdB.copy(RIDE.up), r = new THREE.Vector3().crossVectors(f, u).normalize();
+    f.applyAxisAngle(u, RIDE.lookY).applyAxisAngle(r, RIDE.lookP);
+    camera.up.copy(u.transformDirection(content.matrixWorld));
+    const a = content.localToWorld(eyeL.clone().addScaledVector(f, 25));
     controls.target.copy(a); camera.lookAt(a);
   }
   /* the label in front of you */
@@ -11216,6 +11276,10 @@ function rideFrame(dt){
   }
 }
 document.getElementById("rideBtn").addEventListener("click", () => setRide(!RIDE.on));
+renderer.domElement.addEventListener("pointerdown", e => { if (RIDE.on && !renderer.xr.isPresenting) RIDE.drag = { x: e.clientX, y: e.clientY, Y: RIDE.lookY, P: RIDE.lookP }; });
+addEventListener("pointermove", e => { const d = RIDE.drag; if (!d) return;
+  RIDE.lookY = Math.max(-1.75, Math.min(1.75, d.Y - (e.clientX - d.x) * 0.005)); RIDE.lookP = Math.max(-1.05, Math.min(1.05, d.P - (e.clientY - d.y) * 0.005)); });
+addEventListener("pointerup", () => { RIDE.drag = null; });
 addEventListener("keydown", e => { if (e.code === "Escape" && RIDE.on) setRide(false); });
 
 /* ── 33. CSF TRACER THROUGH THE PERIVASCULAR SPACES (MODEL) ───────────────────────────────  2026-10-22
