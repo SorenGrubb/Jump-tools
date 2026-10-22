@@ -127,7 +127,7 @@
   .help{font-size:12px;color:var(--mut);line-height:1.45;margin-top:10px}
   .help b{color:var(--fg)}
   #hide{position:absolute;right:10px;top:8px;border:0;padding:2px 6px}
-  #show{position:fixed;left:12px;top:12px;z-index:5;display:none}
+  #show{position:fixed;left:12px;top:12px;z-index:5;display:none;background:rgba(13,17,23,.92);color:#e6edf3;border-color:#30363d;box-shadow:0 1px 6px rgba(0,0,0,.35)}   /* readable on any background (2026-10-22) */
   #keysCard{position:fixed;right:12px;bottom:12px;z-index:5;background:rgba(22,27,34,.9);border:1px solid var(--line);
     border-radius:10px;padding:9px 12px;font-size:12px;color:var(--mut);line-height:1.6;cursor:pointer;user-select:none}
   #keysCard b{color:var(--fg)}
@@ -494,7 +494,31 @@
       <div id="gameAsk" style="font-size:13px;margin:6px 0 4px"></div>
       <div id="gameOpts" style="display:flex;flex-wrap:wrap;gap:4px"></div>
       <div id="gameRes" style="font-size:12.5px;margin-top:6px"></div>
-      <div class="ctl" style="margin-top:6px"><button id="gameNext">Next cell</button></div>
+      <div id="gameEmBox" style="margin-top:8px">
+        <div style="font-size:12px;color:var(--mut);margin-bottom:3px">EM around the soma — drag to move, scroll or −/+ to zoom, ▲▼ through the cell</div>
+        <div style="position:relative;width:100%;max-width:300px;aspect-ratio:1;background:#000;border:1px solid var(--line);border-radius:6px;overflow:hidden">
+          <canvas id="gameEm" width="300" height="300" style="width:100%;height:100%;display:block;touch-action:none;cursor:grab;image-rendering:auto"></canvas>
+          <div id="gameEmLab" style="position:absolute;left:5px;top:4px;font:11px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+          <div id="gameEmBar" style="position:absolute;left:8px;bottom:8px;height:3px;background:#fff;box-shadow:0 0 2px #000;pointer-events:none"></div>
+          <div id="gameEmBarL" style="position:absolute;left:8px;bottom:13px;font:10px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+        </div>
+        <div class="ctl" style="margin-top:4px;gap:4px">
+          <button id="gameEmOut" title="Show more tissue (coarser data)">−</button><button id="gameEmIn" title="Closer (finer data)">+</button>
+          <button id="gameEmUp" title="1 µm up through the cell">▲</button><button id="gameEmDn" title="1 µm down through the cell">▼</button>
+          <button id="gameEmHome" title="Back to the centre of the nucleus">⌖ nucleus</button>
+          <a id="gameEmNg" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent)" title="The same place in Neuroglancer: EM plus this cell's segmentation, to scroll freely">Neuroglancer ↗</a>
+        </div>
+      </div>
+      <div class="ctl" style="margin-top:6px"><button id="gameNext">Next cell</button>
+        <button id="gameBad" title="This cell cannot be identified -- e.g. several nuclei merged into one detection, an incomplete or wrong root ID, or no real cell. It is sent to the discussion forum for review and you get the next cell; no points are lost.">⚠ Impossible — send for review</button></div>
+      <div id="gameBadBox" style="display:none;border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:12.5px">
+        <div style="margin-bottom:4px">What is wrong with it?</div>
+        <div id="gameBadWhy" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        <input id="gameBadNote" placeholder="Anything else (optional)" style="width:100%;box-sizing:border-box;margin-top:6px;font:12.5px system-ui;padding:4px 7px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
+        <div class="ctl" style="margin-top:6px"><button id="gameBadSend" class="on">Send for review</button><button id="gameBadCancel">Cancel</button></div>
+        <div id="gameSignin"></div>
+        <div id="gameBadOut" class="help" style="margin-top:4px"></div>
+      </div>
     </div>
   </div>
   <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
@@ -1200,6 +1224,7 @@ function setBackground(hex){
   for (let i = 0; i < n; i++){ const k = Math.floor(i / 4) === 12 ? a : b2; cols.setXYZ(i, k.r, k.g, k.b); }
   cols.needsUpdate = true;
   const el = document.getElementById("bgCol"); if (el && el.value !== LOOK.bg) el.value = LOOK.bg;
+  try { if (SBAR.line) SBAR.line.material.color.set(sbarColour()); } catch (e){}   // not yet declared during start-up
   try { localStorage.setItem("vr_look", JSON.stringify(LOOK)); } catch (e){}
   try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
 }
@@ -2214,7 +2239,7 @@ function scaleBarFrame(){
   const mPerUm = stage.scale.x, um = niceUm(0.18 / mPerUm), len = um * mPerUm;
   if (!SBAR.group){
     SBAR.group = new THREE.Group();
-    SBAR.line = new THREE.Mesh(new THREE.BoxGeometry(1, 0.006, 0.006), new THREE.MeshBasicMaterial({ color: 0xe6edf3 }));
+    SBAR.line = new THREE.Mesh(new THREE.BoxGeometry(1, 0.006, 0.006), new THREE.MeshBasicMaterial({ color: sbarColour() }));
     SBAR.group.add(SBAR.line); scene.add(SBAR.group);
   }
   SBAR.group.visible = true;
@@ -2233,6 +2258,8 @@ function scaleBarFrame(){
   cam.getWorldPosition(_cam);
   SBAR.group.lookAt(_cam.x, SBAR.group.position.y, _cam.z);
 }
+/* the bar is light on a dark background and dark on a light one (2026-10-22, Søren: hard to see on white) */
+function sbarColour(){ const c = new THREE.Color(LOOK.bg); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 0.45 ? 0xe6edf3 : 0x1f2328; }
 function setScaleBar(v){ SBAR.on = v; document.getElementById("scaleBtn").classList.toggle("on", v); MENU.dirty = true; }
 document.getElementById("scaleBtn").addEventListener("click", () => setScaleBar(!SBAR.on));
 
@@ -4048,13 +4075,14 @@ function onCred(resp){
     const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
       .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
     CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
-    document.getElementById("sceneSignin").innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>";
+    for (const id of ["sceneSignin", "gameSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
+    if (typeof GAME !== "undefined" && GAME.pendingBad){ GAME.pendingBad = false; gameBadSend(); }
     if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
   } catch (e){}
 }
-function signInUI(){
-  const box = document.getElementById("sceneSignin");
-  if (!(window.google && google.accounts && google.accounts.id)){ box.innerHTML = "<span class='help'>Loading Google sign-in…</span>"; setTimeout(signInUI, 800); return; }
+function signInUI(boxId){
+  const box = document.getElementById(boxId || "sceneSignin");
+  if (!(window.google && google.accounts && google.accounts.id)){ box.innerHTML = "<span class='help'>Loading Google sign-in…</span>"; setTimeout(() => signInUI(boxId), 800); return; }
   try {
     google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCred, auto_select: true });
     box.innerHTML = ""; google.accounts.id.renderButton(box, { theme: "filled_black", size: "medium", text: "signin_with" });
@@ -7918,6 +7946,7 @@ function menuRows(){
         else if (p && GAME.step < 2){
           rows.push({ label: "   " + (GAME.step === 0 ? "What is it?" : "Which type?") + (GAME.last && GAME.step === 1 ? "" : ""), act: () => {} });
           for (const [k, n] of (GAME.step === 0 ? GAME_CLASSES : GAME_SUBS[p.cls])) rows.push({ label: "      " + n, act: () => gameAnswer(k) });
+          rows.push({ label: "   ⚠ Impossible — send for review", act: () => { if (credOk()) gameBadSend(); else ctxNote.textContent = "Sign in with Google in the panel (Tools → the game) to send a cell for review."; } });
         } else if (p){
           rows.push({ label: "   " + GAME.last.slice(0, 70), act: () => {} });
           rows.push({ label: "   Next cell", act: () => gameNext() });
@@ -11541,6 +11570,8 @@ document.querySelectorAll("[data-drug]").forEach(el => el.addEventListener("chan
    identification is made in µJump. */
 const GAME = { on: false, pick: null, step: 0, busy: false, last: "", st: { pts: 0, n: 0, ok: 0, streak: 0 } };
 try { const g = JSON.parse(localStorage.getItem("vr_game") || "null"); if (g && typeof g.pts === "number") GAME.st = Object.assign(GAME.st, g); } catch (e){}
+/* cells somebody sent for review are not offered to them again (this browser) */
+GAME.skip = new Set(); try { (JSON.parse(localStorage.getItem("vr_game_skip") || "[]") || []).forEach(x => GAME.skip.add(String(x))); } catch (e){}
 const GAME_CLASSES = [["exc", "Excitatory neuron"], ["inh", "Inhibitory neuron"], ["astro", "Astrocyte"], ["oligo", "Oligodendrocyte"], ["opc", "OPC"],
   ["mglia", "Microglia"], ["macro", "Macrophage"], ["endo", "Endothelial cell"], ["peri", "Pericyte"], ["smc", "Smooth muscle cell"], ["fib", "Fibroblast"],
   ["imm", "Other immune cell"], ["men", "Meningeal cell"]];
@@ -11570,6 +11601,7 @@ async function gamePickVerified(){
   const ks = [...byC.keys()];
   for (let t = 0; t < 12; t++){
     const L = byC.get(ks[Math.floor(Math.random() * ks.length)]), r = L[Math.floor(Math.random() * L.length)];
+    if (GAME.skip.has(String(r[0]))) continue;
     const root = await nucRootFor(DSX, r[0]).catch(() => null); if (!root) continue;
     return { nuc: r[0], root, pos: [r[2], r[3], r[4]], cls: GAME_OWN[r[1]], sub: GAME_SUBS[GAME_OWN[r[1]]] ? r[1] : null, src: "verified", name: r[1] };
   }
@@ -11582,6 +11614,7 @@ async function gamePickMicrons(){
     const rows = (await nucTile(DSX, keys[Math.floor(Math.random() * keys.length)])).filter(r => r[5] && r[3] > 0 && GAME_MICRONS[I.types[r[3]]] && (glia ? !/^\d|^(BC|MC|BPC|NGC)$/.test(I.types[r[3]]) : /^\d|^(BC|MC|BPC|NGC)$/.test(I.types[r[3]])));
     if (!rows.length) continue;
     const r = rows[Math.floor(Math.random() * rows.length)], code = I.types[r[3]], cls = GAME_MICRONS[code];
+    if (GAME.skip.has(String(r[4]))) continue;
     return { nuc: String(r[4]), root: String(r[5]), pos: [r[0], r[1], r[2]], cls, sub: GAME_SUBS[cls] ? code : null, src: "microns", name: (I.labels && I.labels[code]) || code };
   }
   return null;
@@ -11592,7 +11625,7 @@ async function gameNext(){
     gameUi("Finding a cell…");
     const pick = (Math.random() < 0.5 ? await gamePickVerified() : null) || await gamePickMicrons() || await gamePickVerified();
     if (!pick){ gameUi("No cell could be found — try again."); return; }
-    GAME.pick = pick; GAME.step = 0; GAME.last = "";
+    GAME.pick = pick; GAME.step = 0; GAME.last = ""; document.getElementById("gameBadBox").style.display = "none"; document.getElementById("gameBadOut").textContent = "";
     for (const c of CELLS || []) for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
     CELLS = prepCells([{ ds: Object.keys(VR_DATASETS).find(k => VR_DATASETS[k] === DSX) || "microns", root: pick.root, nuc: String(pick.nuc), label: "Mystery cell", extra: [] }]);
     CELLS.forEach(c => { c.colour = c.typeColour = "#c0c7d0"; c.game = true; });
@@ -11601,6 +11634,7 @@ async function gameNext(){
     renderList(); gameUi();
     await loadAll();
     try { await showEM(pick.pos.slice()); } catch (e){}
+    GEM.mip = 3; GEM.dz = 0; GEM.pan = [0, 0]; gameEmDraw();
     gameUi();
   } catch (e){ gameUi("Could not load the cell: " + (e.message || e)); }
   finally { GAME.busy = false; if (typeof MENU !== "undefined") MENU.dirty = true; }
@@ -11650,6 +11684,96 @@ function setGame(v){
 }
 document.getElementById("gameBtn").addEventListener("click", () => setGame(!GAME.on));
 document.getElementById("gameNext").addEventListener("click", () => gameNext());
+
+/* ── EM AROUND THE SOMA (2026-10-22, Søren: "we need an easy way to see the EM around the soma, so that
+   you can get clues from ultrastructure") ── a flat 2D section in the panel, centred on the nucleus,
+   read by core/emtiles.js like µJump's EM preview: 300 px wide, 19 µm at the start (64 nm data), −/+ for
+   38 µm … 2.4 µm (the finest data is 8 nm), ▲▼ one µm through the cell, drag to move, and a Neuroglancer
+   link to the same place for free scrolling. In the headset the 3D EM plane through the nucleus stays. */
+const GEM = { mip: 3, dz: 0, pan: [0, 0], tok: 0, drag: null, nm: 64, count: 7 };
+async function gameEmDraw(){
+  const p = GAME.pick, cv = document.getElementById("gameEm"), lab = document.getElementById("gameEmLab"); if (!p || !cv) return;
+  const ds = dsOfCells(); if (!ds.em || !UJ.emtiles){ lab.textContent = "No EM for this dataset."; return; }
+  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
+  const res = ds.res, tok = ++GEM.tok;
+  const centre = [Math.round(p.pos[0] * 1000 / res[0] + GEM.pan[0]), Math.round(p.pos[1] * 1000 / res[1] + GEM.pan[1]), Math.round(p.pos[2] * 1000 / res[2] + GEM.dz)];
+  lab.textContent = "Loading the EM…";
+  try {
+    const info = await UJ.emtiles.scaleAt(GEM.mip, true); GEM.count = info.count || GEM.count;
+    if (GEM.mip > GEM.count - 1){ GEM.mip = GEM.count - 1; return gameEmDraw(); }
+    GEM.nm = info.scale.resolution[0];
+    const tmp = document.createElement("canvas");
+    await UJ.emtiles.drawSection(tmp, { centre, w: 300, h: 300, mip: GEM.mip, slabOk: true });
+    if (tok !== GEM.tok) return;
+    const g = cv.getContext("2d"); cv.width = 300; cv.height = 300; g.drawImage(tmp, 0, 0);
+    /* the nucleus centre, when it is in view */
+    const k = res[0] / GEM.nm, nx = 150 - GEM.pan[0] * k, ny = 150 - GEM.pan[1] * k;
+    if (GEM.dz === 0 && nx > 0 && nx < 300 && ny > 0 && ny < 300){ g.strokeStyle = "rgba(63,185,80,.85)"; g.lineWidth = 1.5; g.beginPath(); g.arc(nx, ny, 6, 0, 6.2832); g.stroke(); }
+    const wUm = 300 * GEM.nm / 1000, bar = [0.5, 1, 2, 5, 10].reverse().find(b => b <= wUm / 4) || 0.5;
+    document.getElementById("gameEmBar").style.width = (bar / wUm * 100) + "%";
+    document.getElementById("gameEmBarL").textContent = bar + " µm";
+    lab.textContent = wUm.toFixed(wUm < 10 ? 1 : 0) + " µm wide · " + GEM.nm + " nm data · z " + (GEM.dz >= 0 ? "+" : "") + (GEM.dz * res[2] / 1000).toFixed(1) + " µm";
+    /* the same place in Neuroglancer: EM + this cell */
+    const st = { dimensions: { x: [res[0] * 1e-9, "m"], y: [res[1] * 1e-9, "m"], z: [res[2] * 1e-9, "m"] }, position: centre, crossSectionScale: GEM.nm / res[0] / 2, projectionScale: 30000,
+      layers: [{ type: "image", source: ds.em, name: "EM" }].concat(ds.seg ? [{ type: "segmentation", source: ds.seg, segments: [String(p.root)], name: "cell", selectedAlpha: 0.15 }] : []),
+      layout: "xy-3d", selectedLayer: { layer: "EM" } };
+    document.getElementById("gameEmNg").href = "https://spelunker.cave-explorer.org/#!" + encodeURIComponent(JSON.stringify(st));
+  } catch (e){ if (tok === GEM.tok) lab.textContent = "The EM could not be read (" + (e.message || e) + ")."; }
+}
+function gameEmZoom(d){ const m = Math.max(0, Math.min(GEM.count - 1, GEM.mip + d)); if (m !== GEM.mip){ GEM.mip = m; gameEmDraw(); } }
+document.getElementById("gameEmOut").addEventListener("click", () => gameEmZoom(1));
+document.getElementById("gameEmIn").addEventListener("click", () => gameEmZoom(-1));
+document.getElementById("gameEmUp").addEventListener("click", () => { GEM.dz -= Math.round(1000 / dsOfCells().res[2]); gameEmDraw(); });
+document.getElementById("gameEmDn").addEventListener("click", () => { GEM.dz += Math.round(1000 / dsOfCells().res[2]); gameEmDraw(); });
+document.getElementById("gameEmHome").addEventListener("click", () => { GEM.dz = 0; GEM.pan = [0, 0]; gameEmDraw(); });
+{ const cv = document.getElementById("gameEm");
+  cv.addEventListener("wheel", e => { e.preventDefault(); gameEmZoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  cv.addEventListener("pointerdown", e => { GEM.drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
+  cv.addEventListener("pointermove", e => { if (GEM.drag) cv.style.transform = "translate(" + (e.clientX - GEM.drag.x) + "px," + (e.clientY - GEM.drag.y) + "px)"; });
+  cv.addEventListener("pointerup", e => { const d = GEM.drag; if (!d) return; GEM.drag = null; cv.style.cursor = "grab"; cv.style.transform = "";
+    const css = 300 / Math.max(1, cv.getBoundingClientRect().width), res = dsOfCells().res, k = GEM.nm / res[0];
+    const dx = (e.clientX - d.x) * css, dy = (e.clientY - d.y) * css; if (Math.abs(dx) + Math.abs(dy) < 2) return;
+    GEM.pan[0] -= Math.round(dx * k); GEM.pan[1] -= Math.round(dy * k); gameEmDraw(); }); }
+
+/* ── "IMPOSSIBLE — SEND FOR REVIEW" (2026-10-22, Søren: "the first cell I got was 3 merged nuclei with an
+   incomplete root ID. That was impossible. I think there should be a button that says this is impossible,
+   send for review") ── posted to the dataset's discussion forum (type forum_post, kind "question", which
+   Code.gs already takes -- nothing to redeploy), naming the nucleus and root id and the coordinate, so the
+   forum links them to the cell. No points either way; the cell is not offered again in this browser. */
+const GAME_BAD = [["merged", "Several nuclei merged"], ["incomplete", "Root ID incomplete / cell cut off"], ["wrongroot", "Root ID belongs to another cell"],
+  ["notcell", "Not a cell / no nucleus"], ["em", "EM too poor to tell"], ["other", "Something else"]];
+GAME.badWhy = new Set();
+function gameBadOpen(){
+  const box = document.getElementById("gameBadBox"); box.style.display = box.style.display === "none" ? "" : "none";
+  document.getElementById("gameBadWhy").innerHTML = GAME_BAD.map(([k, n]) => '<button data-bw="' + k + '" style="font-size:12px;padding:3px 8px"' + (GAME.badWhy.has(k) ? ' class="on"' : '') + '>' + n + '</button>').join("");
+  document.querySelectorAll("#gameBadWhy [data-bw]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.bw; GAME.badWhy.has(k) ? GAME.badWhy.delete(k) : GAME.badWhy.add(k); b.classList.toggle("on", GAME.badWhy.has(k)); }));
+  if (!credOk()) signInUI("gameSignin");
+}
+async function gameBadSend(){
+  const p = GAME.pick, out = document.getElementById("gameBadOut"); if (!p) return;
+  if (!credOk()){ GAME.pendingBad = true; out.textContent = "Sign in with Google (above) to send it — it is sent as soon as you are signed in."; signInUI("gameSignin"); return; }
+  const ds = dsOfCells(), res = ds.res, vox = p.pos.map((v, i) => Math.round(v * 1000 / res[i]));
+  const why = GAME_BAD.filter(([k]) => GAME.badWhy.has(k)).map(x => x[1]), note = (document.getElementById("gameBadNote").value || "").trim();
+  const body = "Found impossible to identify in the VR identification game: " + (why.length ? why.join("; ") : "no reason given") + "."
+    + (note ? "\n\n" + note : "")
+    + "\n\nNucleus " + p.nuc + " · root " + p.root + " · at " + vox.join(", ") + " (voxels " + res.join("/") + " nm)"
+    + "\nOffered as: " + (p.src === "verified" ? "verified " + p.name : "MICrONS prediction " + p.name);
+  const msg = { type: "forum_post", scope: "volume", kind: "question", title: "Needs review: nucleus " + p.nuc + " (" + (why[0] || "cannot be identified") + ")",
+                body, credential: CRED, tool: ds.backendDs || "ujump", ds: ds.backendDs || "ujump", nucleusId: String(p.nuc), rootId: String(p.root) };
+  out.textContent = "Sending…";
+  try {
+    const r = await fetch(ds.backend + (ds.backendDs ? "?ds=" + encodeURIComponent(ds.backendDs) : ""), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(msg) });
+    const d = JSON.parse(await r.text());
+    if (!d.ok){ out.textContent = "Not sent: " + (d.error || "no answer"); return; }
+  } catch (e){ out.textContent = "Not sent: could not reach the server."; return; }
+  GAME.skip.add(String(p.nuc)); try { localStorage.setItem("vr_game_skip", JSON.stringify([...GAME.skip].slice(-500))); } catch (e){}
+  GAME.badWhy.clear(); document.getElementById("gameBadNote").value = "";
+  ctxNote.textContent = "✓ Sent for review in the discussion forum (nucleus " + p.nuc + "). Here is the next cell.";
+  gameNext();
+}
+document.getElementById("gameBad").addEventListener("click", gameBadOpen);
+document.getElementById("gameBadCancel").addEventListener("click", () => { document.getElementById("gameBadBox").style.display = "none"; });
+document.getElementById("gameBadSend").addEventListener("click", gameBadSend);
 gameUi();
 
 /* ── 29. ONE CLOCK FOR EVERYTHING ────────────────────────────────────────────────  2026-10-22
