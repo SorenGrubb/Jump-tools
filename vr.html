@@ -210,13 +210,12 @@
       <option value="box">Perivascular space: around the cells, up to the pia</option>
       <option value="whole">Perivascular space: whole volume</option>
     </select>
+    <label id="mapRbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="Red blood cells carried by the blood-flow model through the whole MICrONS vascular network: they speed up and slow down with every dilation, constriction, heartbeat and breath, squeeze into bullets through the precapillary sphincters and stall now and then. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapRbc"> red blood cells (model)</label>
+    <label id="mapCsfRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="CSF tracer (MODEL): particles entering along the pial arteries' perivascular spaces, down the penetrating arterioles and into the tissue -- faster in sleep, slowed by a spreading depolarization or by hypertension. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapCsf"> CSF tracer (model)</label>
     <label id="pvsWRow" style="display:none;font-size:12px;align-items:center;gap:6px" title="Width of the perivascular and subarachnoid space, × the traced width (the vessel side stays on the vessel wall)">width <input type="range" id="pvsW" min="0.5" max="2" step="0.05" value="1" style="width:110px"> <span id="pvsWv">×1.00</span></label>
     <select id="vcolSel" title="Colour the vessels by what Søren traced them as: arterioles red, venules purple, and the capillaries in between in steps by order — 1st-order arterial capillaries always the first tone after the arterioles, then 2nd, 3rd, then the venous 3rd, 2nd and 1st order towards the venules. Vessels nobody traced stay grey.">
       <option value="one">Vessel colour: one colour</option>
       <option value="order">Vessel colour: by order — Søren's tracings, Shih et al. for the rest</option>
-      <option value="traced">Vessel colour: by order — Søren's tracings only</option>
-      <option value="shih">Vessel colour: by order — Shih et al. only</option>
-      <option value="agree">Vessel colour: where Søren and Shih et al. agree</option>
       <option value="flow">Vessel colour: blood flow (stroke model)</option>
     </select>
     <span id="vcolKey" style="display:none;font-size:11px;color:var(--mut);align-items:center;gap:3px;flex-wrap:wrap"></span>
@@ -710,7 +709,7 @@
     colourSel: ["", "Colour", { type: dot("#f0a742") + dot("#3fb950") + dot("#58a6ff") + '<span class="lbl">&nbsp;type</span>', ei: '<b style="color:#f0a742">E</b>·<b style="color:#b67cff">I</b>' }],
     vascSel: ["vessel", "Vessels", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
     pvsSel: ["pvs", "Perivascular", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
-    vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>', traced: "traced", shih: "Shih", agree: "agree?" }],
+    vcolSel: ["vessel", "Colour", { one: "one", order: '<span style="background:linear-gradient(90deg,#e03131,#7048e8);border-radius:3px;padding:0 6px;color:#fff">by order</span>' }],
     v1Sel: ["column", "V1 column", { off: ICON.off, outline: "outline", cells: "+ cells" }],
     skelSel: ["skel", "Skeletons", { off: ICON.off, box: ICON.around, whole: ICON.whole }],
     capSel: ["", "Capillaries", { act: "ACT", cvt: "CVT", plain: "plain" }],
@@ -746,7 +745,7 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["pvsSel"], ["#pvsWRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
@@ -6449,7 +6448,7 @@ function nvPlace(){
 }
 /* ── switches ── */
 function setVesselColour(mode){
-  if (mode === true) mode = "order";
+  if (mode === true || mode === "traced" || mode === "shih" || mode === "agree") mode = "order";   /* 2026-10-22: Søren -- only one colour or by order */
   NV.colour = mode === "order" || mode === "traced" || mode === "shih" || mode === "agree" || mode === "flow";
   if (NV.colour) NV.colourSrc = mode;
   const sel = document.getElementById("vcolSel"); if (sel && sel.value !== mode) sel.value = mode;
@@ -7846,8 +7845,12 @@ function menuRows(){
       rows.push({ label: "Perivascular space: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[pm] + "  ▸", on: pm !== "off", act: () => { document.getElementById("pvsSel").value = ({ off: "box", box: "whole", whole: "off" })[pm]; buildPvs(); } });
       if (pm !== "off"){ rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " − ", act: () => setPvsW(Math.max(0.5, PVS.w - 0.25)) }); rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " + ", act: () => setPvsW(Math.min(2, PVS.w + 0.25)) }); }
     }
-    if (DS_HAS.vasc && vm !== "off") rows.push({ label: "   Vessel colour: " + (!NV.colour ? "one colour" : ({ order: "by order (traced + Shih)", traced: "by order (traced only)", shih: "by order (Shih only)", agree: "where they agree" })[NV.colourSrc || "order"]) + "  ▸",
-      on: NV.colour, act: () => setVesselColour(!NV.colour ? "order" : ({ order: "traced", traced: "shih", shih: "agree", agree: "one" })[NV.colourSrc || "order"]) });
+    if (DS_HAS.flow){
+      rows.push({ label: "Red blood cells (model)", on: STK.on && STK.rbc, act: () => setRbcFlow(!(STK.on && STK.rbc)) });
+      rows.push({ label: "CSF tracer (model)", on: CSFT.on, act: () => setCsf(!CSFT.on) });
+    }
+    if (DS_HAS.vasc && vm !== "off") rows.push({ label: "   Vessel colour: " + (!NV.colour ? "one colour" : (NV.colourSrc === "flow" ? "blood flow" : "by order")) + "  ▸",
+      on: NV.colour, act: () => setVesselColour(!NV.colour ? "order" : "one") });
     if (DS_HAS.skel) rows.push({ label: "Vessel skeletons: " + ({ off: "off", box: "around the cells", whole: "whole (lines)" })[SKEL.mode] + "  ▸",
                 on: SKEL.mode !== "off", act: () => setSkel(({ off: "box", box: "whole", whole: "off" })[SKEL.mode]) });
     if (SKEL.mode !== "off"){
@@ -10933,7 +10936,7 @@ async function setStroke(v, opt){
     if (NV.colourSrc === "flow") setVesselColour(STK.prevColour && STK.prevColour !== "flow" ? STK.prevColour : "one");
     STK.arm = false; document.getElementById("stkPlace").classList.remove("on");
   }
-  { const nb = document.getElementById("nvRbc"); if (nb) nb.checked = STK.on && STK.rbc; }
+  { for (const id of ["nvRbc", "mapRbc"]){ const nb = document.getElementById(id); if (nb) nb.checked = STK.on && STK.rbc; } }
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function stkSetting(k, v){
@@ -10946,7 +10949,7 @@ function stkSetting(k, v){
   if (!STK.on) return;
   if (k === "collat" || k === "map" || k === "auto" || k === "peri") STK.dirty = true;
   if (k === "collat") stkUpdate();
-  if (k === "rbc"){ v ? stkRbcBuild() : stkRbcClear(); const nb = document.getElementById("nvRbc"); if (nb) nb.checked = !!v; }
+  if (k === "rbc"){ v ? stkRbcBuild() : stkRbcClear(); for (const id of ["nvRbc", "mapRbc"]){ const nb = document.getElementById(id); if (nb) nb.checked = !!v; } }
   if (k === "colour"){ if (v){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); } else setVesselColour(STK.prevColour && STK.prevColour !== "flow" ? STK.prevColour : "one"); }
   if (k === "cmode"){ if (!STK.colour) stkSetting("colour", true); else stkRecolour(); }
   if (k === "hyp" || k === "hypThr") stkPockets();
@@ -10982,6 +10985,7 @@ function setRbcFlow(v){
   else stkSetting("rbc", false);
 }
 document.getElementById("nvRbc").addEventListener("change", e => setRbcFlow(e.target.checked));
+document.getElementById("mapRbc").addEventListener("change", e => setRbcFlow(e.target.checked));
 document.getElementById("stkPlace").addEventListener("click", () => {
   if (!STK.on){ setStroke(true).then(() => { STK.arm = true; document.getElementById("stkPlace").classList.add("on"); ctxNote.textContent = "Stroke: click (or trigger) on a vessel to put a clot there."; }); return; }
   STK.arm = !STK.arm; document.getElementById("stkPlace").classList.toggle("on", STK.arm);
@@ -11265,6 +11269,7 @@ async function setCsf(v){
     CSFT.m1 = CSFT.m2 = null; CSFT.P = null;
   }
   document.getElementById("csfBtn").classList.toggle("on", CSFT.on);
+  { const mc = document.getElementById("mapCsf"); if (mc) mc.checked = CSFT.on; }
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function csfFrame(sdt){
@@ -11332,6 +11337,7 @@ function csfPlace(i, c, s){
 }
 function stkGauss(){ let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2831853 * v); }
 document.getElementById("csfBtn").addEventListener("click", () => setCsf(!CSFT.on));
+document.getElementById("mapCsf").addEventListener("change", e => Promise.resolve(setCsf(e.target.checked)).finally(() => { e.target.checked = CSFT.on; }));
 
 /* ── 34. DRUGS (MODEL) ────────────────────────────────────────────────────────────────  2026-10-22
    Three classic experiments as switches; each only changes things the models already have.
@@ -12018,7 +12024,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 (function hideMissing(){
   const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", gameBox: "vec" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapCsfRow: "flow", gameBox: "vec" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
