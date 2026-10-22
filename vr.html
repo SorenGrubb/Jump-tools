@@ -321,7 +321,7 @@
   <div id="caBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
       <select id="caSpeed" title="Wave speed over the membrane. Astrocyte waves run about 10–20 µm/s (Charles 1998)"><option value="5">Speed 5 µm/s</option><option value="10">Speed 10 µm/s</option><option value="15" selected>Speed 15 µm/s</option><option value="20">Speed 20 µm/s</option><option value="30">Speed 30 µm/s</option></select>
-      <select id="caClock" title="How much faster than real time the Ca²⁺ clock runs"><option value="1">Clock ×1 (real time)</option><option value="2" selected>Clock ×2</option><option value="5">Clock ×5</option><option value="10">Clock ×10</option></select>
+      <select style="display:none" id="caClock" title="How much faster than real time the Ca²⁺ clock runs"><option value="1">Clock ×1 (real time)</option><option value="2" selected>Clock ×2</option><option value="5">Clock ×5</option><option value="10">Clock ×10</option></select>
     </div>
     <div style="font-size:11.5px;color:var(--mut);margin:4px 0 2px">Coupled by gap junctions (assumed from the cell types — EM does not show the junction)</div>
     <div class="catick">
@@ -350,7 +350,7 @@
   <div id="raBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
       <select id="raClip" style="max-width:100%" title="All six clips back to back, or one clip on a loop"><option value="all">All clips</option></select>
-      <select id="raSpeed" title="Playback speed (the recordings are in real time)"><option value="0.25">×0.25</option><option value="0.5">×0.5</option><option value="1" selected>×1 (real time)</option><option value="2">×2</option></select>
+      <select style="display:none" id="raSpeed" title="Playback speed (the recordings are in real time)"><option value="0.25">×0.25</option><option value="0.5">×0.5</option><option value="1" selected>×1 (real time)</option><option value="2">×2</option></select>
       <select id="raScale" title="How bright: one scale for every cell (z 0.5 → dark, z 4 → full), or each cell from its own quiet to its own peak"><option value="shared" selected>Same scale for all</option><option value="own">Each cell its own range</option></select>
     </div>
     <div class="ctl" style="margin:0 0 6px">
@@ -375,7 +375,7 @@
   </div>
   <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
-      <select id="nvPreset" title="Realistic: sizes and speeds of the right order for an awake mouse. Teaching: four times the dilation, slower conduction and a slowed, larger heartbeat, so each step can be seen"><option value="real" selected>Realistic</option><option value="teach">Teaching (larger, slower)</option></select>
+      <select id="nvPreset" title="Realistic: sizes and speeds of the right order for an awake mouse. Teaching: four times the dilation and a larger heartbeat and breathing; the timing is set by the clock (bottom centre)"><option value="real" selected>Realistic</option><option value="teach">Teaching (larger)</option></select>
     </div>
     <div class="catick">
       <label title="Dilation driven by the cells' activity, from the 1st-order capillary outward"><input type="checkbox" data-nv="act" checked> neurovascular coupling</label>
@@ -406,7 +406,7 @@
         <option value="rem">REM</option>
         <option value="awake">Awake</option>
       </select>
-      <label style="font-size:12px" title="Teaching: the spikes are drawn at a quarter speed, the stages last 15–45 s instead of 1–3 minutes, and the slow vasomotion runs at 0.1 Hz instead of 0.02 Hz, so a whole cycle fits in under two minutes"><input type="checkbox" id="slTeach" checked> teaching (faster cycle, slower spikes)</label>
+      <label style="font-size:12px;display:none" title="Teaching: the spikes are drawn at a quarter speed, the stages last 15–45 s instead of 1–3 minutes, and the slow vasomotion runs at 0.1 Hz instead of 0.02 Hz, so a whole cycle fits in under two minutes"><input type="checkbox" id="slTeach"> teaching (faster cycle, slower spikes)</label>
       <label style="font-size:12px" title="A plot of the model EEG (the loaded neurons' summed firing), the arteriole diameter and the stage"><input type="checkbox" id="slPlot" checked> plot</label>
     </div>
     <div id="slNote" style="font-size:11.5px;color:var(--mut)">MODEL, not measured -- the MICrONS mouse was recorded awake. Uses the vessel dilation (on) and the modelled Ca²⁺ of mural, endothelial and astrocyte cells.</div>
@@ -428,7 +428,7 @@
   </div>
   <div id="csdBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="catick">
-      <label title="Teaching: the whole event four times faster (wave 12 mm/min, silence ~1 min). Off: real time (3 mm/min; the vessels stay narrowed for tens of minutes)"><input type="checkbox" id="csdTeach" checked> teaching (4× faster)</label>
+      <label style="display:none" title="Teaching: the whole event four times faster (wave 12 mm/min, silence ~1 min). Off: real time (3 mm/min; the vessels stay narrowed for tens of minutes)"><input type="checkbox" id="csdTeach"> teaching (4× faster)</label>
       <label><input type="checkbox" id="csdPlot" checked> plot</label>
       <button id="csdAgain" title="Send another wave">Again</button>
     </div>
@@ -3254,7 +3254,7 @@ function stimulateAt(c, node){
      wait is said in real milliseconds and in seconds at the spike slow-down. A spike still on its way
      to this spot counts too: the membrane is about to be busy. */
   const waitAt = n => c.apNodeT && c.apNodeT[n] < 1e8 ? Math.max(0, c.apNodeT[n] + REF_MS - STIM.now) : 0;
-  const say = ms => ms.toFixed(1) + " ms (about " + Math.ceil(ms * STIM.slow / 1000) + " s at this speed)";
+  const say = ms => ms.toFixed(1) + " ms (about " + Math.ceil(ms / Math.max(1e-4, SIM.speed) / 1000) + " s at this clock speed)";
   const w0 = waitAt(near.node);
   if (w0 > 0){
     ctxNote.textContent = "⚠ Too soon: " + c.label + " is in its refractory period here (blue) and cannot fire yet — wait " + say(w0) + " before stimulating it again.";
@@ -3265,8 +3265,9 @@ function stimulateAt(c, node){
   fireCell(c, near.node, STIM.now);
   if (wMax > 0) setTimeout(() => { ctxNote.textContent = "⚠ Parts of " + c.label + " are still refractory (blue): the new spike stops there. Wait " + say(wMax) + " for the whole cell to recover."; flashWarn(ctxNote.textContent); }, 0);
   STIM.running = true;
+  if (SIM.speed > 1 / 200) setSimSpeed(1 / 5000);           // section 29: spikes need slow motion
   ctxNote.textContent = "⚡ Spike started on " + c.label + " (" + EI_NAME[cellClass(c)] + (cellClass(c) === "unknown" ? ", treated as excitatory" : "")
-    + ") — spreading at 0.5 m/s, shown 5000× slower." + (STIM.syn && STIM.syn.some(x => x.pre === c.i) ? " Its " + STIM.syn.filter(x => x.pre === c.i).length + " output synapses will " + (cellClass(c) === "inh" ? "inhibit" : "excite") + " their targets (" + GAIN_NAME[String(stimGain())] + ")." : "");
+    + ") — spreading at 0.5 m/s, shown " + simFmt(SIM.speed) + " (the clock, bottom centre)." + (STIM.syn && STIM.syn.some(x => x.pre === c.i) ? " Its " + STIM.syn.filter(x => x.pre === c.i).length + " output synapses will " + (cellClass(c) === "inh" ? "inhibit" : "excite") + " their targets (" + GAIN_NAME[String(stimGain())] + ")." : "");
 }
 
 /* ── synapse sites and electrodes on a cell ── */
@@ -3682,7 +3683,7 @@ function flashWarn(text, ms, border){
    band can be followed; synaptic potentials last tens of ms, which at 5000× would take minutes, so
    between spikes the clock eases to 500× slower. The clock card always says which. */
 STIM.slowIdle = 500;
-function stimFrame(dt){
+function stimFrame(dt, sdt){
   if (STIM.warn && performance.now() > STIM.warnUntil){ scene.remove(STIM.warn); STIM.warn.material.map.dispose(); STIM.warn.material.dispose(); STIM.warn = null; }
   try { plotsFrame(); } catch (e){ console.warn("plots:", e); }
   /* The clock card follows the scale bar every frame (not only while the clock runs), and any card
@@ -3693,11 +3694,10 @@ function stimFrame(dt){
   STIM.active = STIM.active || new Set();
   const lastAp = Math.max(0, ...CELLS.map(c => c.apLast || 0));
   const busy = STIM.now < lastAp + 0.3 || (STIM.events.length && STIM.events[0].t < STIM.now + 0.6);
-  const target = Math.log(busy ? STIM.slow : Math.min(STIM.slow, STIM.slowIdle));
-  STIM.slowLog = STIM.slowLog == null ? target : STIM.slowLog + (target - STIM.slowLog) * Math.min(1, dt * (busy ? 12 : 2));
-  const slow = Math.exp(STIM.slowLog);
+  STIM.busy = !!busy;                                        // the master clock eases between spikes (section 29)
+  const slow = SIM.eff > 0 ? 1 / SIM.eff : Infinity;
   /* Small sub-steps so a threshold crossing or a dendritic spike is caught when it happens. */
-  const step = dt * 1000 / slow, n = Math.max(1, Math.ceil(step / 0.05));
+  const step = sdt * 1000, n = Math.max(1, Math.ceil(step / 0.05));
   for (let k = 0; k < n; k++){
     STIM.now += step / n;
     while (STIM.events.length && STIM.events[0].t <= STIM.now){ const e = STIM.events.shift(); if (e.syn) deliver(e.syn, e.t); }
@@ -3711,7 +3711,7 @@ function stimFrame(dt){
   if (STIM.syn) STIM.syn.forEach(s => { if (s.marker && s.marker.scale.x > 1) s.marker.scale.setScalar(Math.max(1, s.marker.scale.x - dt * 0.8)); });
   /* A clock in real time, next to the scale bar. */
   if (!STIM.hud){ STIM.hud = { last: "" }; }
-  const txt = "t = " + STIM.now.toFixed(1) + " ms  (" + (Math.round(slow / 50) * 50) + "× slower) · " + (STIM.spikes || 0) + " spike" + (STIM.spikes === 1 ? "" : "s");
+  const txt = "t = " + STIM.now.toFixed(1) + " ms  (" + (isFinite(slow) ? (slow >= 1 ? Math.round(slow).toLocaleString("en-US") + "× slower" : simFmt(SIM.eff)) : "paused") + ") · " + (STIM.spikes || 0) + " spike" + (STIM.spikes === 1 ? "" : "s");
   if (txt !== STIM.hud.last){
     STIM.hud.last = txt;
     if (STIM.hud.spr){ scene.remove(STIM.hud.spr); STIM.hud.spr.material.map.dispose(); STIM.hud.spr.material.dispose(); }
@@ -4799,7 +4799,7 @@ function caStartAt(c, node){
   if (!CA.running) caReset();
   findContacts();
   caAddSource(c, node, CA.now, 1, "started here", null);
-  CA.running = true; CA.started = c.i;
+  CA.running = true; CA.started = c.i; simRecommend("ca");
   ctxNote.textContent = "Ca²⁺ wave started in " + shortName(c) + " (" + CA_KIND_NAME[caKind(c)] + ") — " + CA.speed + " µm/s"
     + (CA.gapBlock ? ", gap junctions blocked" : "") + (CA.ip3Block ? ", IP3 receptors blocked" : "") + (CA.atp ? ", ATP route on" : "") + ".";
 }
@@ -4814,7 +4814,7 @@ function caWithRay(r){
 }
 function caFrame(dt){
   if (!CA.running){ caHudPlace(); return; }
-  CA.now += dt * CA.clock;
+  CA.now += dt;                                              // brain time (section 29)
   while (CA.events.length && CA.events[0].t <= CA.now){
     const e = CA.events.shift(), o = CELLS[e.cell];
     if (!o || !inPlay(o) || (e.from != null && !inPlay(CELLS[e.from]))) continue;
@@ -4841,7 +4841,7 @@ function caContactFlash(){
 function caCells(){ return CELLS.filter(c => c.ca && c.ca.T); }
 function caHud(){
   const n = caCells().length;
-  const txt = "Ca²⁺ t = " + CA.now.toFixed(1) + " s (×" + CA.clock + ") · " + n + " cell" + (n === 1 ? "" : "s") + " · " + CA.speed + " µm/s" + (CA.running ? "" : " · done");
+  const txt = "Ca²⁺ t = " + CA.now.toFixed(1) + " s (" + simFmt(SIM.eff) + ") · " + n + " cell" + (n === 1 ? "" : "s") + " · " + CA.speed + " µm/s" + (CA.running ? "" : " · done");
   if (CA.hud && CA.hud.last === txt){ caHudPlace(); return; }
   if (CA.hud && CA.hud.spr){ scene.remove(CA.hud.spr); CA.hud.spr.material.map.dispose(); CA.hud.spr.material.dispose(); }
   const spr = textSprite([txt, "green — Ca²⁺ rise (ΔF/F), front brightest", "teal ball — coupled contact, pulses as the wave crosses"],
@@ -5204,7 +5204,7 @@ function raFrame(dt){
       renderList();
     }
   }
-  if (RA.playing && !RA.tlKey) RA.t = raWrap(RA.t + dt * RA.speed, RA.clip);
+  if (RA.playing && !RA.tlKey) RA.t = raWrap(RA.t + dt, RA.clip);           // brain time (section 29)
   /* With recorded-activity effects on an open timeline, the cells rest between them. */
   const dark = !RA.tlKey && !RA.playing && raTlKeys().length && TL.open;
   raApplyGlow(!dark); RA.lit = true;
@@ -5217,7 +5217,7 @@ function raHud(){
   if (!RA.on || !RA.meta){ if (RA.hud){ RA.hud.visible = false; } return; }
   const { k, s } = raClipAt(RA.t), C = RA.meta.clips[k], n = raCells().length;
   const txt = "Recorded · clip " + (k + 1) + "/" + RA.meta.clips.length + " · " + Math.max(0, s).toFixed(1) + " s"
-    + (RA.tlKey ? " · timeline" : RA.playing ? " · ×" + RA.speed : " · paused") + " · " + n + " imaged cell" + (n === 1 ? "" : "s");
+    + (RA.tlKey ? " · timeline" : RA.playing ? " · " + simFmt(SIM.eff) : " · paused") + " · " + n + " imaged cell" + (n === 1 ? "" : "s");
   const l2 = C.movie.slice(0, 48) + " (" + C.kind + ")";
   const key = txt + "|" + l2 + "|" + RA.spikes;
   if (RA.hud && RA.hudKey === key){ RA.hud.visible = true; return; }
@@ -5433,7 +5433,7 @@ function raScreenFrame(){
   if (v.readyState >= 1){
     const diff = Math.abs(v.currentTime - RA.t);
     if (run){
-      const rate = RA.tlKey ? 1 : RA.speed; if (v.playbackRate !== rate) v.playbackRate = rate;
+      const rate = RA.tlKey ? 1 : Math.max(0.0625, Math.min(16, SIM.eff || 0.0625)); if (Math.abs(v.playbackRate - rate) > 1e-3) v.playbackRate = rate;
       RA.wantVideo = true;
       if (v.paused && !RA._playing){ RA._playing = true; v.play().then(() => { RA._playing = false; }, () => { RA._playing = false; }); }
       if (diff > 0.25 && !v.seeking) v.currentTime = RA.t;
@@ -5465,7 +5465,7 @@ async function setRa(v, quiet){
   if (!quiet) ctxNote.textContent = "Recorded activity: reading which of the loaded cells were imaged…";
   try { await raMeta(); } catch (e){ ctxNote.textContent = "Recorded activity could not be read: " + (e.message || e); return; }
   await raAttach();
-  if (!quiet && !RA.tlKey && raCells().length){ RA.playing = true; raPlayBtn(); }
+  if (!quiet && !RA.tlKey && raCells().length){ RA.playing = true; raPlayBtn(); simRecommend("rec"); }
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function raPlayBtn(){ const b = document.getElementById("raPlay"); if (b){ b.classList.toggle("on", RA.playing); const l = b.querySelector(".lbl"); if (l) l.textContent = RA.playing ? "Pause" : "Play"; else b.textContent = RA.playing ? "⏸ Pause" : "▶ Play"; } }
@@ -5621,10 +5621,10 @@ const NV_PRESET = {
            vaso: { pial_art: 0.03, pa: 0.03, acap1: 0.015, acap2: 0.008, acap3: 0.004, mid: 0.003, ven: 0.002, none: 0.004 }, vf: 0.1,
            speed: 500, lambda: 600, tau: 0.6, label: "realistic" },
   teach: { gain: { acap1: 0.60, pa: 0.40, acap2: 0.28, pial_art: 0.24, acap3: 0.12, mid: 0.05, ven: 0.08 },
-           pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, mid: 0.015, ven: 0.012, none: 0.015 }, hr: 1.2,
-           resp: [-0.004, 0.004, -0.02], rr: 0.3,
+           pulse: { pial_art: 0.08, pa: 0.08, acap1: 0.05, acap2: 0.03, acap3: 0.02, mid: 0.015, ven: 0.012, none: 0.015 }, hr: 10,
+           resp: [-0.004, 0.004, -0.02], rr: 3,
            vaso: { pial_art: 0.09, pa: 0.09, acap1: 0.05, acap2: 0.025, acap3: 0.012, mid: 0.01, ven: 0.006, none: 0.01 }, vf: 0.1,
-           speed: 120, lambda: 900, tau: 0.9, label: "TEACHING — larger and slower than life" }
+           speed: 500, lambda: 900, tau: 0.6, label: "TEACHING — larger than life (timing from the clock)" }
 };
 const NV_ART = new Set(["pial_art", "pa", "acap1", "acap2", "acap3"]);
 /* VESSEL COLOURS BY WHAT THEY ARE (v69, Søren: "color the arterioles red, the venules purple and all
@@ -5987,6 +5987,7 @@ AP_UNI.nvT = { value: 0 }; AP_UNI.nvHR = { value: 10 }; AP_UNI.nvVF = { value: 0
 AP_UNI.nvVaA = { value: 1 }; AP_UNI.nvSlA = { value: 0 }; AP_UNI.nvSlPh = { value: 0 };   // nvSlA = 1 − NE (section 24b)
 AP_UNI.nvNeA = { value: new THREE.Vector3(0.02, 0.06, 0.005) };                                 // per class: capillary, arteriole, venous
 AP_UNI.nvRsA = { value: new THREE.Vector3(-0.001, 0.001, -0.005) }; AP_UNI.nvRPh = { value: 0 };   // breathing (v80)
+AP_UNI.nvPK = { value: 1 };                                                                       // heartbeat visibility at this clock speed (29)
 /* The breathing rate now: ≈ 3 Hz awake; in sleep slower and regular (NREM) or faster and irregular (REM). */
 function nvBreathRate(dt){
   const pr = NV_PRESET[NV.preset];
@@ -6009,7 +6010,7 @@ function nvMaterial(mesh){
   m.onBeforeCompile = sh => {
     base(sh);
     sh.uniforms.nvTex = U.tex; sh.uniforms.nvW = U.W; sh.uniforms.nvH = U.H; sh.uniforms.nvColOn = U.col; sh.uniforms.nvTint = U.tint;
-    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nvarying float vNvD;\n"
+    sh.vertexShader = "attribute float vnNode;\nattribute float vnR;\nattribute vec3 vnCol;\nvarying vec3 vNvCol;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform float nvPK;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nvarying float vNvD;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           vec2 nuv = vec2((mod(vnNode, nvW) + 0.5) / nvW, (floor(vnNode / nvW) + 0.5) / nvH);
@@ -6017,7 +6018,7 @@ function nvMaterial(mesh){
           float ph = fract(nvT * nvHR);
           float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);      // a sharp rise, a slower fall
           float rk = floor(q.a / 6.2831853 + 0.0001);
-          float d = q.r + q.g * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
+          float d = q.r + q.g * nvPK * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
                   + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh)
                   + (rk < 0.5 ? nvNeA.x : rk < 1.5 ? nvNeA.y : nvNeA.z) * nvSlA       // noradrenaline tone (v85)
                   + csdVes(csdT < 0.0 ? -1.0 : csdT - distance(position, csdO) / csdV, rk);   // spreading depolarization (v86)        // breathing (v80)
@@ -6206,7 +6207,7 @@ async function nvShihNet(){
    endothelial and mural Ca²⁺ and the astrocytes all read this, never the source. */
 const NR = { est: new Map(), cnt: new Map(), t: 0, out: new Map() };
 function neuronRates(){
-  const now = performance.now() / 1000, dt = Math.min(1, Math.max(0, now - NR.t)); if (dt < 0.02 && NR.t) return NR.out; NR.t = now;
+  const now = SIM.t, dt = Math.min(10, Math.max(0, now - NR.t)); if (dt < 0.002 && NR.t) return NR.out; NR.t = now;   // brain time (29)
   const k = Math.exp(-dt / 1.0), out = new Map();
   for (const [c, r] of NR.est){ const v = r * k; if (v < 0.01) NR.est.delete(c); else NR.est.set(c, v); }
   for (const c of CELLS){
@@ -6238,7 +6239,7 @@ function nvGainLi(){
 }
 function nvTick(){
   if (!NV.on || !NV.texData || !VASC.mesh || VASC.mesh.geometry.uuid !== NV.geo){ return; }
-  const now = performance.now(), dtS = Math.min(0.5, (now - (NV.lastTick || now)) / 1000); NV.lastTick = now;
+  const now = SIM.t, dtS = Math.min(5, Math.max(0, now - (NV.lastTick == null ? now : NV.lastTick))); NV.lastTick = now;   // brain time (29)
   const pr = NV_PRESET[NV.preset], D = NV.texData;
   for (let li = 0; li < NV.glob.length; li++) D[li*4] = 0;
   if (NV.act){
@@ -6279,9 +6280,14 @@ function nvFrame(){
   if (!NV.on){ if (VASC.mesh && VASC.mesh.material.userData.nv){ AP_UNI.nvT.value = 0; if (NV.texData && NV._cleared !== true){ NV.texData.fill(0); NV.tex.needsUpdate = true; NV._cleared = true; } } nvPlotDraw(true); return; }
   NV._cleared = false;
   if (VASC.mesh && NV.geo !== VASC.mesh.geometry.uuid && !NV._attaching){ NV._attaching = true; nvAttach().finally(() => { NV._attaching = false; }); }
-  { const tn = (performance.now() - NV.t0) / 1000, dt = Math.min(0.1, Math.max(0, tn - AP_UNI.nvT.value));
+  { const dt = Math.min(10, Math.max(0, SIM.t - AP_UNI.nvT.value));               // brain time (section 29)
     AP_UNI.nvRPh.value = (AP_UNI.nvRPh.value + 6.2831853 * nvBreathRate(dt) * dt) % 6.2831853; NV.rrNow = nvBreathRate(0); }
-  AP_UNI.nvT.value = (performance.now() - NV.t0) / 1000;
+  AP_UNI.nvT.value = SIM.t;
+  /* rhythms faster than ~4 per second on the screen fade instead of flickering */
+  { const pr = NV_PRESET[NV.preset], e = Math.max(1e-6, SIM.eff);
+    AP_UNI.nvPK.value = Math.max(0, Math.min(1, 4 / (e * pr.hr)));
+    const kb = Math.max(0, Math.min(1, 4 / (e * Math.max(0.1, NV.rrNow || pr.rr)))), ra = NV.resp ? pr.resp : [0, 0, 0];
+    AP_UNI.nvRsA.value.set(ra[0] * kb, ra[1] * kb, ra[2] * kb); }
   if (NV.useShih && NV.act && VASC.mesh && NV.geo === VASC.mesh.geometry.uuid && NV.snetFor !== NV.geo && !NV._snetBusy){
     NV._snetBusy = true; NV.snetFor = NV.geo; nvShihNet().finally(() => { NV._snetBusy = false; });
   }
@@ -6401,7 +6407,7 @@ function nvApplyUi(u){
   if (u.on != null && !!u.on !== NV.on) setNv(u.on);
   if (u.colour != null) setVesselColour(u.colour === true ? "order" : u.colour || "one");
 }
-document.getElementById("nvBtn").addEventListener("click", () => setNv(!NV.on));
+document.getElementById("nvBtn").addEventListener("click", () => { setNv(!NV.on); if (NV.on) simRecommend("nvc"); });
 document.getElementById("nvPreset").addEventListener("change", e => nvSetting("preset", e.target.value));
 document.querySelectorAll("#nvBox [data-nv]").forEach(el => el.addEventListener("change", () => nvSetting(el.dataset.nv, el.checked)));
 
@@ -6453,7 +6459,7 @@ function mcDrive(dtS){
   return u;
 }
 function mcTick(){
-  const now = performance.now(), dtS = Math.min(0.5, (now - (MC.lastTick || now)) / 1000); MC.lastTick = now;
+  const now = SIM.t, dtS = Math.min(5, Math.max(0, now - (MC.lastTick == null ? now : MC.lastTick))); MC.lastTick = now;   // brain time (29)
   const pr = NV_PRESET[NV.preset];
   /* neurons: a smoothed activity, kept for MC_DELAY s */
   const u = mcDrive(dtS);
@@ -6592,7 +6598,7 @@ function slMult(c){
 }
 const SL_NAME = { awake: "awake", nrem: "NREM sleep", rem: "REM sleep" };
 const SL_COL = { awake: "#e6edf3", nrem: "#4dabf7", rem: "#da77f2" };
-const SL = { on: false, mode: "cycle", teach: true, plot: true, stage: "awake", stageT: 0, sc: 0, t: 0,
+const SL = { on: false, mode: "cycle", teach: false, plot: true, stage: "awake", stageT: 0, sc: 0, t: 0,
              p: Object.assign({ isf: 0.1 }, SL_STATE.awake), pp: Object.assign({}, SL_POP.awake), flare: 0, nextUp: 0, upStart: -1, spindle: false,
              spk: new Map(), rate: new Map(), ca: new Map(), hist: [], eeg: [], frac: 1, said: false };
 function slDur(){ return SL.teach ? { awake: 15, nrem: 45, rem: 20 } : { awake: 60, nrem: 180, rem: 60 }; }
@@ -6748,7 +6754,8 @@ function setSleep(v){
   if (SL.on){
     if (typeof RA !== "undefined" && RA.on){ setRa(false); }
     if (DS_HAS.vasc && !NV.on) setNv(true);
-    SL.t = 0; SL.sc = 0; SL.nextUp = 0; SL.flare = 0;
+    simRecommend("sleep");
+    SL.t = 0; SL.sc = 0; SL.nextUp = 0; SL.flare = 0; SL.teach = false;
     slSetStage(SL.mode === "cycle" ? "awake" : SL.mode);
     if (!SL.said){ SL.said = true; ctxNote.textContent = "Sleep (MODEL): " + (SL.mode === "cycle" ? "awake → NREM → REM → awake" : SL_NAME[SL.mode]) + ". In NREM the neurons fire together in up-states and the locus coeruleus fires in slow bursts, so noradrenaline rises and falls and the arterioles swing with it; in REM the neurons fire on a theta rhythm, the locus coeruleus is silent and the arterioles dilate. The vessels, the perivascular space and the Ca²⁺ of mural cells and astrocytes follow the neurons (yellow trace in the plot), nothing is set by the sleep stage itself. Not measured — the MICrONS mouse was awake."; }
   } else slClear();
@@ -6782,7 +6789,7 @@ function slPlotDraw(){
   g.strokeStyle = SL_COL[SL.stage]; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
   g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif"; g.fillText("Sleep: " + SL_NAME[SL.stage], 16, 32);
   g.font = "600 16px system-ui, sans-serif"; g.fillStyle = "#f0883e";
-  g.fillText("MODEL, not measured · " + (SL.teach ? "TEACHING: faster cycle, spikes at ¼ speed" : "realistic timing"), 16, 56);
+  g.fillText("MODEL, not measured · clock " + simFmt(SIM.eff || SIM.speed) + " (bottom centre) · stages 1–3 min of brain time", 16, 56);
   const L = 70, R = W - 20;
   /* model EEG: the population firing rate, last 6 s of spike time */
   g.fillStyle = "#8b949e"; g.font = "15px system-ui, sans-serif"; g.fillText("model EEG (summed firing), last 6 s", L, 84);
@@ -7216,7 +7223,7 @@ function pvsMaterial(){
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.nvTex = { get value(){ return NV.tex; } }; sh.uniforms.nvW = { get value(){ return NV.W; } }; sh.uniforms.nvH = { get value(){ return NV.H; } };
-    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nattribute vec4 pvA;\nuniform float pvHasA;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nuniform float pvW;\n"
+    sh.vertexShader = "attribute float pvNode;\nattribute float pvR;\nattribute float pvD;\nattribute vec3 pvDir;\nattribute vec4 pvA;\nuniform float pvHasA;\nuniform sampler2D nvTex;\nuniform float nvW;\nuniform float nvH;\nuniform float nvT;\nuniform float nvHR;\nuniform float nvVF;\nuniform float nvVaA;\nuniform float nvSlA;\nuniform float nvSlPh;\nuniform vec3 nvRsA;\nuniform float nvRPh;\nuniform vec3 nvNeA;\nuniform float nvPK;\nuniform vec3 csdO;\nuniform float csdT;\nuniform float csdV;\nfloat csdB(float t, float a, float b){ if (t < a || t > b) return 0.0; float x = sin(3.14159 * (t - a) / (b - a)); return x * x; }\nfloat csdR(float t, float a, float b){ return clamp((t - a) / (b - a), 0.0, 1.0); }\nfloat csdVes(float tau, float rk){ if (tau < 0.0) return 0.0; if (rk > 0.5 && rk < 1.5) return -0.12 * csdB(tau, 0.0, 8.0) + 0.25 * csdB(tau, 8.0, 70.0) - 0.15 * csdR(tau, 60.0, 100.0) * exp(-max(0.0, tau - 100.0) / 1200.0); if (rk < 0.5) return -0.10 * csdR(tau, 1.0, 20.0) * exp(-max(0.0, tau - 20.0) / 600.0) + 0.05 * csdB(tau, 8.0, 60.0); return 0.06 * csdB(tau, 10.0, 70.0); }\nfloat csdPvs(float tau){ if (tau < 0.0) return 0.0; return -0.5 * csdR(tau, 5.0, 40.0) * exp(-max(0.0, tau - 40.0) / 900.0); }\nuniform float pvW;\n"
       + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
         {
           float wall = 0.0, shift = 0.0;
@@ -7226,7 +7233,7 @@ function pvsMaterial(){
             float ph = fract(nvT * nvHR);
             float beat = ph < 0.12 ? ph / 0.12 : exp(-(ph - 0.12) / 0.22);
             float rk = floor(q.a / 6.2831853 + 0.0001);
-          float d = q.r + q.g * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
+          float d = q.r + q.g * nvPK * beat + q.b * nvVaA * sin(6.2831853 * nvVF * nvT + q.a)
                   + (rk < 0.5 ? nvRsA.x : rk < 1.5 ? nvRsA.y : nvRsA.z) * sin(nvRPh)
                   + (rk < 0.5 ? nvNeA.x : rk < 1.5 ? nvNeA.y : nvNeA.z) * nvSlA       // noradrenaline tone (v85)
                   + csdVes(csdT < 0.0 ? -1.0 : csdT - distance(position, csdO) / csdV, rk);   // spreading depolarization (v86)        // breathing (v80)
@@ -7750,7 +7757,6 @@ function menuRows(){
     rows.push({ label: "Ca²⁺ wave (trigger on any cell)", on: CA.on, act: () => setCa(!CA.on) });
     if (CA.on || CA.running){
       rows.push({ label: "   Ca²⁺ speed: " + CA.speed + " µm/s  ▸", act: () => caSetting("speed", ({ 5: 10, 10: 15, 15: 20, 20: 30, 30: 5 })[CA.speed] || 15) });
-      rows.push({ label: "   Ca²⁺ clock: ×" + CA.clock + "  ▸", act: () => caSetting("clock", ({ 1: 2, 2: 5, 5: 10, 10: 1 })[CA.clock] || 2) });
       rows.push({ label: "   Gap junctions blocked", on: CA.gapBlock, act: () => caSetting("gapBlock", !CA.gapBlock) });
       rows.push({ label: "   ATP route (extracellular)", on: CA.atp, act: () => caSetting("atp", !CA.atp) });
       rows.push({ label: "   IP3 receptors blocked", on: CA.ip3Block, act: () => caSetting("ip3Block", !CA.ip3Block) });
@@ -7770,13 +7776,14 @@ function menuRows(){
         rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
     }
+    rows.push({ label: "Clock " + (SIM.paused ? "paused" : simFmt(SIM.speed)) + "  ▸ (recommended speeds)", act: () => { const v = SIM_REC.map(r => r.v).filter((x, i, a) => a.indexOf(x) === i).sort((a, b) => a - b); const i = v.findIndex(x => x > SIM.speed * 1.05); setSimSpeed(v[i < 0 ? 0 : i]); } });
+    rows.push({ label: SIM.paused ? "   Resume the clock" : "   Pause the clock", act: () => { SIM.paused = !SIM.paused; simUi(true); MENU.dirty = true; } });
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
     rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
     rows.push({ label: "Spreading depolarization (model)", on: CSD.on, act: () => setCsd(!CSD.on) });
     if (CSD.on){
       rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
       rows.push({ label: "   Send another wave", act: () => csdStart() });
-      rows.push({ label: "   Teaching (4× faster)", on: CSD.teach, act: () => { CSD.teach = !CSD.teach; document.getElementById("csdTeach").checked = CSD.teach; } });
     }
     if (LFP.on){
       rows.push({ label: "   Place the probe (then trigger)", on: LFP.arm, act: () => { LFP.arm = !LFP.arm; } });
@@ -7784,7 +7791,6 @@ function menuRows(){
     }
     if (SL.on){
       rows.push({ label: "   " + ({ cycle: "Cycle: awake → NREM → REM", nrem: "NREM", rem: "REM", awake: "Awake" })[SL.mode] + "  ▸", act: () => slSetting("mode", ({ cycle: "nrem", nrem: "rem", rem: "awake", awake: "cycle" })[SL.mode]) });
-      rows.push({ label: "   Teaching (faster cycle, slower spikes)", on: SL.teach, act: () => slSetting("teach", !SL.teach) });
       rows.push({ label: "   Sleep plot", on: SL.plot, act: () => slSetting("plot", !SL.plot) });
     }
     if (DS_HAS.ra){
@@ -7793,7 +7799,6 @@ function menuRows(){
         rows.push({ label: "   " + (RA.playing ? "⏸ Pause" : "▶ Play"), act: raTogglePlay });
         const nC = RA.meta ? RA.meta.clips.length : 6, cl = RA.clip === "all" ? "all " + nC : "clip " + (+RA.clip + 1);
         rows.push({ label: "   Clips: " + cl + "  ▸", act: () => raSetClip(RA.clip === "all" ? "0" : +RA.clip + 1 >= nC ? "all" : String(+RA.clip + 1)) });
-        rows.push({ label: "   Speed: ×" + RA.speed + "  ▸", act: () => raSetting("speed", ({ 0.25: 0.5, 0.5: 1, 1: 2, 2: 0.25 })[RA.speed] || 1) });
         rows.push({ label: "   Scale: " + (RA.scale === "own" ? "each cell its own" : "same for all") + "  ▸", act: () => raSetting("scale", RA.scale === "own" ? "shared" : "own") });
         rows.push({ label: "   Movie screen", on: RA.screen, act: () => setRaScreen(!RA.screen) });
         if (RA.screen) rows.push({ label: "   Screen: " + ({ behind: "behind the cells", left: "left", right: "right" })[RA.side] + "  ▸", act: () => raSetting("side", ({ behind: "left", left: "right", right: "behind" })[RA.side]) });
@@ -9504,7 +9509,7 @@ function gizmoFrame(){
    The depolarization is the neurons' and glia's own; the burst spikes go through the same rule as all
    other spikes (section 22, v85), and the vessel and PVS response follows the local depolarization.
    Sizes are of the right order for mouse cortex, not measurements. Teaching: everything 4× faster. */
-const CSD = { on: false, teach: true, plot: true, dir: "x-", o: null, t: -1, t0: 0, hist: [], cv: null, spr: null, spk: new Map(), centre: null };
+const CSD = { on: false, teach: false, plot: true, dir: "x-", o: null, t: -1, t0: 0, hist: [], cv: null, spr: null, spk: new Map(), centre: null };
 AP_UNI.csdO = { value: new THREE.Vector3() }; AP_UNI.csdT = { value: -1 }; AP_UNI.csdV = { value: 50 };
 const csdB = (t, a, b) => (t < a || t > b) ? 0 : Math.sin(Math.PI * (t - a) / (b - a)) ** 2;
 const csdRmp = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
@@ -9539,9 +9544,10 @@ function setCsd(v){
   CSD.on = !!v; document.getElementById("csdBtn").classList.toggle("on", CSD.on);
   document.getElementById("csdBox").style.display = CSD.on ? "" : "none";
   if (CSD.on){
+    simRecommend("csd");
     if (!csdStart()){ CSD.on = false; document.getElementById("csdBtn").classList.remove("on"); document.getElementById("csdBox").style.display = "none"; return; }
     if (DS_HAS.vasc && !NV.on) setNv(true);
-    ctxNote.textContent = "Spreading depolarization (MODEL): a wave coming from " + CSD.dir.replace("-", "−") + " at 3 mm/min" + (CSD.teach ? " (shown 4× faster)" : "") + ". Watch the neurons burst and go dark, the arterioles narrow, widen, then stay narrow, and the perivascular space close.";
+    ctxNote.textContent = "Spreading depolarization (MODEL): a wave coming from " + CSD.dir.replace("-", "−") + " at 3 mm/min, shown " + simFmt(SIM.speed) + ". Watch the neurons burst and go dark, the arterioles narrow, widen, then stay narrow, and the perivascular space close.";
   } else {
     CSD.t = -1; AP_UNI.csdT.value = -1;
     for (const c of CELLS){ const U = c.mesh && c.mesh.material.userData; if (U && U.raU && c._csdLit){ U.raU.value = 0; U.raS.value.set(-1, -1, -1, -1); c._csdLit = false; } }
@@ -9551,9 +9557,9 @@ function setCsd(v){
 }
 function csdFrame(dt){
   if (!CSD.on || !CSD.o) return;
-  const k = CSD.teach ? 4 : 1, dts = dt * k;
+  const k = 1, dts = dt;                                    // speed: the clock (section 29)
   CSD.t += dts; AP_UNI.csdT.value = CSD.t; AP_UNI.csdV.value = 50;
-  const now = performance.now() / 1000;
+  const now = SIM.t;                                        // brain time (29)
   for (const c of CELLS){
     const U = c.mesh && c.mesh.material.userData; if (!U || !U.raU) continue;
     const kind = caKind(c); if (kind !== "neuron") continue;
@@ -9585,7 +9591,7 @@ function csdPlotDraw(tau){
   g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif"; g.fillText("Spreading depolarization", 16, 32);
   g.font = "600 16px system-ui, sans-serif"; g.fillStyle = "#f0883e";
   const front = CSD.o ? (CSD.t * 50 - CSD.o.distanceTo(CSD.centre)) : 0;
-  g.fillText("MODEL · " + (CSD.teach ? "teaching, 4× faster" : "real time") + " · middle of the cells · front " + (front < 0 ? Math.round(-front) + " µm away" : "passed " + Math.round(tau) + " s ago"), 16, 56);
+  g.fillText("MODEL · clock " + simFmt(SIM.eff || SIM.speed) + " · middle of the cells · front " + (front < 0 ? Math.round(-front) + " µm away" : "passed " + Math.round(tau) + " s ago"), 16, 56);
   const L = 90, R = W - 20, win = 600, h = CSD.hist, tE = CSD.t;
   const rows = [["DC potential (mV)", "dc", -20, 2, "#e6edf3"], ["neuronal firing (Hz)", "fr", 0, 40, "#ffd43b"],
                 ["arteriole / capillary diameter (%)", "art", -16, 26, "#f03e3e", "cap", "#ff8787"], ["perivascular space width (%)", "pvs", -55, 5, "#3bc9db"]];
@@ -9625,6 +9631,91 @@ document.getElementById("csdTeach").addEventListener("change", e => { CSD.teach 
 document.getElementById("csdPlot").addEventListener("change", e => { CSD.plot = e.target.checked; if (!CSD.plot && CSD.spr) CSD.spr.visible = false; });
 document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on) csdStart(); else setCsd(true); });
 
+/* ── 29. ONE CLOCK FOR EVERYTHING ────────────────────────────────────────────────  2026-10-22
+   Søren: "we have a lot of different activities that happen at different timescales. It can be
+   confusing when switching from one activity to the others" -- chosen: one master clock, auto-set.
+   Every activity now runs on this clock's BRAIN TIME: spikes, synaptic potentials, Ca²⁺ waves, the
+   recorded movie, coupling, heartbeat, breathing, vasomotion, sleep, the locus coeruleus, spreading
+   depolarization. The badge always says how fast brain time runs against the wall clock; the slider
+   (×1/10 000 … ×100, logarithmic) carries a mark for each activity's recommended speed, and starting
+   an activity moves the clock there (say so, and you can move it back). The old per-activity speeds
+   (Ca²⁺ "clock ×N", the movie's ×0.25–2, sleep and CSD "teaching" timing) are gone; teaching now only
+   makes things LARGER. During a stimulation run at a very slow speed the clock still eases ×10 faster
+   between spikes (as the stimulator always did), and the badge shows that too. Rhythms faster than the
+   screen can show at the chosen speed (the heartbeat, breathing) fade out rather than flicker. */
+const SIM = { speed: 1, eff: 1, t: 0, paused: false, boost: 1, el: null, pop: null, last: "" };
+const SIM_REC = [
+  { k: "ap",   name: "Action potentials",           v: 1 / 5000, why: "a spike crosses a cell in a few ms" },
+  { k: "syn",  name: "Synaptic potentials",          v: 1 / 500,  why: "EPSPs and IPSPs last tens of ms" },
+  { k: "lfp",  name: "LFP rhythms",                  v: 0.25,     why: "spindles 12 Hz, theta 7 Hz" },
+  { k: "beat", name: "Heartbeat and breathing",      v: 0.1,      why: "10 Hz and 3 Hz pulsations" },
+  { k: "rec",  name: "Recorded activity",            v: 1,        why: "the 2-photon movie in real time" },
+  { k: "nvc",  name: "Neurovascular coupling",       v: 1,        why: "dilation rises over ~1–2 s" },
+  { k: "ca",   name: "Ca²⁺ waves",                   v: 2,        why: "astrocyte waves cross a cell in seconds" },
+  { k: "csd",  name: "Spreading depolarization",     v: 5,        why: "3 mm/min; recovery over minutes" },
+  { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" }
+];
+const simFmt = v => v >= 1 ? "×" + (v >= 10 ? Math.round(v) : +v.toFixed(v < 3 ? 2 : 1)) : "×1/" + Math.round(1 / v).toLocaleString("en-US");
+function simBrainTime(t){
+  if (t < 1) return (t * 1000).toFixed(t < 0.01 ? 2 : 1) + " ms";
+  if (t < 60) return t.toFixed(1) + " s";
+  const m = Math.floor(t / 60), sec = Math.floor(t % 60); return m + ":" + String(sec).padStart(2, "0") + " min";
+}
+function simStep(dt){
+  /* the stimulator's ease between spikes, at very slow speeds only */
+  const want = (typeof STIM !== "undefined" && STIM.running && SIM.speed < 0.01 && !STIM.busy) ? 10 : 1;
+  SIM.boost += (want - SIM.boost) * Math.min(1, dt * (want > SIM.boost ? 2 : 12));
+  SIM.eff = SIM.paused ? 0 : SIM.speed * SIM.boost;
+  const sdt = dt * SIM.eff; SIM.t += sdt; return sdt;
+}
+function setSimSpeed(v, why){
+  SIM.speed = Math.max(1e-4, Math.min(100, v)); SIM.paused = false;
+  if (why){ const msg = " ⏱ Clock set to " + simFmt(SIM.speed) + " — recommended for " + why + "; change it on the clock (bottom centre).";
+    setTimeout(() => { if (ctxNote.textContent.indexOf("⏱ Clock set") < 0) ctxNote.textContent = (ctxNote.textContent + msg).trim(); }, 0); if (SIM.el){ SIM.el.style.boxShadow = "0 0 0 3px #f0a742"; setTimeout(() => { if (SIM.el) SIM.el.style.boxShadow = ""; }, 1500); } }
+  simUi(true);
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function simRecommend(k){ const r = SIM_REC.find(x => x.k === k); if (r && Math.abs(Math.log(SIM.speed / r.v)) > 0.05) setSimSpeed(r.v, r.name.toLowerCase()); }
+function simInit(){
+  const el = SIM.el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:10px;white-space:nowrap;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis;z-index:6;background:rgba(13,17,23,0.88);color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:6px 10px;font:600 13px system-ui,sans-serif;cursor:pointer;user-select:none;transition:box-shadow .3s";
+  el.title = "The clock: how fast brain time runs. Click to change it.";
+  document.body.appendChild(el);
+  const pop = SIM.pop = document.createElement("div");
+  pop.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:52px;z-index:7;background:rgba(13,17,23,0.96);color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:10px 12px;font:13px system-ui,sans-serif;width:min(360px,calc(100vw - 20px));display:none";
+  const lg = v => Math.log10(v);
+  pop.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Brain time</b><span><button data-sim="pause" style="font:inherit;padding:2px 8px">⏸</button> <button data-sim="close" style="font:inherit;padding:2px 8px">✕</button></span></div>'
+    + '<input type="range" id="simSlider" min="' + lg(1e-4) + '" max="' + lg(100) + '" step="0.01" style="width:100%">'
+    + '<div id="simTicks" style="position:relative;height:10px;margin:0 7px"></div>'
+    + '<div style="display:flex;justify-content:space-between;color:#8b949e;font-size:11px"><span>slow motion</span><span>real time</span><span>fast forward</span></div>'
+    + '<div style="margin-top:8px;color:#8b949e;font-size:12px">Recommended (click to use):</div><div id="simRec" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>';
+  document.body.appendChild(pop);
+  const sl = pop.querySelector("#simSlider"), lo = lg(1e-4), hi = lg(100);
+  pop.querySelector("#simTicks").innerHTML = SIM_REC.map(r => '<span title="' + r.name + ' ' + simFmt(r.v) + '" style="position:absolute;left:' + (100 * (lg(r.v) - lo) / (hi - lo)) + '%;top:0;width:2px;height:8px;background:#f0a742"></span>').join("")
+    + '<span style="position:absolute;left:' + (100 * (0 - lo) / (hi - lo)) + '%;top:0;width:2px;height:10px;background:#e6edf3"></span>';
+  pop.querySelector("#simRec").innerHTML = SIM_REC.map(r => '<button data-rec="' + r.k + '" title="' + r.why + '" style="font:12px system-ui,sans-serif;padding:3px 7px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#e6edf3;cursor:pointer">' + r.name + ' <b>' + simFmt(r.v) + '</b></button>').join("");
+  sl.addEventListener("input", () => setSimSpeed(Math.pow(10, +sl.value)));
+  pop.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.sim === "close") pop.style.display = "none";
+    if (b.dataset.sim === "pause"){ SIM.paused = !SIM.paused; simUi(true); }
+    if (b.dataset.rec){ const r = SIM_REC.find(x => x.k === b.dataset.rec); if (r) setSimSpeed(r.v); }
+  });
+  el.addEventListener("click", () => { pop.style.display = pop.style.display === "none" ? "" : "none"; simUi(true); });
+}
+function simUi(force){
+  if (renderer.xr.isPresenting){ if (SIM.el){ SIM.el.style.display = "none"; SIM.pop.style.display = "none"; } return; }
+  if (!SIM.el) simInit();
+  SIM.el.style.display = "";
+  const match = SIM_REC.filter(r => Math.abs(Math.log(SIM.speed / r.v)) < 0.05).map(r => r.name.toLowerCase());
+  const txt = (SIM.paused ? "⏸ paused" : "⏱ " + simFmt(SIM.eff || SIM.speed) + (SIM.boost > 1.05 ? " (between spikes)" : ""))
+    + " · brain time " + simBrainTime(SIM.t) + (match.length ? " · " + match[0] : "");
+  if (force || txt !== SIM.last){ SIM.last = txt; SIM.el.textContent = txt; }
+  const sl = SIM.pop.querySelector("#simSlider"); if (force && sl) sl.value = String(Math.log10(SIM.speed));
+  const pb = SIM.pop.querySelector('[data-sim="pause"]'); if (pb) pb.textContent = SIM.paused ? "▶" : "⏸";
+  SIM.pop.querySelectorAll("[data-rec]").forEach(b => { const r = SIM_REC.find(x => x.k === b.dataset.rec); b.style.borderColor = Math.abs(Math.log(SIM.speed / r.v)) < 0.05 ? "#f0a742" : "#30363d"; });
+}
+
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
@@ -9636,19 +9727,21 @@ renderer.setAnimationLoop(() => {
   cutFrame();
   scaleBarFrame();
   measureFrame();
-  stimFrame(TL.frozen ? 0 : dt);                            // a freeze effect holds the spike clock
-  caFrame(TL.frozen ? 0 : dt);                              // …and the Ca²⁺ clock
-  raFrame(TL.frozen ? 0 : dt); raPlace();                   // …and the recorded activity (section 21)
+  const sdt = simStep(TL.frozen ? 0 : dt);                  // brain time this frame (section 29)
+  stimFrame(dt, sdt);                                       // a freeze effect holds every clock
+  caFrame(sdt);
+  raFrame(sdt); raPlace();                                  // the recorded activity (section 21)
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
-  try { slFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] sleep:", e); }
-  try { csdFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
+  try { slFrame(sdt); } catch (e){ console.warn("[vr] sleep:", e); }
+  try { csdFrame(sdt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
   try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
-  try { pvsFrame(TL.frozen ? 0 : dt); } catch (e){ console.warn("[vr] perivascular space:", e); }
+  try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt);
   renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
+  try { simUi(); } catch (e){ console.warn("[vr] clock:", e); }
   if (REC.on && REC.vf && !BLOCK.loading) recCapture(dt);
 });
 addEventListener("resize", () => {
@@ -10078,7 +10171,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
