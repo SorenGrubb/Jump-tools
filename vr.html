@@ -275,7 +275,8 @@
 }
 </script>
   <div class="ctl" id="tourRow"><button type="button" data-tour-menu="1"
-      title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button></div>
+      title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
+      <button type="button" id="grpBtn" title="Your groups of root IDs — cells or unidentified fragments — named, kept in this browser, shared as a link, shown as one row here and in the headset, and fired together with ⚡">👥 Groups</button></div>
   <div class="sub" id="sub">Loading…</div>
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
@@ -330,6 +331,7 @@
       <option value="box">Perivascular space: only around the cells, up to the pia</option>
     </select>
     <label id="mapRbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="Red blood cells carried by the blood-flow model through the whole MICrONS vascular network: they speed up and slow down with every dilation, constriction, heartbeat and breath, squeeze into bullets through the precapillary sphincters and stall now and then. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapRbc"> red blood cells (model)</label>
+    <label id="mapWbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="White blood cells in the blood-flow model — the same switch as under Activity → Vascular regulation &amp; blood flow, with the Alzheimer's model there."><input type="checkbox" id="mapWbc"> white blood cells (model)</label>
     <label id="mapCsfRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="CSF tracer (MODEL): particles entering along the pial arteries' perivascular spaces, down the penetrating arterioles and into the tissue -- faster in sleep, slowed by a spreading depolarization or by hypertension. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapCsf"> CSF tracer (model)</label>
     <label id="pvsWRow" style="display:none;font-size:12px;align-items:center;gap:6px" title="Width of the perivascular and subarachnoid space, × the traced width (the vessel side stays on the vessel wall)">width <input type="range" id="pvsW" min="0.5" max="2" step="0.05" value="1" style="width:110px"> <span id="pvsWv">×1.00</span></label>
     <select id="vcolSel" title="Colour the vessels by what Søren traced them as: arterioles red, venules purple, and the capillaries in between in steps by order — 1st-order arterial capillaries always the first tone after the arterioles, then 2nd, 3rd, then the venous 3rd, 2nd and 1st order towards the venules. Vessels nobody traced stay grey.">
@@ -406,6 +408,7 @@
       <select id="cnTop" title="How many partners each way get a line"><option value="10">lines: top 10</option><option value="20" selected>lines: top 20</option><option value="50">lines: top 50</option></select>
       <button id="cnIn" title="Bring in the 5 partners with most input synapses onto this cell">+ top 5 inputs</button>
       <button id="cnOut" title="Bring in the 5 partners this cell makes most output synapses onto">+ top 5 outputs</button>
+      <button id="cnDrive" title="The loaded input partners fire one after another, most synapses first, 2 ms apart; their spikes cross the real synapses onto this cell (Stimulate's “→ next cell” or “PSP only” mode). Brings in the 5 strongest inputs first if none is here.">▶ Drive from inputs</button>
       <button id="cnCsv" title="Every synapse: direction, partner, its type and nucleus, position (voxels), and the tripartite proxy when it has been run">⬇ CSV</button>
     </div>
     <div class="ctl" id="cnTokRow" style="display:none;margin:0 0 4px">
@@ -419,10 +422,18 @@
       <select id="tpK" title="How many astrocytes to load (the ones whose nuclei have most of the synapses within 50 µm)"><option value="3">3 astrocytes</option><option value="6" selected>6 astrocytes</option><option value="10">10 astrocytes</option></select>
     </div>
     <div id="tpNote" style="font-size:12px;color:var(--mut)"></div>
+    <div class="ctl" style="margin:4px 0 2px"><button id="tpSaveBtn" title="File every flagged synapse in µJump as a “tripartite junction” organelle report on this cell, at the synapse, with the distance and partner in the comment — for others to confirm or reject in the EM. Needs the Google sign-in.">💾 File them as µJump reports</button></div>
+    <div id="tpSignin"></div><div id="tpOut" style="font-size:12px;color:var(--mut)"></div>
     <div class="ctl" style="margin:6px 0 2px">
       <button id="tcBtn" title="Load the nearest cells and keep the ones whose membrane comes within the Cell contacts distance of the picked cell; the others are hidden again. Contact sites are shown.">+ Touching cells</button>
       <select id="tcK" title="How many of the nearest cells to test"><option value="6">test 6 nearest</option><option value="12" selected>test 12 nearest</option><option value="20">test 20 nearest</option></select>
     </div>
+    <div class="ctl" style="margin:6px 0 2px">
+      <button id="tsBtn" title="Read the segmentation itself in sections 1 µm apart through the soma: every segment touching this cell — axons and fragments without a nucleus included — with an approximate contact area, and green dots where the largest contacts are.">🔬 Touching segments</button>
+      <select id="tsR" title="How far above and below (and around) the soma centre to read"><option value="5">± 5 µm</option><option value="8" selected>± 8 µm</option><option value="12">± 12 µm</option></select>
+      <button id="tsTop" title="Bring in the 5 segments with the largest contact">+ top 5</button>
+    </div>
+    <div id="tsList" style="font-size:12px;max-height:200px;overflow:auto"></div>
     <div id="cnNote" style="font-size:12px;color:var(--mut)"></div>
   </div>
   <div class="ctl" id="ptsRow" style="display:none">
@@ -553,6 +564,10 @@
     <div class="catick" style="align-items:center">
       <label title="The red cells' speed swings with each heartbeat (43 % arterioles, 28 % capillaries, 10 % venules) and dips before each breath (Santisakultarm et al. 2012)"><input type="checkbox" data-stk="pulse" checked> heartbeat & breathing in the flow</label>
       <label title="Capillary stalls (Erdener et al. 2019): at any moment ~0.45 % of capillaries in awake mice carry no red cells for ~15 s; the same capillaries stall again and again, more on the venous side. A white blood cell is drawn as the plug."><input type="checkbox" data-stk="stalls" checked> capillary stalls</label>
+      <label title="White blood cells (MODEL): ~1 per 1,800 red cells (shown ×20 unless 'realistic'), ~7 µm, slower than red cells in capillaries (assumed). Healthy: they squeeze through; in the Alzheimer's model they stall narrow capillaries (Cruz Hernández et al. 2019, Schaffer & Nishimura labs)."><input type="checkbox" id="wbcOn"> white blood cells</label>
+      <label title="Alzheimer's model (APP/PS1): ~1.8 % of capillaries stalled, ~86 % by neutrophils (Cruz Hernández et al. 2019 Nat Neurosci 22:413; Bracko et al. 2020 Sci Rep 10:9884)"><input type="checkbox" id="wbcAd"> Alzheimer's model</label>
+      <label id="wbcLy6gRow" style="display:none" title="Anti-Ly6G antibody against neutrophils: no new leukocyte stalls, existing ones clear within ~10 min; penetrating-arteriole flow +26–32 % (Cruz Hernández 2019)"><input type="checkbox" id="wbcLy6g"> anti-Ly6G</label>
+      <label title="Show white cells ×20 so they can be found; off = the real proportion (only a few in the box)"><input type="checkbox" id="wbcTeach" checked> ×20 for teaching</label>
       <label title="Precapillary sphincters (Grubb et al. 2020): rings at penetrating-arteriole branch points narrowing the lumen to ~64 %; high resistance, dilate more than the capillary with activity"><input type="checkbox" data-stk="showSph" checked> show sphincters</label>
       <label title="Clouds where the tissue PO2 (MODEL) is below the chosen level: blue < 10, violet < 5, purple < 2 mmHg"><input type="checkbox" data-stk="hyp" checked> hypoxic pockets</label>
       <select id="stkThr" title="Show tissue below this PO2"><option value="10">below 10 mmHg</option><option value="5">below 5 mmHg</option><option value="2">below 2 mmHg</option><option value="20">below 20 mmHg</option></select>
@@ -586,6 +601,7 @@
     <div class="catick">
       <label title="The loaded cells are a tiny sample of the tissue. With this on, a background population at realistic density (90,000 neurons per mm³, 80 % pyramidal, oriented pia–white matter) fires with the same rates as the loaded cells and adds its synaptic currents as dipoles -- what makes a real LFP hundreds of µV rather than a few"><input type="checkbox" id="lfpBg" checked> background population (realistic density)</label>
       <label><input type="checkbox" id="lfpPlot" checked> plot (traces + CSD)</label>
+      <label title="The LFP's power spectrum (8 s, Welch) on log–log axes with the δ θ α/σ β γ bands, the 1/f exponent and the main peak — for teaching which rhythms each state has"><input type="checkbox" id="lfpPsd"> power spectrum</label>
     </div>
     <div id="lfpNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">MODEL, not measured. Needs activity: sleep, recorded activity or stimulation.</div>
   </div>
@@ -621,6 +637,13 @@
   <div class="ctl">
     <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
     <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
+  </div>
+  <div id="physBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div style="font-size:12px;margin-bottom:4px"><b>Brain temperature &amp; intracranial pressure</b> <span style="color:var(--mut)">(MODEL, for teaching)</span></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:12px" title="Awake mouse cortex is 37.7 ± 0.2 °C (Roche et al. 2019 eLife). Conduction speed Q10 1.5 (Low &amp; McLeod 1977); oxygen use Q10 2.8 (Croughwell et al. 1992); blood flow +8.8 %/°C (Roche 2019). Firing rates are not changed: no verified cortical Q10.">🌡 temperature <input type="range" id="physT" min="33" max="42" step="0.1" value="37.7" style="flex:1"> <span id="physTv">37.7 °C</span></label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:12px" title="Intracranial pressure. Blood leaves the skull only above ICP (the veins collapse: a Starling resistor), so perfusion pressure = MAP − ICP; autoregulation sees the perfusion pressure. Raised ICP slows CSF tracer influx (qualitative). Rat: 3–5 mmHg (Eftekhari 2020); the mouse value is not verified.">⇕ ICP <input type="range" id="physI" min="0" max="60" step="1" value="5" style="flex:1"> <span id="physIv">5 mmHg</span></label>
+    <div class="ctl" style="margin:4px 0 0"><button id="physReset" title="Back to 37.7 °C and 5 mmHg">Reset</button></div>
+    <div id="physNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">Turn on the blood flow (Vascular regulation, red blood cells) to see the vessels respond; stimulate a cell to see the conduction speed.</div>
   </div>
   <div class="catick" id="drugRow" style="margin:6px 0;align-items:center">
     <span style="font-size:12px;color:var(--mut)">Drugs (model):</span>
@@ -930,9 +953,9 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -1254,8 +1277,8 @@ function parseHash(){
   const m = location.hash.match(/[#&]c=([^&]*)/);
   if (!m || !m[1]) return null;
   return m[1].split(",").filter(Boolean).map(p => {
-    const [ds, root, nuc, label, extra] = p.split("~").map(s => decodeURIComponent(s || ""));
-    return { ds, root, nuc, label, extra: extra ? extra.split("+").filter(Boolean) : [] };
+    const [ds, root, nuc, label, extra, group] = p.split("~").map(s => decodeURIComponent(s || ""));
+    return Object.assign({ ds, root, nuc, label, extra: extra ? extra.split("+").filter(Boolean) : [] }, group ? { group } : {});
   }).filter(e => e.root || (e.extra && e.extra.length));
 }
 const OF = +((location.hash.match(/[#&]of=(\d+)/) || [])[1] || 0);   // "these are N of OF filter matches"
@@ -1338,7 +1361,7 @@ function setColourMode(mode){
 }
 
 function headsetLink(){
-  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].map(encodeURIComponent).join("~"));
+  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].concat(e.group ? [e.group] : []).map(encodeURIComponent).join("~"));
   return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",") + (VR_DS !== "microns" ? "&ds=" + VR_DS : "")
     + (RBOX.list.length ? "&box=" + RBOX.list.map(b => b.join("~")).join(",") : "");
 }
@@ -1472,6 +1495,7 @@ function renderList(){
         <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
         <div><b>${esc(g.name)} <span style="font-weight:400;color:${EI_COL[cls]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cls]}</span></b>
         <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${window.__RA && window.__RA.on && window.__RA.meta ? " · " + g.cells.filter(c => raEntry(c)).length + " imaged" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
+        ${g.cells.some(c => c.mesh && cellClass(c) !== "glia") ? `<button class="stimOne" data-gstim="${esc(g.key)}" title="Fire every neuron of ${esc(g.name)} at the same moment">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
         <button class="glassOne${g.cells.every(c => c.glass) ? " on" : ""}" data-gglass="${esc(g.key)}" title="See-through: all ${n} ${esc(g.name)}">${(window.UI_ICON || {}).glass || "◐"}</button>
         <input type="checkbox" data-gvis="${esc(g.key)}" ${shown === n ? "checked" : ""} title="Show / hide all ${n}"></div>`;
     if (!open) return head;
@@ -1496,10 +1520,12 @@ let AUTO_OPEN = null;
    and otherwise by the name, ignoring case. The group is shown under its shortest name. */
 function typeCode(c){ const m = String(c.label || "").match(/\(([A-Za-z0-9\-\/]{1,8})(?:[,)])/); return m ? m[1] : ""; }
 function groupKey(c){
+  if (c.group) return "grp:" + c.group;                 // a group of your own (section 42)
   const code = typeCode(c);
   return code ? code : (String(c.label || "Cell").replace(/\s*\(.*$/, "").trim().toLowerCase() || "cell");
 }
 function groupName(cells){
+  if (cells[0] && cells[0].group) return "👥 " + cells[0].group;
   const stems = cells.map(c => String(c.label || "Cell").replace(/\s*\(.*$/, "").trim() || "Cell").sort((a, b) => a.length - b.length);
   const code = typeCode(cells[0]);
   return stems[0] + (code ? " (" + code + ")" : "");
@@ -1510,12 +1536,14 @@ function cellGroups(){
   /* Excitatory first, then inhibitory, then glia, then the rest; within each, the biggest group first. */
   const order = { exc: 0, inh: 1, glia: 2, unknown: 3 };
   return [...by.entries()].map(([key, cells]) => ({ key, cells, name: groupName(cells) }))
-    .sort((a, b) => (order[cellClass(a.cells[0])] - order[cellClass(b.cells[0])]) || (b.cells.length - a.cells.length) || a.key.localeCompare(b.key));
+    .sort((a, b) => ((b.key.startsWith("grp:") ? 1 : 0) - (a.key.startsWith("grp:") ? 1 : 0)) || (order[cellClass(a.cells[0])] - order[cellClass(b.cells[0])]) || (b.cells.length - a.cells.length) || a.key.localeCompare(b.key));
 }
 listEl.addEventListener("click", e => {
   if (e.target.closest("input")) return;
   const gb = e.target.closest("[data-glass]");
   if (gb){ const c = CELLS[+gb.dataset.glass]; setCellGlass([c], !c.glass); return; }
+  const gs = e.target.closest("[data-gstim]");
+  if (gs){ const g = cellGroups().find(x => x.key === gs.dataset.gstim); if (g) stimulateGroup(g.cells, g.name); e.stopPropagation(); return; }
   const gg = e.target.closest("[data-gglass]");
   if (gg){ const cs = CELLS.filter(c => groupKey(c) === gg.dataset.gglass); setCellGlass(cs, !cs.every(c => c.glass)); e.stopPropagation(); return; }
   const sb = e.target.closest("[data-stim]");
@@ -4257,10 +4285,11 @@ function onCred(resp){
     const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
       .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
     CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
-    for (const id of ["sceneSignin", "gameSignin", "fixSignin", "trwSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
+    for (const id of ["sceneSignin", "gameSignin", "fixSignin", "trwSignin", "tpSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
     if (typeof GAME !== "undefined" && GAME.pendingBad){ GAME.pendingBad = false; gameBadSend(); }
     if (typeof FIX !== "undefined" && FIX.pending){ FIX.pending = false; fixSave(); }
     if (typeof TRW !== "undefined" && TRW.pending){ TRW.pending = false; trwSave(); }
+    if (typeof CN !== "undefined" && CN.tpPending){ CN.tpPending = false; tpSave(); }
     if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
   } catch (e){}
 }
@@ -4279,11 +4308,11 @@ function captureScene(){
   const sc = {
     v: 1, savedAt: new Date().toISOString(),
     timeline: (tlCount()) ? tlData() : undefined,
-    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass },
+    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass }, c.group ? { group: c.group } : {},
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), phys: { T: PHYS.T, icp: PHYS.icp }, wbc: { on: WBC.on, ad: WBC.ad, ly6g: WBC.ly6g, teach: WBC.teach }, pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -4410,6 +4439,7 @@ async function openScene(id){
   try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
   try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
   try { lfpApplyUi(u.lfp); } catch (e){ console.warn("[vr] LFP settings", e); }
+  try { if (u.phys){ setTemp(u.phys.T); setIcp(u.phys.icp); } if (u.wbc){ WBC.teach = u.wbc.teach !== false; if (u.wbc.on) setWbc("on", true); if (u.wbc.ad) setWbc("ad", true); if (u.wbc.ly6g) setWbc("ly6g", true); } } catch (e){ console.warn("[vr] temperature / ICP / white cells", e); }
   try { if (u.pvs){ setPvsW(u.pvs.w || 1); if (u.pvs.mode && u.pvs.mode !== document.getElementById("pvsSel").value){ document.getElementById("pvsSel").value = u.pvs.mode; buildPvs(); } } } catch (e){ console.warn("[vr] perivascular settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
@@ -4472,10 +4502,13 @@ async function applyScene(sc){
   if (sc.timeline){ tlLoad(sc.timeline); tlSave(); }
   /* PLAY ITS STORY (2026-10-16): a link from the forum ending &play=1 opens the timeline and plays
      it once the cells are in -- a scene's story watched in anyone's browser, nothing downloaded. */
-  if (/[#&]play=1/.test(location.hash)){
-    if (sc.timeline && tlCount() && !renderer.xr.isPresenting){ setTimeline(true); tlSeek(0); setTimeout(() => tlPlay(), 1200); }
-    else ctxNote.textContent = "This scene has no timeline to play — it opened as it was saved.";
-  }
+  /* AND NOW BY DEFAULT (2026-10-23, Søren: "When you share a scene that has a timeline it should by default
+     run the animation as soon as all elements have been loaded and in full screen"). It plays as soon as
+     everything it needs is in (the cells above; the block and vessels it uses, read first). A browser only
+     goes full screen from a click, so a button offers that -- pressing it restarts the film full screen.
+     &play=0 opens such a scene without playing it. */
+  if (sc.timeline && tlCount() && !renderer.xr.isPresenting && !/[#&]play=0/.test(location.hash)) sceneAutoplay();
+  else if (/[#&]play=1/.test(location.hash)) ctxNote.textContent = "This scene has no timeline to play — it opened as it was saved.";
   SCENE.pending = null;
   applyLook(); renderList();
   ctxNote.textContent = "🥽 Scene “" + (SCENE.title || "") + "” opened.";
@@ -7271,8 +7304,9 @@ function lfpSpikes(){
   }
   return null;
 }
-function lfpCompute(){
-  const sp = lfpSpikes(); if (!sp || !LFP.Wc) return null;
+function lfpCompute(o){
+  let sp = lfpSpikes(); if (!sp || !LFP.Wc) return null;
+  if (o) sp = Object.assign({}, sp, { W: o.W || sp.W, dt: o.dt || sp.dt });      // the power spectrum asks for a longer, coarser window
   const n = Math.round(sp.W / sp.dt), t0 = sp.t1 - sp.W, K = LFP.n;
   const re = new Float64Array(n), ri = new Float64Array(n);
   let nE = 0, nI = 0;
@@ -7433,11 +7467,12 @@ function lfpFrame(){
   if (el && LFP.Wc) el.textContent = "MODEL, not measured · " + LFP.Wc.n + " loaded neuron" + (LFP.Wc.n === 1 ? "" : "s") + " on their own morphology"
     + (LFP.bg ? " + a background of ~" + LFP.bgW.real.toLocaleString("en-US") + " pyramidal neurons around the probe" : "") + (R ? " · source: " + R.src : " · start sleep, recorded activity or stimulation") + ".";
 }
-function lfpUi(){ return { on: LFP.on, bg: LFP.bg, plot: LFP.plot, top: LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z] : null }; }
+function lfpUi(){ return { on: LFP.on, bg: LFP.bg, plot: LFP.plot, psd: !!LFP.psd, top: LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z] : null }; }
 function lfpApplyUi(u){
   if (!u) return;
   if (u.bg != null){ LFP.bg = !!u.bg; document.getElementById("lfpBg").checked = LFP.bg; }
   if (u.plot != null){ LFP.plot = !!u.plot; document.getElementById("lfpPlot").checked = LFP.plot; }
+  if (u.psd != null){ LFP.psd = !!u.psd; document.getElementById("lfpPsd").checked = LFP.psd; }
   if (u.top){ LFP.top = new THREE.Vector3(u.top[0], u.top[1], u.top[2]); LFP.sig = ""; }
   if (u.on != null && !!u.on !== LFP.on) setLfp(u.on); else lfpDraw();
 }
@@ -7445,6 +7480,134 @@ document.getElementById("lfpBtn").addEventListener("click", () => setLfp(!LFP.on
 document.getElementById("lfpPlace").addEventListener("click", () => { LFP.arm = !LFP.arm; document.getElementById("lfpPlace").classList.toggle("on", LFP.arm); ctxNote.textContent = LFP.arm ? "LFP probe: click (or trigger) on a cell or vessel to put the probe there." : ""; });
 document.getElementById("lfpBg").addEventListener("change", e => { LFP.bg = e.target.checked; });
 document.getElementById("lfpPlot").addEventListener("change", e => { LFP.plot = e.target.checked; if (!LFP.plot && LFP.spr) LFP.spr.visible = false; });
+/* ── 40. POWER SPECTRUM OF THE LFP (teaching) ────────────────────────────────────  2026-10-23
+   Søren: "Consider a powerspectrum for neuronal activity. For teaching purposes."
+   The LFP model's own signal (section 25), 8 s of it at 500 Hz at the contact where it is largest,
+   Welch's method (2 s Hann windows, half overlapping), drawn on log–log axes with the classical bands
+   shaded (Buzsáki & Draguhn 2004, Science 304:1926): δ 0.5–4, θ 4–8, α/σ 8–15 (sleep spindles 10–15),
+   β 15–30, γ 30–100 Hz. The straight "1/f" part is fitted (log P = b − χ·log f, 1–40 Hz) and the peak
+   that stands most above it is named -- separating rhythms from the aperiodic background is the
+   point of Donoghue et al. 2020 (Nat Neurosci 23:1655). It is the spectrum of the MODEL: in NREM the
+   slow waves (<1 Hz) and spindles, in REM theta, while stimulating only what the stimulus makes. */
+function fftRe(re, im){
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++){ let b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j){ [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= n; len <<= 1){
+    const a = -2 * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i = 0; i < n; i += len){
+      let cr = 1, ci = 0;
+      for (let j = 0; j < len / 2; j++){
+        const ur = re[i + j], ui = im[i + j], vr = re[i + j + len / 2] * cr - im[i + j + len / 2] * ci, vi = re[i + j + len / 2] * ci + im[i + j + len / 2] * cr;
+        re[i + j] = ur + vr; im[i + j] = ui + vi; re[i + j + len / 2] = ur - vr; im[i + j + len / 2] = ui - vi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+/* Welch: segments of `seg` samples, half overlapping, Hann, one-sided PSD in units²/Hz. */
+function welch(x, fs, seg){
+  let N = 1; while (N < seg) N <<= 1;
+  const w = new Float64Array(seg); let U = 0; for (let i = 0; i < seg; i++){ w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (seg - 1)); U += w[i] * w[i]; }
+  const P = new Float64Array(N / 2 + 1); let K = 0;
+  for (let s = 0; s + seg <= x.length; s += seg >> 1){
+    let m = 0; for (let i = 0; i < seg; i++) m += x[s + i]; m /= seg;
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < seg; i++) re[i] = (x[s + i] - m) * w[i];
+    fftRe(re, im);
+    for (let k = 0; k <= N / 2; k++) P[k] += (re[k] * re[k] + im[k] * im[k]) * (k && k < N / 2 ? 2 : 1) / (fs * U);
+    K++;
+  }
+  for (let k = 0; k < P.length; k++) P[k] /= Math.max(1, K);
+  return { f: Array.from({ length: P.length }, (_, k) => k * fs / N), P, K };
+}
+const PSD_BANDS = [["δ", 0.5, 4, "#4dabf7"], ["θ", 4, 8, "#69db7c"], ["α/σ", 8, 15, "#ffd43b"], ["β", 15, 30, "#ff922b"], ["γ", 30, 100, "#f783ac"]];
+function psdCompute(){
+  const sp = lfpSpikes(); if (!sp || !LFP.Wc) return null;
+  const W = sp.src === "stimulation" ? 2 : 16, dt = 0.002;     // 16 s: seven half-overlapping 4 s windows
+  const R = lfpCompute({ W, dt }); if (!R) return null;
+  /* the contact where the signal is largest */
+  let kb = 0, vb = -1; R.phi.forEach((a, k) => { let v = 0; for (let b = 0; b < a.length; b++) v += a[b] * a[b]; if (v > vb){ vb = v; kb = k; } });
+  const fs = 1 / dt, seg = Math.min(R.n, Math.round((W >= 8 ? 4 : 2) / dt));     // 4 s windows: 0.25 Hz apart, so the <1 Hz slow oscillation is resolved
+  const S = welch(R.phi[kb], fs, seg);
+  /* aperiodic fit over 1–40 Hz, then the peak above it */
+  const xs = [], ys = [];
+  S.f.forEach((f, k) => { if (f >= 1 && f <= 40 && S.P[k] > 0){ xs.push(Math.log10(f)); ys.push(Math.log10(S.P[k])); } });
+  let chi = null, b0 = null;
+  if (xs.length > 4){ const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length;
+    let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; }); chi = -sxy / sxx; b0 = my + chi * mx; }
+  let peak = null;
+  S.f.forEach((f, k) => { if (f < 0.4 || f > 100 || !(S.P[k] > 0)) return;
+    const res = Math.log10(S.P[k]) - (b0 != null ? b0 - chi * Math.log10(f) : 0);
+    if (!peak || res > peak.res) peak = { f, res }; });
+  const band = PSD_BANDS.map(([nm, a, b]) => { let s = 0; S.f.forEach((f, k) => { if (f >= a && f < b) s += S.P[k]; }); return s; });
+  const tot = band.reduce((a, b) => a + b, 0) || 1;
+  return { S, kb, depth: kb * LFP.pitch, src: R.src, chi, b0, peak, band: band.map(v => v / tot), W, fs };
+}
+function psdName(f){
+  if (f < 1) return "slow oscillation"; if (f < 4) return "delta"; if (f < 8) return "theta";
+  if (f < 10) return "alpha"; if (f < 16) return "sigma (spindles)"; if (f < 30) return "beta"; return "gamma";
+}
+function psdDraw(D){
+  const W = 760, H = 360;
+  if (!LFP.psdCv){ LFP.psdCv = document.createElement("canvas"); LFP.psdCv.width = W; LFP.psdCv.height = H; }
+  const g = LFP.psdCv.getContext("2d");
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.94)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#ffd43b"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 21px system-ui, sans-serif";
+  g.fillText("Power spectrum of the LFP" + (D ? " · " + D.src + " · contact at " + D.depth + " µm" : ""), 16, 30);
+  g.font = "600 13px system-ui, sans-serif"; g.fillStyle = "#f0883e"; g.fillText("MODEL · Welch, " + (D ? D.W : 8) + " s, " + (D && D.W >= 8 ? 4 : 2) + " s windows", 16, 50);
+  if (!D){ g.fillStyle = "#8b949e"; g.font = "15px system-ui"; g.fillText("Start sleep, recorded activity or stimulation with the LFP probe on.", 16, 90); }
+  else {
+    const L = 70, R = 540, T = 66, B = H - 46, f0 = 0.5, f1 = 100;
+    const lf = f => L + (R - L) * (Math.log10(f) - Math.log10(f0)) / (Math.log10(f1) - Math.log10(f0));
+    let pmin = Infinity, pmax = -Infinity;
+    D.S.f.forEach((f, k) => { if (f >= f0 && f <= f1 && D.S.P[k] > 0){ pmin = Math.min(pmin, D.S.P[k]); pmax = Math.max(pmax, D.S.P[k]); } });
+    if (!isFinite(pmin)){ pmin = 1e-3; pmax = 1; }
+    const lo = Math.floor(Math.log10(pmin)), hi = Math.ceil(Math.log10(pmax));
+    const lp = p => B - (B - T) * (Math.log10(Math.max(p, 10 ** lo)) - lo) / Math.max(1, hi - lo);
+    PSD_BANDS.forEach(([nm, a, b, col]) => { g.fillStyle = col + "22"; g.fillRect(lf(a), T, lf(Math.min(b, f1)) - lf(a), B - T); g.fillStyle = col; g.font = "600 15px system-ui"; g.fillText(nm, (lf(a) + lf(Math.min(b, f1))) / 2 - 8, T + 16); });
+    g.strokeStyle = "#30363d"; g.lineWidth = 1; g.font = "12px system-ui"; g.fillStyle = "#8b949e";
+    [0.5, 1, 2, 5, 10, 20, 50, 100].forEach(f => { g.beginPath(); g.moveTo(lf(f), T); g.lineTo(lf(f), B); g.stroke(); g.fillText(String(f), lf(f) - 6, B + 16); });
+    for (let e = lo; e <= hi; e++){ g.beginPath(); g.moveTo(L, lp(10 ** e)); g.lineTo(R, lp(10 ** e)); g.stroke(); g.fillText("10" + String(e).replace("-", "⁻").replace(/\d/g, d => "⁰¹²³⁴⁵⁶⁷⁸⁹"[d]), 22, lp(10 ** e) + 4); }
+    g.fillText("Hz", R - 12, B + 32); g.save(); g.translate(14, (T + B) / 2 + 30); g.rotate(-Math.PI / 2); g.fillText("µV²/Hz", 0, 0); g.restore();
+    g.strokeStyle = "#e6edf3"; g.lineWidth = 2; g.beginPath(); let first = true;
+    D.S.f.forEach((f, k) => { if (f < f0 || f > f1) return; const x = lf(f), y = lp(D.S.P[k]); first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; });
+    g.stroke();
+    if (D.chi != null){ g.setLineDash([6, 5]); g.strokeStyle = "#8b949e"; g.beginPath(); g.moveTo(lf(1), lp(10 ** (D.b0))); g.lineTo(lf(40), lp(10 ** (D.b0 - D.chi * Math.log10(40)))); g.stroke(); g.setLineDash([]); }
+    if (D.peak){ const x = lf(Math.max(f0, D.peak.f)); g.fillStyle = "#ffd43b"; g.beginPath(); g.moveTo(x, T + 22); g.lineTo(x - 6, T + 32); g.lineTo(x + 6, T + 32); g.fill(); }
+    /* right: the numbers */
+    const X = 560; g.font = "600 14px system-ui"; g.fillStyle = "#e6edf3"; g.fillText("Relative band power", X, T + 4);
+    PSD_BANDS.forEach(([nm, a, b, col], i) => { const y = T + 18 + i * 26; g.fillStyle = col; g.fillRect(X, y, 140 * D.band[i], 16); g.fillStyle = "#e6edf3"; g.font = "13px system-ui"; g.fillText(nm + " " + Math.round(100 * D.band[i]) + " %", X + 4, y + 13); });
+    g.fillStyle = "#e6edf3"; g.font = "13px system-ui";
+    const y2 = T + 160;
+    if (D.peak){ g.fillText("Peak: " + (D.peak.f < 1 ? D.peak.f.toFixed(2) : D.peak.f.toFixed(1)) + " Hz", X, y2); g.fillStyle = "#ffd43b"; g.fillText(psdName(D.peak.f), X, y2 + 18); g.fillStyle = "#e6edf3"; }
+    if (D.chi != null){ g.fillText("1/f exponent χ = " + D.chi.toFixed(2), X, y2 + 42); g.fillStyle = "#8b949e"; g.fillText("dashed: fitted 1–40 Hz", X, y2 + 60);
+      if (D.chi > 3){ g.fillText("steeper than real cortex", X, y2 + 80); g.fillText("(χ ≈ 1–2): the model has", X, y2 + 96); g.fillText("no broadband noise", X, y2 + 112); } }
+  }
+  if (!LFP.psdSpr){
+    const tex = new THREE.CanvasTexture(LFP.psdCv); tex.colorSpace = THREE.SRGBColorSpace;
+    LFP.psdSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); LFP.psdSpr.renderOrder = 30; scene.add(LFP.psdSpr);
+  }
+  LFP.psdSpr.material.map.needsUpdate = true; LFP.psdSpr.visible = true;
+  const hh = 0.13 * H / 560; LFP.psdSpr.scale.set(hh * W / H, hh, 1);
+  const s = LFP.psdSpr;
+  if (LFP.spr && LFP.spr.visible) s.position.copy(LFP.spr.position).add(new THREE.Vector3(LFP.spr.scale.x / 2 + 0.008 + s.scale.x / 2, (s.scale.y - LFP.spr.scale.y) / 2, 0));
+  else s.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - s.scale.y / 2, 0));
+}
+function psdFrame(){
+  if (!LFP.on || !LFP.psd){ if (LFP.psdSpr) LFP.psdSpr.visible = false; return; }
+  const now = performance.now(); if (now - (LFP._psdAt || 0) < 1000) return; LFP._psdAt = now;
+  let D = null; try { D = psdCompute(); } catch (e){ console.warn("[vr] PSD", e); }
+  LFP.psdLast = D; psdDraw(D);
+}
+function setPsd(v){
+  LFP.psd = !!v; const el = document.getElementById("lfpPsd"); if (el) el.checked = LFP.psd;
+  if (LFP.psd && !LFP.on) setLfp(true);
+  LFP._psdAt = 0; if (!LFP.psd && LFP.psdSpr) LFP.psdSpr.visible = false;
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("lfpPsd").addEventListener("change", e => setPsd(e.target.checked));
+
 
 /* ── 26. THE PERIVASCULAR AND SUBARACHNOID SPACE ───────────────────────────  2026-10-21
    Søren: "upload the perivascular space segmentation that I have and make it a layer you can add to
@@ -8101,9 +8264,12 @@ function menuRows(){
         rows.push({ label: "   + top 5 input partners", act: () => cnAddTop(0, 5) });
         rows.push({ label: "   + top 5 output partners", act: () => cnAddTop(1, 5) });
       }
+      rows.push({ label: "   ▶ Drive it from its inputs", act: cnDrive });
+      if (DS_HAS.seg) rows.push({ label: "Touching segments (± " + TS.reach + " µm)", act: segTouching });
       if (DS_HAS.nb){
         rows.push({ label: "Tripartite synapses (within " + CN.tpDist + " µm)", on: !!CN.tpOn, act: () => setTripartite(!CN.tpOn) });
         rows.push({ label: "+ Touching cells (test " + CN.tcK + " nearest)", act: addTouching });
+        if (CN.tp && CN.tp.hit) rows.push({ label: "   File " + CN.tp.hit + " tripartite as µJump reports" + (credOk() ? "" : " (needs sign-in)"), act: tpSave });
       }
     }
     if (DS_HAS.vasc){
@@ -8123,6 +8289,9 @@ function menuRows(){
           rows.push({ label: "   Hypoxic pockets (< " + STK.hypThr + " mmHg)", on: STK.on && STK.hyp, act: () => stkFromPanel("hyp", !(STK.on && STK.hyp)) });
           rows.push({ label: "   Heartbeat in the flow", on: STK.pulse, act: () => stkFromPanel("pulse", !STK.pulse) });
           rows.push({ label: "   Capillary stalls", on: STK.stalls, act: () => stkFromPanel("stalls", !STK.stalls) });
+          rows.push({ label: "   White blood cells", on: WBC.on, act: () => setWbc("on", !WBC.on) });
+          if (WBC.on) rows.push({ label: "   Alzheimer's model (APP/PS1)", on: WBC.ad, act: () => setWbc("ad", !WBC.ad) });
+          if (WBC.ad) rows.push({ label: "   Anti-Ly6G", on: WBC.ly6g, act: () => setWbc("ly6g", !WBC.ly6g) });
           rows.push({ label: "   Show sphincters", on: STK.showSph, act: () => stkFromPanel("showSph", !STK.showSph) });
           rows.push({ label: "   Blood-flow plot", on: STK.on && STK.plot, act: () => stkFromPanel("plot", !(STK.on && STK.plot)) });
           rows.push({ label: "   Ride a red cell", on: RIDE.on, act: () => setRide(!RIDE.on) });
@@ -8134,7 +8303,10 @@ function menuRows(){
     rows.push({ label: "Clock " + (SIM.paused ? "paused" : simFmt(SIM.speed)) + "  ▸ (recommended speeds)", act: () => { const v = SIM_REC.map(r => r.v).filter((x, i, a) => a.indexOf(x) === i).sort((a, b) => a - b); const i = v.findIndex(x => x > SIM.speed * 1.05); setSimSpeed(v[i < 0 ? 0 : i]); } });
     rows.push({ label: SIM.paused ? "   Resume the clock" : "   Pause the clock", act: () => { SIM.paused = !SIM.paused; simUi(true); MENU.dirty = true; } });
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
+    rows.push({ label: "Brain temperature " + PHYS.T.toFixed(1) + " °C  ▸", act: () => { const L = [34, 36, 37.7, 39, 40.5, 42.8]; const i = L.findIndex(x => x > PHYS.T + 0.05); setTemp(L[i < 0 ? 0 : i]); } });
+    rows.push({ label: "Intracranial pressure " + PHYS.icp + " mmHg  ▸", act: () => { const L = [5, 15, 25, 35, 50]; const i = L.findIndex(x => x > PHYS.icp); setIcp(L[i < 0 ? 0 : i]); } });
     rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
+    rows.push({ label: "   Power spectrum of the LFP", on: !!LFP.psd, act: () => setPsd(!LFP.psd) });
     rows.push({ label: "Spreading depolarization (model)", on: CSD.on, act: () => setCsd(!CSD.on) });
     if (CSD.on){
       rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
@@ -8282,9 +8454,12 @@ function menuRows(){
       rows.push({ label: "All " + g.cells.length + " " + g.name, on: allShown, swatch: g.cells[0].colour,
                   act: () => { g.cells.forEach(c => c.hidden = allShown); syncVisChecks(); applyLook(); },
                   right: g.cells.every(c => c.glass) ? "◐ solid" : "◐ see-through", act2: () => setCellGlass(g.cells, !g.cells.every(c => c.glass)) });
-      const pages = Math.max(1, Math.ceil(g.cells.length / (per - 2)));
+      const fires = g.cells.some(c => c.mesh && cellClass(c) !== "glia");
+      if (fires) rows.push({ label: "⚡ Fire all " + g.cells.filter(c => c.mesh && cellClass(c) !== "glia").length + " together", act: () => stimulateGroup(g.cells, g.name) });
+      const pp = fires ? per - 3 : per - 2;
+      const pages = Math.max(1, Math.ceil(g.cells.length / pp));
       MENU.cellPage = Math.min(MENU.cellPage, pages - 1);
-      g.cells.slice(MENU.cellPage * (per - 2), MENU.cellPage * (per - 2) + per - 2).forEach(c => rows.push({
+      g.cells.slice(MENU.cellPage * pp, MENU.cellPage * pp + pp).forEach(c => rows.push({
         label: (c.err ? "⚠ " : "") + (c.root || c.label), swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
         act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); },
         /* The right half fires the cell at its soma, like the ⚡ beside its name on the panel. */
@@ -9282,6 +9457,81 @@ function fxFrame(W, H){
   }
   TLFX.black.visible = b > 0; TLFX.black.material.opacity = Math.min(1, b); TLFX.black.scale.set(W, H, 1); TLFX.black.position.set(W / 2, H / 2, 0);
 }
+/* ── 41. FOCUS (depth of field) in the timeline ────────────────────────────────  2026-10-23
+   Søren: "In the timeline we should also include an effect to change focus, so things in the foreground or
+   background blur a bit." An fx key "focus": the camera focuses on a chosen cell, everything nearer or
+   farther blurs with its distance from that plane, as a lens does; with a second cell the focus racks from
+   the first to the second over the effect (a rack focus). Strength = the largest blur, in pixels. On the
+   flat screen and in recordings; not in the headset (an eye focuses itself) and not in the dome render. */
+const DOF = { rt: null, scene: null, cam: null, mat: null, k: null, amt: 0, dist: 0 };
+const DOF_FS = `precision highp float;
+uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 res; uniform float near, far, focus, maxBlur;
+varying vec2 vUv;
+float viewZ(float d){ return (near * far) / ((far - near) * d - far); }
+float coc(vec2 uv){ float z = -viewZ(texture2D(tDepth, uv).x); return clamp(abs(z - focus) / max(focus, 1e-4) * 2.5, 0.0, 1.0) * maxBlur; }
+void main(){
+  float c0 = coc(vUv);
+  vec4 acc = texture2D(tColor, vUv); float wsum = 1.0;
+  if (c0 > 0.5){
+    for (int i = 1; i < 40; i++){
+      float r = sqrt(float(i) / 40.0) * c0, a = float(i) * 2.39996;
+      vec2 o = vec2(cos(a), sin(a)) * r / res;
+      float cs = coc(vUv + o);
+      /* a sharp sample behind a blurred one does not bleed into it */
+      float w = cs >= r * 0.6 ? 1.0 : 0.25;
+      acc += texture2D(tColor, vUv + o) * w; wsum += w;
+    }
+  }
+  gl_FragColor = acc / wsum;
+  #include <colorspace_fragment>
+}`;
+function dofKey(t){
+  if (typeof TL === "undefined" || !TL.open) return null;
+  let best = null;
+  for (const k of TL.keys.fx) if (k.kind === "focus" && k.dur > 0 && t >= k.t && t < k.t + k.dur && (!best || k.t > best.t)) best = k;
+  return best;
+}
+function dofCellDist(i){
+  const c = CELLS[i]; const m = c && (c.mesh || c.nucMesh); if (!m) return null;
+  m.geometry.computeBoundingBox(); const p = m.geometry.boundingBox.getCenter(new THREE.Vector3()); m.localToWorld(p);
+  return camera.position.distanceTo(p);
+}
+function dofActive(){
+  if (renderer.xr.isPresenting || domeActive()) return false;
+  const k = dofKey(TL.t); if (!k){ DOF.amt = 0; return false; }
+  const f = Math.max(0, Math.min(1, (TL.t - k.t) / 0.8, (k.t + k.dur - TL.t) / 0.8));
+  let d = dofCellDist(k.cell != null ? k.cell : SELECTED);
+  if (k.cell2 != null && k.cell2 !== "" && +k.cell2 >= 0){
+    const d2 = dofCellDist(+k.cell2);
+    if (d != null && d2 != null){ let u = (TL.t - k.t - 0.3) / Math.max(0.1, k.dur - 0.6); u = Math.max(0, Math.min(1, u)); u = u * u * (3 - 2 * u); d = d + (d2 - d) * u; }
+  }
+  if (d == null) d = camera.position.distanceTo(controls.target);
+  DOF.k = k; DOF.amt = f; DOF.dist = d;
+  return f > 0.01;
+}
+function dofRender(){
+  const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+  if (!DOF.rt || DOF.rt.width !== sz.x || DOF.rt.height !== sz.y){
+    if (DOF.rt) DOF.rt.dispose();
+    const dt = new THREE.DepthTexture(sz.x, sz.y); dt.type = THREE.UnsignedIntType;
+    DOF.rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { depthTexture: dt, samples: 0 });
+    DOF.rt.texture.colorSpace = THREE.SRGBColorSpace;
+  }
+  if (!DOF.scene){
+    DOF.mat = new THREE.ShaderMaterial({
+      uniforms: { tColor: { value: null }, tDepth: { value: null }, res: { value: new THREE.Vector2() }, near: { value: 0.01 }, far: { value: 100 }, focus: { value: 1 }, maxBlur: { value: 8 } },
+      vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: DOF_FS, depthTest: false, depthWrite: false });
+    DOF.scene = new THREE.Scene(); const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), DOF.mat); q.frustumCulled = false; DOF.scene.add(q);
+    DOF.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+  renderer.setRenderTarget(DOF.rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  const u = DOF.mat.uniforms;
+  u.tColor.value = DOF.rt.texture; u.tDepth.value = DOF.rt.depthTexture; u.res.value.set(sz.x, sz.y);
+  u.near.value = camera.near; u.far.value = camera.far; u.focus.value = DOF.dist;
+  u.maxBlur.value = (DOF.k.blur || 8) * DOF.amt * renderer.getPixelRatio();
+  renderer.render(DOF.scene, DOF.cam);
+}
 function tlStimCells(k){ return Array.isArray(k.cells) && k.cells.length ? k.cells : [k.cell]; }
 function tlFireStim(k, ci){
   const c = CELLS[ci == null ? k.cell : ci]; if (!c || !c.mesh) return;
@@ -9595,7 +9845,13 @@ function tlEditor(){
            every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
   }
   if (k.lane === "fx"){
-    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"], ["csd", "spreading depolarization"], ["sleep", "sleep"], ["clock", "set the clock"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"], ["csd", "spreading depolarization"], ["sleep", "sleep"], ["clock", "set the clock"], ["focus", "focus (depth of field)"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    if (k.kind === "focus"){
+      const fo = (sel, none) => (none ? `<option value=""${sel == null || sel === "" ? " selected" : ""}>${none}</option>` : "") + CELLS.map((c, i) => c.mesh || c.nucMesh ? `<option value="${i}"${String(i) === String(sel) ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
+      h += ` on <select id="tlKfcell">${fo(k.cell)}</select> then rack to <select id="tlKfcell2">${fo(k.cell2, "— stay —")}</select>
+             blur <input id="tlKfblur" type="number" min="2" max="30" step="1" value="${k.blur || 8}"> px
+             <span class="tlHint">nearer and farther things blur with their distance from the focused cell; not in the headset or the dome</span>`;
+    }
     if (k.kind === "csd") h += ` from <select id="tlKcdir">${[["x-", "−x"], ["x+", "+x"], ["z-", "−z"], ["z+", "+z"]].map(([v, l]) => `<option value="${v}"${(k.dir || "x-") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">starts the wave; it ends (and the tissue is reset) when the effect ends</span>`;
     if (k.kind === "sleep") h += ` <select id="tlKslst">${[["nrem", "NREM (slow waves)"], ["rem", "REM"], ["awake", "awake"], ["cycle", "the whole cycle"]].map(([v, l]) => `<option value="${v}"${(k.st || "nrem") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">sleep keys back to back change the stage; after the last one the mouse is awake again</span>`;
     if (k.kind === "clock") h += ` brain time runs <select id="tlKclk">${[0.0002, 0.0005, 0.002, 0.01, 0.1, 0.25, 0.5, 1, 2, 4, 5, 10, 20].map(v => `<option value="${v}"${(k.v || 1) === v ? " selected" : ""}>${simFmt(v)}</option>`).join("")}</select> <span class="tlHint">from here until the next clock key</span>`;
@@ -9660,7 +9916,11 @@ function tlEditor(){
       if (k.kind === "csd"){ if (!k.dir) k.dir = CSD.dir || "x-"; if (!(k.dur > 3)) k.dur = 25; }
       if (k.kind === "sleep"){ if (!k.st) k.st = "nrem"; if (!(k.dur > 3)) k.dur = 20; }
       if (k.kind === "clock"){ if (!k.v) k.v = 1; k.dur = 0.5; }
+      if (k.kind === "focus"){ if (k.cell == null) k.cell = SELECTED >= 0 ? SELECTED : 0; if (!k.blur) k.blur = 8; if (!(k.dur > 0) || k.dur === 3) k.dur = 4; }
       tlSave(); tlSync(); };
+    if ($e("tlKfcell")) $e("tlKfcell").onchange = e => { k.cell = +e.target.value; tlSave(); tlDraw(); };
+    if ($e("tlKfcell2")) $e("tlKfcell2").onchange = e => { k.cell2 = e.target.value === "" ? null : +e.target.value; tlSave(); tlDraw(); };
+    if ($e("tlKfblur")) $e("tlKfblur").onchange = e => { k.blur = Math.max(2, Math.min(30, +e.target.value || 8)); tlSave(); };
     if ($e("tlKd")) $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
     if ($e("tlKrclip")) $e("tlKrclip").onchange = e => { k.clip = e.target.value === "all" ? "all" : +e.target.value; tlRecFit(k); tlSave(); tlSync(); };
     if ($e("tlKrscr")) $e("tlKrscr").onchange = e => { k.screen = e.target.checked; tlSave(); };
@@ -9713,7 +9973,8 @@ function tlDraw(){
                       rec: "🎬 recorded: " + (k.clip == null || k.clip === "all" ? "all clips" : RA.meta && RA.meta.clips[k.clip] ? RA.meta.clips[k.clip].movie.slice(0, 24) : "clip " + (+k.clip + 1)),
                       peel: "▤ peel " + (k.axis === "top" ? "top " : "front ") + (k.p0 || 0) + "→" + (k.p1 != null ? k.p1 : 100) + " %" + (k.blk ? "" : " (no block)"),
                       csd: "⚡ spreading depolarization from " + String(k.dir || "x-").replace("-", "−"), sleep: "☾ " + ({ nrem: "NREM", rem: "REM", awake: "awake", cycle: "sleep cycle" })[k.st || "nrem"],
-                      clock: "⏱ " + simFmt(k.v || 1) }[k.kind] || k.kind;
+                      clock: "⏱ " + simFmt(k.v || 1),
+                      focus: "◎ focus " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "") + (k.cell2 != null && CELLS[k.cell2] ? " → " + shortName(CELLS[k.cell2]) : "") }[k.kind] || k.kind;
         if (k.kind === "electrodes" || k.kind === "synapses" || k.kind === "clock"){
           g.beginPath(); g.arc(x, cy, 6, 0, 7); g.fill(); g.stroke();
           g.fillStyle = "#e6edf3"; g.font = "10px system-ui, sans-serif"; g.fillText(lab, x + 9, cy + 4); continue;
@@ -10259,6 +10520,13 @@ async function stkNet(){
 function stkBC(map){
   const N = STK.net, bc = Float64Array.from(N.bcP), f = (map - 10) / 80;
   for (let j = 0; j < N.nJ; j++) if (!isNaN(bc[j]) && !N.bcVen[j]) bc[j] = (10 + (bc[j] / 133.322 - 10) * f) * 133.322;
+  /* ICP (section 43): no vessel in the skull can hold a pressure below it -- the veins (and the box's open capillary
+     ends) collapse until it is reached, so every outlet sits at least at ICP (the Starling resistor) */
+  if (typeof PHYS !== "undefined" && PHYS.icp > 0){
+    /* the outlets: boundary points the baseline flow leaves the box through (the inlets keep their arterial-side pressure) */
+    if (!STK.bcOut && STK.Q0){ const o = new Uint8Array(N.nJ); for (let c = 0; c < N.nc; c++){ const q = STK.Q0[c]; if (q > 0) o[N.jb[c]] = 1; else if (q < 0) o[N.ja[c]] = 1; } STK.bcOut = o; }
+    for (let j = 0; j < N.nJ; j++) if (!isNaN(bc[j]) && (N.bcVen[j] || (STK.bcOut && STK.bcOut[j])) && PHYS.icp * 133.322 > bc[j]) bc[j] = PHYS.icp * 133.322;
+  }
   return bc;
 }
 /* Pressures at the branch points: Jacobi-preconditioned conjugate gradients, warm-started. */
@@ -10308,7 +10576,7 @@ async function stkSolve(G, p0, bc){
 /* ── the radius of each piece now ── */
 function stkKTarget(){
   if (!STK.auto) return 1;
-  const m = STK.map, KMAX = 1.18, KMIN = 0.81;
+  const m = STK.map - (typeof PHYS !== "undefined" ? Math.max(0, PHYS.icp - PHYS.icp0) : 0), KMAX = 1.18, KMIN = 0.81;   // autoregulation sees the perfusion pressure
   const need = Math.pow(80 / Math.max(5, m - 10), 1 / 2.9);
   let k = Math.max(KMIN, Math.min(KMAX, need));
   if (m > 150) k = Math.max(k, KMIN + (1.0 - KMIN) * Math.min(1, (m - 150) / 40));   // breakthrough
@@ -10365,8 +10633,10 @@ function stkConductances(base){
     }
     G[c] = Rs > 0 ? 1 / Rs : 0;
     if (!base && STK.stall && STK.stall.has(c)) G[c] *= 1e-3;
+    if (!base && WBC.stall.size && WBC.stall.has(c)) G[c] *= 1e-3;            // a white cell stuck in it (section 43)
   }
   if (!base){
+    { const fT = physFlowG(); if (fT !== 1) for (let c = 0; c < N.nc; c++) G[c] *= fT; }      // brain temperature (section 43)
     if (!STK.collat) for (const c of N.collat) G[c] *= 1e-4;
     for (const k of STK.clots) G[k.c] *= 1e-4;
   }
@@ -10429,7 +10699,7 @@ async function stkBaseline(){
   const N = STK.net; STK.H = new Float32Array(N.nc).fill(0.3);
   let r = null;
   for (let it = 0; it < 3; it++){ r = await stkSolve(stkConductances(true), r ? r.p : null, stkBC(90)); stkHct(r.Q, r.p); }
-  STK.Q0 = r.Q; STK.p0 = r.p; STK.H0 = Float32Array.from(STK.H);
+  STK.Q0 = r.Q; STK.p0 = r.p; STK.H0 = Float32Array.from(STK.H); STK.bcOut = null;
 }
 /* ── oxygen carried by the blood ── */
 function stkO2(){
@@ -10518,7 +10788,7 @@ async function stkGridSolve(){
     do {
       g.again = false;
       stkGridSources();
-      const { nx, ny, nz, src, valid, act } = g, P = g.Pss, c = STK.lam * g.h * g.h, sxy = nx * ny;
+      const { nx, ny, nz, src, valid, act } = g, P = g.Pss, c = STK.lam * g.h * g.h * physMet(), sxy = nx * ny;
       for (let v = 0; v < g.n; v++) if (!isNaN(src[v])) P[v] = src[v];
       for (let it = 0; it < 360; it++){
         for (let par = 0; par < 2; par++){
@@ -10662,8 +10932,10 @@ function stkSphDraw(){
 function stkStallDraw(){
   if (STK.plugGrp){ disposeGroup(STK.plugGrp); STK.plugGrp = null; }
   if (!STK.on || !STK.stall || !STK.stall.size) return;
-  const N = STK.net, g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color: "#f1f3f5", roughness: 0.7, emissive: "#3a3a3a" });
-  for (const [c, st] of STK.stall){
+  /* a jam of red cells, or a platelet aggregate: in healthy cortex the stalls are not white cells (Bracko et al. 2020:
+     wild-type 0 % leukocyte, 50 % platelet, 50 % red cell only) -- white-cell stalls are section 43's */
+  const N = STK.net, g = new THREE.Group(), matR = new THREE.MeshStandardMaterial({ color: "#9d0208", roughness: 0.6, emissive: "#300000" }), matP = new THREE.MeshStandardMaterial({ color: "#e9c46a", roughness: 0.8, emissive: "#3a2a00" });
+  for (const [c, st] of STK.stall){ const mat = st.cause === "plt" ? matP : matR;
     if (!STK.inBox[c]) continue;
     const sAt = st.s * N.len[c]; let k = N.off[c]; while (k < N.off[c+1] - 2 && N.arc[k+1] < sAt) k++;
     const a = N.cp[k], b = N.cp[k+1], t = new THREE.Vector3(N.pos[b*3] - N.pos[a*3], N.pos[b*3+1] - N.pos[a*3+1], N.pos[b*3+2] - N.pos[a*3+2]);
@@ -11091,6 +11363,7 @@ function stkFrame(sdt){
   /* autoregulation: the arterioles move towards their target with a ~6 s lag */
   if (Math.abs(STK.k - STK.kSolved) > 0.004) STK.dirty = true;
   if (STK.Q && STK.parts && sdt > 0) stkRbcFrame(sdt);
+  if (STK.Q && WBC.on && sdt > 0) wbcFrame(sdt);
   /* the tissue PO2 follows its steady state: falls over ~6 s, recovers over ~2 s */
   const g = STK.grid;
   if (g && g.ok && sdt > 0){
@@ -11115,7 +11388,7 @@ function stkFrame(sdt){
         if (STK.stall.has(c) || Math.random() >= 1 - Math.exp(-dt * rate)) continue;
         const ven = N.CL[N.ccls[c]][0] === "v" || N.CL[N.ccls[c]] === "cvt";
         let d = -Math.log(Math.random()) * (ven ? 18 : 10) * (iso ? 2 : 1); d = Math.min(d, ven ? 150 : 60);
-        STK.stall.set(c, { until: STK.t + d, s: 0.2 + 0.6 * Math.random() }); ch = true;
+        STK.stall.set(c, { until: STK.t + d, s: 0.2 + 0.6 * Math.random(), cause: Math.random() < 0.5 ? "plt" : "rbc" }); ch = true;
       }
       if (ch){ STK.dirty = true; stkStallDraw(); }
     } else if (STK.stall && STK.stall.size){ STK.stall.clear(); STK.dirty = true; stkStallDraw(); }
@@ -11239,7 +11512,7 @@ async function setStroke(v, opt){
     else ctxNote.textContent = "Red blood cells (MODEL): " + (STK.parts ? STK.parts.n.toLocaleString("en-US") : 0) + " cells carried by the flow model; dilations and constrictions change their speed. Slow the clock to ×1/10 (bottom) to follow single cells.";
   } else {
     stkRbcClear(); if (STK.clotGrp){ disposeGroup(STK.clotGrp); STK.clotGrp = null; } if (STK.colGrp){ disposeGroup(STK.colGrp); STK.colGrp = null; }
-    if (STK.sphGrp){ disposeGroup(STK.sphGrp); STK.sphGrp = null; } if (STK.plugGrp){ disposeGroup(STK.plugGrp); STK.plugGrp = null; } if (STK.stall) STK.stall.clear();
+    if (STK.sphGrp){ disposeGroup(STK.sphGrp); STK.sphGrp = null; } if (STK.plugGrp){ disposeGroup(STK.plugGrp); STK.plugGrp = null; } if (STK.stall) STK.stall.clear(); wbcClear();
     if (STK.pockMesh){ content.remove(STK.pockMesh); STK.pockMesh.geometry.dispose(); STK.pockMesh.material.dispose(); STK.pockMesh = null; }
     if (STK.spr) STK.spr.visible = false;
     for (const [c] of STK.cs) if (c._stkLit && c.mesh){ c.mesh.material.userData.raU.value = 0; c._stkLit = false; }
@@ -11738,7 +12011,7 @@ function csfFrame(sdt){
   const N = STK.net, Q = STK.Q || STK.Q0, P = CSFT.P, n = CSFT.n;
   const hr = NV_PRESET[NV.preset].hr, ph = (SIM.t * hr) % 1, wv = ph < 0.12 ? ph / 0.12 : Math.exp(-(ph - 0.12) / 0.22);
   const fade = Math.min(1, 4 / (Math.max(1e-6, SIM.eff || SIM.speed) * hr)), pulse = 1 + 3 * fade * (wv - 0.276);
-  const fW = Math.pow(PVS.sleepW || 1, 2), fMap = STK.map > 110 ? 1 - 0.5 * Math.min(1, (STK.map - 110) / 60) : 1;
+  const fW = Math.pow(PVS.sleepW || 1, 2), fMap = (STK.map > 110 ? 1 - 0.5 * Math.min(1, (STK.map - 110) / 60) : 1) * physCsf();
   const D = 10 * (1 + 0.6 * Math.max(0, 1 - LC.neSlow)), step = Math.sqrt(2 * D * Math.max(0, sdt));
   const csd = CSD.on && CSD.o;
   let n1 = 0, n2 = 0, depth = 0;
@@ -13215,6 +13488,7 @@ function cnOnSelect(){
   if (CN.c && c !== CN.c){
     disposeGroup(CN.lines); CN.lines = null; disposeGroup(CN.tpGroup); CN.tpGroup = null;
     CN.c = null; CN.partners = null; CN.syn = null; CN.tp = null; cnRender();
+    TS.list = null; tsRender(); const to = document.getElementById("tpOut"); if (to) to.textContent = "";
     if (CN.on){ CN.on = false; document.getElementById("cnBtn").classList.remove("on"); if (c) setConnectivity(true); }
     if (CN.tpOn){ CN.tpOn = false; document.getElementById("tpBtn").classList.remove("on"); }
   }
@@ -13236,7 +13510,596 @@ document.getElementById("cnTokSave").addEventListener("click", () => {
   document.getElementById("cnTokRow").style.display = "none"; STIM.syn = null;
   cnSay("CAVE token saved in this browser. Press Connectivity again.");
 });
+/* ── 39b. THREE ADDITIONS (2026-10-23, Søren: "Do those additions") ─────────────────────────
+   1. TRIPARTITE HITS AS REPORTS -- each synapse the proxy flagged can be filed in µJump as an organelle
+      report of kind "tripartite_junction" (µJump's own kind, Vascular & perivascular contacts), at the
+      synapse's position, on the picked cell, with the distance and the partner in the comment, so
+      others can confirm or reject it there. Already-filed ones (this browser) are not sent twice.
+   2. TOUCHING SEGMENTS -- read from the segmentation itself, not from loaded meshes, so axons and
+      fragments without a nucleus count too. Sections 1 µm apart through the soma (± the chosen reach)
+      are decoded at ~64 nm; every pixel of this cell's segments that has another segment within two
+      pixels is a contact pixel for that segment. Area ≈ contact pixels × pixel × section spacing.
+   3. DRIVE FROM ITS INPUTS -- the loaded input partners fire one after another, the one with most
+      synapses first, 2 ms apart, and the spikes cross the real synapses (section 8) onto this cell. */
+const TP_SAVED_KEY = "vr_tp_saved";
+function tpSavedSet(){ try { return new Set(JSON.parse(localStorage.getItem(TP_SAVED_KEY) || "[]")); } catch (e){ return new Set(); } }
+async function tpSave(){
+  const out = document.getElementById("tpOut");
+  const say = t => { if (out) out.textContent = t; cnSay(t); };
+  const c = CN.c, hits = CN.syn ? CN.syn.filter(s => s.tp) : [];
+  if (!c || !CN.tp || !hits.length){ say("Run Tripartite synapses first — there is nothing to file yet."); return; }
+  const done = tpSavedSet(), todo = hits.filter(s => !done.has(c.root + ":" + s.v.join(",")));
+  if (!todo.length){ say("All " + hits.length + " tripartite synapses of this cell were filed from this browser already."); return; }
+  if (!credOk()){
+    CN.tpPending = true;
+    if (renderer.xr.isPresenting) say("Filing needs the Google sign-in: leave VR, sign in under Objects → Connections and press Save again.");
+    else { say("Sign in with Google (below) — they are filed as soon as you are signed in."); signInUI("tpSignin"); }
+    return;
+  }
+  if (CN.tpSaving) return; CN.tpSaving = true; CN.tpPending = false;
+  const ds = DSX, url = ds.backend + (ds.backendDs ? "?ds=" + encodeURIComponent(ds.backendDs) : "");
+  const nuc = c.nuc && c.nuc !== "0" ? String(c.nuc) : "", gid = (nuc || "nonuc") + "_" + Date.now() + "_tp";
+  let ok = 0, bad = 0, k = 0;
+  const one = async (s, i) => {
+    const t = CN.types.get(s.partner) || {};
+    const body = { type: "organelle_location", credential: CRED, tool: "vr", ds: ds.backendDs || "ujump", timestamp: new Date().toISOString(),
+      nucleusId: nuc, rootId: String(c.root), coord: s.v.join(","), groupId: gid, subIndex: i + 1, subCount: todo.length,
+      kind: "tripartite_junction", pointA: s.v.join(","), pointB: "", identified: "", path: "",
+      comment: "VR tripartite proxy: astrocyte membrane within " + CN.tp.d + " µm of a " + (s.dir ? "output" : "input") + " synapse ("
+        + DSX.syn.table + " v" + DSX.syn.version + ", partner " + s.partner + (t.code ? " " + t.code : "") + "). Distance only — please confirm in the EM." };
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+      let d = {}; try { d = JSON.parse(await r.text()); } catch (e){}
+      if (d.ok === false) bad++; else { ok++; done.add(c.root + ":" + s.v.join(",")); }
+    } catch (e){ bad++; }
+    say("Filing tripartite synapses: " + (ok + bad) + " of " + todo.length + "…");
+  };
+  /* four at a time: a few hundred rows should not take minutes, nor hit the backend all at once */
+  const queue = todo.map((s, i) => [s, i]);
+  await Promise.all([0, 1, 2, 3].map(async () => { while (queue.length){ const [s, i] = queue.shift(); await one(s, i); } }));
+  try { localStorage.setItem(TP_SAVED_KEY, JSON.stringify([...done].slice(-20000))); } catch (e){}
+  CN.tpSaving = false;
+  say(ok + " tripartite synapse" + (ok === 1 ? "" : "s") + " filed in µJump as “tripartite junction” reports on " + shortName(c) + (bad ? "; " + bad + " not filed (try again)" : "") + ".");
+  if (ok){ ORG.data = null; if (ORG.on) setOrganelles(true); }
+}
+
+/* ── 2. touching segments, from the segmentation ── */
+/* One z-plane of a chunk as two uint32 halves per voxel (lo, hi), compressed_segmentation or raw. */
+function segPlaneIds(buf, sc, start, end, lz, words){
+  const ch = sc.chunk_sizes[0], n = ch[0] * ch[1], LO = new Uint32Array(n), HI = new Uint32Array(n);
+  if (sc.encoding === "raw"){
+    const sh = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+    if (lz < 0 || lz >= sh[2]) return { LO, HI };
+    const bpv = { uint8: 1, uint16: 2, uint32: 4, uint64: 8 }[sc.data_type] || words * 4;
+    const d = bpv === 1 ? new Uint8Array(buf) : bpv === 2 ? new Uint16Array(buf) : new Uint32Array(buf);
+    for (let y = 0; y < sh[1]; y++) for (let x = 0; x < sh[0]; x++){
+      const i = lz * sh[0] * sh[1] + y * sh[0] + x, o = y * ch[0] + x;
+      if (bpv === 8){ LO[o] = d[2 * i] >>> 0; HI[o] = d[2 * i + 1] >>> 0; } else LO[o] = d[i] >>> 0;
+    }
+    return { LO, HI };
+  }
+  const bs = sc.compressed_segmentation_block_size, d = new Uint32Array(buf), chan = d[0];
+  const g0 = Math.ceil(ch[0] / bs[0]), g1 = Math.ceil(ch[1] / bs[1]), bz = Math.floor(lz / bs[2]), wz = lz % bs[2];
+  for (let by = 0; by < g1; by++) for (let bx = 0; bx < g0; bx++){
+    const hdr = chan + (bx + g0 * (by + g1 * bz)) * 2, h0 = d[hdr], h1 = d[hdr + 1];
+    const table = chan + (h0 & 0xffffff), bits = (h0 >>> 24) & 0xff, vals = chan + (h1 & 0xffffff);
+    const mask = bits >= 32 ? 0xffffffff : (((1 << bits) - 1) >>> 0), base = bs[0] * bs[1] * wz;
+    for (let yy = 0; yy < bs[1]; yy++){
+      const y = by * bs[1] + yy; if (y >= ch[1]) break;
+      for (let xx = 0; xx < bs[0]; xx++){
+        const x = bx * bs[0] + xx; if (x >= ch[0]) break;
+        let idx = 0;
+        if (bits){ const bit = (base + bs[0] * yy + xx) * bits; idx = (d[vals + (bit >>> 5)] >>> (bit & 31)) & mask; }
+        const o = y * ch[0] + x;
+        if (words === 1){ LO[o] = d[table + idx] >>> 0; } else { LO[o] = d[table + idx * 2] >>> 0; HI[o] = d[table + idx * 2 + 1] >>> 0; }
+      }
+    }
+  }
+  return { LO, HI };
+}
+const TS = { reach: 8, list: null, busy: false };
+async function segTouching(){
+  const c = CELLS[SELECTED], ds = DSX;
+  if (!c){ cnSay("Touching segments: pick a cell first."); return; }
+  if (!ds.seg){ cnSay("Touching segments need a flat segmentation, which " + ds.label + " does not have."); return; }
+  const p0 = nucCentreOf(c); if (!p0){ cnSay("Touching segments: the cell has no position yet."); return; }
+  if (TS.busy) return; TS.busy = true;
+  try {
+    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
+    const base = UJ.segread._httpBase(ds.seg), info = await UJ.segread._getInfo(base);
+    const fineZ = info.scales[0].resolution[2], usable = info.scales.filter(s => s.resolution[2] === fineZ);
+    const sc = usable.find(s => s.resolution[0] >= 60) || usable[usable.length - 1];
+    const words = /uint64/.test(String(info.data_type || "")) ? 2 : 1, res = sc.resolution, ch = sc.chunk_sizes[0], off = sc.voxel_offset || [0, 0, 0];
+    const R = TS.reach, px = res[0] / 1000;
+    const x0 = Math.floor((p0.x - R) * 1000 / res[0]), y0 = Math.floor((p0.y - R) * 1000 / res[1]);
+    const W = Math.ceil(2 * R * 1000 / res[0]), H = Math.ceil(2 * R * 1000 / res[1]);
+    const self = new Set(fixIdsNow(c).map(id => { const q = UJ.segpaint.idPair(id); return q ? q.lo + ":" + q.hi : ""; }));
+    const grid = [0, 1, 2].map(i => Math.ceil(sc.size[i] / ch[i]));
+    const by = new Map(); let planes = 0, cellPx = 0;
+    const zs = []; for (let z = p0.z - R; z <= p0.z + R + 1e-6; z += 1) zs.push(Math.floor(z * 1000 / res[2]));
+    for (const sz of zs){
+      cnSay("Touching segments: reading section " + (planes + 1) + " of " + zs.length + " through the soma…");
+      const LO = new Uint32Array(W * H), HI = new Uint32Array(W * H), list = [];
+      const cz = Math.floor((sz - off[2]) / ch[2]);
+      for (let iy = Math.floor((y0 - off[1]) / ch[1]); iy <= Math.floor((y0 + H - off[1]) / ch[1]); iy++)
+        for (let ix = Math.floor((x0 - off[0]) / ch[0]); ix <= Math.floor((x0 + W - off[0]) / ch[0]); ix++)
+          if (ix >= 0 && iy >= 0 && cz >= 0 && ix < grid[0] && iy < grid[1] && cz < grid[2]) list.push([ix, iy, cz]);
+      await UJ.segread.mapPool(list, 6, async cc => {
+        const start = [0, 1, 2].map(i => off[i] + cc[i] * ch[i]), end = [0, 1, 2].map(i => Math.min(start[i] + ch[i], off[i] + sc.size[i]));
+        const buf = await UJ.segread._chunkBuf(base, sc, { c: cc, grid, start, end, local: [0, 0, 0], shape: ch });
+        if (!buf) return;
+        const { LO: lo, HI: hi } = segPlaneIds(buf, sc, start, end, sz - start[2], words);
+        for (let yy = 0; yy < ch[1]; yy++){ const gy = start[1] + yy - y0; if (gy < 0 || gy >= H) continue;
+          for (let xx = 0; xx < ch[0]; xx++){ const gx = start[0] + xx - x0; if (gx < 0 || gx >= W) continue;
+            LO[gy * W + gx] = lo[yy * ch[0] + xx]; HI[gy * W + gx] = hi[yy * ch[0] + xx]; } }
+      });
+      /* every cell pixel with another segment within two pixels */
+      const isSelf = i => self.has(LO[i] + ":" + HI[i]);
+      /* the next pixel in each of the four directions; across a one-pixel gap of background, the one after */
+      const O = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++){
+        const i = y * W + x; if (!(LO[i] || HI[i]) || !isSelf(i)) continue; cellPx++;
+        const seen = new Set();
+        for (const [dx, dy] of O){
+          let j = (y + dy) * W + x + dx;
+          if (!(LO[j] || HI[j])) j = (y + 2 * dy) * W + x + 2 * dx;
+          if (!(LO[j] || HI[j]) || isSelf(j)) continue;
+          const k = LO[j] + ":" + HI[j]; if (seen.has(k)) continue; seen.add(k);
+          let e = by.get(k); if (!e){ e = { key: k, lo: LO[j], hi: HI[j], n: 0, sx: 0, sy: 0, sz: 0 }; by.set(k, e); }
+          e.n++; e.sx += (x0 + x + 0.5) * px; e.sy += (y0 + y + 0.5) * res[1] / 1000; e.sz += sz * res[2] / 1000;
+        }
+      }
+      planes++;
+    }
+    if (!cellPx){ cnSay("Touching segments: this cell's segment was not found in the sections through its soma (is its root id from the same snapshot as " + ds.seg.split("/").pop() + "?)."); TS.busy = false; return; }
+    const L = [...by.values()].map(e => ({ root: (BigInt(e.hi) * 4294967296n + BigInt(e.lo)).toString(), n: e.n, area: e.n * px * 1,
+      p: new THREE.Vector3(e.sx / e.n, e.sy / e.n, e.sz / e.n) })).sort((a, b) => b.n - a.n);
+    TS.list = L; TS.c = c;
+    if (DSX.syn && DSX.syn.celltypes && caveToken()) try { await cnTypes(L.slice(0, 150).map(e => e.root)); } catch (e){}
+    /* the contact centres on the cell, through section 16's points (green) */
+    const r = ds.res;
+    c.marks = (c.marks || []).filter(m => m[3] !== "contact" || m[5] !== "seg")
+      .concat(L.slice(0, 40).map(e => [Math.round(e.p.x * 1000 / r[0]), Math.round(e.p.y * 1000 / r[1]), Math.round(e.p.z * 1000 / r[2]), "contact", "touching " + e.root, "seg"]));
+    PTS.on = true; buildPoints();
+    tsRender();
+    const withSoma = L.filter(e => (CN.types.get(e.root) || {}).code).length;
+    cnSay("Touching segments: " + L.length + " segments touch " + shortName(c) + " in " + planes + " sections through the soma (± " + R + " µm)"
+      + (CN.types.size ? ", " + withSoma + " of them cells with a soma in the volume" : "") + ". Green dots: where the 40 largest contacts are. Areas are approximate (contact length × 1 µm per section, at " + res[0] + " nm).");
+  } catch (e){ cnSay("Touching segments could not be read: " + (e.message || e)); }
+  TS.busy = false;
+}
+function tsRender(){
+  const el = document.getElementById("tsList"); if (!el) return;
+  if (!TS.list){ el.innerHTML = ""; return; }
+  const row = e => { const t = CN.types.get(e.root) || {}, here = cnHere(e.root);
+    const name = t.code ? cnTypeLabel(t.code) : (CN.types.has(e.root) ? "fragment / no soma" : "segment");
+    return '<div style="display:flex;gap:6px;align-items:center;margin:1px 0"><span style="color:#3fb950">●</span><span style="flex:1">' + esc(name + " …" + e.root.slice(-4))
+      + "</span><span>~" + e.area.toFixed(1) + " µm²</span>" + (here ? '<span style="color:var(--mut)">here</span>' : '<button data-tsadd="' + e.root + '" style="padding:0 6px">+</button>') + "</div>"; };
+  el.innerHTML = '<div style="margin:4px 0">Touching ' + esc(shortName(TS.c)) + " (largest first)</div>" + TS.list.slice(0, 15).map(row).join("");
+  el.querySelectorAll("[data-tsadd]").forEach(b => b.addEventListener("click", () => cnAdd([b.dataset.tsadd])));
+}
+function tsAddTop(k){
+  if (!TS.list){ cnSay("Run Touching segments first."); return; }
+  cnAdd(TS.list.filter(e => !cnHere(e.root)).slice(0, k).map(e => e.root));
+}
+
+/* ── 3. drive the cell from its inputs ── */
+async function cnDrive(){
+  const c = CELLS[SELECTED]; if (!c){ cnSay("Drive from inputs: pick a cell first."); return; }
+  if (!CN.partners || CN.c !== c){ await setConnectivity(true); if (!CN.partners) return; }
+  let ins = CN.partners.filter(p => !p.dir && p.root !== "0");
+  let here = ins.map(p => ({ p, cell: CELLS.find(x => cnSelf(x).includes(p.root)) })).filter(x => x.cell && x.cell.mesh && x.cell !== c);
+  if (!here.length){
+    cnSay("Drive from inputs: bringing in the 5 strongest input partners first…");
+    await cnAdd(ins.slice(0, 5).map(p => p.root));
+    here = ins.map(p => ({ p, cell: CELLS.find(x => cnSelf(x).includes(p.root)) })).filter(x => x.cell && x.cell.mesh && x.cell !== c);
+  }
+  const drivers = here.filter(x => cellClass(x.cell) !== "glia" && inPlay(x.cell));
+  if (!drivers.length){ cnSay("Drive from inputs: none of its input partners here is a neuron that can fire."); return; }
+  if (!STIM.synLoading) STIM.syn = null;
+  if (!STIM.on) setStim(true);
+  cnSay("Drive from inputs: reading the synapses among the loaded cells…");
+  for (let k = 0; k < 200 && !STIM.syn; k++){
+    if (STIM.synLoading) await new Promise(r => setTimeout(r, 100));
+    else { await loadSynapses(); if (!STIM.syn) break; }
+  }
+  if (!STIM.syn){ cnSay("Drive from inputs needs the synapses from CAVE (the CAVE token)."); return; }
+  if (!STIM.running) resetActivity();
+  const onto = STIM.syn.filter(s => s.post === c.i);
+  drivers.forEach((x, k) => {
+    const cell = x.cell;
+    if (STIM.started == null) STIM.started = cell.i;
+    fireCell(cell, somaNode(cell, 0), STIM.now + 2 * k);
+  });
+  STIM.running = true;
+  if (SIM.speed > 1 / 200) setSimSpeed(1 / 5000);
+  cnSay("Drive from inputs: " + drivers.length + " input partner" + (drivers.length > 1 ? "s" : "") + " fire 2 ms apart, most synapses first ("
+    + drivers.map(x => shortName(x.cell) + " " + x.p.n + " syn").join(", ") + "). " + onto.length + " of their synapses land on " + shortName(c)
+    + " — watch the PSPs" + (document.getElementById("stimMode").value === "psp" ? "" : " and whether it fires") + ".");
+}
+document.getElementById("tpSaveBtn").addEventListener("click", tpSave);
+document.getElementById("tsBtn").addEventListener("click", segTouching);
+document.getElementById("tsR").addEventListener("change", e => { TS.reach = +e.target.value || 8; });
+document.getElementById("tsTop").addEventListener("click", () => tsAddTop(5));
+document.getElementById("cnDrive").addEventListener("click", cnDrive);
 cnOnSelect();
+
+/* ── 42. GROUPS OF ROOT IDS ──────────────────────────────────────────────────────  2026-10-23
+   Søren: "an option to add cell fragments rootIDs that are not identified cells to the VR ... add a lot of
+   rootIDs to a group and then add the group to the VR. The groups can also be useful for cells. Groups
+   should be personal, but you should be able to share them with others. The user should be able to name
+   the group. In VR it should also display as a group, that you can expand to see the individual members.
+   ... stimulate all members of a group simultaneously, also for assemblies of the same cell types."
+
+   · A group is a name and a list of members (root id, and a nucleus id and a label when known). Kept in this
+     browser (localStorage `jump_groups_v1`, shared by every tool on grubblab.com), so they are personal.
+   · Shared as a link: the group travels compressed in the link (#grp=…); whoever opens it sees the group
+     in the viewer and can keep a copy. A saved scene keeps each cell's group too.
+   · In the list and in the headset palette a group is one row that opens to its members, like a cell type;
+     the type groups are unchanged for everything that is not in a group of yours.
+   · ⚡ on any group row (yours or a cell type) fires every neuron in it at the same moment. */
+const GRP_KEY = "jump_groups_v1";
+const GRP_PAL = ["#ff8fab", "#7ee8fa", "#c3f584", "#ffd166", "#b28dff", "#ff9f5a", "#5ad1a9", "#f15bb5"];
+let GROUPS = (() => { try { const a = JSON.parse(localStorage.getItem(GRP_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e){ return []; } })();
+function grpSave(){ try { localStorage.setItem(GRP_KEY, JSON.stringify(GROUPS)); } catch (e){ ctxNote.textContent = "Groups could not be kept in this browser (private window?)."; } }
+function grpColour(name){ let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return GRP_PAL[h % GRP_PAL.length]; }
+/* Root ids from anything pasted: one per line, an optional label after it; or just a run of ids. */
+function grpParse(text){
+  const out = [], seen = new Set();
+  String(text || "").split(/\n/).forEach(line => {
+    const ids = line.match(/\d{15,20}/g); if (!ids) return;
+    const rest = line.replace(/\d{15,20}/g, "").replace(/^[\s,;:\t-]+|[\s,;:\t-]+$/g, "").trim();
+    ids.forEach(r => { if (seen.has(r)) return; seen.add(r); out.push({ root: r, nuc: "", label: ids.length === 1 ? rest : "" }); });
+  });
+  return out;
+}
+function grpOf(name){ return GROUPS.find(g => g.name === name); }
+
+/* ── into the viewer ── */
+async function grpToVR(g){
+  if (!g || !g.members.length) return;
+  const light = document.getElementById("detail").value === "light", token = LOAD_TOKEN, added = [];
+  const col = grpColour(g.name);
+  for (const m of g.members){
+    const have = CELLS.find(c => String(c.root) === String(m.root) || (c.extra || []).map(String).includes(String(m.root)));
+    if (have){ have.group = g.name; continue; }
+    const label = m.label || "Fragment";
+    const c = { i: CELLS.length, ds: g.ds || VR_DS, root: String(m.root), nuc: m.nuc || "", label, extra: [], group: g.name, colour: col, status: "waiting…" };
+    c.typeColour = col; if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    CELLS.push(c); added.push(c);
+  }
+  OPEN_GROUPS.add("grp:" + g.name);
+  renderList(); MENU.dirty = true;
+  if (added.length > 20) ctxNote.textContent = "Loading " + added.length + " members of “" + g.name + "” — a headset may struggle above ~20 cells.";
+  let k = 0;
+  for (const c of added){
+    if (token !== LOAD_TOKEN) return;
+    ctxNote.textContent = "Group “" + g.name + "”: loading " + (++k) + " of " + added.length + "…";
+    await loadOne(c, token, light);
+    if (c.mesh) CELL_BOX = (CELL_BOX || new THREE.Box3()).union(c.mesh.geometry.boundingBox);
+    renderList(); updateTri(); applyLook(); MENU.dirty = true;
+  }
+  if (added.length){ if (CELLS.length === added.length) refit(); buildContext(); STIM.syn = null; if (STIM.on) loadSynapses(); }
+  const bad = added.filter(c => c.err).length;
+  ctxNote.textContent = "Group “" + g.name + "”: " + g.members.length + " member" + (g.members.length > 1 ? "s" : "") + " in view" + (bad ? " (" + bad + " could not be loaded)" : "") + ". It is one row in the list — open it to see the members.";
+}
+
+/* ── fire a whole group at once ── */
+async function stimulateGroup(cells, name){
+  const ns = cells.filter(c => c.mesh && cellClass(c) !== "glia" && inPlay(c));
+  if (!ns.length){ ctxNote.textContent = "No neuron in " + (name || "this group") + " can fire" + (cells.some(c => c.mesh) ? " (glia, or hidden)." : " — nothing is loaded yet."); return; }
+  if (!STIM.synLoading) STIM.syn = STIM.syn || null;
+  if (!STIM.on) setStim(true);
+  if (!STIM.syn && caveToken()){
+    ctxNote.textContent = "Reading the synapses among these cells…";
+    for (let k = 0; k < 150 && !STIM.syn; k++){ if (STIM.synLoading) await new Promise(r => setTimeout(r, 100)); else { await loadSynapses(); if (!STIM.syn) break; } }
+  }
+  if (!STIM.running) resetActivity();
+  const wait = c => { const n = somaNode(c, 0); return c.apNodeT && c.apNodeT[n] < 1e8 && c.apNodeT[n] + REF_MS > STIM.now; };
+  const go = ns.filter(c => !wait(c)), skipped = ns.length - go.length;
+  go.forEach(c => { if (STIM.started == null) STIM.started = c.i; fireCell(c, somaNode(c, 0), STIM.now); });
+  STIM.running = true; window.__lastStim = go.length ? go[0].i : window.__lastStim;
+  if (SIM.speed > 1 / 200) setSimSpeed(1 / 5000);
+  ctxNote.textContent = "⚡ " + go.length + " neuron" + (go.length > 1 ? "s" : "") + " of " + (name || "the group") + " fire together" + (skipped ? " (" + skipped + " still refractory, skipped)" : "")
+    + (cells.length > ns.length ? "; " + (cells.length - ns.length) + " glia/hidden do not fire" : "") + ".";
+  MENU.dirty = true;
+}
+
+/* ── the window ── */
+const GW = { edit: null };
+function grpWin(v){
+  const w = document.getElementById("grpWin"); w.style.display = v ? "" : "none";
+  document.getElementById("grpBtn").classList.toggle("on", !!v);
+  if (v) grpRender();
+}
+function grpRender(){
+  const L = document.getElementById("grpList");
+  L.innerHTML = GROUPS.length ? GROUPS.map((g, i) => {
+    const here = g.members.filter(m => CELLS.some(c => String(c.root) === String(m.root))).length;
+    return '<div style="display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap"><span class="sw" style="width:10px;height:10px;border-radius:50%;background:' + grpColour(g.name) + '"></span>'
+      + '<b style="flex:1;min-width:120px">' + esc(g.name) + '</b><span style="color:var(--mut);font-size:12px">' + g.members.length + " member" + (g.members.length > 1 ? "s" : "") + (here ? " · " + here + " in view" : "") + "</span>"
+      + '<button data-gv="' + i + '" title="Load every member into the viewer">+ View</button><button data-ge="' + i + '">Edit</button><button data-gs="' + i + '" title="Copy a link that opens this group for anybody">🔗 Share</button><button data-gd="' + i + '" title="Delete this group (the cells stay in view)">🗑</button></div>';
+  }).join("") : '<div style="color:var(--mut);font-size:12px">No groups yet. Make one below: paste root IDs, or add the cells you have picked.</div>';
+  L.querySelectorAll("[data-gv]").forEach(b => b.onclick = () => grpToVR(GROUPS[+b.dataset.gv]));
+  L.querySelectorAll("[data-ge]").forEach(b => b.onclick = () => grpEdit(GROUPS[+b.dataset.ge]));
+  L.querySelectorAll("[data-gs]").forEach(b => b.onclick = () => grpShare(GROUPS[+b.dataset.gs], b));
+  L.querySelectorAll("[data-gd]").forEach(b => b.onclick = () => {
+    const g = GROUPS[+b.dataset.gd]; if (!confirm("Delete the group “" + g.name + "”? Its cells stay in view.")) return;
+    GROUPS.splice(+b.dataset.gd, 1); grpSave(); CELLS.forEach(c => { if (c.group === g.name) delete c.group; }); renderList(); grpRender(); });
+}
+function grpEdit(g){
+  GW.edit = g || null;
+  document.getElementById("grpName").value = g ? g.name : "";
+  document.getElementById("grpIds").value = g ? g.members.map(m => m.root + (m.label ? " " + m.label : "")).join("\n") : "";
+  document.getElementById("grpEdHead").textContent = g ? "Edit “" + g.name + "”" : "New group";
+  grpCount();
+}
+function grpCount(){
+  const n = grpParse(document.getElementById("grpIds").value).length;
+  document.getElementById("grpN").textContent = n + " root ID" + (n === 1 ? "" : "s");
+}
+function grpAppend(cells){
+  const ta = document.getElementById("grpIds"), have = new Set(grpParse(ta.value).map(m => m.root));
+  const lines = cells.filter(c => c.root && !have.has(String(c.root))).map(c => c.root + " " + String(c.label || "").replace(/\s*\(.*$/, ""));
+  if (lines.length) ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + lines.join("\n");
+  grpCount();
+}
+function grpStore(){
+  const name = document.getElementById("grpName").value.trim();
+  if (!name){ ctxNote.textContent = "Give the group a name first."; document.getElementById("grpName").focus(); return null; }
+  const ms = grpParse(document.getElementById("grpIds").value);
+  if (!ms.length){ ctxNote.textContent = "No root IDs in the box (they are 18-digit numbers)."; return null; }
+  /* keep what is known about a member (nucleus id, a corrected label) */
+  ms.forEach(m => { const c = CELLS.find(x => String(x.root) === m.root); if (c){ m.nuc = c.nuc || ""; if (!m.label) m.label = c.label; } });
+  const other = grpOf(name);
+  if (other && other !== GW.edit && !confirm("You already have a group called “" + name + "”. Replace it?")) return null;
+  if (GW.edit && GW.edit.name !== name) CELLS.forEach(c => { if (c.group === GW.edit.name) c.group = name; });
+  const g = { name, ds: VR_DS, members: ms, updated: new Date().toISOString() };
+  GROUPS = GROUPS.filter(x => x !== GW.edit && x.name !== name); GROUPS.unshift(g); grpSave(); GW.edit = g;
+  grpRender(); renderList();
+  ctxNote.textContent = "Group “" + name + "” kept in this browser (" + ms.length + " members).";
+  return g;
+}
+/* ── sharing: the group in the link, deflated ── */
+async function grpEncode(g){
+  const j = JSON.stringify({ n: g.name, d: g.ds || VR_DS, m: g.members.map(m => [m.root, m.nuc || "", m.label || ""]) });
+  const b64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  if (typeof CompressionStream === "function"){
+    const z = await new Response(new Blob([j]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
+    return "z" + b64(new Uint8Array(z));
+  }
+  return "j" + b64(new TextEncoder().encode(j));
+}
+async function grpDecode(s){
+  const u8 = Uint8Array.from(atob(s.slice(1).replace(/-/g, "+").replace(/_/g, "/")), ch => ch.charCodeAt(0));
+  const txt = s[0] === "z" ? await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text() : new TextDecoder().decode(u8);
+  const o = JSON.parse(txt);
+  return { name: String(o.n || "Shared group"), ds: o.d || VR_DS, members: (o.m || []).filter(x => /^\d{10,20}$/.test(String(x[0]))).map(x => ({ root: String(x[0]), nuc: String(x[1] || ""), label: String(x[2] || "") })) };
+}
+async function grpShare(g, btn){
+  const link = location.href.replace(/#.*$/, "") + "#grp=" + await grpEncode(g) + (VR_DS !== "microns" ? "&ds=" + VR_DS : "");
+  try { await navigator.clipboard.writeText(link); if (btn){ const t = btn.textContent; btn.textContent = "✓ copied"; setTimeout(() => btn.textContent = t, 1800); } ctxNote.textContent = "Link to “" + g.name + "” copied (" + link.length.toLocaleString() + " characters). Whoever opens it sees the group and can keep a copy."; }
+  catch (e){ prompt("Copy this link to share “" + g.name + "”:", link); }
+}
+/* a shared group arriving in the link */
+async function grpFromLink(){
+  const m = location.hash.match(/[#&]grp=([A-Za-z0-9_-]+)/); if (!m) return;
+  let g; try { g = await grpDecode(m[1]); } catch (e){ ctxNote.textContent = "The shared group in this link could not be read."; return; }
+  if (!g.members.length) return;
+  const mine = grpOf(g.name);
+  const bar = document.createElement("div");
+  bar.style.cssText = "position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:30;display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 32px);padding:8px 12px;border-radius:10px;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#e6edf3;font:14px system-ui,sans-serif";
+  bar.innerHTML = '<span>👥 Shared group <b>' + esc(g.name) + "</b> · " + g.members.length + " members</span>"
+    + '<button id="grpKeep" class="on">Keep a copy in my groups</button><button id="grpNo">Just look</button>';
+  document.body.appendChild(bar);
+  document.getElementById("grpKeep").onclick = () => {
+    let name = g.name; if (mine) name = g.name + " (shared)";
+    GROUPS = GROUPS.filter(x => x.name !== name); GROUPS.unshift(Object.assign({}, g, { name, updated: new Date().toISOString() })); grpSave();
+    CELLS.forEach(c => { if (c.group === g.name) c.group = name; }); renderList();
+    bar.remove(); ctxNote.textContent = "“" + name + "” is now one of your groups (👥 Groups).";
+  };
+  document.getElementById("grpNo").onclick = () => bar.remove();
+  await grpToVR(g);
+}
+document.getElementById("grpBtn").addEventListener("click", () => grpWin(document.getElementById("grpWin").style.display === "none"));
+document.getElementById("grpX").addEventListener("click", () => grpWin(false));
+document.getElementById("grpNew").addEventListener("click", () => grpEdit(null));
+document.getElementById("grpIds").addEventListener("input", grpCount);
+document.getElementById("grpAddPick").addEventListener("click", () => { const c = CELLS[SELECTED]; if (c) grpAppend([c]); else ctxNote.textContent = "Pick a cell first (tap or click it)."; });
+document.getElementById("grpAddShown").addEventListener("click", () => grpAppend(CELLS.filter(c => !c.hidden)));
+document.getElementById("grpKeepBtn").addEventListener("click", grpStore);
+document.getElementById("grpView").addEventListener("click", () => { const g = grpStore(); if (g) grpToVR(g); });
+grpFromLink();
+
+/* ── 43. WHITE BLOOD CELLS, BRAIN TEMPERATURE, INTRACRANIAL PRESSURE (teaching models) ── 2026-10-23
+   Søren: "white blood cells in the blood flow, they are a bit larger and much fewer, but the idea is that they stall
+   more often than RBCs. Look at the study by Schaffer and Nishimura" · "an activity where you change the brain
+   temperature" · "how intracerebral pressure ICP affects those and CSF flow".
+
+   WHITE BLOOD CELLS
+   · Mouse blood has ~5 ×10³ leukocytes/µL (C57BL/6: 5.8 male, 4.2 female; Animal Models Exp Med 2020) against
+     ~9–10 ×10⁶ red cells/µL, about 1 per 1,700–2,000. Drawn ×20 for teaching unless "realistic" is chosen. Size
+     ~7 µm across and slower than red cells in capillaries (0.6 × their speed) are ASSUMPTIONS, not measured here.
+   · Healthy cortex: stalls (~0.4 %, Erdener 2019 / Cruz Hernández 2019) are mostly red-cell or platelet jams --
+     wild-type mice on chow had 0 % leukocyte stalls, 50 % platelet, 50 % red cell only (Bracko et al. 2020 Sci Rep
+     10:9884). So the existing stalls are now drawn as jams, and white cells only pause briefly in the narrowest
+     capillaries.
+   · Alzheimer's model (APP/PS1): ~1.8–2 % of capillaries stalled (Cruz Hernández et al. 2019 Nat Neurosci 22:413,
+     Fig. 1c; Bracko 2020), ~86 % of them by a leukocyte, mostly neutrophils (Ly6G+ in 26/30). Here a white cell
+     entering a narrow capillary (Ø < 6.5 µm: stalled ones measured 5.8 ± 0.8 µm) stalls there, with a probability
+     steered so leukocyte stalls hold ~1.6 % of the capillaries in the box. Durations: half end within 5 min, about a
+     quarter last over 15 min (Fig. 2f–h; a mix of 2 and 40 min means); a capillary that stalled once is 10 × as
+     likely to stall again. The box starts at that steady state.
+   · Anti-Ly6G: no new leukocyte stalls, and the existing ones clear within ~10 min (Cruz Hernández 2019: stalls
+     fell within 10 min, penetrating-arteriole flow +26–32 %). The flow change here comes out of the network.
+
+   BRAIN TEMPERATURE (slider, 33–42 °C; awake mouse cortex 37.7 ± 0.2 °C, Roche et al. 2019 eLife 8:e47324)
+   · Axonal conduction speed: Q10 1.5 (Low & McLeod 1977, J Neurol Neurosurg Psychiatry 40:434, mouse nerve).
+   · Oxygen use: Q10 2.8 (≈ 6 % per °C; Croughwell et al. 1992, J Thorac Cardiovasc Surg 103:549).
+   · Blood flow: +8.8 % per °C (Roche 2019: 2–3 °C cooling cut capillary red-cell flux by ~22 %).
+   · Warnings: above ~39.5–40 °C the brain is outside its physiological range and the blood–brain barrier leaks
+     (Kiyatkin 2010 Front Biosci 15:73; Wang et al. 2014 Front Neurosci 8:307); heat seizures in mice from ~42.6 °C
+     (Scn1a mutants; wild-type 43.7 °C, Das et al. 2021 eNeuro). Firing rates are NOT changed: no verified cortical
+     Q10 was found.
+
+   INTRACRANIAL PRESSURE (slider, 0–60 mmHg; rats 3–5 mmHg freely moving, Eftekhari et al. 2020 Fluids Barriers CNS
+   17:39; the mouse value is not verified, 5 is used)
+   · The veins leave the skull through a collapsible segment, so blood leaves only above ICP (the Starling
+     resistor): the venous outlets' pressure is raised to ICP when ICP exceeds it. Perfusion pressure = MAP − ICP.
+   · Autoregulation sees the perfusion pressure (mouse lower limit ~77 mmHg MAP at normal ICP, Koide et al. 2021
+     Front Physiol 12:688468). When ICP is high the critical perfusion pressure is lower (~30 vs ~60 mmHg, Nemoto
+     2014) and flow shifts to non-nutritive shunts (Bragin et al. 2013 Stroke 44:177) -- said, not modelled.
+   · CSF tracer influx falls with raised ICP (rat glioma, ICP 15.6 vs 8.1 mmHg, Xu et al. 2022 Front Oncol
+     11:790821, no percentage): QUALITATIVE here, 1 / (1 + (ICP − 5)/10). */
+const WBC = { on: false, teach: true, ad: false, ly6g: false, W: null, mesh: null, stall: new Map(), hist: new Set(), p: 0.15, pauses: 0 };
+const PHYS = { T: 37.7, T0: 37.7, icp: 5, icp0: 5 };
+function wbcCount(){ const real = STK.parts ? STK.parts.n * (STK.rbcEvery || 1) / 1800 : 3; return Math.max(3, Math.round(real * (WBC.teach ? 20 : 1))); }
+function wbcDur(){ return Math.random() < 0.6 ? -Math.log(Math.random()) * 120 : -Math.log(Math.random()) * 2400; }
+function wbcNarrow(c){ const N = STK.net; let r = 99; for (let k = N.off[c]; k < N.off[c+1]; k++) r = Math.min(r, N.rad[N.cp[k]]); return N.kind[c] === 0 && r < 3.25; }
+function wbcBuild(){
+  wbcClear();
+  if (!WBC.on || !STK.on || !STK.net || !STK.Q) return;
+  if (!STK.inBox) stkInBox();
+  if (!STK.pick) { /* the pickers come with the red cells */ const was = STK.rbc; stkRbcBuild(); if (!was) stkRbcClear(); }
+  const n = wbcCount(), W = { n, c: new Int32Array(n), s: new Float32Array(n), ox: new Float32Array(n), oy: new Float32Array(n), sp: new Float32Array(n), hid: new Uint8Array(n), pause: new Float32Array(n) };
+  for (let i = 0; i < n; i++) stkSpawn(W, i, true);
+  WBC.W = W;
+  const mat = new THREE.MeshStandardMaterial({ color: "#f8f0ff", roughness: 0.55, emissive: "#3b2a55", emissiveIntensity: 0.6 });
+  WBC.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2), mat, n + 600);
+  WBC.mesh.frustumCulled = false; WBC.mesh.renderOrder = 2; WBC.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); WBC.mesh.count = 0; content.add(WBC.mesh);
+  if (WBC.ad) wbcSeedStalls();
+}
+function wbcClear(){
+  if (WBC.mesh){ content.remove(WBC.mesh); WBC.mesh.geometry.dispose(); WBC.mesh.material.dispose(); WBC.mesh = null; }
+  WBC.W = null;
+  if (WBC.stall.size){ WBC.stall.clear(); STK.dirty = true; }
+}
+/* the steady state of the AD model: ~1.6 % of the capillaries in the box held by a white cell */
+function wbcTarget(){ return Math.round(0.016 * (STK.nCapBox || 0)); }
+function wbcSeedStalls(){
+  const N = STK.net, cand = []; for (let c = 0; c < N.nc; c++) if (STK.inBox[c] && wbcNarrow(c)) cand.push(c);
+  const want = Math.min(500, wbcTarget());
+  for (let k = 0; k < want && cand.length; k++){
+    const i = Math.floor(Math.random() * cand.length), c = cand.splice(i, 1)[0];
+    /* a stall seen at a random moment has the length-biased residual of the mix */
+    const until = STK.t + wbcDur();
+    WBC.stall.set(c, { until, s: 0.2 + 0.6 * Math.random() }); WBC.hist.add(c);
+  }
+  STK.dirty = true;
+}
+const _wM = new THREE.Matrix4(), _wQ = new THREE.Quaternion(), _wS = new THREE.Vector3(), _wV = new THREE.Vector3(), _wT = new THREE.Vector3();
+function wbcPose(c, s, k){                         // position and squeezed shape of a 7 µm cell at s along chain c
+  const N = STK.net, FF = STK.F, a0 = N.off[c], a1 = N.off[c+1];
+  let kk = a0; while (kk < a1 - 2 && N.arc[kk+1] < s) kk++;
+  const ia = N.cp[kk], ib = N.cp[Math.min(a1 - 1, kk + 1)], L = Math.max(1e-6, N.arc[Math.min(a1 - 1, kk + 1)] - N.arc[kk]), f = Math.max(0, Math.min(1, (s - N.arc[kk]) / L));
+  _wT.set(N.pos[ib*3] - N.pos[ia*3], N.pos[ib*3+1] - N.pos[ia*3+1], N.pos[ib*3+2] - N.pos[ia*3+2]); if (_wT.lengthSq() < 1e-9) _wT.set(0, 1, 0); _wT.normalize();
+  _wV.set(N.pos[ia*3] + (N.pos[ib*3] - N.pos[ia*3]) * f, N.pos[ia*3+1] + (N.pos[ib*3+1] - N.pos[ia*3+1]) * f, N.pos[ia*3+2] + (N.pos[ib*3+2] - N.pos[ia*3+2]) * f);
+  const rv = (N.rad[ia] + (N.rad[ib] - N.rad[ia]) * f) * (FF ? FF[c] : 1), a = Math.max(1.0, Math.min(3.5, 0.92 * rv)), b = Math.min(9, 180 / (4.18879 * a * a));
+  _wQ.setFromUnitVectors(_sY, _wT); _wS.set(a, b, a); _wM.compose(_wV, _wQ, _wS); WBC.mesh.setMatrixAt(k, _wM);
+}
+function wbcFrame(sdt){
+  if (!WBC.on || !WBC.W || !STK.Q || !WBC.mesh) return;
+  const W = WBC.W, N = STK.net, Q = STK.Q, inb = STK.inBox, M = stkPulseNow(), FF = STK.F;
+  /* stalls end; with anti-Ly6G they clear within ~10 min */
+  let ch = false;
+  for (const [c, st] of WBC.stall){
+    if (STK.t >= st.until || (WBC.ly6g && Math.random() < 1 - Math.exp(-sdt / 300))){ WBC.stall.delete(c); ch = true; }
+  }
+  let k = 0;
+  for (let i = 0; i < W.n; i++){
+    let c = W.c[i], s = W.s[i];
+    if (W.pause[i] > 0){ W.pause[i] -= sdt; wbcPose(c, s, k++); continue; }
+    const o0 = N.off[c], o1 = N.off[c+1]; let kk = o0; while (kk < o1 - 2 && N.arc[kk+1] < s) kk++;
+    const r = Math.max(1, Math.min(N.rad[N.cp[kk]], N.rad[N.cp[kk+1]]) * (FF ? FF[c] : 1));
+    const slow = N.kind[c] === 0 ? 0.6 : 0.9;
+    const v = Math.abs(Q[c]) / (Math.PI * r * r) * M[N.ccls[c]] * slow;
+    s += v * sdt * (Q[c] >= 0 ? 1 : -1);
+    let hops = 0;
+    while ((s < 0 || s > N.len[c]) && hops < 20){
+      hops++;
+      const over = s < 0 ? -s : s - N.len[c], j = s < 0 ? N.ja[c] : N.jb[c];
+      let tot = 0; const out = [];
+      for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){
+        const o = N.jc[t]; if (o === c) continue;
+        if ((N.ja[o] === j && Q[o] > 0) || (N.jb[o] === j && Q[o] < 0)){ tot += Math.abs(Q[o]); out.push(o, Math.abs(Q[o])); }
+      }
+      if (!out.length || tot <= 0){ W.carry = true; stkSpawn(W, i); W.carry = false; c = W.c[i]; s = W.s[i]; continue; }
+      let nxt = out[0], u = Math.random() * tot; for (let t = 0; t < out.length; t += 2){ u -= out[t+1]; if (u <= 0){ nxt = out[t]; break; } }
+      if (!inb[nxt]){ W.carry = true; stkSpawn(W, i); W.carry = false; c = W.c[i]; s = W.s[i]; continue; }
+      c = nxt; s = N.ja[c] === j ? over : N.len[c] - over;
+      if (wbcNarrow(c) && !WBC.stall.has(c)){
+        if (WBC.ad && !WBC.ly6g && WBC.stall.size < wbcTarget() * 1.05 && Math.random() < Math.min(1, WBC.p * (WBC.hist.has(c) ? 10 : 1))){
+          /* it sticks: the capillary is stalled by this white cell; a new one comes in from upstream */
+          WBC.stall.set(c, { until: STK.t + wbcDur(), s: Math.max(0.1, Math.min(0.9, s / Math.max(1e-6, N.len[c]))) }); WBC.hist.add(c); ch = true;
+          stkSpawn(W, i); c = W.c[i]; s = W.s[i]; break;
+        }
+        /* healthy: it only squeezes through, now and then pausing a moment (assumed, a few seconds) */
+        if (Math.random() < 0.02){ W.pause[i] = 1 + 4 * Math.random(); WBC.pauses++; }
+      }
+    }
+    if (hops >= 20){ stkSpawn(W, i); c = W.c[i]; s = W.s[i]; }
+    W.c[i] = c; W.s[i] = s;
+    wbcPose(c, s, k++);
+  }
+  for (const [c, st] of WBC.stall){ if (!inb[c]) continue; if (k >= W.n + 600) break; wbcPose(c, st.s * N.len[c], k++); }
+  WBC.mesh.count = k; WBC.mesh.instanceMatrix.needsUpdate = true;
+  /* steer the sticking probability towards the AD steady state, once a second */
+  WBC._t = (WBC._t || 0) + sdt;
+  if (WBC._t >= 1){ WBC._t = 0; if (WBC.ad && !WBC.ly6g){ const tg = wbcTarget(); WBC.p = Math.max(0.01, Math.min(1, WBC.p * (WBC.stall.size < tg ? 1.15 : 0.87))); } }
+  if (ch) STK.dirty = true;
+}
+function setWbc(k, v){
+  WBC[k] = !!v;
+  for (const id of ["wbcOn", "wbcAd", "wbcLy6g", "wbcTeach", "mapWbc"]) { const el = document.getElementById(id); if (!el) continue;
+    el.checked = id === "wbcOn" || id === "mapWbc" ? WBC.on : id === "wbcAd" ? WBC.ad : id === "wbcLy6g" ? WBC.ly6g : WBC.teach; }
+  document.getElementById("wbcLy6gRow").style.display = WBC.ad ? "" : "none";
+  if (k === "on" && v && !STK.on){ setStroke(true, { quiet: true }).then(() => { wbcBuild(); wbcNote(); }); return; }
+  if (k === "on" || k === "teach") wbcBuild();
+  if (k === "ad"){ if (!WBC.on && v) return setWbc("on", true); if (v){ WBC.p = 0.15; wbcSeedStalls(); } else { WBC.stall.clear(); WBC.ly6g = false; STK.dirty = true; } }
+  if (k === "ly6g") STK.dirty = true;
+  wbcNote(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function wbcNote(){
+  if (!WBC.on){ return; }
+  const pct = STK.nCapBox ? 100 * WBC.stall.size / STK.nCapBox : 0, other = STK.stall ? STK.stall.size : 0;
+  ctxNote.textContent = "White blood cells (MODEL): " + (WBC.W ? WBC.W.n : 0) + " moving" + (WBC.teach ? " (×20 for teaching)" : " (realistic, ~1 per 1,800 red cells)")
+    + (WBC.ad ? " · Alzheimer's model: " + WBC.stall.size + " capillaries stalled by a white cell (" + pct.toFixed(2) + " % of " + STK.nCapBox + "; APP/PS1 ~1.8 %)" + (WBC.ly6g ? " — anti-Ly6G: they are clearing, no new ones" : "")
+                : " · healthy: stalls (" + other + " now) are red-cell/platelet jams; white cells only pause") + ".";
+}
+/* ── temperature and ICP ── */
+const PHYS_Q10_CV = 1.5, PHYS_Q10_O2 = 2.8, PHYS_CBF_PER_C = 0.088;
+function physFlowG(){ return Math.max(0.3, 1 + PHYS_CBF_PER_C * (PHYS.T - PHYS.T0)); }
+function physMet(){ return Math.pow(PHYS_Q10_O2, (PHYS.T - PHYS.T0) / 10); }
+function physCsf(){ return PHYS.icp >= PHYS.icp0 ? 1 / (1 + (PHYS.icp - PHYS.icp0) / 10) : 1 + 0.16 * (PHYS.icp0 - PHYS.icp); }
+function setTemp(T){
+  PHYS.T = Math.max(33, Math.min(42, +T || PHYS.T0));
+  STIM.speed = 500 * Math.pow(PHYS_Q10_CV, (PHYS.T - PHYS.T0) / 10);
+  document.getElementById("physT").value = PHYS.T; document.getElementById("physTv").textContent = PHYS.T.toFixed(1) + " °C";
+  if (STK.on){ STK.dirty = true; STK.gridDirty = true; }
+  physNote(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setIcp(v){
+  PHYS.icp = Math.max(0, Math.min(60, +v || 0));
+  document.getElementById("physI").value = PHYS.icp; document.getElementById("physIv").textContent = PHYS.icp + " mmHg";
+  if (STK.on) STK.dirty = true;
+  physNote(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function physNote(){
+  const T = PHYS.T, cpp = STK.map - PHYS.icp, el = document.getElementById("physNote");
+  const warn = T >= 42.6 ? "⚠ Seizure range (mice: heat seizures from ~42.6 °C). " : T >= 39.5 ? "⚠ Above the physiological range (~39.5–40 °C): the blood–brain barrier starts to leak. " : T <= 34 ? "Hypothermia: slower conduction, much less oxygen use. " : "";
+  const icpw = PHYS.icp >= 20 ? "⚠ Raised ICP: perfusion pressure " + cpp + " mmHg" + (cpp < 50 ? " — below where flow is protected" : "") + "; flow shifts to shunts (not modelled). " : "";
+  const t = warn + icpw + "Temperature " + T.toFixed(1) + " °C: conduction ×" + Math.pow(PHYS_Q10_CV, (T - PHYS.T0) / 10).toFixed(2) + ", O₂ use ×" + physMet().toFixed(2) + ", blood flow ×" + physFlowG().toFixed(2)
+    + " · ICP " + PHYS.icp + " mmHg: perfusion pressure " + cpp + " mmHg (MAP " + STK.map + "), CSF tracer influx ×" + physCsf().toFixed(2) + (STK.on ? "" : " — turn on the blood flow to see the vessels respond") + ".";
+  if (el) el.textContent = t; ctxNote.textContent = t;
+}
+document.getElementById("physT").addEventListener("input", e => setTemp(e.target.value));
+document.getElementById("physI").addEventListener("input", e => setIcp(e.target.value));
+document.getElementById("physReset").addEventListener("click", () => { setTemp(PHYS.T0); setIcp(PHYS.icp0); });
+document.getElementById("wbcOn").addEventListener("change", e => setWbc("on", e.target.checked));
+document.getElementById("mapWbc").addEventListener("change", e => setWbc("on", e.target.checked));
+document.getElementById("wbcAd").addEventListener("change", e => setWbc("ad", e.target.checked));
+document.getElementById("wbcLy6g").addEventListener("change", e => setWbc("ly6g", e.target.checked));
+document.getElementById("wbcTeach").addEventListener("change", e => setWbc("teach", e.target.checked));
 
 /* TAP / CLICK A CELL TO PICK IT on a screen (2026-10-23, Søren: "How do I pick a cell while on a
    mobile device?"). Until now only the headset's trigger and the cell list picked a cell. A tap or
@@ -13276,11 +14139,11 @@ renderer.setAnimationLoop(() => {
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
-  try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
+  try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
-  if (domeActive()) domeRender(null); else renderer.render(scene, camera);
+  if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
   try { simUi(); } catch (e){ console.warn("[vr] clock:", e); }
@@ -13658,6 +14521,36 @@ function tlApplyPeelAt(t){
   BLOCK.on = true; BLOCK.axis = k.axis || "front"; BLOCK.showSeg = k.seg !== false; BLOCK.peel = p; blkApply();
 }
 /* Before a recording starts: the first block it needs, read now rather than in the middle of a take. */
+
+async function sceneAutoplay(){
+  setTimeline(true); tlSeek(0);
+  ctxNote.textContent = "Getting the film ready…";
+  try { await tlPrepBlock(); } catch (e){}
+  for (let k = 0; k < 300 && (tlWaiting() || CELLS.some(c => c.status === "waiting…")); k++) await new Promise(r => setTimeout(r, 100));
+  panel.style.display = "none"; show.style.display = "block";
+  TLD.bar.style.display = "none"; TL.viewer = true;               // the editor strip stays out of the film
+  tlSeek(0); tlPlay();
+  let ov = document.getElementById("fsOffer");
+  if (!ov){
+    ov = document.createElement("div"); ov.id = "fsOffer";
+    ov.style.cssText = "position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:30;display:flex;gap:8px;align-items:center;padding:8px 12px;border-radius:10px;background:rgba(13,17,23,.85);border:1px solid #30363d;color:#e6edf3;font:14px system-ui,sans-serif";
+    ov.innerHTML = '<button id="fsGo" class="on" style="font-size:15px;padding:6px 14px">⛶ Watch in full screen</button><button id="fsEdit" title="Show the timeline editor and the panel">Edit</button><button id="fsX" title="Hide this">✕</button>';
+    document.body.appendChild(ov);
+    const hide = () => { ov.style.display = "none"; };
+    document.getElementById("fsGo").onclick = async () => {
+      hide();
+      try { const el = document.documentElement; await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : Promise.reject()); }
+      catch (e){ ctxNote.textContent = "This browser does not allow full screen here — the film plays in the window."; }
+      tlStop(); tlSeek(0); tlPlay();
+    };
+    document.getElementById("fsEdit").onclick = () => { hide(); TL.viewer = false; TLD.bar.style.display = ""; panel.style.display = "block"; show.style.display = "none"; };
+    document.getElementById("fsX").onclick = hide;
+    /* gone by itself after 12 s if nobody wants it */
+    setTimeout(() => { if (ov.style.display !== "none" && TL.playing) ov.style.opacity = "0.35"; }, 12000);
+  }
+  ov.style.display = "flex"; ov.style.opacity = "1";
+  ctxNote.textContent = "▶ Playing “" + (SCENE.title || "the scene") + "”.";
+}
 async function tlPrepBlock(){
   const k = tlPeelKeys().find(x => x.blk);
   if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
@@ -13757,12 +14650,12 @@ const panel = document.getElementById("panel"), show = document.getElementById("
    neighbour table and Søren's vectors exist for MICrONS alone. Elsewhere those controls are
    taken away -- in the panel and in the headset palette -- rather than left to fail. */
 const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, vasc: !!DSX.vascMesh, skel: !!DSX.vascSkel,
-                 nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet };
+                 nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, seg: !!DSX.seg, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
   const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapWbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn", tsBtn: "seg", tsR: "seg", tsTop: "seg", tsList: "seg" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
@@ -13781,7 +14674,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
@@ -13851,6 +14744,23 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
       <div style="display:flex;gap:6px;flex-wrap:wrap"><button id="trwSave" class="on">Save them</button><button id="trwKeep">Keep tracing</button><button id="trwDrop">Discard</button></div>
       <div id="trwSignin" style="margin-top:6px"></div>
       <div id="trwOut" style="margin-top:4px;font-size:12px;color:#8b949e"></div>
+    </div>
+  </div>
+</div>
+<div id="grpWin" style="display:none;position:fixed;right:12px;top:12px;z-index:21;width:min(460px,calc(100vw - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;background:rgba(13,17,23,.97);color:#e6edf3;border:1px solid #30363d;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.5);font:13px system-ui,sans-serif">
+  <div style="padding:7px 10px;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:8px"><b style="flex:1">👥 Groups</b><button id="grpX" style="border:0;background:none;color:inherit;font-size:16px;cursor:pointer">✕</button></div>
+  <div style="padding:8px 10px">
+    <div id="grpList"></div>
+    <div style="border-top:1px solid #30363d;margin-top:8px;padding-top:8px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><b id="grpEdHead" style="flex:1">New group</b><button id="grpNew" title="Start a new, empty group">+ New</button></div>
+      <input id="grpName" placeholder="Group name, e.g. “Astrocyte 12 fragments”" style="width:100%;box-sizing:border-box;padding:6px 8px;background:transparent;color:inherit;border:1px solid #30363d;border-radius:6px;margin-bottom:6px">
+      <textarea id="grpIds" rows="7" placeholder="Paste root IDs — one per line, optionally followed by a label:&#10;864691135565870679 axon fragment&#10;864691136136830589&#10;…or a whole list separated by commas or spaces" style="width:100%;box-sizing:border-box;padding:6px 8px;background:transparent;color:inherit;border:1px solid #30363d;border-radius:6px;font:12px ui-monospace,monospace"></textarea>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <span id="grpN" style="color:#8b949e;font-size:12px;flex:1">0 root IDs</span>
+        <button id="grpAddPick" title="Add the picked cell">+ picked cell</button><button id="grpAddShown" title="Add every cell shown now">+ all shown</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px"><button id="grpKeepBtn">Keep</button><button id="grpView" class="on">Keep and add to view</button></div>
+      <div style="color:#8b949e;font-size:11.5px;margin-top:6px">Groups are kept in this browser (yours only); 🔗 Share copies a link that opens the group for anybody. Members without a known type load as “Fragment”.</div>
     </div>
   </div>
 </div>
