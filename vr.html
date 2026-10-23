@@ -399,6 +399,32 @@
     <select id="ctDist" title="How close two membranes must be to count as touching. Meshes are simplified, so at light detail allow more"><option value="0.3">within 0.3 µm</option><option value="0.6">within 0.6 µm</option><option value="1" selected>within 1 µm</option><option value="1.5">within 1.5 µm</option></select>
     <button id="ctCsv" title="Download every contact site: the two cells, their types, whether coupled, approximate area and position (voxels)">⬇ Contacts CSV</button>
   </div>
+  <div id="cnBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div style="font-size:12px;margin-bottom:4px"><b>Connections of the picked cell</b> <span id="cnFor" style="color:var(--mut)">pick a cell first</span></div>
+    <div class="ctl" style="margin:0 0 4px">
+      <button id="cnBtn" title="Every synapse of the picked cell from CAVE (synapses_pni_2, v1300): inputs cyan and outputs pink on the cell, the partners ranked by synapse count, and lines from the top partners' somata (thicker = more synapses). Needs the CAVE token µJump's Connectivity panel uses.">🔗 Connectivity</button>
+      <select id="cnTop" title="How many partners each way get a line"><option value="10">lines: top 10</option><option value="20" selected>lines: top 20</option><option value="50">lines: top 50</option></select>
+      <button id="cnIn" title="Bring in the 5 partners with most input synapses onto this cell">+ top 5 inputs</button>
+      <button id="cnOut" title="Bring in the 5 partners this cell makes most output synapses onto">+ top 5 outputs</button>
+      <button id="cnCsv" title="Every synapse: direction, partner, its type and nucleus, position (voxels), and the tripartite proxy when it has been run">⬇ CSV</button>
+    </div>
+    <div class="ctl" id="cnTokRow" style="display:none;margin:0 0 4px">
+      <input id="cnTok" type="password" placeholder="CAVE token" style="flex:1;font:12px ui-monospace,monospace;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
+      <button id="cnTokSave" title="Saved in this browser only, under the same key µJump uses; sent only to CAVE">Save</button>
+    </div>
+    <div id="cnList" style="font-size:12px;max-height:220px;overflow:auto"></div>
+    <div class="ctl" style="margin:6px 0 2px">
+      <button id="tpBtn" title="Astrocyte–synapse proximity, µJump's structural proxy for a tripartite synapse: the synapses with astrocyte membrane within the chosen distance. The astrocytes nearest most of the synapses are loaded. Distance only — it does not show the process ensheathing the synapse.">Tripartite synapses</button>
+      <select id="tpDist" title="Astrocyte membrane this close counts (EM: most astrocyte–synapse distances are ~10–1100 nm; µJump's default is 0.5 µm)"><option value="0.25">within 0.25 µm</option><option value="0.5" selected>within 0.5 µm</option><option value="1">within 1 µm</option><option value="2">within 2 µm</option></select>
+      <select id="tpK" title="How many astrocytes to load (the ones whose nuclei have most of the synapses within 50 µm)"><option value="3">3 astrocytes</option><option value="6" selected>6 astrocytes</option><option value="10">10 astrocytes</option></select>
+    </div>
+    <div id="tpNote" style="font-size:12px;color:var(--mut)"></div>
+    <div class="ctl" style="margin:6px 0 2px">
+      <button id="tcBtn" title="Load the nearest cells and keep the ones whose membrane comes within the Cell contacts distance of the picked cell; the others are hidden again. Contact sites are shown.">+ Touching cells</button>
+      <select id="tcK" title="How many of the nearest cells to test"><option value="6">test 6 nearest</option><option value="12" selected>test 12 nearest</option><option value="20">test 20 nearest</option></select>
+    </div>
+    <div id="cnNote" style="font-size:12px;color:var(--mut)"></div>
+  </div>
   <div class="ctl" id="ptsRow" style="display:none">
     <button id="ptsBtn" class="on" title="Synapses and touch points added from µJump's Connectivity, Astrocyte–synapse proximity and Cell contacts panels">Synapses &amp; contact points</button>
     <select id="ptsDir" title="Which synapses to show"><option value="both">Inputs and outputs</option><option value="in">Inputs only</option><option value="out">Outputs only</option></select>
@@ -643,6 +669,10 @@
   <div id="fixBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="align-items:center;margin:0"><button id="fixBtn" title="A cell is missing a part (the segmentation split it): open the EM with the segmentation at that place, double-click the missing piece to add its root ID to the cell, move on and add more, then save them all to the cell for everyone (needs Google sign-in)">🧩 Add missing parts</button>
       <span id="fixInfo" style="font-size:12px;color:var(--mut)">pick a cell first</span></div>
+  </div>
+  <div id="trwBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="align-items:center;margin:0"><button id="trwBtn" title="Trace organelles on the EM of the picked cell: outline them section by section (lofted into 3D, saved as µJump traced structures with their volume) or mark them with a point (saved as µJump organelle reports). Works on a screen and in the headset (EM tab of the palette).">✏️ Trace organelles</button>
+      <span id="trwInfo" style="font-size:12px;color:var(--mut)">pick a cell first</span></div>
   </div>
   <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
     <div class="ctl" style="margin:0 0 6px;align-items:center">
@@ -901,9 +931,9 @@
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
-    ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
+    ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
-    ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
+    ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
   ];
@@ -1044,7 +1074,9 @@ window.VR_DATASETS = {
     vascSkel: "https://www.googleapis.com/storage/v1/b/microns_vascular_skeleton/o/",
     /* Synapses among the loaded cells (section 8's loadSynapses), from CAVE. */
     syn: { server: "https://minnie.microns-daf.com", datastack: "minnie65_public", version: "1300",
-           table: "synapses_pni_2", tokenKey: "cave_token", res: [4, 4, 40], name: "MICrONS synapses_pni_2, v1300" },
+           table: "synapses_pni_2", tokenKey: "cave_token", res: [4, 4, 40], name: "MICrONS synapses_pni_2, v1300",
+           /* partner types and somata for the picked cell's connectivity (section 39) */
+           celltypes: "aibs_metamodel_celltypes_v661" },
     res: [4, 4, 40]
   },
   /* ── THE OTHER TOOLS (2026-10-17, Søren: "I think it is time we spread the VR to the other
@@ -2111,12 +2143,12 @@ function emTexture(cv){
      the data frame), so the texture must NOT be flipped. */
   t.flipY = false; return t;
 }
-async function showEM(centre){
+async function showEM(centre, sizeOverride){
   const ds = dsOfCells();
   if (!ds.em){ ctxNote.textContent = "No EM source for this dataset."; return; }
   const c = centre || emCentreUm();
   if (!c){ ctxNote.textContent = "Load a cell first."; return; }
-  EM.centre = c.slice(); EM.size = document.getElementById("emSize").value;
+  EM.centre = c.slice(); EM.size = sizeOverride || document.getElementById("emSize").value;
   const L = EM_LEVEL[EM.size], token = ++EM.token;
   if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
   /* Size known before the read: px pixels at the level's nm per pixel. */
@@ -4225,9 +4257,10 @@ function onCred(resp){
     const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
       .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
     CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
-    for (const id of ["sceneSignin", "gameSignin", "fixSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
+    for (const id of ["sceneSignin", "gameSignin", "fixSignin", "trwSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
     if (typeof GAME !== "undefined" && GAME.pendingBad){ GAME.pendingBad = false; gameBadSend(); }
     if (typeof FIX !== "undefined" && FIX.pending){ FIX.pending = false; fixSave(); }
+    if (typeof TRW !== "undefined" && TRW.pending){ TRW.pending = false; trwSave(); }
     if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
   } catch (e){}
 }
@@ -7714,7 +7747,7 @@ function applyLook(){
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
-function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); } catch (e){} }
+function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); } catch (e){} }
 
 document.getElementById("detail").addEventListener("change", loadAll);
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
@@ -7820,7 +7853,7 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {} };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectend", () => { h.spraying = false; });
+  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); });
   ctl.addEventListener("selectstart", () => {
     /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
        its pinch begins, so its select is acted on in the next frame (section 14). */
@@ -7836,6 +7869,7 @@ function selectWith(h){
   const mh = menuHit(h);
   if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
   const tool = isToolHand(h);
+  if (TRW.on && tool){ trwHandStart(h); return; }
   if (FLY.trigger && tool){ flyWithHand(h); return; }
   if (SPRAY.on && tool){ h.spraying = true; return; }
   if (STK.arm && tool){ stkWithRay(rayOf(h)); return; }
@@ -8061,6 +8095,17 @@ function menuRows(){
       rows.push({ label: "   Reset Ca²⁺", act: caReset });
     }
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
+    if (DS_HAS.syn && SELECTED >= 0){
+      rows.push({ label: "Connectivity of the picked cell", on: !!CN.on, act: () => setConnectivity(!CN.on) });
+      if (CN.partners){
+        rows.push({ label: "   + top 5 input partners", act: () => cnAddTop(0, 5) });
+        rows.push({ label: "   + top 5 output partners", act: () => cnAddTop(1, 5) });
+      }
+      if (DS_HAS.nb){
+        rows.push({ label: "Tripartite synapses (within " + CN.tpDist + " µm)", on: !!CN.tpOn, act: () => setTripartite(!CN.tpOn) });
+        rows.push({ label: "+ Touching cells (test " + CN.tcK + " nearest)", act: addTouching });
+      }
+    }
     if (DS_HAS.vasc){
       rows.push({ label: "Vascular regulation & blood flow (model)", on: NV.on, act: () => setNv(!NV.on) });
       if (NV.on){
@@ -8190,7 +8235,22 @@ function menuRows(){
     rows.push({ label: "Eraser (erase spray)", on: SPRAY.on && SPRAY.erase, act: () => { SPRAY.erase = SPRAY.on ? !SPRAY.erase : true; if (!SPRAY.on) setSpray(true); else sprayNote(); syncSprayUI(); } });
     rows.push({ label: "Nozzle: " + ({ s: "fine", m: "medium", l: "wide" })[SPRAY.size] + "  ▸", act: () => { SPRAY.size = ({ s: "m", m: "l", l: "s" })[SPRAY.size]; syncSprayUI(); } });
     rows.push({ label: "Wipe all paint", act: wipePaint });
+  } else if (t === "EM" && TRW.on){
+    /* tracing in the headset (section 38) */
+    const qk = TRW_QUICK.includes(TRW.kind) ? TRW_QUICK : [TRW.kind].concat(TRW_QUICK);
+    rows.push({ label: "Trace: " + trwShort(TRW.kind) + "  ▸", swatch: trwColour(TRW.kind),
+                act: () => { if (TRW.cur && TRW.cur.rings.length) trwFinish(); TRW.pend = null; TRW.kind = qk[(qk.indexOf(TRW.kind) + 1) % qk.length]; trwChanged(); trwNote(); } });
+    rows.push({ label: "Draw: " + (TRW.mode === "outline" ? "outline (hold trigger)" : "point (click trigger)") + "  ▸",
+                act: () => { if (TRW.mode === "outline"){ if (TRW.cur && TRW.cur.rings.length) trwFinish(); TRW.mode = "point"; } else { TRW.mode = "outline"; TRW.pend = null; } trwChanged(); trwNote(); } });
+    rows.push({ label: "Next section ▼  (section " + trwZ() + ")", act: () => trwSetZ(TRW.step) });
+    rows.push({ label: "Previous section ▲", act: () => trwSetZ(-TRW.step) });
+    if (TRW.cur && TRW.cur.rings.length) rows.push({ label: "Finish this " + trwShort(TRW.cur.kind) + " (" + TRW.cur.rings.length + " outline" + (TRW.cur.rings.length > 1 ? "s" : "") + ")", on: true, act: trwFinish });
+    rows.push({ label: "Undo last", act: trwUndo });
+    const ns = TRW.items.filter(i => !i.saved).length + (TRW.cur && TRW.cur.rings.length ? 1 : 0);
+    rows.push({ label: ns ? "Save " + ns + " traced  (" + (credOk() ? "signed in" : "needs sign-in") + ")" : "Nothing to save yet", act: () => { if (TRW.cur && TRW.cur.rings.length) trwFinish(); trwSave(); } });
+    rows.push({ label: "Stop tracing", act: () => setTrace(false) });
   } else if (t === "EM"){
+    if (SELECTED >= 0 && DSX.em) rows.push({ label: "Trace organelles on the picked cell", act: () => setTrace(true) });
     rows.push({ label: EM.mesh ? "Move it to the picked cell" : "Show the EM section", on: !!EM.mesh || EM.loading, act: () => showEM() });
     if (EM.mesh || EM.loading){
       rows.push({ label: "+5 µm through the sections", act: () => moveEM(5) });
@@ -12181,6 +12241,7 @@ async function setFix(v){
   const c = fixCell();
   if (v && !c){ ctxNote.textContent = "Add missing parts: pick the cell first (click it), then press the button again."; return; }
   if (v && !DSX.seg){ ctxNote.textContent = "This dataset has no flat segmentation the viewer can read, so parts cannot be picked here."; return; }
+  if (v && typeof TRW !== "undefined" && TRW.on) setTrace(false);
   if (!v && FIX.added.length && !confirm("Leave without saving the " + FIX.added.length + " part(s) you added? They are taken off the cell again.")) return;
   FIX.on = !!v; document.getElementById("fixBtn").classList.toggle("on", FIX.on);
   document.getElementById("fixWin").style.display = FIX.on ? "" : "none";
@@ -12443,13 +12504,747 @@ renderer.domElement.addEventListener("pointerup", e => {
 });
 fixInfo();
 
+/* ── 38. TRACE ORGANELLES ──────────────────────────────────────────────────────  2026-10-23
+   Søren: "Next thing is doing organelle tracing in VR" -- asked where and what: both on the screen
+   and in the headset, and both points and outlines.
+
+   · POINTS are µJump's organelle reports (type organelle_location, one row per structure, kind +
+     pointA, and pointB for the two-point kinds: cilium base → tip, NR type II), the same rows the
+     Show tab's "Organelle reports" draws.
+   · OUTLINES are µJump's traced structures (type traced_structure, one submission per organelle with
+     every contour in tool voxels, built by core/tracing.js toSubmission and measured by
+     core/traceloft.js volume) -- the same tracings the tracing pad files and "Traced structures"
+     lofts here, so a mitochondrion outlined in VR is in µJump, Blender and Filter-and-show too.
+
+   On a screen: a floating EM window (like Add missing parts). Draw an outline with the mouse or a
+   finger on one section, step ▲▼ to the next and draw again; "Finish" lofts it into 3D. Point mode:
+   tap where the organelle is. In the headset: the EM section is shown at tracing resolution and the
+   right trigger draws on it (hold to draw an outline, click for a point); the EM tab of the palette
+   steps the sections, changes kind and mode, finishes and saves. Everything is kept in tool voxels
+   (4 × 4 × 40 nm) like µJump. Saving needs the Google sign-in (the viewer's own). */
+const TRW_GROUPS = [["Not sure what this is?", [["ask_expert", "What the… is this? (ask an expert)", "flagged: ask expert", 0]]], ["Nucleus", [["nucleolus", "Nucleolus", "nucleolus", 0], ["chromatin", "Chromatin", "chromatin", 0], ["nuclear_pore", "Nuclear pore", "nuclear pore", 0], ["nucleoplasmic_reticulum_1", "Nucleoplasmic reticulum (type I)", "NR type I", 0], ["nucleoplasmic_reticulum_2", "Nucleoplasmic reticulum (type II)", "NR type II", 1]]], ["Centriole & cilium", [["centriole", "Centriole / centrosome", "centriole", 0], ["cilium", "Primary cilium (base + tip)", "cilium", 1]]], ["Endomembrane system", [["er_rough", "Rough endoplasmic reticulum", "rough ER", 0], ["er_smooth", "Smooth endoplasmic reticulum", "smooth ER", 0], ["golgi", "Golgi apparatus", "Golgi apparatus", 0], ["lysosome", "Lysosome", "lysosome", 0], ["peroxisome", "Peroxisome", "peroxisome", 0], ["mitochondria", "Mitochondria", "mitochondrion", 0], ["mvb", "Multivesicular body", "MVB", 0], ["endosome", "Endosome", "endosome", 0]]], ["Vesicles & trafficking", [["pinocytic_vesicle", "Pinocytic vesicle", "pinocytic vesicle", 0], ["caveolae", "Caveolae", "caveolae", 0], ["secretory_vesicle", "Secretory vesicle", "secretory vesicle", 0], ["transport_vesicle", "Transport vesicle", "transport vesicle", 0], ["autophagosome", "Autophagosome", "autophagosome", 0], ["phagosome", "Phagosome", "phagosome", 0], ["weibel_palade_body", "Weibel-Palade body", "Weibel-Palade body", 0], ["synaptic_vesicle", "Synaptic vesicle", "synaptic vesicle", 0], ["extracellular_vesicle", "Extracellular vesicle", "extracellular vesicle", 0]]], ["Cytoskeleton", [["microtubules", "Microtubules", "microtubules", 0], ["microfilaments", "Microfilaments", "microfilaments", 0], ["intermediate_filaments", "Intermediate filaments", "intermediate filaments", 0], ["contractile_elements", "Contractile elements", "contractile elements", 0], ["gfap", "GFAP", "GFAP", 0]]], ["Cell junctions", [["adherens_junction", "Adherens junction", "adherens junction", 0], ["gap_junction", "Gap junction", "gap junction", 0], ["tight_junction", "Tight junction", "tight junction", 0], ["tunneling_nanotube", "Tunneling nanotube", "tunneling nanotube", 0]]], ["Vascular & perivascular contacts", [["peg_and_socket_junction", "Peg-and-socket junction", "peg-and-socket junction", 0], ["myoendothelial_junction", "Myoendothelial junction", "myoendothelial junction", 0], ["tripartite_junction", "Tripartite junction", "tripartite junction", 0], ["astrocyte_endfoot", "Astrocyte endfoot", "astrocyte endfoot", 0], ["microglia_plug", "Microglia plug", "microglia plug", 0], ["perivascular_debris", "Perivascular debris", "perivascular debris", 0]]], ["Cytoplasmic inclusions", [["lipid_droplet", "Lipid droplet", "lipid droplet", 0], ["glycogen", "Glycogen", "glycogen", 0], ["ribosome", "Ribosome", "ribosome", 0], ["lipofuscin_granule", "Lipofuscin granule", "lipofuscin granule", 0], ["corpora_amylacea", "Corpora amylacea", "corpora amylacea", 0]]], ["Surface & membrane specializations", [["microvillus", "Microvillus", "microvillus", 0], ["glycocalyx", "Glycocalyx", "glycocalyx", 0], ["myelin_sheath", "Myelin sheath", "myelin sheath", 0]]], ["Synaptic structures", [["synapse", "Synapse", "synapse", 0], ["dendritic_spine", "Dendritic spine", "dendritic spine", 0], ["axonal_bouton", "Axonal bouton", "axonal bouton", 0]]], ["Extracellular matrix & structures", [["elastin", "Elastin", "elastin", 0], ["fibrin", "Fibrin", "fibrin", 0], ["collagen", "Collagen", "collagen", 0], ["extracellular_space", "Extracellular space", "extracellular space", 0], ["glia_limitans", "Glia limitans", "glia limitans", 0], ["basement_membrane", "Basement membrane", "basement membrane", 0]]], ["Pathology", [["amyloid_beta_plaque", "Amyloid beta plaque", "amyloid-β plaque", 0], ["tau_tangle", "Tau tangle", "tau tangle", 0], ["dystrophic_neurite", "Dystrophic neurite", "dystrophic neurite", 0], ["swelling", "Swelling", "swelling", 0]]]];
+const TRW_KIND = {}; TRW_GROUPS.forEach(g => g[1].forEach(k => TRW_KIND[k[0]] = { value: k[0], label: k[1], short: k[2], vector: !!k[3] }));
+/* the palette's short list, in the headset (the screen has all of them) */
+const TRW_QUICK = ["mitochondria", "centriole", "cilium", "lysosome", "golgi", "er_rough", "er_smooth", "nucleolus",
+                   "lipofuscin_granule", "lipid_droplet", "mvb", "endosome", "autophagosome", "synapse", "ask_expert"];
+const TRW = { on: false, c: null, centre: null, mip: 1, dz: 0, pan: [0, 0], step: 1, kind: "mitochondria", mode: "outline",
+              move: false, items: [], cur: null, pend: null, stroke: null, view: null, base: null, tok: 0, group: null,
+              saving: false, pending: false, planeTok: 0, hand: null, lastPlane: null };
+function trwDs(){ return dsOfCells(); }
+function trwColour(k){ if (ORG_FIXED[k]) return ORG_FIXED[k]; let h = 0; for (const ch of String(k)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return ORG_PALETTE[h % ORG_PALETTE.length]; }
+function trwShort(k){ return (TRW_KIND[k] && TRW_KIND[k].short) || String(k).replace(/_/g, " "); }
+function trwZ(){ const r = trwDs().res; return Math.round(TRW.centre[2] * 1000 / r[2] + TRW.dz); }
+function trwVox(){ const r = trwDs().res; return [Math.round(TRW.centre[0] * 1000 / r[0] + TRW.pan[0]), Math.round(TRW.centre[1] * 1000 / r[1] + TRW.pan[1]), trwZ()]; }
+function trwUm(v){ const r = trwDs().res; return new THREE.Vector3(v[0] * r[0] / 1000, v[1] * r[1] / 1000, v[2] * r[2] / 1000); }
+function trwInfo(){
+  const c = fixCell(), el = document.getElementById("trwInfo"); if (!el) return;
+  el.textContent = !DSX.em ? "this dataset has no EM to trace on" : c ? "for " + shortName(c) : "pick a cell first";
+}
+function trwUnsaved(){ return TRW.items.filter(i => !i.saved).length + (TRW.cur && TRW.cur.rings.length ? 1 : 0) + (TRW.pend ? 1 : 0); }
+async function setTrace(v){
+  const c = fixCell();
+  if (v && !c){ ctxNote.textContent = "Trace organelles: pick the cell first (tap or click it), then press the button again."; return; }
+  if (v && !DSX.em){ ctxNote.textContent = "This dataset has no EM the viewer can read."; return; }
+  if (v && FIX.on) setFix(false);
+  if (!v && trwUnsaved() && !confirm("Leave without saving the " + trwUnsaved() + " organelle(s) you traced?")) return;
+  TRW.on = !!v; document.getElementById("trwBtn").classList.toggle("on", TRW.on); MENU.dirty = true;
+  document.getElementById("trwWin").style.display = TRW.on && !renderer.xr.isPresenting ? "" : "none";
+  if (!TRW.on){ const had = TRW.items.some(i => i.saved); trwClear(); if (had) trwRefreshShown(); return; }
+  TRW.c = c; TRW.items = []; TRW.cur = null; TRW.pend = null; TRW.mip = 1; TRW.dz = 0; TRW.pan = [0, 0];
+  const ds = trwDs();
+  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
+  const canSeg = !!(ds.seg && UJ.segread && UJ.segread.configured && UJ.segpaint && UJ.segpaint.configured);
+  if (canSeg) try {
+    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
+    if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res });
+  } catch (e){}
+  document.getElementById("trwSegRow").style.display = canSeg ? "" : "none";
+  TRW.centre = emCentreUm();
+  document.getElementById("trwTitle").textContent = "Trace organelles — " + shortName(c);
+  document.getElementById("trwAsk").style.display = "none"; document.getElementById("trwOut").textContent = "";
+  trwSyncUI(); trwList(); trwBuild3D();
+  if (renderer.xr.isPresenting) trwPlane(); else { await trwDraw(); try { await showEM(TRW.centre.slice()); } catch (e){} }
+  trwNote();
+}
+function trwNote(){
+  const xr = renderer.xr.isPresenting, k = trwShort(TRW.kind);
+  ctxNote.textContent = TRW.mode === "outline"
+    ? "Trace " + k + ": " + (xr ? "hold the right trigger on the EM section and draw round it" : "draw round it in the EM window") + ", step to the next section and draw again, then Finish."
+    : "Mark " + k + ": " + (xr ? "point at it on the EM section and pull the trigger" : "tap or click it in the EM window") + (TRW_KIND[TRW.kind] && TRW_KIND[TRW.kind].vector ? " — first the base, then the tip." : ".");
+}
+function trwClear(){
+  if (TRW.group){ disposeGroup(TRW.group); TRW.group = null; }
+  TRW.items = []; TRW.cur = null; TRW.pend = null; TRW.stroke = null; TRW.c = null; TRW.pending = false; TRW.lastPlane = null;
+}
+/* After a save: what is on show from the backend is read again, so the new rows appear there. */
+function trwRefreshShown(){
+  if (ORG.on){ ORG.data = null; setOrganelles(true); } else ORG.data = null;
+  TRC.index = null; if (TRC.on) setTraced(true);
+}
+function trwSyncUI(){
+  const sel = document.getElementById("trwKind"); if (sel.value !== TRW.kind) sel.value = TRW.kind;
+  document.getElementById("trwModeO").classList.toggle("on", TRW.mode === "outline");
+  document.getElementById("trwModeP").classList.toggle("on", TRW.mode === "point");
+  document.getElementById("trwMove").classList.toggle("on", TRW.move);
+  document.getElementById("trwStep").value = String(TRW.step);
+  document.getElementById("trwFin").disabled = !(TRW.cur && TRW.cur.rings.length);
+  MENU.dirty = true;
+}
+function trwList(){
+  const el = document.getElementById("trwList"); if (!el) return;
+  const nk = {};
+  const parts = TRW.items.map((it, gi) => {
+    const i = (nk[it.kind] = (nk[it.kind] || 0) + 1) - 1;
+    const col = trwColour(it.kind), what = it.type === "point" ? (it.b ? "2 points" : "point") : it.rings.length + " outline" + (it.rings.length > 1 ? "s" : "") + (it.vol && it.vol.ok ? " · " + it.vol.volumeUm3.toFixed(3) + " µm³" : "");
+    return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border:1px solid ' + col + ';border-radius:10px">' + esc(trwShort(it.kind)) + " " + (i + 1) + " · " + what + (it.saved ? " ✓" : ' <a href="#" data-trx="' + gi + '" style="color:#f85149;text-decoration:none">✕</a>') + "</span>";
+  });
+  if (TRW.cur && TRW.cur.rings.length) parts.push('<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border:1px dashed ' + trwColour(TRW.cur.kind) + ';border-radius:10px">' + esc(trwShort(TRW.cur.kind)) + " (drawing) · " + TRW.cur.rings.length + " section" + (TRW.cur.rings.length > 1 ? "s" : "") + "</span>");
+  if (TRW.pend) parts.push('<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border:1px dashed ' + trwColour(TRW.pend.kind) + ';border-radius:10px">' + esc(trwShort(TRW.pend.kind)) + " base — now the tip</span>");
+  el.innerHTML = parts.length ? "<b>Traced (" + parts.length + "):</b> " + parts.join("") : '<span style="color:#8b949e">Nothing traced yet.</span>';
+  el.querySelectorAll("[data-trx]").forEach(b => b.addEventListener("click", ev => { ev.preventDefault(); TRW.items.splice(+b.dataset.trx, 1); trwChanged(); }));
+}
+function trwChanged(){ trwList(); trwSyncUI(); trwBuild3D(); trwOverlay(); }
+
+/* ── the EM window ── */
+async function trwDraw(){
+  if (!TRW.on || !TRW.centre || renderer.xr.isPresenting) return;
+  const lab = document.getElementById("trwLab"), tok = ++TRW.tok, ds = trwDs();
+  lab.textContent = "Loading the EM…";
+  try {
+    const info = await UJ.emtiles.scaleAt(TRW.mip, true); if (TRW.mip > info.count - 1){ TRW.mip = info.count - 1; return trwDraw(); }
+    const tmp = document.createElement("canvas");
+    const view = await UJ.emtiles.drawSection(tmp, { centre: trwVox(), w: 420, h: 420, mip: TRW.mip });
+    if (tok !== TRW.tok) return;
+    if (ds.seg && UJ.segpaint && UJ.segpaint.paint && document.getElementById("trwSeg").checked && TRW.c){
+      const ids = fixIdsNow(TRW.c);
+      try { if (ids.length) await UJ.segpaint.paint(tmp, view, { root: ids[0], rootAlso: ids.slice(1), alpha: 0.22 }); } catch (e){}
+      if (tok !== TRW.tok) return;
+    }
+    TRW.view = view; TRW.base = tmp;
+    const wUm = view.umAcross, bar = [0.2, 0.5, 1, 2, 5].reverse().find(b => b <= wUm / 4) || 0.2;
+    document.getElementById("trwBar").style.width = (bar / wUm * 100) + "%"; document.getElementById("trwBarL").textContent = bar + " µm";
+    lab.textContent = wUm.toFixed(1) + " µm wide · " + Math.round(view.effNmPerPx) + " nm/px · section " + trwZ() + " (z " + (TRW.dz >= 0 ? "+" : "") + (TRW.dz * ds.res[2] / 1000).toFixed(2) + " µm)";
+    trwOverlay();
+  } catch (e){ if (tok === TRW.tok) lab.textContent = "The EM could not be read (" + (e.message || e) + ")."; }
+}
+/* The EM, then every outline and point near this section on top of it. */
+function trwOverlay(){
+  const cv = document.getElementById("trwEm"), v = TRW.view; if (!cv || !v || !TRW.base) return;
+  const g = cv.getContext("2d"); cv.width = 420; cv.height = 420; g.drawImage(TRW.base, 0, 0);
+  const z = trwZ(), near = 2;
+  const ring = (pts, col, cur, closed) => {
+    if (pts.length < 2) return;
+    g.beginPath(); pts.forEach((p, i) => { const q = v.pxAt([p[0], p[1], z]); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); });
+    if (closed) g.closePath();
+    g.strokeStyle = col; g.lineWidth = cur ? 2.2 : 1.2; g.globalAlpha = cur ? 1 : 0.55; g.setLineDash(cur ? [] : [4, 3]); g.stroke();
+    if (cur && closed){ g.globalAlpha = 0.18; g.fillStyle = col; g.fill(); }
+    g.globalAlpha = 1; g.setLineDash([]);
+  };
+  const dot = (p, col, cur, lab) => {
+    const q = v.pxAt(p); g.beginPath(); g.arc(q[0], q[1], cur ? 6 : 4, 0, 6.2832);
+    g.fillStyle = col; g.globalAlpha = cur ? 0.95 : 0.45; g.fill(); g.globalAlpha = 1; g.lineWidth = 1.5; g.strokeStyle = "#000"; g.stroke();
+    if (lab && cur){ g.font = "11px system-ui"; g.fillStyle = "#fff"; g.fillText(lab, q[0] + 8, q[1] + 4); }
+  };
+  const outlines = TRW.items.filter(i => i.type === "outline").concat(TRW.cur ? [TRW.cur] : []);
+  for (const it of outlines){ const col = trwColour(it.kind);
+    for (const r of it.rings) if (Math.abs(r.z - z) <= near) ring(r.points, col, r.z === z, true); }
+  for (const it of TRW.items.filter(i => i.type === "point")){ const col = trwColour(it.kind);
+    if (Math.abs(it.a[2] - z) <= near) dot(it.a, col, it.a[2] === z, it.b ? "base" : "");
+    if (it.b && Math.abs(it.b[2] - z) <= near) dot(it.b, col, it.b[2] === z, "tip"); }
+  if (TRW.pend && Math.abs(TRW.pend.a[2] - z) <= near) dot(TRW.pend.a, trwColour(TRW.pend.kind), TRW.pend.a[2] === z, "base");
+  if (TRW.stroke && TRW.stroke.length > 1) ring(TRW.stroke, trwColour(TRW.kind), true, false);
+}
+function trwToolAt(ev){
+  const cv = document.getElementById("trwEm"), r = cv.getBoundingClientRect(), v = TRW.view; if (!v) return null;
+  const px = (ev.clientX - r.left) * cv.width / r.width, py = (ev.clientY - r.top) * cv.height / r.height;
+  const t = v.toolAt(px, py); return [t[0], t[1], trwZ()];
+}
+
+/* ── adding: one stroke closes into one ring; a tap is a point ── */
+function trwAddRing(pts){
+  if (!pts || pts.length < 4) return false;
+  /* drop near-duplicates, then require some size: a ring smaller than ~30 nm is a slip */
+  const out = [pts[0]];
+  for (const p of pts) { const q = out[out.length - 1]; if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= 2) out.push(p); }
+  if (out.length < 4) return false;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; out.forEach(p => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+  if (Math.max(x1 - x0, y1 - y0) < 8) return false;
+  if (TRW.cur && TRW.cur.kind !== TRW.kind) trwFinish();
+  if (!TRW.cur) TRW.cur = { type: "outline", kind: TRW.kind, rings: [] };
+  TRW.cur.rings.push({ z: trwZ(), points: out.map(p => [Math.round(p[0]), Math.round(p[1])]) });
+  trwChanged(); return true;
+}
+function trwAddPoint(p){
+  const k = TRW.kind, vec = TRW_KIND[k] && TRW_KIND[k].vector;
+  p = p.map(Math.round);
+  if (vec && TRW.pend && TRW.pend.kind === k){ TRW.items.push({ type: "point", kind: k, a: TRW.pend.a, b: p }); TRW.pend = null; }
+  else if (vec){ TRW.pend = { kind: k, a: p }; }
+  else TRW.items.push({ type: "point", kind: k, a: p });
+  trwChanged();
+}
+function trwFinish(){
+  const it = TRW.cur; TRW.cur = null;
+  if (it && it.rings.length){
+    try { it.vol = UJ.traceloft.volume(it.rings, trwDs().res); } catch (e){ it.vol = null; }
+    TRW.items.push(it);
+  }
+  trwChanged();
+}
+function trwUndo(){
+  if (TRW.pend){ TRW.pend = null; }
+  else if (TRW.cur && TRW.cur.rings.length){ TRW.cur.rings.pop(); if (!TRW.cur.rings.length) TRW.cur = null; }
+  else if (TRW.items.length && !TRW.items[TRW.items.length - 1].saved){
+    const it = TRW.items.pop();
+    if (it.type === "outline" && it.rings.length > 1){ it.rings.pop(); TRW.cur = { type: "outline", kind: it.kind, rings: it.rings }; }
+  }
+  trwChanged();
+}
+function trwSetZ(dz){
+  TRW.dz += dz; trwSyncUI();
+  if (renderer.xr.isPresenting) trwPlane(); else trwDraw();
+  trwBuild3D();
+}
+function trwMoveTo(pUm){
+  TRW.centre = pUm.slice(); TRW.pan = [0, 0]; TRW.dz = 0;
+  if (renderer.xr.isPresenting) trwPlane(); else { trwDraw(); showEM(pUm.slice()).catch(() => {}); }
+  trwBuild3D();
+}
+
+/* ── in 3D: rings as loops at their own depth, the finished ones lofted, points as small balls ── */
+function trwBuild3D(){
+  if (TRW.group){ disposeGroup(TRW.group); TRW.group = null; }
+  if (!TRW.on) return;
+  const grp = new THREE.Group(), res = trwDs().res, z = TRW.centre ? trwZ() : null;
+  const lineMat = {}, LM = (col, hi) => lineMat[col + hi] || (lineMat[col + hi] = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: hi ? 1 : 0.7, depthTest: !hi }));
+  const addRing = (r, col, closed) => {
+    const P = r.points.map(p => trwUm([p[0], p[1], r.z]));
+    if (P.length < 2) return;
+    const geo = new THREE.BufferGeometry().setFromPoints(P);
+    const L = closed ? new THREE.LineLoop(geo, LM(col, r.z === z)) : new THREE.Line(geo, LM(col, true));
+    L.renderOrder = 6; grp.add(L);
+  };
+  const ball = (p, col, s) => { const m = new THREE.Mesh(new THREE.SphereGeometry(s || 0.06, 12, 8), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.4 })); m.position.copy(trwUm(p)); grp.add(m); return m; };
+  for (const it of TRW.items){
+    const col = trwColour(it.kind);
+    if (it.type === "point"){
+      ball(it.a, col); if (it.b){ ball(it.b, col, 0.045); const g2 = new THREE.BufferGeometry().setFromPoints([trwUm(it.a), trwUm(it.b)]); grp.add(new THREE.Line(g2, LM(col, false))); }
+      continue;
+    }
+    it.rings.forEach(r => addRing(r, col, true));
+    if (it.rings.length > 1){
+      if (!it.mesh){
+        try {
+          const L = UJ.traceloft.loft(it.rings, res);
+          if (L && L.positions && L.indices && L.indices.length){
+            const pos = new Float32Array(L.positions.length); for (let k = 0; k < pos.length; k++) pos[k] = L.positions[k] / 1000;
+            it.mesh = { pos, idx: new Uint32Array(L.indices) };
+          }
+        } catch (e){}
+      }
+      if (it.mesh) grp.add(new THREE.Mesh(geometryFrom(it.mesh.pos, it.mesh.idx),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })));
+    }
+  }
+  if (TRW.cur) TRW.cur.rings.forEach(r => addRing(r, trwColour(TRW.cur.kind), true));
+  if (TRW.pend) ball(TRW.pend.a, trwColour(TRW.pend.kind));
+  if (TRW.stroke && TRW.stroke.length > 1) addRing({ z: trwZ(), points: TRW.stroke }, trwColour(TRW.kind), false);
+  TRW.group = grp; content.add(grp);
+}
+
+/* ── in the headset: the EM section at tracing resolution, drawn on with the right trigger ── */
+EM_LEVEL.trace = { mip: 1, px: 512 };
+function trwPlane(){
+  if (!TRW.on || !TRW.centre) return;
+  const r = trwDs().res, v = trwVox(), c = [v[0] * r[0] / 1000, v[1] * r[1] / 1000, v[2] * r[2] / 1000];
+  const key = c.join(",");
+  if (TRW.lastPlane === key && EM.mesh) return;
+  TRW.lastPlane = key;
+  showEM(c, "trace").catch(() => {});
+}
+/* where a hand's ray meets the EM section, in tool voxels (null when it misses) */
+function trwHandHit(h){
+  if (!EM.mesh || !EM.mesh.visible) return null;
+  const R = rayOf(h); raycaster.set(R.origin, R.dir);
+  const hit = raycaster.intersectObject(EM.mesh, false)[0]; if (!hit) return null;
+  const p = content.worldToLocal(hit.point.clone()), res = trwDs().res;
+  return [p.x * 1000 / res[0], p.y * 1000 / res[1], trwZ()];
+}
+function trwHandStart(h){
+  const p = trwHandHit(h);
+  if (!p){ ctxNote.textContent = "Trace: point the ray at the EM section."; return; }
+  if (TRW.mode === "point"){ trwAddPoint(p); return; }
+  TRW.hand = h; TRW.stroke = [p]; trwBuild3D();
+}
+function trwHandEnd(h){
+  if (TRW.hand !== h) return;
+  TRW.hand = null; const s = TRW.stroke; TRW.stroke = null;
+  if (!trwAddRing(s)) trwBuild3D();
+}
+function trwFrame(){
+  if (!TRW.on || !TRW.hand || !TRW.stroke) return;
+  const p = trwHandHit(TRW.hand); if (!p) return;
+  const q = TRW.stroke[TRW.stroke.length - 1];
+  if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 3) return;
+  TRW.stroke.push(p);
+  if (TRW.stroke.length % 3 === 0) trwBuild3D();
+}
+
+/* ── saving ── */
+function trwAsk(){
+  if (TRW.cur && TRW.cur.rings.length) trwFinish();
+  const el = document.getElementById("trwAsk"), t = document.getElementById("trwAskText"), c = TRW.c;
+  el.style.display = "";
+  setTimeout(() => { try { el.scrollIntoView({ block: "end", behavior: "smooth" }); } catch (e){} }, 30);
+  const todo = TRW.items.filter(i => !i.saved), np = todo.filter(i => i.type === "point").length, no = todo.length - np;
+  if (!todo.length){ t.textContent = "Nothing new to save. Close the window?"; document.getElementById("trwSave").style.display = "none"; return; }
+  document.getElementById("trwSave").style.display = "";
+  t.innerHTML = "Save " + [np ? np + " organelle point" + (np > 1 ? "s" : "") : "", no ? no + " traced outline" + (no > 1 ? "s" : "") : ""].filter(Boolean).join(" and ")
+    + " for <b>" + esc(shortName(c)) + "</b>" + (c.nuc && c.nuc !== "0" ? " (nucleus " + esc(c.nuc) + ")" : "")
+    + "? Points become µJump organelle reports and outlines µJump traced structures, signed with your Google account.";
+  if (!credOk()) signInUI("trwSignin");
+}
+async function trwSave(){
+  const c = TRW.c, ds = trwDs(), out = document.getElementById(renderer.xr.isPresenting ? "trwOut" : "trwOut");
+  const todo = TRW.items.filter(i => !i.saved); if (!c || !todo.length) return;
+  if (!credOk()){
+    TRW.pending = true;
+    const msg = renderer.xr.isPresenting ? "Saving needs the Google sign-in: take the headset off (or leave VR), sign in under Tools → Trace organelles and press Save — your tracing is kept." : "Sign in with Google (above) — it saves as soon as you are signed in.";
+    out.textContent = msg; ctxNote.textContent = msg; if (!renderer.xr.isPresenting) signInUI("trwSignin"); return;
+  }
+  if (TRW.saving) return; TRW.saving = true; TRW.pending = false;
+  const url = ds.backend + (ds.backendDs ? "?ds=" + encodeURIComponent(ds.backendDs) : "");
+  const base = { credential: CRED, tool: "vr", ds: ds.backendDs || ds.tracingDs || "ujump" };
+  const post = async body => { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({}, base, body)) });
+    let d = {}; try { d = JSON.parse(await r.text()); } catch (e){} if (d.ok === false) throw new Error(d.error || "refused"); return d; };
+  const nuc = c.nuc && c.nuc !== "0" ? String(c.nuc) : "", root = String(c.root || "");
+  const pts = todo.filter(i => i.type === "point"), outs = todo.filter(i => i.type === "outline");
+  const gid = (nuc || "nonuc") + "_" + Date.now() + "_org"; let ok = 0; const bad = [];
+  for (let i = 0; i < pts.length; i++){
+    const it = pts[i]; out.textContent = "Saving " + (ok + bad.length + 1) + " of " + todo.length + "…";
+    try {
+      await post({ type: "organelle_location", timestamp: new Date().toISOString(), nucleusId: nuc, rootId: root,
+                   coord: trwVox().join(","), groupId: gid, subIndex: i + 1, subCount: pts.length,
+                   kind: it.kind, pointA: it.a.join(","), pointB: it.b ? it.b.join(",") : "", identified: "", comment: "marked in µJump VR", path: "" });
+      it.saved = true; ok++;
+    } catch (e){ bad.push(trwShort(it.kind) + ": " + (e.message || "could not reach the server")); }
+  }
+  const nByKind = {};
+  for (const it of outs){
+    out.textContent = "Saving " + (ok + bad.length + 1) + " of " + todo.length + "…";
+    nByKind[it.kind] = (nByKind[it.kind] || 0) + 1;
+    const lab = (TRW_KIND[it.kind] && TRW_KIND[it.kind].short) || it.kind;
+    const v = it.vol && it.vol.ok ? it.vol : null;
+    const sub = UJ.tracing.toSubmission(it.rings, {
+      name: lab.charAt(0).toUpperCase() + lab.slice(1) + " (VR) " + nByKind[it.kind], kind: it.kind,
+      cellType: String(c.label || "").replace(/\s*\(.*$/, ""), color: trwColour(it.kind), nucleusId: nuc, rootId: root,
+      comment: "traced in µJump VR",
+      volumeUm3: v ? v.volumeUm3 : undefined, volumeMethod: v ? v.method : undefined, volumeTrapezoidUm3: v ? v.volumeTrapezoidUm3 : undefined,
+      sectionGapNm: v ? v.gapNm : undefined, areaUm2: it.vol ? it.vol.areaUm2 : undefined,
+      areas: it.vol && it.vol.perSection ? it.vol.perSection.map(s => ({ z: s.z, areaUm2: s.areaUm2 })) : undefined });
+    if (!sub.contours.length){ bad.push(trwShort(it.kind) + ": no outline"); continue; }
+    try {
+      await post(Object.assign({ timestamp: new Date().toISOString(), groupId: "trace_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7) }, sub));
+      it.saved = true; it.structureId = sub.structureId; ok++;
+    } catch (e){ bad.push(trwShort(it.kind) + ": " + (e.message || "could not reach the server")); }
+  }
+  TRW.saving = false;
+  out.textContent = ok + " saved" + (bad.length ? "; not saved: " + bad.join("; ") : "") + ".";
+  ctxNote.textContent = ok ? "✓ " + ok + " organelle" + (ok > 1 ? "s" : "") + " saved for " + shortName(c) + " — they are in µJump for everyone." + (bad.length ? " " + bad.length + " not saved." : "") : "Nothing was saved: " + bad.join("; ");
+  trwChanged();
+  if (ok) trwRefreshShown();
+}
+
+/* ── wiring ── */
+{
+  const sel = document.getElementById("trwKind");
+  sel.innerHTML = TRW_GROUPS.map(g => '<optgroup label="' + esc(g[0]) + '">' + g[1].map(k => '<option value="' + k[0] + '">' + esc(k[1]) + "</option>").join("") + "</optgroup>").join("");
+  sel.value = TRW.kind;
+  sel.addEventListener("change", () => { if (TRW.cur && TRW.cur.rings.length) trwFinish(); TRW.pend = null; TRW.kind = sel.value; trwChanged(); trwNote(); });
+}
+document.getElementById("trwBtn").addEventListener("click", () => setTrace(!TRW.on));
+document.getElementById("trwX").addEventListener("click", () => setTrace(false));
+document.getElementById("trwClose").addEventListener("click", () => setTrace(false));
+document.getElementById("trwModeO").addEventListener("click", () => { TRW.mode = "outline"; TRW.pend = null; trwChanged(); trwNote(); });
+document.getElementById("trwModeP").addEventListener("click", () => { if (TRW.cur && TRW.cur.rings.length) trwFinish(); TRW.mode = "point"; trwChanged(); trwNote(); });
+document.getElementById("trwMove").addEventListener("click", () => { TRW.move = !TRW.move; trwSyncUI(); });
+document.getElementById("trwStep").addEventListener("change", e => { TRW.step = +e.target.value || 1; });
+document.getElementById("trwOutB").addEventListener("click", () => { TRW.mip = Math.min(6, TRW.mip + 1); trwDraw(); });
+document.getElementById("trwIn").addEventListener("click", () => { TRW.mip = Math.max(0, TRW.mip - 1); trwDraw(); });
+document.getElementById("trwUp").addEventListener("click", () => trwSetZ(-TRW.step));
+document.getElementById("trwDn").addEventListener("click", () => trwSetZ(TRW.step));
+document.getElementById("trwHome").addEventListener("click", () => { if (TRW.c){ const p = emCentreUm(); if (p) trwMoveTo(p); } });
+document.getElementById("trwSeg").addEventListener("change", trwDraw);
+document.getElementById("trwFin").addEventListener("click", trwFinish);
+document.getElementById("trwUndo").addEventListener("click", trwUndo);
+document.getElementById("trwDone").addEventListener("click", trwAsk);
+document.getElementById("trwSave").addEventListener("click", trwSave);
+document.getElementById("trwKeep").addEventListener("click", () => { document.getElementById("trwAsk").style.display = "none"; });
+document.getElementById("trwDrop").addEventListener("click", () => { TRW.items = TRW.items.filter(i => i.saved); TRW.cur = null; TRW.pend = null; setTrace(false); });
+{ const cv = document.getElementById("trwEm"); let pd = null;
+  cv.addEventListener("wheel", e => { e.preventDefault(); TRW.mip = Math.max(0, Math.min(6, TRW.mip + (e.deltaY > 0 ? 1 : -1))); trwDraw(); }, { passive: false });
+  cv.addEventListener("pointerdown", e => {
+    if (!TRW.view) return;
+    cv.setPointerCapture(e.pointerId);
+    const draw = TRW.mode === "outline" && !TRW.move && e.button === 0;
+    pd = { x: e.clientX, y: e.clientY, moved: false, draw };
+    if (draw){ TRW.stroke = [trwToolAt(e)]; }
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!pd) return;
+    if (Math.abs(e.clientX - pd.x) + Math.abs(e.clientY - pd.y) > 4) pd.moved = true;
+    if (pd.draw){ const p = trwToolAt(e), q = TRW.stroke[TRW.stroke.length - 1]; if (p && Math.hypot(p[0] - q[0], p[1] - q[1]) >= 2){ TRW.stroke.push(p); trwOverlay(); } return; }
+    if (pd.moved) cv.style.transform = "translate(" + (e.clientX - pd.x) + "px," + (e.clientY - pd.y) + "px)";
+  });
+  const up = e => {
+    const d = pd; pd = null; cv.style.transform = ""; if (!d) return;
+    if (d.draw){ const s = TRW.stroke; TRW.stroke = null; if (!trwAddRing(s)){ trwOverlay(); if (d.moved) ctxNote.textContent = "Trace: that stroke was too small — draw all the way round the organelle."; } return; }
+    if (!d.moved){ if (TRW.mode === "point"){ const p = trwToolAt(e); if (p) trwAddPoint(p); } return; }
+    if (!TRW.view) return;
+    const k = TRW.view.effNmPerPx / trwDs().res[0], sc = cv.width / cv.getBoundingClientRect().width;
+    TRW.pan[0] -= Math.round((e.clientX - d.x) * sc * k); TRW.pan[1] -= Math.round((e.clientY - d.y) * sc * k); trwDraw();
+  };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", e => { pd = null; TRW.stroke = null; cv.style.transform = ""; trwOverlay(); });
+  const head = document.getElementById("trwHead"), win = document.getElementById("trwWin"); let hd = null;
+  head.addEventListener("pointerdown", e => { if (e.target.id === "trwX") return; const r = win.getBoundingClientRect(); hd = { x: e.clientX - r.left, y: e.clientY - r.top }; head.setPointerCapture(e.pointerId); });
+  head.addEventListener("pointermove", e => { if (!hd) return; win.style.left = Math.max(0, e.clientX - hd.x) + "px"; win.style.top = Math.max(0, e.clientY - hd.y) + "px"; win.style.right = "auto"; });
+  head.addEventListener("pointerup", () => { hd = null; });
+}
+/* a click on the 3D view (not a drag) brings the window there */
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!TRW.on || e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
+  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm) return;
+  const ndc = canvasNdc(e); _fr.setFromCamera(ndc, camera);
+  const P = flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()); if (!P) return;
+  trwMoveTo(content.worldToLocal(P.clone()).toArray());
+  ctxNote.textContent = "The trace window is now where you clicked.";
+});
+/* entering or leaving the headset swaps the window for the section, and back */
+renderer.xr.addEventListener("sessionstart", () => { if (TRW.on){ document.getElementById("trwWin").style.display = "none"; TRW.lastPlane = null; trwPlane(); } });
+renderer.xr.addEventListener("sessionend", () => { if (TRW.on){ document.getElementById("trwWin").style.display = ""; trwDraw(); if (TRW.pending) trwAsk(); } });
+trwInfo();
+
+/* ── 39. THE PICKED CELL'S CONNECTIONS: connectivity, tripartite synapses, touching cells ── 2026-10-23
+   Søren: "Next thing is ... showing cell contacts, connectivity and tripartite synapses."
+
+   What was already here: synapses AMONG the loaded cells (section 8), contact sites AMONG the loaded
+   cells (Cell contacts), and synapse points brought over from µJump's panels (section 16). What was
+   missing is the step outwards from ONE cell, which is what µJump's own Connectivity, Astrocyte–
+   synapse proximity and Cell contacts panels do on its cell card. Here, for the picked cell:
+
+   · CONNECTIVITY -- every synapse of the cell from CAVE (synapses_pni_2, v1300; the cell's own root and
+     its proposed fragments, as µJump's caveSynFilter), drawn on the cell (inputs cyan, outputs pink:
+     µJump's colours, through section 16's points), and its partners ranked by synapse count. Partner
+     type and soma from aibs_metamodel_celltypes_v661 at the same version (Elabbady et al. 2025). The
+     top partners are shown as lines from their soma to this cell's, without loading them; "+" brings a
+     partner in as a full cell.
+   · TRIPARTITE SYNAPSES -- µJump's structural proxy, said as weakly as µJump says it: a synapse with an
+     astrocyte mesh within the chosen distance (default 0.5 µm, µJump's TRIPARTITE_ASTRO_DIST_UM). The
+     astrocytes loaded are the ones whose nuclei have most of this cell's synapses within 50 µm, so the
+     few that can be loaded cover as many synapses as possible; only synapses inside a loaded
+     astrocyte's reach are counted as checked. Distance only -- it does not show ensheathment.
+   · TOUCHING CELLS -- the nearest cells by nucleus are loaded and kept only if their membrane comes
+     within the Cell contacts distance of this cell's; the rest are hidden again, and the contact sites
+     are shown. Like µJump's Cell contacts: touching in the mesh, not a seen junction. */
+const CN = { busy: false, c: null, syn: null, partners: null, types: new Map(), lines: null, top: 20, tp: null, tpGroup: null, tpDist: 0.5, tpK: 6, tcK: 12 };
+function cnSay(t){ ctxNote.textContent = t; const el = document.getElementById("cnNote"); if (el) el.textContent = t; }
+/* One CAVE materialize query, root ids kept as strings (they pass 2^53). */
+async function caveRows(table, rawFilter){
+  const SY = DSX.syn, tok = caveToken();
+  if (!tok){ const e = new Error("needs a CAVE token"); e.noToken = true; throw e; }
+  const r = await fetch(SY.server + "/materialize/api/v3/datastack/" + SY.datastack + "/version/" + SY.version + "/table/" + table + "/query?return_pyarrow=false",
+    { method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json", "Accept": "application/json" }, body: rawFilter });
+  if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 160));
+  const txt = (await r.text()).replace(/([:\[,]\s*)(-?\d{16,})(\s*[,\]\}])/g, '$1"$2"$3');
+  const j = JSON.parse(txt); if (Array.isArray(j)) return j;
+  const ks = Object.keys(j), f = j[ks[0]], n = Array.isArray(f) ? f.length : Object.keys(f || {}).length, rows = [];
+  for (let i = 0; i < n; i++){ const o = {}; ks.forEach(k => o[k] = Array.isArray(j[k]) ? j[k][i] : j[k][String(i)]); rows.push(o); }
+  return rows;
+}
+function cnSelf(c){ return [c.root].concat(c.extraUsed || c.extra || []).filter(x => x && x !== "0").map(String); }
+function cnTypeLabel(code){
+  const I = NUC.index, name = (I && I.labels && I.labels[code]) || code || "";
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : "";
+}
+async function cnTypes(roots){
+  const SY = DSX.syn, want = roots.filter(r => !CN.types.has(r));
+  if (!SY.celltypes || !want.length) return;
+  for (let i = 0; i < want.length; i += 800){
+    const part = want.slice(i, i + 800);
+    try {
+      const rows = await caveRows(SY.celltypes, '{"filter_in_dict":{"' + SY.celltypes + '":{"pt_root_id":[' + part.join(",") + ']}}}');
+      rows.forEach(o => { const r = String(o.pt_root_id), res = SY.res;
+        const prev = CN.types.get(r);
+        /* a root with two nuclei (a merge) keeps the first; it is said in the list as "merged" */
+        if (prev && prev.code){ prev.merged = true; return; }
+        CN.types.set(r, { code: String(o.cell_type || ""), nuc: String(o.target_id != null ? o.target_id : o.id || ""),
+          p: isFinite(+o.pt_position_x) ? new THREE.Vector3(+o.pt_position_x * res[0] / 1000, +o.pt_position_y * res[1] / 1000, +o.pt_position_z * res[2] / 1000) : null }); });
+    } catch (e){ if (e.noToken) throw e; }
+    part.forEach(r => { if (!CN.types.has(r)) CN.types.set(r, { code: "", nuc: "", p: null }); });
+  }
+}
+async function cnLoad(c){
+  if (CN.c === c && CN.partners) return true;
+  if (!DSX.syn){ cnSay("No public synapse table for " + DSX.label + "."); return false; }
+  const self = cnSelf(c); if (!self.length){ cnSay("Connectivity: this cell has no root id."); return false; }
+  cnSay("Connectivity: asking CAVE for every synapse of " + shortName(c) + "…");
+  const SY = DSX.syn, f = col => '{"filter_in_dict":{"' + SY.table + '":{"' + col + '":[' + self.join(",") + ']}}}';
+  const [ins, outs] = await Promise.all([caveRows(SY.table, f("post_pt_root_id")), caveRows(SY.table, f("pre_pt_root_id"))]);
+  const selfSet = new Set(self), res = SY.res, syn = [], by = new Map();
+  const add = (rows, dir) => rows.forEach(o => {
+    const partner = String(dir ? o.post_pt_root_id : o.pre_pt_root_id);
+    if (selfSet.has(partner)) return;
+    const x = +o.ctr_pt_position_x, y = +o.ctr_pt_position_y, z = +o.ctr_pt_position_z; if (!isFinite(x)) return;
+    syn.push({ v: [x, y, z], p: new THREE.Vector3(x * res[0] / 1000, y * res[1] / 1000, z * res[2] / 1000), dir, partner, size: +o.size || 0 });
+    if (partner === "0") return;
+    const k = partner + ":" + dir; let e = by.get(k); if (!e){ e = { root: partner, dir, n: 0, size: 0 }; by.set(k, e); } e.n++; e.size += +o.size || 0;
+  });
+  add(ins, 0); add(outs, 1);
+  CN.c = c; CN.syn = syn; CN.partners = [...by.values()].sort((a, b) => b.n - a.n);
+  cnSay("Connectivity: " + syn.length + " synapses — reading the partners' cell types…");
+  try { await nucIndex(DSX); } catch (e){}
+  const top = [...CN.partners.filter(p => !p.dir).slice(0, 200), ...CN.partners.filter(p => p.dir).slice(0, 200)].map(p => p.root);
+  await cnTypes([...new Set(top)]);
+  /* the synapses on the cell, through section 16's points: [x, y, z, dir, partner, partnerType] */
+  c.syn = syn.map(s => [s.v[0], s.v[1], s.v[2], s.dir, s.partner, (CN.types.get(s.partner) || {}).code || ""]);
+  PTS.on = true; buildPoints();
+  return true;
+}
+function cnPartnerName(p){
+  const t = CN.types.get(p.root) || {}, lab = t.code ? cnTypeLabel(t.code) : (p.root === "0" ? "unproofread" : DSX.syn && DSX.syn.celltypes ? "no soma in the volume" : "partner");
+  return lab + " …" + p.root.slice(-4) + (t.merged ? " (merged nuclei)" : "");
+}
+function cnHere(root){ return CELLS.some(c => cnSelf(c).includes(root)); }
+function cnRender(){
+  const el = document.getElementById("cnList"); if (!el) return;
+  if (!CN.partners){ el.innerHTML = ""; return; }
+  const c = CN.c, nIn = CN.syn.filter(s => !s.dir).length, nOut = CN.syn.length - nIn;
+  const pIn = CN.partners.filter(p => !p.dir), pOut = CN.partners.filter(p => p.dir);
+  const row = p => { const t = CN.types.get(p.root) || {}, here = cnHere(p.root);
+    return '<div style="display:flex;gap:6px;align-items:center;margin:1px 0"><span style="color:' + (p.dir ? "#ff4fa3" : "#00b7ff") + '">' + (p.dir ? "→" : "←") + "</span>"
+      + '<span style="flex:1">' + esc(cnPartnerName(p)) + "</span><span>" + p.n + " syn</span>"
+      + (here ? '<span style="color:var(--mut)">here</span>' : '<button data-cnadd="' + p.root + '" style="padding:0 6px">+</button>') + "</div>"; };
+  el.innerHTML = '<div style="margin:4px 0"><b>' + esc(shortName(c)) + "</b>: " + nIn + " input synapses from " + pIn.length + " partners, " + nOut + " outputs to " + pOut.length + "</div>"
+    + '<div style="color:#00b7ff;margin-top:4px">Inputs (top ' + Math.min(10, pIn.length) + ")</div>" + pIn.slice(0, 10).map(row).join("")
+    + '<div style="color:#ff4fa3;margin-top:4px">Outputs (top ' + Math.min(10, pOut.length) + ")</div>" + pOut.slice(0, 10).map(row).join("")
+    + '<div style="color:var(--mut);margin-top:4px">Types and somata: aibs_metamodel_celltypes_v661 (v' + DSX.syn.version + "). Outputs are few when the axon leaves the volume.</div>";
+  el.querySelectorAll("[data-cnadd]").forEach(b => b.addEventListener("click", () => cnAdd([b.dataset.cnadd])));
+}
+/* Lines from each top partner's soma to this cell's: thicker and brighter with more synapses. */
+function cnLines(){
+  disposeGroup(CN.lines); CN.lines = null;
+  if (!CN.partners || !CN.on) return;
+  const c = CN.c, s0 = nucCentreOf(c) || (CN.types.get(String(c.root)) || {}).p; if (!s0) return;
+  const grp = new THREE.Group(), maxN = Math.max(1, ...CN.partners.map(p => p.n));
+  const pick = [...CN.partners.filter(p => !p.dir).slice(0, CN.top), ...CN.partners.filter(p => p.dir).slice(0, CN.top)];
+  const seen = new Map();
+  for (const p of pick){
+    const t = CN.types.get(p.root); if (!t || !t.p) continue;
+    const both = seen.get(p.root); seen.set(p.root, (both || 0) + 1);
+    const col = new THREE.Color(both ? "#b48cff" : p.dir ? "#ff4fa3" : "#00b7ff");
+    const w = 0.15 + 0.85 * Math.sqrt(p.n / maxN);
+    const geo = new THREE.BufferGeometry().setFromPoints([t.p, s0]);
+    const L = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.25 + 0.7 * w, depthWrite: false }));
+    L.userData.cn = p.root; grp.add(L);
+    if (!cnHere(p.root)){
+      const m = new THREE.Mesh(new THREE.SphereGeometry(1 + 3 * w, 16, 12), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.3, transparent: true, opacity: 0.75 }));
+      m.position.copy(t.p); grp.add(m);
+    }
+  }
+  CN.lines = grp; content.add(grp);
+}
+async function setConnectivity(v){
+  CN.on = !!v; document.getElementById("cnBtn").classList.toggle("on", CN.on); MENU.dirty = true;
+  if (!CN.on){ disposeGroup(CN.lines); CN.lines = null; return; }
+  const c = CELLS[SELECTED]; if (!c){ CN.on = false; document.getElementById("cnBtn").classList.remove("on"); cnSay("Connectivity: pick a cell first."); return; }
+  if (CN.busy) return; CN.busy = true;
+  try {
+    if (await cnLoad(c)){
+      cnRender(); cnLines();
+      const nIn = CN.syn.filter(s => !s.dir).length;
+      cnSay("Connectivity of " + shortName(c) + ": " + nIn + " inputs (cyan), " + (CN.syn.length - nIn) + " outputs (pink) on the cell; lines to the top " + CN.top + " partners each way, thicker with more synapses. “+” brings a partner in.");
+    }
+  } catch (e){
+    CN.on = false; document.getElementById("cnBtn").classList.remove("on");
+    if (e.noToken){ document.getElementById("cnTokRow").style.display = "flex"; cnSay("Connectivity needs a CAVE token (the one µJump's Connectivity panel uses) — paste it below."); }
+    else cnSay("Connectivity could not be read from CAVE: " + (e.message || e));
+  }
+  CN.busy = false;
+}
+/* Bring partners in as cells (their mesh and nucleus), labelled as µJump labels a prediction. */
+async function cnAdd(roots){
+  const ds = DSX, light = document.getElementById("detail").value === "light", token = LOAD_TOKEN, added = [];
+  const c0 = CN.c || CELLS[SELECTED];
+  for (const r of roots){
+    if (cnHere(r)) continue;
+    const t = CN.types.get(r) || {}, code = t.code || "";
+    const name = cnTypeLabel(code) || "Segment (no soma in the volume)";
+    const label = name + (code ? (name.toLowerCase() === code.toLowerCase() ? " (MICrONS prediction)" : " (" + code + ", MICrONS prediction)") : "");
+    const c = { i: CELLS.length, ds: (c0 && c0.ds) || VR_DS, root: r, nuc: t.nuc || "", label, extra: [], colour: colourFor(label), status: "waiting…" };
+    c.typeColour = c.colour; if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    CELLS.push(c); added.push(c);
+  }
+  if (!added.length){ cnSay("Those partners are here already."); return; }
+  renderList(); MENU.dirty = true;
+  cnSay("Bringing in " + added.length + " partner" + (added.length > 1 ? "s" : "") + "…");
+  for (const c of added){
+    if (token !== LOAD_TOKEN) return;
+    await loadOne(c, token, light);
+    if (c.mesh) CELL_BOX = (CELL_BOX || new THREE.Box3()).union(c.mesh.geometry.boundingBox);
+    renderList(); updateTri(); applyLook(); MENU.dirty = true;
+  }
+  buildContext(); STIM.syn = null; if (STIM.on) loadSynapses();
+  cnRender(); cnLines();
+  cnSay("Added " + added.length + ": " + added.map(c => shortName(c)).join(", ") + ".");
+}
+function cnAddTop(dir, k){
+  if (!CN.partners){ cnSay("Show the connectivity first."); return; }
+  const roots = CN.partners.filter(p => p.dir === dir && p.root !== "0" && !cnHere(p.root)).slice(0, k).map(p => p.root);
+  cnAdd(roots);
+}
+function cnCsv(){
+  if (!CN.syn){ cnSay("Show the connectivity first."); return; }
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const rows = [["cell_root", "direction", "partner_root", "partner_type", "partner_nucleus", "size_raw", "x_vox", "y_vox", "z_vox", "tripartite_proxy"]];
+  CN.syn.forEach(s => { const t = CN.types.get(s.partner) || {};
+    rows.push([q(CN.c.root), s.dir ? "output" : "input", q(s.partner), q(t.code || ""), q(t.nuc || ""), s.size, s.v[0], s.v[1], s.v[2], s.tp == null ? "" : s.tp ? "yes" : "no"]); });
+  csvDownload(rows, "vr-connectivity-");
+}
+
+/* ── tripartite synapses: an astrocyte mesh within CN.tpDist µm of the synapse ── */
+async function setTripartite(v){
+  CN.tpOn = !!v; document.getElementById("tpBtn").classList.toggle("on", CN.tpOn); MENU.dirty = true;
+  disposeGroup(CN.tpGroup); CN.tpGroup = null;
+  if (!CN.tpOn) return;
+  const c = CELLS[SELECTED]; if (!c){ CN.tpOn = false; document.getElementById("tpBtn").classList.remove("on"); cnSay("Tripartite synapses: pick a cell first."); return; }
+  if (CN.busy) return; CN.busy = true;
+  try {
+    if (!(await cnLoad(c))){ CN.busy = false; return; }
+    if (!CN.syn.length){ cnSay("Tripartite synapses: this cell has no synapses in the table."); CN.busy = false; return; }
+    /* which astrocytes: those with most of this cell's synapses within 50 µm of their nucleus */
+    const I = await nucIndex(DSX), T = I.tileUm, aCode = I.types.indexOf("astrocyte");
+    const b = new THREE.Box3(); CN.syn.forEach(s => b.expandByPoint(s.p)); b.expandByScalar(50);
+    const rows = [];
+    for (let tx = Math.floor(b.min.x / T); tx <= Math.floor(b.max.x / T); tx++)
+      for (let tz = Math.floor(b.min.z / T); tz <= Math.floor(b.max.z / T); tz++) rows.push(...await nucTile(DSX, tx + "_" + tz));
+    const astros = rows.filter(r => r[3] === aCode && r[5] && b.containsPoint(new THREE.Vector3(r[0], r[1], r[2])));
+    const R2 = 50 * 50;
+    const scored = astros.map(r => ({ r, n: CN.syn.reduce((k, s) => k + ((s.p.x - r[0]) ** 2 + (s.p.y - r[1]) ** 2 + (s.p.z - r[2]) ** 2 < R2 ? 1 : 0), 0) }))
+      .filter(x => x.n).sort((x, y) => y.n - x.n);
+    const want = scored.slice(0, CN.tpK);
+    const have = new Set(CELLS.flatMap(x => [String(x.root), String(x.nuc)]));
+    const toAdd = want.filter(x => !have.has(String(x.r[5])) && !have.has(String(x.r[4])));
+    if (toAdd.length){
+      cnSay("Tripartite synapses: loading the " + toAdd.length + " astrocyte" + (toAdd.length > 1 ? "s" : "") + " nearest most of the synapses…");
+      await addNeighbours(toAdd.length, new Set(toAdd.map(x => String(x.r[5]))), "astrocyte");
+    }
+    const astroCells = CELLS.filter(x => x.mesh && x !== c && caKind(x) === "astro");
+    if (!astroCells.length){ cnSay("Tripartite synapses: no astrocyte could be loaded near this cell's synapses."); CN.busy = false; return; }
+    /* one hash over every astrocyte node, cell = the distance */
+    const d = CN.tpDist, inv = 1 / d, d2 = d * d, H = new Map(), reach = [];
+    for (const a of astroCells){
+      const G = cellGraph(a);
+      for (let v = 0; v < G.m; v++){
+        const k = Math.floor(G.pos[v*3] * inv) + "," + Math.floor(G.pos[v*3+1] * inv) + "," + Math.floor(G.pos[v*3+2] * inv);
+        let L = H.get(k); if (!L){ L = []; H.set(k, L); } L.push(G.pos[v*3], G.pos[v*3+1], G.pos[v*3+2]);
+      }
+      a.mesh.geometry.computeBoundingBox(); reach.push(a.mesh.geometry.boundingBox.clone().expandByScalar(d));
+    }
+    let checked = 0, hit = 0;
+    const pts = [];
+    for (const s of CN.syn){
+      s.tp = null;
+      if (!reach.some(bb => bb.containsPoint(s.p))) continue;
+      checked++;
+      const gx = Math.floor(s.p.x * inv), gy = Math.floor(s.p.y * inv), gz = Math.floor(s.p.z * inv);
+      let near = false;
+      for (let dx = -1; dx <= 1 && !near; dx++) for (let dy = -1; dy <= 1 && !near; dy++) for (let dz = -1; dz <= 1 && !near; dz++){
+        const L = H.get((gx + dx) + "," + (gy + dy) + "," + (gz + dz)); if (!L) continue;
+        for (let k = 0; k < L.length; k += 3){ const ex = L[k] - s.p.x, ey = L[k+1] - s.p.y, ez = L[k+2] - s.p.z; if (ex*ex + ey*ey + ez*ez <= d2){ near = true; break; } }
+      }
+      s.tp = near; if (near){ hit++; pts.push(s); }
+    }
+    CN.tp = { checked, hit, astros: astroCells.length, d };
+    const grp = new THREE.Group();
+    if (pts.length){
+      const inst = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.5, 1),
+        new THREE.MeshStandardMaterial({ color: "#c77dff", emissive: "#c77dff", emissiveIntensity: 0.45, transparent: true, opacity: 0.55, depthWrite: false }), pts.length);
+      const M4 = new THREE.Matrix4(); pts.forEach((s, k) => { M4.makeTranslation(s.p.x, s.p.y, s.p.z); inst.setMatrixAt(k, M4); });
+      inst.instanceMatrix.needsUpdate = true; grp.add(inst);
+    }
+    CN.tpGroup = grp; content.add(grp);
+    cnRender();
+    const el = document.getElementById("tpNote");
+    const msg = "Tripartite synapses (proxy): " + hit + " of the " + checked + " synapses within reach of the " + astroCells.length + " loaded astrocyte" + (astroCells.length > 1 ? "s" : "")
+      + " have astrocyte membrane within " + d + " µm (" + (checked ? Math.round(100 * hit / checked) : 0) + " %), ringed in purple. " + (CN.syn.length - checked) + " synapses lie outside those astrocytes and were not checked. Distance only — not ensheathment.";
+    if (el) el.textContent = msg; cnSay(msg);
+  } catch (e){
+    CN.tpOn = false; document.getElementById("tpBtn").classList.remove("on");
+    if (e.noToken){ document.getElementById("cnTokRow").style.display = "flex"; cnSay("Tripartite synapses need the synapses from CAVE — paste the CAVE token below."); }
+    else cnSay("Tripartite synapses: " + (e.message || e));
+  }
+  CN.busy = false;
+}
+
+/* ── touching cells: load the nearest, keep the ones that touch ── */
+async function addTouching(){
+  const c = CELLS[SELECTED]; if (!c){ cnSay("Touching cells: pick a cell first."); return; }
+  if (!c.mesh){ cnSay("Touching cells: this cell has no mesh to touch with."); return; }
+  if (CN.busy) return; CN.busy = true;
+  try {
+    const before = CELLS.length;
+    cnSay("Touching cells: loading the " + CN.tcK + " nearest cells to test them…");
+    await addNeighbours(CN.tcK, null, "neighbour");
+    const fresh = CELLS.slice(before);
+    CT.sig = ""; const pairs = findContacts();
+    const touch = new Set(); pairs.forEach(P => { if (P.a === c.i) touch.add(P.b); if (P.b === c.i) touch.add(P.a); });
+    const keep = fresh.filter(x => touch.has(x.i)), drop = fresh.filter(x => !touch.has(x.i));
+    drop.forEach(x => { x.hidden = true; x.notTouching = true; });
+    renderList(); applyLook(); syncVisChecks && syncVisChecks();
+    setContacts(true);
+    const area = x => { const P = pairs.find(P => (P.a === c.i && P.b === x.i) || (P.b === c.i && P.a === x.i)); return P ? P.area : 0; };
+    cnSay("Touching cells: " + keep.length + " of the " + fresh.length + " nearest touch " + shortName(c) + " within " + CT.dist + " µm"
+      + (keep.length ? " — " + keep.map(x => shortName(x) + " (~" + area(x).toFixed(1) + " µm²)").join(", ") : "") + "."
+      + (drop.length ? " The other " + drop.length + " are hidden (tick them in the list to show them)." : ""));
+  } catch (e){ cnSay("Touching cells: " + (e.message || e)); }
+  CN.busy = false;
+}
+
+/* a newly picked cell starts its own connectivity */
+function cnOnSelect(){
+  const c = CELLS[SELECTED];
+  if (CN.c && c !== CN.c){
+    disposeGroup(CN.lines); CN.lines = null; disposeGroup(CN.tpGroup); CN.tpGroup = null;
+    CN.c = null; CN.partners = null; CN.syn = null; CN.tp = null; cnRender();
+    if (CN.on){ CN.on = false; document.getElementById("cnBtn").classList.remove("on"); if (c) setConnectivity(true); }
+    if (CN.tpOn){ CN.tpOn = false; document.getElementById("tpBtn").classList.remove("on"); }
+  }
+  const el = document.getElementById("cnFor"); if (el) el.textContent = c ? "for " + shortName(c) : "pick a cell first";
+}
+document.getElementById("cnBtn").addEventListener("click", () => setConnectivity(!CN.on));
+document.getElementById("cnTop").addEventListener("change", e => { CN.top = +e.target.value || 20; cnLines(); });
+document.getElementById("cnIn").addEventListener("click", () => cnAddTop(0, 5));
+document.getElementById("cnOut").addEventListener("click", () => cnAddTop(1, 5));
+document.getElementById("cnCsv").addEventListener("click", cnCsv);
+document.getElementById("tpBtn").addEventListener("click", () => setTripartite(!CN.tpOn));
+document.getElementById("tpDist").addEventListener("change", e => { CN.tpDist = +e.target.value || 0.5; if (CN.tpOn) setTripartite(true); });
+document.getElementById("tpK").addEventListener("change", e => { CN.tpK = +e.target.value || 6; });
+document.getElementById("tcBtn").addEventListener("click", addTouching);
+document.getElementById("tcK").addEventListener("change", e => { CN.tcK = +e.target.value || 12; });
+document.getElementById("cnTokSave").addEventListener("click", () => {
+  const t = document.getElementById("cnTok").value.trim().replace(/^["']|["']$/g, "");
+  try { if (t) localStorage.setItem((DSX.syn && DSX.syn.tokenKey) || "cave_token", t); } catch (e){}
+  document.getElementById("cnTokRow").style.display = "none"; STIM.syn = null;
+  cnSay("CAVE token saved in this browser. Press Connectivity again.");
+});
+cnOnSelect();
+
 /* TAP / CLICK A CELL TO PICK IT on a screen (2026-10-23, Søren: "How do I pick a cell while on a
    mobile device?"). Until now only the headset's trigger and the cell list picked a cell. A tap or
    click that does not move (≤ 6 px) on a visible cell selects it; on the selected cell, deselects it.
    A tap on empty space does nothing. Skipped while a tool wants the click or the EM window is open. */
 renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 6) return;
-  if (FIX.on || STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || (typeof RIDE !== "undefined" && RIDE.on)) return;
+  if (FIX.on || TRW.on || STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || (typeof RIDE !== "undefined" && RIDE.on)) return;
   if (renderer.xr && renderer.xr.isPresenting) return;
   const ndc = canvasNdc(e); raycaster.setFromCamera(ndc, camera);
   const targets = CELLS.filter(c => !c.hidden && c.mesh && c.mesh.visible).map(c => c.mesh);
@@ -12484,7 +13279,7 @@ renderer.setAnimationLoop(() => {
   try { lfpFrame(); lfpPlace(); } catch (e){ console.warn("[vr] LFP:", e); }
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
-  sprayFrame(dt);
+  sprayFrame(dt); trwFrame();
   if (domeActive()) domeRender(null); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
@@ -12967,7 +13762,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 (function hideMissing(){
   const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
-                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapCsfRow: "flow", gameBox: "vec" };
+                 emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn" };
   for (const id in gone){
     if (DS_HAS[gone[id]]) continue;
     const el = document.getElementById(id); if (!el) continue;
@@ -12986,7 +13781,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
@@ -13024,6 +13819,38 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
       <div style="display:flex;gap:6px;flex-wrap:wrap"><button id="fixSave" class="on">Add them all to the cell</button><button id="fixKeep">Keep editing</button><button id="fixDrop">Discard</button></div>
       <div id="fixSignin" style="margin-top:6px"></div>
       <div id="fixOut2" style="margin-top:4px;font-size:12px;color:#8b949e"></div>
+    </div>
+  </div>
+</div>
+<div id="trwWin" style="display:none;position:fixed;right:12px;top:12px;z-index:20;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:rgba(13,17,23,.97);color:#e6edf3;border:1px solid #30363d;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.5);font:13px system-ui,sans-serif">
+  <div id="trwHead" style="padding:7px 10px;border-bottom:1px solid #30363d;cursor:move;display:flex;align-items:center;gap:8px"><b style="flex:1" id="trwTitle">Trace organelles</b><button id="trwX" title="Close (asks about unsaved tracings)" style="border:0;background:none;color:inherit;font-size:16px;cursor:pointer">✕</button></div>
+  <div style="padding:8px 10px">
+    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <select id="trwKind" style="flex:1;min-width:150px" title="What you are tracing (µJump's organelle list)"></select>
+      <button id="trwModeO" class="on" title="Draw round the organelle on each section; Finish lofts the outlines into 3D">✏️ Outline</button><button id="trwModeP" title="Tap or click where the organelle is (cilium and NR type II: two points)">📍 Point</button>
+    </div>
+    <div style="position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:6px;overflow:hidden">
+      <canvas id="trwEm" width="420" height="420" style="width:100%;height:100%;display:block;touch-action:none;cursor:crosshair"></canvas>
+      <div id="trwLab" style="position:absolute;left:6px;top:4px;font:11px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+      <div id="trwBar" style="position:absolute;left:8px;bottom:8px;height:3px;background:#fff;pointer-events:none"></div>
+      <div id="trwBarL" style="position:absolute;left:8px;bottom:13px;font:10px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+    </div>
+    <div style="font-size:11.5px;color:#8b949e;margin:5px 0"><b style="color:#e6edf3">Outline:</b> draw all the way round the organelle, step ▲▼ to the next section and draw again, then <b style="color:#e6edf3">Finish</b> (it is lofted into 3D with its volume). Dashed = outlines on the neighbouring sections. <b style="color:#e6edf3">Point:</b> tap it. ✋ Move lets a drag pan instead of draw · scroll or −/+ to zoom · <b style="color:#e6edf3">click the 3D view</b> to bring the window there.</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+      <button id="trwOutB" title="Zoom out">−</button><button id="trwIn" title="Zoom in">+</button><button id="trwUp" title="Previous section">▲</button><button id="trwDn" title="Next section">▼</button>
+      <select id="trwStep" title="How far ▲▼ step"><option value="1">1 section (40 nm)</option><option value="2">2 sections</option><option value="3">3 sections</option><option value="5">5 sections</option></select>
+      <button id="trwMove" title="Drag to pan instead of drawing">✋ Move</button>
+      <label id="trwSegRow" style="font-size:12px"><input type="checkbox" id="trwSeg"> cell outline</label>
+      <button id="trwHome" title="Back to the cell's nucleus">⌖ nucleus</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px"><button id="trwFin" title="Close this organelle and loft its outlines into 3D">✓ Finish organelle</button><button id="trwUndo" title="Take back the last outline or point">↶ Undo</button></div>
+    <div id="trwList" style="margin-top:6px;font-size:12px"></div>
+    <div style="display:flex;gap:6px;margin-top:8px"><button id="trwDone" class="on">Save…</button><button id="trwClose">Close</button></div>
+    <div id="trwAsk" style="display:none;margin-top:8px;border-top:1px solid #30363d;padding-top:8px">
+      <div id="trwAskText" style="margin-bottom:6px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button id="trwSave" class="on">Save them</button><button id="trwKeep">Keep tracing</button><button id="trwDrop">Discard</button></div>
+      <div id="trwSignin" style="margin-top:6px"></div>
+      <div id="trwOut" style="margin-top:4px;font-size:12px;color:#8b949e"></div>
     </div>
   </div>
 </div>
