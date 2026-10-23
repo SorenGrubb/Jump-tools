@@ -1024,7 +1024,32 @@ function renderOrganelleSection(nid, root){
     if (!t || !organIsCellBody(t)) return false;
     return panelSameCell(t, nid, root);
   }).sort(function(a, b){ return organBodyRank(a) - organBodyRank(b); });
-  if (!anns.length && !trs.length){ host.innerHTML = ""; return; }
+  /* ── NOTHING RECORDED IS STILL SOMETHING TO SAY ──────────────────────────────  2026-10-23
+     This used to be `host.innerHTML = ""; return;` -- a cell with no annotation and no tracing
+     got no Organelles section at all, which is most cells. Søren found it from the other end:
+     the organelle walkthrough's step waits for #cellOrganDetails and sat there for ever on a
+     random pyramidal neuron, saying "Waiting for you to show a cell" with the cell on screen.
+
+     An absent section cannot be told apart from a panel that has not finished loading, and it
+     withholds the one line that might make somebody log the first organelle on that cell. So the
+     empty case renders the same shut <details>, says what is true, and says where to begin. */
+  if (!anns.length && !trs.length){
+    var busy = (typeof PANEL_ORGAN_BUSY !== "undefined" && PANEL_ORGAN_BUSY);
+    host.innerHTML = '<details id="cellOrganDetails">'
+      + '<summary style="cursor:pointer;font-size:12px;text-transform:uppercase;'
+      + 'letter-spacing:.06em;color:var(--mut);font-weight:600">Organelles \u2014 '
+      + (busy ? 'looking\u2026' : 'nothing recorded on this cell yet') + '</summary>'
+      + '<p class="hint" style="margin-top:4px">'
+      + (busy
+         ? 'Reading what has been outlined on this cell\u2026'
+         : 'No structure has been logged as a point or outlined on this cell. '
+           + '<b>Log one \u2192</b> on the guided identification\u2019s result screen adds the '
+           + 'first; the tracing card below outlines one. A logged point says <b>where</b>, an '
+           + 'outline says <b>what shape</b>, and a point inside an outline is the same organelle '
+           + 'recorded both ways.')
+      + '</p></details>';
+    return;
+  }
 
   /* The index (?tracings=1) carries no contours -- it is one sheet scan and opens no Drive files,
      which is what makes listing cheap. So a segmentation whose geometry has not been fetched cannot

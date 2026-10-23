@@ -675,6 +675,87 @@ function finish() {
   ok("...and reports it for this check to read", gone.missing.indexOf("#noSuchControl") >= 0,
      JSON.stringify(gone.missing));
 
+  /* ── THE OVERLAY HAS TO FOLLOW ITS TARGET ───────────────────────────────────────  2026-10-23
+     Søren, from his phone: "The ring circling the things in focus does not work very well on a
+     phone, it sometimes missed the target, sometimes only covers parts of it and moves around if
+     you accidentally scroll the page." One cause for all three: the dim, ring and bubble are
+     position:fixed and were placed ONCE per step from a rectangle read at that moment.
+
+     NOTHING HERE HAD EVER SCROLLED THE PAGE AFTER A STEP RENDERED. Every geometry assertion in
+     this file measured a freshly-rendered step on a still page, which is the one situation the
+     bug does not occur in. So: render a step, scroll, and look again. */
+  const followed = await p.evaluate(async () => {
+    UJ.tour.stop();
+    try { localStorage.clear(); } catch (e) {}
+    window.scrollTo(0, 0);
+    UJ.tour.start("part1");
+    /* #randomTypeSelect, NOT the control at the foot of the page. The first version used that
+       one, where the step had already scrolled as far as the page goes: scrolling down did
+       nothing at all -- a silently vacuous assertion -- and scrolling up pushed the target clean
+       out of the viewport, which is the NEXT assertion's case rather than this one's. Only a
+       target with room on both sides can test following. */
+    const steps = UJ.tour.parts()[0].steps;
+    const want = steps.findIndex(s => s.at === "#randomTypeSelect");
+    for (let i = 0; i < want; i++) document.querySelector(".tour-next").click();
+    await new Promise(r => setTimeout(r, 500));
+    const off = () => {
+      const t = document.querySelector("#randomTypeSelect").getBoundingClientRect();
+      const g = document.querySelector(".tour-ring").getBoundingClientRect();
+      return { dx: Math.round(Math.abs(g.left + g.width / 2 - (t.left + t.width / 2))),
+               dy: Math.round(Math.abs(g.top + g.height / 2 - (t.top + t.height / 2))),
+               hidden: document.querySelector(".tour-ring").hidden,
+               ringH: Math.round(g.height), targetH: Math.round(t.height),
+               onScreen: t.bottom > 0 && t.top < window.innerHeight };
+    };
+    const before = off();
+    const y0 = window.scrollY;
+    window.scrollBy(0, 150);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise(r => setTimeout(r, 150));
+    const moved = Math.abs(window.scrollY - y0);
+    const after = off();
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await new Promise(r => setTimeout(r, 220));
+    const gone = off();
+    return { step: want + 1, before: before, after: after, moved: moved,
+             away: { hidden: gone.hidden, onScreen: gone.onScreen, h: gone.ringH } };
+  });
+  ok("the ring is on its target to begin with",
+     followed.before.dx <= 2 && followed.before.dy <= 2 && !followed.before.hidden,
+     "off by " + followed.before.dx + ", " + followed.before.dy + " px");
+  /* The page must have MOVED and the target must still be ON SCREEN, or this proves nothing. */
+  ok("...and it is still on it after the page is scrolled",
+     followed.moved >= 100 && followed.after.onScreen && !followed.after.hidden
+     && followed.after.dx <= 2 && followed.after.dy <= 2,
+     followed.moved < 100 ? "the page only moved " + followed.moved + "px, so nothing was tested"
+       : !followed.after.onScreen ? "the scroll took the target off screen, so this is the wrong test"
+       : "off by " + followed.after.dx + ", " + followed.after.dy + " px after a "
+         + followed.moved + "px scroll");
+  /* "Covers only part of it": the ring is the target's size plus its padding, not whatever size
+     it happened to be when the page last reflowed. */
+  ok("...and still the size of it",
+     Math.abs(followed.after.ringH - followed.after.targetH) <= 16,
+     "ring " + followed.after.ringH + "px around a " + followed.after.targetH + "px control");
+  /* Out of sight it must disappear, not sit as a flat bar against the viewport edge, which is
+     what a clamp with no bounds check produced. */
+  ok("...and disappears rather than flattening when its target scrolls out of sight",
+     followed.away.onScreen === false && followed.away.hidden === true,
+     followed.away.onScreen ? "the target never left the screen, so nothing was tested"
+       : followed.away.hidden ? "hidden" : "still drawn, " + followed.away.h + "px tall");
+  /* PUT THE TOUR BACK WHERE THIS BLOCK FOUND IT. The keyboard section below opens on
+     UJ.tour.where().step, so a block that stops the tour on its way out makes the next one throw
+     on null -- which is exactly what the first version of this did. It is left running on the
+     last step of part one, which is where the section before it had got to. */
+  await p.evaluate(async () => {
+    UJ.tour.stop();
+    window.scrollTo(0, 0);
+    try { localStorage.clear(); } catch (e) {}
+    UJ.tour.start("part1");
+    const n = UJ.tour.parts()[0].steps.length;
+    for (let i = 0; i < n - 1; i++) document.querySelector(".tour-next").click();
+    await new Promise(r => setTimeout(r, 200));
+  });
+
   console.log("\n--- keyboard, memory and leaving ---");
   /* RELATIVE, not a hardcoded index. These assertions said `=== 4`, and adding one step to the
      fixture broke three of them at once while nothing was actually wrong — a check that has to be

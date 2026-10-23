@@ -78,6 +78,9 @@ var UJ = UJ || {};
   var EL = {};              /* the overlay's elements, built once */
   var WATCH = null;         /* the MutationObserver waiting for a `needs` selector */
   var TIMER = null;
+  var AIM = null;           /* the selector the overlay is currently following */
+  var LAST = null;          /* its last placed rectangle, as a string, so a still page is free */
+  var FRAME = 0;            /* the follow() frame request, while a step is showing */
 
   /* ── what it remembers ─────────────────────────────────────────────────────────────────── */
   function key() { return (CFG && CFG.key) || "grubblab_tour_v1"; }
@@ -352,6 +355,18 @@ var UJ = UJ || {};
       EL.ring.hidden = true;
       return;
     }
+    /* SCROLLED OUT OF VIEW IS NOT "AT THE EDGE".                                  2026-10-23
+       The clamp below pins the hole to the viewport, which is right while the target is PARTLY
+       visible. With the target fully above or below the fold it produced y1 < y0 -- a ring of
+       negative height drawn as a bar at the edge, which is a ring "covering only part of it"
+       with nothing inside it. Nothing to point at means point at nothing. */
+    if (r.bottom < 0 || r.top > H || r.right < 0 || r.left > W) {
+      d[0].hidden = false;
+      Object.assign(d[0].style, { left: 0, top: 0, width: W + "px", height: H + "px" });
+      d[1].hidden = d[2].hidden = d[3].hidden = true;
+      EL.ring.hidden = true;
+      return;
+    }
     var x0 = Math.max(0, r.left - pad), y0 = Math.max(0, r.top - pad);
     var x1 = Math.min(W, r.right + pad), y1 = Math.min(H, r.bottom + pad);
     var set = function (el, l, t, w, h) {
@@ -366,6 +381,56 @@ var UJ = UJ || {};
     EL.ring.hidden = false;
     Object.assign(EL.ring.style, { left: x0 + "px", top: y0 + "px",
                                    width: (x1 - x0) + "px", height: (y1 - y0) + "px" });
+  }
+
+  /* ── THE OVERLAY FOLLOWS ITS TARGET ────────────────────────────────────────────  2026-10-23
+     Søren, from his phone: *"The ring circling the things in focus does not work very well on a
+     phone, it sometimes missed the target, sometimes only covers parts of it and moves around if
+     you accidentally scroll the page."* His screenshot shows the ring at the top of the page with
+     the target far below it, which is all three complaints with one cause.
+
+     The dim, the ring and the bubble are position:fixed and were placed ONCE per step, from a
+     rectangle read at that moment. Nothing ever read it again. So:
+
+       scrolling        the element moves, the overlay does not -- "moves around if you scroll"
+       measured early   on a page this heavy the rAF chain queues behind µJump's own work, so the
+                        rect can be read before the scrollIntoView has settled -- "missed it"
+       reflow           an image or a fetched card landing changes the layout underneath -- the
+                        ring keeps the old size, "covers only part of it"
+
+     A listener on `scroll` would catch the first of those and neither of the others, so this is a
+     frame loop instead: read the live rectangle, and when it has actually moved, place everything
+     again. It runs only while a step is showing, and does nothing but compare four numbers when
+     the page is still -- which is what makes it affordable on a 14.5 MB page.
+
+     IT FOLLOWS WHICHEVER RECTANGLE THE STEP IS POINTING AT: the press-target while a step is
+     waiting for the reader, the step's own target otherwise. That is the one the hole is cut
+     around, so it is the one that has to stay under it. */
+  function aimAt(sel) {
+    AIM = sel || null;
+    LAST = null;
+  }
+  function follow() {
+    if (FRAME) return;
+    var tick = function () {
+      FRAME = PART ? requestAnimationFrame(tick) : 0;
+      if (!PART) return;
+      var r = AIM ? rectOf(AIM) : null;
+      if (!r && !AIM) return;                       /* a step that points at nothing: nothing to do */
+      var key = r ? [Math.round(r.left), Math.round(r.top),
+                     Math.round(r.width), Math.round(r.height)].join(",") : "gone";
+      if (key === LAST) return;
+      LAST = key;
+      dimAround(r);
+      placeBubble(r);
+    };
+    FRAME = requestAnimationFrame(tick);
+  }
+  function unfollow() {
+    if (FRAME) cancelAnimationFrame(FRAME);
+    FRAME = 0;
+    AIM = null;
+    LAST = null;
   }
 
   /* THE BUBBLE MUST NOT COVER THE THING IT IS TALKING ABOUT. Below the target if it fits, else
@@ -475,6 +540,7 @@ var UJ = UJ || {};
 
   /* ── running ───────────────────────────────────────────────────────────────────────────── */
   function clearWatch() {
+    unfollow();
     if (WATCH) { WATCH.disconnect(); WATCH = null; }
     if (TIMER) { clearTimeout(TIMER); TIMER = null; }
   }
@@ -529,38 +595,39 @@ var UJ = UJ || {};
           + ". You can carry on and come back to it.";
       }, s.wait || 20000);
       revealAncestors(s.press);
-      var pressAt = s.press ? rectOf(s.press) : null;
-      if (pressAt) { scrollTo(s.press); }
-      requestAnimationFrame(function () {
-        if (!PART || PART.steps[IX] !== s) return;
-        var pr = s.press ? rectOf(s.press) : null;
-        if (pr) dimAround(pr); else dimOff();
-        requestAnimationFrame(function () { placeBubble(pr); });
-      });
+      if (s.press && rectOf(s.press)) scrollTo(s.press);
+      /* With no `press` there is nothing to point at while waiting, so the dimming comes off
+         entirely and the whole page stays usable -- see the comment above. */
+      if (!s.press) { aimAt(null); dimOff(); placeBubble(null); }
+      else aimAt(s.press);
+      follow();
       return;
     }
 
     revealAncestors(s.at);
     scrollTo(s.at);
-    /* After a scroll the rectangle is only right on the next frame. */
-    requestAnimationFrame(function () {
-      if (!PART || PART.steps[IX] !== s) return;
-      var r = rectOf(s.at);
-      /* `s.at` ABSENT IS NOT `s.at` MISSING. An opening step deliberately points at nothing and
-         dims the whole page; recording that as a target the engine could not find put a null into
-         missing() and would have had tourcheck.js reporting a bug that is not one. */
-      if (!r && s.at) {
-        if (MISSING.indexOf(s.at) < 0) {
-          MISSING.push(s.at);
-          console.warn("[tour] step " + (IX + 1) + " of " + PART.id
-            + " points at " + s.at + ", which is not on this page.");
-        }
-        goneEl.hidden = false;
-        goneEl.textContent = "Could not find this control on the page (" + s.at + ").";
+    var r0 = rectOf(s.at);
+    /* `s.at` ABSENT IS NOT `s.at` MISSING. An opening step deliberately points at nothing and
+       dims the whole page; recording that as a target the engine could not find put a null into
+       missing() and would have had tourcheck.js reporting a bug that is not one.
+
+       Reported from the FIRST reading rather than from the follow loop: the loop runs every frame
+       and would otherwise push the same selector into missing() forever. */
+    if (!r0 && s.at) {
+      if (MISSING.indexOf(s.at) < 0) {
+        MISSING.push(s.at);
+        console.warn("[tour] step " + (IX + 1) + " of " + PART.id
+          + " points at " + s.at + ", which is not on this page.");
       }
-      dimAround(r);
-      requestAnimationFrame(function () { placeBubble(r); });
-    });
+      goneEl.hidden = false;
+      goneEl.textContent = "Could not find this control on the page (" + s.at + ").";
+    }
+    /* No rAF dance here any more: the first frame of follow() does the placing, and every frame
+       after it does the correcting -- which is the whole point. A step pointing at nothing dims
+       the page and centres the bubble, once. */
+    if (!s.at) { aimAt(null); dimAround(null); placeBubble(null); }
+    else aimAt(s.at);
+    follow();
   }
 
   function move(d) {

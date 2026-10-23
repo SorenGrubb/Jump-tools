@@ -259,10 +259,15 @@ PART_ORGAN = {
         {"at": "#cellOrganDetails", "tab": "jump", "press": "#randomOfType",
          "needs": "#cellOrganDetails", "after": u"show a cell, so there is something to count",
          "title": u"What is already known about this cell",
+         # It says "nothing recorded on this cell yet" on a fresh cell rather than vanishing,
+         # which it used to do -- see src/an_empty_organelle_section_still_says_so.py. This
+         # step waited for ever on any cell nobody had worked on, which is most of them.
          "say": u"The cell panel's <b>Organelles</b> section counts three things: how many "
-                u"structures are <b>outlined</b>, how many are <b>logged</b> as points, and how "
-                u"many are <b>paired</b> &mdash; a point that falls inside an outline, which is "
-                u"the same organelle recorded both ways. Open it and each one is listed."},
+                u"structures are <b>outlined</b>, how many are <b>logged</b> as points, and "
+                u"how many are <b>paired</b> &mdash; a point inside an outline, the same "
+                u"organelle recorded both ways. On a cell nobody has worked on it says so, "
+                u"and that is an invitation: most cells in this volume have nothing on them "
+                u"at all."},
 
         {"at": ".organshowall", "needs": ".organshowall", "press": "#randomOfType",
          "after": u"open the Organelles section on a cell that has some",
