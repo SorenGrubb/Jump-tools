@@ -187,6 +187,15 @@ var UJ = UJ || {};
     ".tour-bubble p{margin:0 0 10px}",
     ".tour-bubble .tour-wait{margin:0 0 10px;font-size:13px;color:var(--accent,#2f6f8f)}",
     ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,var(--accent,#b45309))}",
+    /* THE WAY ON, on the last step of a part.                                      2026-10-23
+       Søren: "There should be a small link to the next tutorial in the last step." Small is the
+       point -- it is an offer, not the end of a funnel -- so it is a text link rather than a
+       second filled button competing with Done. The colour chain is --accent, which every host in
+       this family defines, falling back to a literal that reads on a light panel. */
+    ".tour-bubble .tour-onward{margin:0 0 10px;font-size:13px}",
+    ".tour-onward .tour-go-next{background:none;border:0;padding:0;font:inherit;cursor:pointer;",
+    "  color:var(--accent,var(--teal,#0e7c5f));text-decoration:underline;text-align:left}",
+    ".tour-onward .tour-go-next:hover{opacity:.8}",
     ".tour-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
     ".tour-row .tour-count{color:var(--muted,var(--mut,#5f6873));font-size:13px;margin-right:auto}",
     ".tour-btn{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;padding:6px 12px;",
@@ -273,6 +282,7 @@ var UJ = UJ || {};
     EL.bubble.innerHTML =
       '<h4 class="tour-title"></h4><p class="tour-say"></p>' +
       '<p class="tour-wait" hidden></p><p class="tour-gone" hidden></p>' +
+      '<p class="tour-onward" hidden></p>' +
       '<div class="tour-row"><span class="tour-count"></span>' +
       '<button type="button" class="tour-btn tour-quit">Close</button>' +
       '<button type="button" class="tour-btn tour-back">Back</button>' +
@@ -282,6 +292,38 @@ var UJ = UJ || {};
     EL.bubble.querySelector(".tour-back").addEventListener("click", function () { move(-1); });
     EL.bubble.querySelector(".tour-quit").addEventListener("click", function () { stop(); });
     document.addEventListener("keydown", onKey);
+  }
+
+  /* ── WHERE TO GO NEXT ──────────────────────────────────────────────────────────  2026-10-23
+     Søren: *"There should be a small link to the next tutorial in the last step."*
+
+     Built from CFG.parts, like the picker: the part AFTER this one in the declared order, named,
+     one click away. No step says what follows it -- which is deliberate, because every time the
+     order changed today some step's prose about "the next one" went stale, and this cannot.
+
+     The final part offers the picker instead, and a page with only one part (vr.html) offers
+     nothing, because a picker with one row is a question with one answer. */
+  function onward(show) {
+    var el = EL.bubble.querySelector(".tour-onward");
+    if (!el) return;
+    el.hidden = true;
+    el.innerHTML = "";
+    if (!show || !CFG || !CFG.parts) return;
+    var ps = CFG.parts, at = -1, i;
+    for (i = 0; i < ps.length; i++) if (ps[i].id === PART.id) at = i;
+    var next = (at >= 0 && at + 1 < ps.length) ? ps[at + 1] : null;
+    if (!next && ps.length < 2) return;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tour-go-next";
+    btn.textContent = next ? ("Next: " + next.title + " \u2192")
+                           : "Pick another walkthrough \u2192";
+    btn.addEventListener("click", function () {
+      stop();
+      if (next) startFromState(next.id); else menu();
+    });
+    el.appendChild(btn);
+    el.hidden = false;
   }
 
   function onKey(e) {
@@ -450,6 +492,7 @@ var UJ = UJ || {};
 
     var waitEl = b.querySelector(".tour-wait"), goneEl = b.querySelector(".tour-gone");
     waitEl.hidden = true; goneEl.hidden = true;
+    onward(IX === PART.steps.length - 1);
     clearWatch();
 
     if (s.tab) hostTab(s.tab);

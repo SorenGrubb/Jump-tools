@@ -759,6 +759,44 @@ function finish() {
      await p.evaluate(() => !document.querySelector(".tour-menu")
                             && !document.querySelector(".tour-menu-back")));
 
+  /* ── THE WAY ON, FROM THE LAST STEP ─────────────────────────────────────────────  2026-10-23
+     Søren: "There should be a small link to the next tutorial in the last step." Driven, because
+     what has to be true is that it appears on the LAST step and nowhere else, that it names the
+     part that actually follows in the declared order, and that pressing it starts that one -- all
+     three being things a reading of the source cannot settle. */
+  const onward = await p.evaluate(async () => {
+    UJ.tour.stop();
+    try { localStorage.clear(); } catch (e) {}
+    const parts = UJ.tour.parts();
+    UJ.tour.start(parts[0].id);
+    const n = parts[0].steps.length;
+    const seen = [];
+    for (let i = 0; i < n; i++) {
+      await new Promise(r => setTimeout(r, 60));
+      const el = document.querySelector(".tour-onward");
+      seen.push({ step: i + 1, shown: !!(el && !el.hidden),
+                  text: el && !el.hidden ? el.textContent : "" });
+      if (i < n - 1) document.querySelector(".tour-next").click();
+    }
+    return { seen: seen, nextTitle: parts[1] ? parts[1].title : null, nextId: parts[1] ? parts[1].id : null };
+  });
+  const shownOn = onward.seen.filter(x => x.shown).map(x => x.step);
+  ok("the way on appears on the last step of a part, and only there",
+     shownOn.length === 1 && shownOn[0] === onward.seen.length,
+     shownOn.length ? "shown on step " + shownOn.join(", ") + " of " + onward.seen.length
+                    : "never shown");
+  ok("...and it names the part that actually follows",
+     !!onward.nextTitle && (onward.seen[onward.seen.length - 1].text || "").indexOf(onward.nextTitle) >= 0,
+     JSON.stringify((onward.seen[onward.seen.length - 1] || {}).text));
+  const went = await p.evaluate(async () => {
+    document.querySelector(".tour-go-next").click();
+    await new Promise(r => setTimeout(r, 300));
+    return UJ.tour.where();
+  });
+  ok("...and pressing it starts that one", went && went.part === onward.nextId,
+     JSON.stringify(went));
+  await p.evaluate(() => { UJ.tour.stop(); try { localStorage.clear(); } catch (e) {} });
+
   /* ── THE HANDOFF ACROSS A PAGE ──────────────────────────────────────────────────  2026-10-23
      Søren: "collecting cells for VR, opening the VR scene and continuing the tutorial there."
      Opening the scene is a NAVIGATION, so the walkthrough cannot carry on by itself -- the page
@@ -831,24 +869,34 @@ function finish() {
        .tour-say would have passed it. Made visible first: a hidden line has no rendered colour
        worth trusting. */
     const wait = b.querySelector(".tour-wait"), gone = b.querySelector(".tour-gone");
-    const wasW = wait.hidden, wasG = gone.hidden;
+    const onw = b.querySelector(".tour-onward");
+    const wasW = wait.hidden, wasG = gone.hidden, wasO = onw.hidden;
     wait.hidden = false; gone.hidden = false;
+    /* The way-on link, measured with the rest -- it takes --accent, which is the token this
+       family disagrees about least, but "least" is not "never". */
+    onw.hidden = false;
+    if (!onw.querySelector(".tour-go-next")) {
+      const t = document.createElement("button");
+      t.className = "tour-go-next"; t.textContent = "x"; onw.appendChild(t);
+    }
     const out = { bg: bg, ink: getComputedStyle(say).color,
              body: ratio(getComputedStyle(say).color, bg),
              count: ratio(getComputedStyle(b.querySelector(".tour-count")).color, bg),
              wait: ratio(getComputedStyle(wait).color, bg),
              gone: ratio(getComputedStyle(gone).color, bg),
+             onward: ratio(getComputedStyle(onw.querySelector(".tour-go-next")).color, bg),
              button: ratio(getComputedStyle(go).color, getComputedStyle(go).backgroundColor) };
-    wait.hidden = wasW; gone.hidden = wasG;
+    wait.hidden = wasW; gone.hidden = wasG; onw.hidden = wasO;
     return out;
   }, palette);
   /* 4.5:1 is the WCAG AA floor for body text; 3:1 is the large-text/UI floor, which is what the
      two small status lines are held to -- they are 13px supporting text beside a body line that
      already says the same thing in full. */
   const legible = c => c.body >= 4.5 && c.button >= 4.5 && c.count >= 4.5
-                    && c.wait >= 3 && c.gone >= 3;
+                    && c.wait >= 3 && c.gone >= 3 && c.onward >= 4.5;
   const spell = c => "body " + c.body + ", count " + c.count + ", waiting " + c.wait
-                   + ", not-here " + c.gone + ", button " + c.button + " on " + c.bg;
+                   + ", not-here " + c.gone + ", way-on " + c.onward
+                   + ", button " + c.button + " on " + c.bg;
   await p.evaluate(() => { UJ.tour.stop(); UJ.tour.start("part1"); });
   await p.waitForTimeout(250);
   const light = await contrast(null);
@@ -1113,6 +1161,22 @@ function finish() {
       }
       return { bad: bad, steps: n };
     });
+    /* ONE PART, SO NO WAY ON. vr.html declares a single walkthrough: a "Next:" link would have
+       nowhere to point and a picker would be a question with one answer, so the engine shows
+       neither. Checked here because it is the only page in the tree where that branch runs. */
+    const vrOnward = await vp.evaluate(async () => {
+      UJ.tour.stop();
+      const p0 = UJ.tour.parts()[0];
+      UJ.tour.start(p0.id);
+      for (let i = 0; i < p0.steps.length - 1; i++) document.querySelector(".tour-next").click();
+      await new Promise(r => setTimeout(r, 250));
+      const el = document.querySelector(".tour-onward");
+      return { parts: UJ.tour.parts().length, shown: !!(el && !el.hidden),
+               text: el ? el.textContent : "" };
+    });
+    ok("...and the last step offers no way on, because this page has only one walkthrough",
+       vrOnward.parts === 1 && vrOnward.shown === false,
+       vrOnward.parts + " part(s), link " + (vrOnward.shown ? "shown: " + vrOnward.text : "hidden"));
     ok("...and on a phone the bubble never covers a target that could have fitted beside it",
        vphone.bad.length === 0,
        vphone.bad.join(", ") || vphone.steps + " steps walked at 390px");

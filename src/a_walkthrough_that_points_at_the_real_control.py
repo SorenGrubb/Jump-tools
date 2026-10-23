@@ -133,11 +133,12 @@ PART_FIND = {
     "blurb": u"The Jump tab: landing on a cell, reading its identity card, and recording what "
              u"you think it is.",
     "steps": [
-        {"say": u"This tool reads one volume: <b>MICrONS minnie65</b>, about 1.7 &times; 1.4 "
-                u"&times; 0.5&nbsp;mm of mouse visual cortex imaged at 4&nbsp;&times;&nbsp;4 "
-                u"&times; 40&nbsp;nm. A nucleus detector found 144,118 cells in it. Roughly two "
-                u"thirds carry a machine-made guess at what they are; the rest carry nothing at "
-                u"all. This walkthrough is about looking at one and deciding."},
+        {"say": u"This tool reads the <b>MICrONS</b> electron-microscope volumes of mouse "
+                u"visual cortex — two blocks of the same tissue, imaged at "
+                u"4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;40&nbsp;nm. A nucleus detector found "
+                u"144,118 cells in the larger one: roughly two thirds carry a machine-made "
+                u"guess at what they are, and the rest carry nothing at all. This walkthrough "
+                u"is about looking at one and deciding."},
 
         # THE LABELS ARE SØREN'S, 2026-10-23: "Jump, Filter, Discuss, Tutorial, Stats, Refs.
         # In that order and in these shorter forms." A step that names a button has to say
@@ -168,7 +169,9 @@ PART_FIND = {
          "after": u"press “Show”", "title": u"What the heading is, and is not",
          "say": u"This is MICrONS's own machine prediction, not a fact. It is right most of the "
                 u"time for neurons and wrong often enough around blood vessels that this site "
-                u"exists. Treat it as the first opinion, not the answer."},
+                u"exists. Treat it as the first opinion, not the answer. The name is also a "
+                u"<b>link</b> — it opens Neuroglancer at that cell, with its traced outline "
+                u"where there is one."},
 
         {"at": "#idfgo", "needs": "#idfgo", "press": "#randomOfType",
          "after": u"press “Show”", "title": u"Say what you think it is",

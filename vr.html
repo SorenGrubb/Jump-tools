@@ -161,6 +161,121 @@
 <div id="panel">
   <button id="hide" title="Hide panel">✕</button>
   <h1>🥽 VR collection</h1>
+<script type="application/json" id="tourdata">
+{
+ "key": "grubblab_ujump_tour_v1",
+ "tab": "uiOpenTab",
+ "offer": "A short walkthrough of the scene &mdash; moving about, seeing inside the cells, and what else can be drawn on them. About three minutes.",
+ "menu": "The walkthrough for the scene. It points at the real controls, in order, and waits for you &mdash; nothing is pressed for you. Esc leaves at any time.",
+ "parts": [
+  {
+   "id": "vrscene",
+   "title": "In the scene — moving about, and what is on the cells",
+   "blurb": "Getting around, seeing inside, the EM plane, and finding your own tracings and the community's organelles drawn on the cells you collected.",
+   "steps": [
+    {
+     "say": "You are standing in whatever was sent to this viewer &mdash; a collection you built, a set of filter matches, or a saved scene. The meshes are being fetched now; nothing was downloaded while you were choosing. This part is about getting around, and about the things from the earlier walkthroughs that turn up here on the cells. About three minutes.",
+     "title": "The collection, at scale"
+    },
+    {
+     "at": "#sub",
+     "title": "What it is doing, and how heavy it is",
+     "say": "This line is the scene's running commentary: what it is fetching, how many cells arrived, and how many million triangles it is drawing. That last number is the one that decides whether a headset keeps up, and <b>Light</b> below is the lever for it."
+    },
+    {
+     "at": "#keysCard",
+     "title": "Moving about",
+     "say": "<b>W A S D</b> walk, <b>Q</b> and <b>E</b> go down and up. With the mouse: drag to turn, scroll to zoom, right-drag to pan, and <b>right-click to fly to a point</b> &mdash; which is the fastest way to get to a cell you can see. Click a cell to pick it. This card folds away with <b>H</b> or a click."
+    },
+    {
+     "at": "#tabs",
+     "title": "The panel is seven tabs",
+     "say": "<b>View</b>, <b>Map</b>, <b>Objects</b>, <b>Activity</b>, <b>Tools</b>, <b>Spray</b> and <b>Share</b>. The walkthrough will move between them, so watch this row rather than hunting for a control that has gone: it has not, its tab is simply not the open one. <b>Aa</b> at the top turns the labels off once you know the icons."
+    },
+    {
+     "at": "#resetBtn",
+     "tab": "view",
+     "title": "When you get lost",
+     "say": "You will. Cells are hundreds of micrometres across at this scale and it is easy to end up inside one, or well outside the lot. <b>Reset view</b> puts the whole collection back in front of you."
+    },
+    {
+     "at": "#list",
+     "needs": "#list",
+     "after": "let the cells finish arriving",
+     "pageWait": true,
+     "wait": 15000,
+     "title": "Everything that is in here",
+     "say": "The list above the tabs is one row per thing in the scene &mdash; your cells, their nuclei, and anything else you switch on. Clicking a row picks that cell, which is what most of the panel then acts on."
+    },
+    {
+     "at": ".segwrap:has(#detail)",
+     "tab": "view",
+     "title": "How fine the meshes are",
+     "say": "<b>Light</b> is the coarsest level of detail &mdash; about 50k triangles for a pyramidal cell &mdash; and is what a standalone Quest 2 handles comfortably. <b>Full</b> is the finest level under 8 MB, about 5 million triangles. On a PC take Full; in a headset start Light and work up."
+    },
+    {
+     "at": "#glassBtn",
+     "tab": "view",
+     "title": "Seeing inside",
+     "say": "<b>See-through</b> makes the cells glassy, which is how you see a nucleus sitting inside its soma rather than guessing. Beside it, <b>Nuclei</b> turns the blue nuclei on and off, and <b>See-through others</b> keeps the cell you picked solid and glasses the rest &mdash; the one you want when a cell is buried in company."
+    },
+    {
+     "at": ".segwrap:has(#colourSel)",
+     "tab": "view",
+     "title": "Colour that means something",
+     "say": "<b>By type</b> gives each cell type its own colour; <b>excitatory / inhibitory / non-neuronal</b> reduces it to amber, lavender and green, which is the view to take when you want the balance of a population rather than its variety."
+    },
+    {
+     "at": "#vrslot button",
+     "needs": "#vrslot button",
+     "wait": 6000,
+     "pageWait": true,
+     "after": "open this on a machine that has a headset",
+     "title": "Into the headset",
+     "say": "<b>Enter VR</b> appears here when the browser can do it &mdash; a PC with Quest Link, or the Quest's own browser. On a plain monitor there is no button and nothing is lost: the whole scene works with the mouse, and everything the rest of this walkthrough points at works in both."
+    },
+    {
+     "at": "#emBtn",
+     "tab": "tools",
+     "title": "The electron micrograph, as a plane",
+     "say": "<b>EM section</b> draws the real micrograph through the picked cell's nucleus as a plane the cells pass through. It is the thing that keeps this honest: the meshes are an interpretation of that image, and here you see both at once, in register."
+    },
+    {
+     "at": "#gameBtn",
+     "tab": "tools",
+     "title": "A reason to come back",
+     "say": "<b>Identify a cell (game)</b> drops a cell in front of you, alone and unnamed, with the EM section through its nucleus: say what it is and score. Half are from the verified dataset and half are MICrONS predictions, so it tests you and the predictions at the same time."
+    },
+    {
+     "at": "#trcBtn",
+     "tab": "struct",
+     "title": "Your own tracings turn up here",
+     "say": "In <b>Objects</b>: <b>Traced</b> draws the structures traced by hand in µJump's tracing pad &mdash; lysosomes, whole cells, nuclei &mdash; on the cells they belong to. The contours you drew on a flat EM plane are a surface you can walk around."
+    },
+    {
+     "at": "#orgBtn",
+     "tab": "struct",
+     "title": "...and so do the logged organelles",
+     "say": "<b>Organelles</b> brings in the community-reported points from µJump that fall inside the bounding box enclosing the cells you brought. A centriole gets a 3D arrow from its cell's nucleus; a cilium an arrow from base to tip. This is the other half of the organelle walkthrough: what was a coordinate in a form is a direction in a room."
+    },
+    {
+     "at": "#sceneSave",
+     "tab": "share",
+     "title": "Keeping it, and taking it to the headset",
+     "say": "<b>&#128190; Save scene</b> saves everything as it stands &mdash; the cells, the view, the EM plane, the cut, the measurements, the paint &mdash; as a link you can share or reopen &mdash; and the only way to get synapses and contact points into a standalone headset, as the collecting walkthrough explains. <b>Copy headset link</b> beside it does the cells alone."
+    },
+    {
+     "at": "#panel",
+     "title": "That is the scene",
+     "say": "There is a great deal more in these tabs than one walkthrough should cover &mdash; flow, stimulation, recorded activity, a timeline, a tissue block. Every control carries a real explanation on hover, which is the right way to meet them: one at a time, when you want one. The <b>Tutorial</b> button at the top brings this back."
+    }
+   ]
+  }
+ ]
+}
+</script>
+  <div class="ctl" id="tourRow"><button type="button" data-tour-menu="1"
+      title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button></div>
   <div class="sub" id="sub">Loading…</div>
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
@@ -1069,6 +1184,9 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 <script src="core/emtiles.js"></script>
 <script src="core/tracing.js"></script>
 <script src="core/traceloft.js"></script>
+<!-- The walkthrough overlay, the same one µJump uses. No core/stepthrough.js here:
+     this page has no tab bar, so no step names a tab. core/tour.js, 2026-10-23. -->
+<script src="core/tour.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "./core/vendor/three/three.module.min.js",
@@ -12543,5 +12661,10 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
   addTracedCells().then(() => { updateLabel(); if (!CELLS.length) subEl.textContent = "Nothing has been traced in " + DSX.label + " yet."; });
 }
 </script>
+<!-- The walkthrough. ready(), never start(): a tutorial that begins by itself is one
+     happening to somebody rather than one they asked for. ready() also picks up the note
+     left by µJump's `handoff` step, so a reader who was told the walkthrough carries
+     on here is offered exactly that instead of "First time here?". -->
+<script>UJ.tour&&UJ.tour.ready();</script>
 </body>
 </html>
