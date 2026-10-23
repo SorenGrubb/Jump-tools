@@ -54,8 +54,9 @@ PART_VRSCENE = {
     "blurb": u"Getting around, seeing inside, the EM plane, and finding your own tracings and "
              u"the community's organelles drawn on the cells you collected.",
     "steps": [
-        {"say": u"You are standing in the collection you just made. The meshes are being "
-                u"fetched now &mdash; nothing was downloaded while you were gathering ids. "
+        {"say": u"You are standing in whatever was sent to this viewer &mdash; a collection "
+                u"you built, a set of filter matches, or a saved scene. The meshes are being "
+                u"fetched now; nothing was downloaded while you were choosing. "
                 u"This part is about getting around, and about the things from the earlier "
                 u"walkthroughs that turn up here on the cells. About three minutes.",
          "title": u"The collection, at scale"},
@@ -63,8 +64,9 @@ PART_VRSCENE = {
         {"at": "#sub",
          "title": u"What it is doing, and how heavy it is",
          "say": u"This line is the scene's running commentary: what it is fetching, how many "
-                u"cells arrived, and how many million triangles it is drawing. That last number "
-                u"is the one to watch &mdash; it is what decides whether a headset keeps up."},
+                u"cells arrived, and how many million triangles it is drawing. That last "
+                u"number is the one that decides whether a headset keeps up, and <b>Light</b> "
+                u"below is the lever for it."},
 
         {"at": "#keysCard",
          "title": u"Moving about",
@@ -158,8 +160,9 @@ PART_VRSCENE = {
 
         {"at": "#orgBtn", "tab": "struct",
          "title": u"...and so do the logged organelles",
-         "say": u"<b>Organelles</b> brings in the community-reported points from \u00b5Jump, "
-                u"inside the box around these cells. A centriole gets a 3D arrow from its cell's "
+         "say": u"<b>Organelles</b> brings in the community-reported points from \u00b5Jump "
+                u"that fall inside the bounding box enclosing the cells you brought. A "
+                u"centriole gets a 3D arrow from its cell's "
                 u"nucleus; a cilium an arrow from base to tip. This is the other half of the "
                 u"organelle walkthrough: what was a coordinate in a form is a direction in a "
                 u"room."},
@@ -168,9 +171,9 @@ PART_VRSCENE = {
          "title": u"Keeping it, and taking it to the headset",
          "say": u"<b>&#128190; Save scene</b> saves everything as it stands &mdash; the cells, "
                 u"the view, the EM plane, the cut, the measurements, the paint &mdash; as a link "
-                u"you can share or reopen. It is also how synapses and contact points reach a "
-                u"standalone headset, which the collection link cannot carry: save here, open "
-                u"the saved link there. <b>Copy headset link</b> beside it does the cells alone."},
+                u"you can share or reopen &mdash; and the only way to get synapses and "
+                u"contact points into a standalone headset, as the collecting walkthrough "
+                u"explains. <b>Copy headset link</b> beside it does the cells alone."},
 
         {"at": "#panel",
          "title": u"That is the scene",

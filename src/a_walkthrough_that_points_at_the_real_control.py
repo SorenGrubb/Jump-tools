@@ -7,7 +7,7 @@ screenshots and asked for it **in parts**. The parts, in the order he set them:
 
   find         finding a cell, and saying what it is                             15 steps
   organelles   logging a structure, outlining it, and the two being paired       18 steps
-  filter       Filter and show — describing a population instead of a cell       14 steps
+  filter       Filter — describing a population instead of a cell       14 steps
   export       taking a cube of the volume away, to Colab or to Blender           6 steps
 
 ORGANELLES SITS BEFORE FILTER AND SHOW at his word: *"Ok now we need the organelle annotation
@@ -139,11 +139,14 @@ PART_FIND = {
                 u"thirds carry a machine-made guess at what they are; the rest carry nothing at "
                 u"all. This walkthrough is about looking at one and deciding."},
 
-        {"at": "#mainTabs", "title": u"Five tabs",
-         "say": u"<b>Jump</b> is one cell at a time, and is where this part stays. <b>Filter and "
-                u"show</b> is the opposite &mdash; every cell matching a set of conditions. The "
-                u"other three are the references behind the cell types, a discussion board, and "
-                u"the statistics for this dataset."},
+        # THE LABELS ARE SØREN'S, 2026-10-23: "Jump, Filter, Discuss, Tutorial, Stats, Refs.
+        # In that order and in these shorter forms." A step that names a button has to say
+        # what the button says, so this moved with them.
+        {"at": "#mainTabs", "title": u"Six buttons",
+         "say": u"<b>Jump</b> is one cell at a time, and is where this part stays. "
+                u"<b>Filter</b> is the opposite &mdash; every cell matching a set of "
+                u"conditions. Then <b>Discuss</b>, this <b>Tutorial</b>, <b>Stats</b> for the "
+                u"whole dataset, and <b>Refs</b> for the papers behind every cell type."},
 
         {"at": "#randomTypeSelect", "tab": "jump", "title": u"Start from a type",
          "say": u"Thirty-three cell types, from pyramidal neurons down to pericytes. Picking one "
@@ -171,7 +174,7 @@ PART_FIND = {
          "after": u"press “Show”", "title": u"Say what you think it is",
          "say": u"This opens a decision tree &mdash; one question at a time about what you can "
                 u"see, rather than a list of 33 names to choose between. Every question is "
-                u"backed by a reference you can open from the References tab."},
+                u"backed by a reference you can open from the <b>Refs</b> tab."},
 
         {"at": "#randomUnclassified", "title": u"Identify",
          "say": u"A cell nobody has named yet, of any type. This is the actual work: these cells "
@@ -208,16 +211,15 @@ PART_FIND = {
                 u"named than for one that already has three votes."},
 
         # NAMED, NOT NUMBERED. Every cross-reference between parts used to say "part two" and
-        # "part three", and inserting the organelle part before Filter and show made all of them
+        # "part three", and inserting the organelle part before Filter made all of them
         # wrong at once -- in prose, where nothing can check it. The picker numbers its own rows;
         # the text names the walkthrough instead, so reordering costs nothing.
         {"at": "#mainTabs", "title": u"That is the first part",
          "say": u"You can now find a cell and say what it is. The rest go outwards from there: "
-                u"<b>organelles</b>, logging where a structure sits and outlining what shape it "
-                u"is; <b>Filter and show</b>, describing a population instead of a cell; "
-                u"<b>where the numbers come from</b>, which is what all of it adds up to; and "
-                u"two on taking it elsewhere &mdash; a <b>region</b> exported to a notebook, and "
-                u"a collection of cells opened <b>in VR</b>."},
+                u"the <b>structures inside it</b>; <b>what it does to its neighbours</b>; "
+                u"<b>Filter</b>, describing a population rather than a cell; <b>where the "
+                u"numbers come from</b>; and two on taking it elsewhere — a <b>region</b> "
+                u"exported to a notebook, and a collection of cells opened <b>in VR</b>."},
     ],
 }
 
@@ -225,7 +227,7 @@ PART_FIND = {
 # Søren: *"Ok now we need the organelle annotation and tracing tutorial, but that should be before
 # the filter and show."* Asked where tracing should end up, he chose to move it out of the export
 # part and in here, next to the annotation it serves -- so tracing is described once, and the part
-# that follows Filter and show shrinks to taking data away.
+# that follows Filter shrinks to taking data away.
 #
 # WHY THESE TWO BELONG TOGETHER, which is also the thing the part has to teach: µJump logs an
 # organelle two different ways and they are not alternatives. A POINT says WHERE a structure is
@@ -245,8 +247,8 @@ PART_ORGAN = {
              u"Organelles section, the report form, the bulk route, and the tracing pad.",
     "steps": [
         {"say": u"A cell's identity is one answer about the whole cell. This part is about the "
-                u"<b>structures inside it</b> &mdash; centrioles, cilia, mitochondria, and the "
-                u"rest of a 61-kind list. Two things can be recorded about each one, and they "
+                u"<b>structures inside it</b> &mdash; centrioles, cilia, mitochondria and the "
+                u"rest. Two things can be recorded about each one, and they "
                 u"are not alternatives: a <b>point</b> saying where it is, and an <b>outline</b> "
                 u"saying what shape it is. About four minutes.",
          "title": u"Where a structure is, and what shape it is"},
@@ -270,7 +272,7 @@ PART_ORGAN = {
         {"at": "#idfOrganelleToggle", "needs": "#idfOrganelleToggle", "press": "#idfgo",
          "after": u"work through Identify to its result screen",
          "title": u"Logging one yourself",
-         "say": u"At the end of the guided identification, <b>Log one &rarr;</b> opens the "
+         "say": u"On the guided identification's <b>result</b> screen, <b>Log one &rarr;</b> opens the "
                 u"organelle form on the same cell, at the same coordinate. It is deliberately a "
                 u"small line rather than a panel: it is the thing you do <i>after</i> saying what "
                 u"the cell is, not instead of it."},
@@ -279,7 +281,7 @@ PART_ORGAN = {
          "after": u"press “Log one”",
          "title": u"One row per structure, from a list of 61",
          "say": u"Each row is one structure: pick its kind from the topic-organised list and give "
-                u"its coordinate. Anything with two ends &mdash; a primary cilium, an NR type II "
+                u"its coordinate. Anything with two ends &mdash; a primary cilium, for one "
                 u"&mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into "
                 u"the first box and all three fill themselves."},
 
@@ -303,8 +305,7 @@ PART_ORGAN = {
          "title": u"Submitting it",
          "say": u"One submission carries every row, with an optional comment on all of them "
                 u"&mdash; the place to say “cilium is short, hard to trace to a clear "
-                u"tip”. Signing in with Google is what credits the report to you and tells "
-                u"you if it is confirmed."},
+                u"tip”. Signed in, you are told when a report of yours is confirmed."},
 
         {"at": "#bulkOrganPanel", "tab": "jump",
          "title": u"The other end of the scale: one kind, many cells",
@@ -387,12 +388,12 @@ PART_ORGAN = {
 
 PART_FILTER = {
     "id": "filter",
-    "title": u"Filter and show \u2014 every cell that matches",
+    "title": u"Filter \u2014 every cell that matches",
     "blurb": u"Describing a population by type, layer, size or place, then counting it and "
              u"taking it away as a sheet.",
     "steps": [
         {"tab": "filter",
-         "say": u"The Jump tab is one cell at a time. This tab is the opposite: you describe a "
+         "say": u"Here you describe a "
                 u"population &mdash; a type, a place, a distance, an organelle &mdash; and get "
                 u"back every cell in the volume that matches. The answer comes as a table, a 3D "
                 u"view, or a VR scene."},
@@ -528,8 +529,8 @@ PART_EVIDENCE = {
     "blurb": u"What every classification rests on, and what the whole dataset looks like once "
              u"everybody's identifications are counted up.",
     "steps": [
-        {"say": u"Two tabs that are easy to walk past, and they are a pair. <b>References</b> "
-                u"says where the criteria come from; the <b>Statistics dashboard</b> says what "
+        {"say": u"Two tabs that are easy to walk past, and they are a pair. <b>Refs</b> "
+                u"says where the criteria come from; <b>Stats</b> says what "
                 u"applying them has produced across the whole volume &mdash; including your own "
                 u"contributions. About three minutes.",
          "title": u"The evidence, and the totals"},
@@ -627,8 +628,8 @@ PART_EVIDENCE = {
 
         {"at": "#mainTabs",
          "title": u"That is the evidence",
-         "say": u"Criteria you can check in <b>References</b>, totals you can check in the "
-                u"<b>dashboard</b>, and provenance on every one of them. What is left is taking "
+         "say": u"Criteria you can check in <b>Refs</b>, totals you can check in "
+                u"<b>Stats</b>, and provenance on every one of them. What is left is taking "
                 u"the data somewhere else: a <b>region</b> exported to a notebook or Blender, "
                 u"and a collection of cells opened <b>in VR</b>."},
     ],
@@ -669,20 +670,23 @@ PART_TOVR = {
         {"at": "#vrb-pill", "needs": "#vrb-pill", "press": ".vrb-btn",
          "after": u"add a cell with “+ VR”",
          "title": u"The collection, bottom right",
+         # NOT SHARED BETWEEN TOOLS, and it was Søren who asked for that -- 2026-10-18, from
+         # δJump: "It said 6 cells in the VR already, but they were from uJump. I think we
+         # should keep them separate." mine() has done exactly that since. This step was
+         # describing the behaviour that request removed.
          "say": u"<b>🥽 VR collection (n)</b> appears once there is something in it and "
-                u"says how many. The collection lives in this browser and is shared by every Jump "
-                u"tool on the site, so cells you gather here are still there tomorrow, and still "
-                u"there if you wander off into another tool."},
+                u"says how many. It lives in this browser, so what you gather is still here "
+                u"tomorrow &mdash; and each tool keeps its own: cells collected in µJump do "
+                u"not turn up in δJump's count."},
 
         {"at": "#vrb-tray", "needs": "#vrb-tray", "press": "#vrb-pill",
          "after": u"press the collection pill",
          "title": u"What is in it, and what travels with it",
          "say": u"Each row is one cell, with its id and a × to drop it. A row may also say "
-                u"“· n synapses” or “· n points”: pressing + VR in "
-                u"<b>Connectivity</b>, <b>Cell contacts</b> or <b>Astrocyte–synapse "
-                u"proximity</b> attaches those points to the cell, and the scene draws them on "
-                u"it. More than about thirty cells and the tray warns you — a standalone "
-                u"Quest 2 will struggle."},
+                u"“· n synapses” or “· n points” &mdash; those come from the "
+                u"<b>+ VR</b> buttons in Connectivity, Cell contacts and Astrocyte&ndash;synapse "
+                u"proximity, and the scene draws them on the cell. The walkthrough on what a "
+                u"cell does to its neighbours covers those three."},
 
         {"at": ".vrb-go", "needs": ".vrb-go", "press": "#vrb-pill",
          "after": u"press the collection pill",
@@ -703,11 +707,12 @@ PART_TOVR = {
 
         {"at": "#filterVR", "tab": "filter",
          "title": u"Or send a whole population at once",
-         "say": u"Back in <b>Filter and show</b>: once you have previewed a set of matches, "
+         "say": u"Back in <b>Filter</b>: once you have previewed a set of matches, "
                 u"<b>🥽 Show in VR</b> sends them straight to the scene without "
-                u"collecting them one at a time, and the dropdown beside it caps how many "
-                u"— evenly spread through the list when there are more. Thirty for a "
-                u"headset or a laptop; several hundred on a strong PC."},
+                u"collecting them one at a time — and <b>without touching the collection you "
+                u"just built</b>, because those cells travel in the link instead. The dropdown "
+                u"beside it caps how many, evenly spread through the list when there are more: "
+                u"thirty for a headset or a laptop, several hundred on a strong PC."},
 
         # THE HANDOFF. Declared on the step that points at the button which leaves this page, and
         # written when the step is SHOWN -- by the time they have pressed it there is no later
@@ -722,14 +727,148 @@ PART_TOVR = {
     ],
 }
 
+# ── WHAT A CELL DOES TO ITS NEIGHBOURS ─────────────────────────────  2026-10-23
+# Søren: *"Maybe we need one especially for connectivity and cell contacts and tripartite
+# junctions."* Three panels on the cell card that nothing pointed at, and they are a set: each
+# makes a DIFFERENT KIND OF CLAIM about the same pair of cells, and the walkthrough's job is to
+# keep them apart.
+#
+#   Connectivity                  a SYNAPSE is here, from CAVE's own synapse table
+#   Cell contacts                 two MEMBRANES come within a gap you choose — proximity, not
+#                                 a synapse, computed from the meshes
+#   Astrocyte–synapse proximity   an astrocyte PROCESS is near one of this cell's synapses — a
+#                                 structural proxy for a tripartite synapse, and distance-only
+#
+# Conflating those is the mistake this part exists to prevent: the panels sit under one another,
+# they all produce points, and the strength of what they assert falls off sharply down the list.
+#
+# EVERY ID HERE IS RUNTIME-BUILT, so the selectors come from the containers' fixed ids:
+# loadConnectivityPanel("connPanel"...), loadCellContactsPanel("cellContactsPanel"...) with
+# uid = el.id + "_type", loadTripartitePanel("tripartitePanel"...) with uid = el.id + "_x".
+PART_NEIGHBOURS = {
+    "id": "interactions",
+    "title": u"What a cell does to its neighbours",
+    "blurb": u"Synaptic partners, membranes that touch, and astrocyte processes beside a synapse "
+             u"— three different claims, and each one can be sent to VR.",
+    "steps": [
+        {"say": u"Three panels on the cell card, one under the other, all about this cell and the "
+                u"cells around it. They are <b>not</b> three versions of one question: a "
+                u"<b>synapse</b>, two <b>membranes within a gap</b>, and an <b>astrocyte process "
+                u"beside a synapse</b> are claims of falling strength, and reading them as "
+                u"interchangeable is the commonest way to overstate this data. About four "
+                u"minutes.",
+         "title": u"Three claims, not one"},
+
+        {"at": "#connToggle", "tab": "jump", "needs": "#connToggle", "press": "#randomOfType",
+         "after": u"show a cell, so there is a card to read",
+         "title": u"Connectivity — who it is wired to",
+         "say": u"Shut by default, because it asks something of you. Opened, it queries "
+                u"<b>CAVE's own synapse table</b> for every synapse onto and out of this cell, "
+                u"and groups them by partner. This is the only one of the three that reports "
+                u"synapses as such."},
+
+        {"at": "#connToken", "needs": "#connToken", "press": "#connToggle",
+         "after": u"open the Connectivity panel",
+         "title": u"It needs your own CAVE token",
+         "say": u"The synapse table is not public the way the meshes are, so this asks for "
+                u"<b>your</b> token — the panel links to where to get one. "
+                u"<b>Remember in this browser</b> keeps it here and nowhere else; nothing about "
+                u"the token reaches this site's own backend."},
+
+        {"at": "#connTopN", "needs": "#connTopN", "press": "#connToggle",
+         "after": u"open the Connectivity panel",
+         "title": u"What to ask for",
+         "say": u"<b>Inputs</b>, <b>outputs</b> or both; how many partners to keep; and a "
+                u"<b>minimum synapse count</b>, which is the one that matters most — a "
+                u"single synapse between two cells is as likely to be a segmentation error as a "
+                u"connection, and raising this to three or four changes what the answer looks "
+                u"like."},
+
+        {"at": "#connGo", "needs": "#connGo", "press": "#connToggle",
+         "after": u"open the Connectivity panel",
+         "title": u"What comes back",
+         "say": u"Partners ranked by synapse count, each looked up for its <b>cell type</b> and "
+                u"its soma depth, with graphs underneath. A cell whose root ID was proposed by "
+                u"the community is queried as one cell with its fragments, so a split neuron is "
+                u"not counted as several poorly-connected ones."},
+
+        # THE BUTTON SØREN ASKED FOR ON 2026-10-15 AND THAT WAS NEVER WIRED UNTIL TODAY.
+        {"at": "#connVR", "needs": "#connVR", "press": "#connToggle",
+         "after": u"open the Connectivity panel",
+         "title": u"...and into VR, with its synapses on it",
+         "say": u"<b>🥽 + VR</b> puts this cell in the collection <b>carrying the "
+                u"synapses of the partners shown</b> — inputs one colour, outputs another, "
+                u"drawn on the cell where they actually sit. Nothing is fetched by pressing it; "
+                u"it hands over what the query already found. In the scene you can walk to a "
+                u"synapse instead of reading its coordinate."},
+
+        {"at": "#cellContactsPanel_details", "needs": "#cellContactsPanel_details",
+         "press": "#randomOfType", "after": u"show a cell, so there is a card to read",
+         "title": u"Cell contacts — membranes that touch",
+         "say": u"A different claim, and a weaker one: this measures where this cell's mesh comes "
+                u"within a chosen gap of another cell's mesh. <b>Touching is not synapsing.</b> "
+                u"It is the right question for glia, for a pericyte on an endothelial cell, for "
+                u"anything whose relationship is physical rather than synaptic."},
+
+        {"at": "#cellContactsPanel_type_check", "needs": "#cellContactsPanel_type_check",
+         "press": "#cellContactsPanel_details", "after": u"open the Cell contacts panel",
+         "title": u"Pick a type, then check",
+         "say": u"You name a cell type and it fetches those neighbours' meshes and measures. The "
+                u"<b>maximum gap</b> below is adjustable and its default is provisional — "
+                u"the panel says so. Every “Check” also feeds the contact statistics in "
+                u"<b>Stats</b>, so a check you run is a number somebody else can see."},
+
+        {"at": "#cellContactsPanel_type_vr", "needs": "#cellContactsPanel_type_vr",
+         "press": "#cellContactsPanel_details", "after": u"open the Cell contacts panel",
+         "title": u"The touch points, in the scene",
+         "say": u"<b>🥽 + VR</b> attaches every touch point found to this cell. They are "
+                u"drawn as <b>marks</b> rather than synapses, deliberately — the viewer keeps "
+                u"the two apart because the claims are different, and a figure that colours them "
+                u"alike is a figure that overstates one of them."},
+
+        {"at": "#tripartitePanel_details", "needs": "#tripartitePanel_details",
+         "press": "#randomOfType", "after": u"show a cell, so there is a card to read",
+         "title": u"Astrocyte–synapse proximity — the weakest claim, and said so",
+         "say": u"Marked <b>experimental</b>, and it earns the label. It takes this cell's "
+                u"synapses from the same CAVE query and asks whether an astrocyte process is "
+                u"near each one. That is a <b>structural proxy</b> for a tripartite synapse: "
+                u"distance only. It does not show the process ensheathing anything."},
+
+        {"at": "#tripartitePanel_x_astrodist", "needs": "#tripartitePanel_x_astrodist",
+         "press": "#tripartitePanel_details", "after": u"open the Astrocyte–synapse panel",
+         "title": u"The number you are really choosing",
+         "say": u"The gap that counts as a match. EM puts most astrocyte–synapse contacts "
+                u"between roughly 10 and 1100 nm, averaging around 50 — and the default here "
+                u"sits inside that range <b>without being derived from one authoritative "
+                u"source</b>, which the panel states rather than hides. Move it and watch how "
+                u"much the answer depends on it."},
+
+        {"at": "#tripartitePanel_x_vr", "needs": "#tripartitePanel_x_vr",
+         "press": "#tripartitePanel_details", "after": u"open the Astrocyte–synapse panel",
+         "title": u"Both points, so you can judge the gap yourself",
+         "say": u"<b>🥽 + VR</b> sends the synapse <b>and</b> the astrocyte's nearest "
+                u"point — a synapse row and an astrocyte mark a few tens of nanometres apart. "
+                u"In the scene that is two points you can stand between, which is a better way to "
+                u"judge a 200 nm claim than a number in a table."},
+
+        {"at": "#vrb-pill", "needs": "#vrb-pill", "press": ".vrb-btn",
+         "after": u"add any cell with “+ VR”", "pageWait": True,
+         "title": u"Everything lands in one place",
+         "say": u"All three buttons add to the <b>same collection</b>, and to the same cell if it "
+                u"is already there — press + VR on a cell, then in Connectivity, then in Cell "
+                u"contacts, and you get one cell carrying all of it. The walkthrough on "
+                u"collecting cells covers the pill and the two ways into the viewer."},
+    ],
+}
+
 # ── THE EXPORT ────────────────────────────────────────────────────────────────────  2026-10-23
 # What is left once tracing moved into the organelle part: taking a CUBE of the volume away. Not
-# a set of cells (that is Filter and show) and not one structure (that is the pad) -- a region,
+# a set of cells (that is Filter) and not one structure (that is the pad) -- a region,
 # with a notebook that already knows its coordinates.
 #
 # VR IS DELIBERATELY NOT HERE. vr.html is being rewritten in another conversation and a
 # walkthrough pointing at controls which are about to move is worse than no walkthrough; it gets
-# its own part once that settles, and Filter and show's closing step says so rather than
+# its own part once that settles, and Filter's closing step says so rather than
 # promising it.
 PART_EXPORT = {
     "id": "export",
@@ -745,7 +884,7 @@ PART_EXPORT = {
 
         {"at": "#filterSecRegion", "tab": "filter",
          "title": u"Where to ask for one",
-         "say": u"It lives in <b>Filter and show</b>, alongside the conditions, because it is the "
+         "say": u"It lives in <b>Filter</b>, alongside the conditions, because it is the "
                 u"same question asked geometrically: instead of naming a kind of cell, name a "
                 u"<b>cube</b> and take what is inside it. Open this section and you can type the "
                 u"corners, or use the cell on screen as the centre."},
@@ -773,12 +912,15 @@ PART_EXPORT = {
                 u"figure &mdash; it writes the meshes out ready to open, which is the short way "
                 u"to a 3D render or a file you can print."},
 
+        # THIS CLOSING USED TO SAY "That is the tool" AND COUNT FOUR WALKTHROUGHS. `export`
+        # stopped being the last part the moment `vrcollect` was written after it, so the
+        # count was wrong, two parts went unnamed, and it promised VR "once that viewer
+        # settles" -- which by then was the very next row of the picker.
         {"at": "#mainTabs",
-         "title": u"That is the tool",
-         "say": u"Four walkthroughs: finding a cell and saying what it is, recording the "
-                u"structures inside it, asking for every cell that matches a description, and "
-                u"taking a region away. VR gets its own once that viewer settles. The Tutorial "
-                u"button brings this list back whenever you want one again."},
+         "title": u"Taken away, then",
+         "say": u"A cube of the volume, with whichever of its image data, labels or meshes you "
+                u"asked for, in something you can open. One walkthrough left, and it goes the "
+                u"other way entirely: gathering cells in order to <b>stand among them</b>."},
     ],
 }
 
@@ -786,16 +928,18 @@ CFG = {
     "key": "grubblab_ujump_tour_v1",
     "offer": u"A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. "
              u"About two minutes.",
-    "menu": u"Four short walkthroughs. Each one points at the real controls, in order, and "
-            u"waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it "
-            u"remembers where you got to.",
-    # ORDER IS SØREN'S: organelles BEFORE Filter and show. "Ok now we need the organelle
+    # NO NUMBER HERE. This said "Four short walkthroughs" while there were six, because the
+    # count was written by hand beside a list the engine builds itself. The rows are numbered
+    # on screen; prose that counts them is prose that will be wrong again.
+    "menu": u"Each one points at the real controls, in order, and waits for you &mdash; nothing "
+            u"is pressed for you. Esc leaves at any time and it remembers where you got to.",
+    # ORDER IS SØREN'S: organelles BEFORE Filter. "Ok now we need the organelle
     # annotation and tracing tutorial, but that should be before the filter and show." It is also
     # the right order on its own terms -- organelles are about one cell, which is where somebody
-    # who has just done part one still is, and Filter and show is the first thing here that asks
+    # who has just done part one still is, and Filter is the first thing here that asks
     # you to think in populations.
-    "parts": [PART_FIND, PART_ORGAN, PART_FILTER, PART_EVIDENCE, PART_EXPORT,
-              PART_TOVR],
+    "parts": [PART_FIND, PART_ORGAN, PART_NEIGHBOURS, PART_FILTER, PART_EVIDENCE,
+              PART_EXPORT, PART_TOVR],
 }
 
 TOURDATA = (u'<script type="application/json" id="tourdata">\n'

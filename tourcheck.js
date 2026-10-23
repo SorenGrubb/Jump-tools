@@ -77,7 +77,8 @@ ok("no part is declared without steps",
 /* NAMES, NOT NUMBERS, since the organelle part was inserted BEFORE Filter and show at Søren's
    word. Numbered ids meant that inserting a part renamed every part after it -- silently, in
    saved progress as well as here. These ids say what the part is about and never move again. */
-const WANTED = ["find", "organelles", "filter", "evidence", "export", "vrcollect"];
+const WANTED = ["find", "organelles", "interactions", "filter", "evidence", "export",
+                "vrcollect"];
 const written = (CFG && CFG.parts ? CFG.parts : []).map(p => p.id);
 const todo = WANTED.filter(id => written.indexOf(id) < 0);
 /* Describing what is MISSING, derived from what is present. The first version spelled the gap out
@@ -85,6 +86,7 @@ const todo = WANTED.filter(id => written.indexOf(id) < 0);
    had been written — a check that lies in its own output. */
 const SCOPE = { find: "finding a cell and saying what it is",
                 organelles: "logging and outlining the structures inside a cell",
+                interactions: "connectivity, cell contacts and the tripartite proxy",
                 filter: "Filter and show",
                 evidence: "the References tab and the statistics dashboard",
                 export: "the region box and the Colab/Blender export",
@@ -121,11 +123,40 @@ function inFile(sel, html) {
      `pill.id = "vrb-pill"` -- there is no id="…" anywhere for those two, and looking only for
      the attribute spelling called both of them missing. Three spellings are accepted now:
      the attribute, either quote style, and the assignment. */
+  /* ...AND AN ID CAN BE SPELLED IN PIECES.                                        2026-10-23
+     The three panels this tool builds onto #connPanel / #cellContactsPanel / #tripartitePanel
+     compose their control ids at runtime: `const uid = escHtml(el.id) + "_type"`, then
+     `id="'+uid+'_check"`. So `#cellContactsPanel_type_check` is a real id that no literal in the
+     source contains, and looking for the literal called six real controls missing.
+
+     Rather than guess, the chain is resolved and all three links are verified: the CONTAINER id
+     must be in the markup, the uid suffix must be one the file actually derives, and the final
+     suffix must be one it actually builds. A typo in any link still fails. */
+  const idPieced = n => {
+    const uidSufs = [...new Set((html.match(/const uid=escHtml\(el\.id\|\|"[^"]*"\)\+"([^"]*)"/g) || [])
+      .map(m => (m.match(/\+"([^"]*)"$/) || [])[1]).filter(Boolean))];
+    const detSufs = [...new Set((html.match(/const detailsId=escHtml\(el\.id\|\|"[^"]*"\)\+"([^"]*)"/g) || [])
+      .map(m => (m.match(/\+"([^"]*)"$/) || [])[1]).filter(Boolean))];
+    const built = new Set((html.match(/id="'\+uid\+'([A-Za-z_][\w-]*)/g) || [])
+      .map(m => m.replace(/.*'\+uid\+'/, "")));
+    const detailsBuilt = /id="'\+detailsId\+'"/.test(html);
+    for (const u of uidSufs) {
+      const at = n.indexOf(u + "_");
+      if (at <= 0) continue;
+      const container = n.slice(0, at), suffix = n.slice(at + u.length);
+      if (html.indexOf('id="' + container + '"') >= 0 && built.has(suffix)) return true;
+    }
+    if (detailsBuilt) for (const d of detSufs) {
+      if (n.endsWith(d) && html.indexOf('id="' + n.slice(0, -d.length) + '"') >= 0) return true;
+    }
+    return false;
+  };
   const idOk = ids.every(i => {
     const n = i.slice(1);
     return html.indexOf('id="' + n) >= 0
         || html.indexOf("id='" + n + "'") >= 0
-        || new RegExp("\\.id\\s*=\\s*[\"']" + n.replace(/[-]/g, "\\$&") + "[\"']").test(html);
+        || new RegExp("\\.id\\s*=\\s*[\"']" + n.replace(/[-]/g, "\\$&") + "[\"']").test(html)
+        || idPieced(n);
   });
   const clOk = classes.every(c => html.indexOf('class="' + c.slice(1)) >= 0
                                || html.indexOf(c.slice(1) + '"') >= 0

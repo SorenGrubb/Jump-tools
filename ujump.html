@@ -556,6 +556,41 @@ document.addEventListener("DOMContentLoaded", function(){
 <script src="core/mesh.js"></script>
 <!-- Show in 3D, installed onto the .meshdl[data-root] buttons. -->
 <script src="core/mesh3d.js"></script>
+<script>
+/* ── "+ VR" for the points a panel has already found ───────────────────────────────  2026-10-23
+   Søren, 2026-10-15: "In connectivity, there should be a +VR button to add the target cell and
+   the input and output synapses found to VR" -- and the same for Cell contacts and
+   Astrocyte-synapse proximity. core/vrbasket.js has carried syn/marks and a merge() for them ever
+   since, vr.html has drawn them ever since, and until now nothing in any tool called merge().
+
+   This is the middle. It does not fetch or compute anything: a panel passes what it has already
+   worked out for its own Neuroglancer view, and this puts it in the collection.
+
+   MERGE, NOT ADD, on purpose. Pressing "+ VR" on the cell itself and then again in Connectivity
+   should give you one cell carrying its synapses, not two entries or a refusal -- merge() unions
+   the rows into an entry already there and keeps its label. */
+function ujVrPoints(o){
+  if (!window.UJ || !UJ.vrbasket) return;
+  var root = String(o.root || "");
+  if (!root) { ujVrPointsSay(o.sayEl, "No root ID for this cell yet \u2014 nothing to attach points to.", true); return; }
+  var entry = { ds: (UJ.cfg && UJ.cfg.id) || "microns", root: root, nuc: o.nuc ? String(o.nuc) : "",
+                label: o.label || "Cell" };
+  if (o.syn && o.syn.length) entry.syn = o.syn;
+  if (o.marks && o.marks.length) entry.marks = o.marks;
+  var n = (o.syn ? o.syn.length : 0) + (o.marks ? o.marks.length : 0);
+  var r = UJ.vrbasket.merge(entry);
+  if (!r.ok) { ujVrPointsSay(o.sayEl, "Your browser refused to store it \u2014 the collection is full.", true); return; }
+  ujVrPointsSay(o.sayEl, (r.added ? "Added this cell to the VR collection with " : "Added to this cell in the VR collection: ")
+    + n + " " + (o.what || "points") + ". Open the viewer from the collection pill, bottom right."
+    + (n > 400 ? " Too many points for the headset link \u2014 use \u00d7 Save scene in the viewer." : ""), false);
+}
+function ujVrPointsSay(el, msg, bad){
+  var e = (typeof el === "string") ? document.getElementById(el) : el;
+  if (!e) { return; }
+  e.textContent = msg;
+  e.style.color = bad ? "#f0883e" : "var(--accent)";
+}
+</script>
 <!-- "+ VR" beside each mesh button: collect cells for the VR viewer (vr.html). 2026-10-13 -->
 <script src="core/vrbasket.js"></script>
 <script src="core/mesh3dshot.js"></script>
@@ -651,7 +686,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 05:42</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 07:13</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -736,7 +771,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
 {
  "key": "grubblab_ujump_tour_v1",
  "offer": "A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. About two minutes.",
- "menu": "Four short walkthroughs. Each one points at the real controls, in order, and waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it remembers where you got to.",
+ "menu": "Each one points at the real controls, in order, and waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it remembers where you got to.",
  "parts": [
   {
    "id": "find",
@@ -748,8 +783,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     },
     {
      "at": "#mainTabs",
-     "title": "Five tabs",
-     "say": "<b>Jump</b> is one cell at a time, and is where this part stays. <b>Filter and show</b> is the opposite &mdash; every cell matching a set of conditions. The other three are the references behind the cell types, a discussion board, and the statistics for this dataset."
+     "title": "Six buttons",
+     "say": "<b>Jump</b> is one cell at a time, and is where this part stays. <b>Filter</b> is the opposite &mdash; every cell matching a set of conditions. Then <b>Discuss</b>, this <b>Tutorial</b>, <b>Stats</b> for the whole dataset, and <b>Refs</b> for the papers behind every cell type."
     },
     {
      "at": "#randomTypeSelect",
@@ -784,7 +819,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "press “Show”",
      "title": "Say what you think it is",
-     "say": "This opens a decision tree &mdash; one question at a time about what you can see, rather than a list of 33 names to choose between. Every question is backed by a reference you can open from the References tab."
+     "say": "This opens a decision tree &mdash; one question at a time about what you can see, rather than a list of 33 names to choose between. Every question is backed by a reference you can open from the <b>Refs</b> tab."
     },
     {
      "at": "#randomUnclassified",
@@ -824,7 +859,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#mainTabs",
      "title": "That is the first part",
-     "say": "You can now find a cell and say what it is. The rest go outwards from there: <b>organelles</b>, logging where a structure sits and outlining what shape it is; <b>Filter and show</b>, describing a population instead of a cell; <b>where the numbers come from</b>, which is what all of it adds up to; and two on taking it elsewhere &mdash; a <b>region</b> exported to a notebook, and a collection of cells opened <b>in VR</b>."
+     "say": "You can now find a cell and say what it is. The rest go outwards from there: the <b>structures inside it</b>; <b>what it does to its neighbours</b>; <b>Filter</b>, describing a population rather than a cell; <b>where the numbers come from</b>; and two on taking it elsewhere — a <b>region</b> exported to a notebook, and a collection of cells opened <b>in VR</b>."
     }
    ]
   },
@@ -834,7 +869,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
    "blurb": "Where a structure sits, what shape it is, and how the two are paired: the cell's Organelles section, the report form, the bulk route, and the tracing pad.",
    "steps": [
     {
-     "say": "A cell's identity is one answer about the whole cell. This part is about the <b>structures inside it</b> &mdash; centrioles, cilia, mitochondria, and the rest of a 61-kind list. Two things can be recorded about each one, and they are not alternatives: a <b>point</b> saying where it is, and an <b>outline</b> saying what shape it is. About four minutes.",
+     "say": "A cell's identity is one answer about the whole cell. This part is about the <b>structures inside it</b> &mdash; centrioles, cilia, mitochondria and the rest. Two things can be recorded about each one, and they are not alternatives: a <b>point</b> saying where it is, and an <b>outline</b> saying what shape it is. About four minutes.",
      "title": "Where a structure is, and what shape it is"
     },
     {
@@ -860,7 +895,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfgo",
      "after": "work through Identify to its result screen",
      "title": "Logging one yourself",
-     "say": "At the end of the guided identification, <b>Log one &rarr;</b> opens the organelle form on the same cell, at the same coordinate. It is deliberately a small line rather than a panel: it is the thing you do <i>after</i> saying what the cell is, not instead of it."
+     "say": "On the guided identification's <b>result</b> screen, <b>Log one &rarr;</b> opens the organelle form on the same cell, at the same coordinate. It is deliberately a small line rather than a panel: it is the thing you do <i>after</i> saying what the cell is, not instead of it."
     },
     {
      "at": "#organRows",
@@ -868,7 +903,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle",
      "after": "press “Log one”",
      "title": "One row per structure, from a list of 61",
-     "say": "Each row is one structure: pick its kind from the topic-organised list and give its coordinate. Anything with two ends &mdash; a primary cilium, an NR type II &mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into the first box and all three fill themselves."
+     "say": "Each row is one structure: pick its kind from the topic-organised list and give its coordinate. Anything with two ends &mdash; a primary cilium, for one &mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into the first box and all three fill themselves."
     },
     {
      "at": "#organAddRow",
@@ -892,7 +927,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle",
      "after": "press “Log one”",
      "title": "Submitting it",
-     "say": "One submission carries every row, with an optional comment on all of them &mdash; the place to say “cilium is short, hard to trace to a clear tip”. Signing in with Google is what credits the report to you and tells you if it is confirmed."
+     "say": "One submission carries every row, with an optional comment on all of them &mdash; the place to say “cilium is short, hard to trace to a clear tip”. Signed in, you are told when a report of yours is confirmed."
     },
     {
      "at": "#bulkOrganPanel",
@@ -970,13 +1005,122 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
    ]
   },
   {
+   "id": "interactions",
+   "title": "What a cell does to its neighbours",
+   "blurb": "Synaptic partners, membranes that touch, and astrocyte processes beside a synapse — three different claims, and each one can be sent to VR.",
+   "steps": [
+    {
+     "say": "Three panels on the cell card, one under the other, all about this cell and the cells around it. They are <b>not</b> three versions of one question: a <b>synapse</b>, two <b>membranes within a gap</b>, and an <b>astrocyte process beside a synapse</b> are claims of falling strength, and reading them as interchangeable is the commonest way to overstate this data. About four minutes.",
+     "title": "Three claims, not one"
+    },
+    {
+     "at": "#connToggle",
+     "tab": "jump",
+     "needs": "#connToggle",
+     "press": "#randomOfType",
+     "after": "show a cell, so there is a card to read",
+     "title": "Connectivity — who it is wired to",
+     "say": "Shut by default, because it asks something of you. Opened, it queries <b>CAVE's own synapse table</b> for every synapse onto and out of this cell, and groups them by partner. This is the only one of the three that reports synapses as such."
+    },
+    {
+     "at": "#connToken",
+     "needs": "#connToken",
+     "press": "#connToggle",
+     "after": "open the Connectivity panel",
+     "title": "It needs your own CAVE token",
+     "say": "The synapse table is not public the way the meshes are, so this asks for <b>your</b> token — the panel links to where to get one. <b>Remember in this browser</b> keeps it here and nowhere else; nothing about the token reaches this site's own backend."
+    },
+    {
+     "at": "#connTopN",
+     "needs": "#connTopN",
+     "press": "#connToggle",
+     "after": "open the Connectivity panel",
+     "title": "What to ask for",
+     "say": "<b>Inputs</b>, <b>outputs</b> or both; how many partners to keep; and a <b>minimum synapse count</b>, which is the one that matters most — a single synapse between two cells is as likely to be a segmentation error as a connection, and raising this to three or four changes what the answer looks like."
+    },
+    {
+     "at": "#connGo",
+     "needs": "#connGo",
+     "press": "#connToggle",
+     "after": "open the Connectivity panel",
+     "title": "What comes back",
+     "say": "Partners ranked by synapse count, each looked up for its <b>cell type</b> and its soma depth, with graphs underneath. A cell whose root ID was proposed by the community is queried as one cell with its fragments, so a split neuron is not counted as several poorly-connected ones."
+    },
+    {
+     "at": "#connVR",
+     "needs": "#connVR",
+     "press": "#connToggle",
+     "after": "open the Connectivity panel",
+     "title": "...and into VR, with its synapses on it",
+     "say": "<b>🥽 + VR</b> puts this cell in the collection <b>carrying the synapses of the partners shown</b> — inputs one colour, outputs another, drawn on the cell where they actually sit. Nothing is fetched by pressing it; it hands over what the query already found. In the scene you can walk to a synapse instead of reading its coordinate."
+    },
+    {
+     "at": "#cellContactsPanel_details",
+     "needs": "#cellContactsPanel_details",
+     "press": "#randomOfType",
+     "after": "show a cell, so there is a card to read",
+     "title": "Cell contacts — membranes that touch",
+     "say": "A different claim, and a weaker one: this measures where this cell's mesh comes within a chosen gap of another cell's mesh. <b>Touching is not synapsing.</b> It is the right question for glia, for a pericyte on an endothelial cell, for anything whose relationship is physical rather than synaptic."
+    },
+    {
+     "at": "#cellContactsPanel_type_check",
+     "needs": "#cellContactsPanel_type_check",
+     "press": "#cellContactsPanel_details",
+     "after": "open the Cell contacts panel",
+     "title": "Pick a type, then check",
+     "say": "You name a cell type and it fetches those neighbours' meshes and measures. The <b>maximum gap</b> below is adjustable and its default is provisional — the panel says so. Every “Check” also feeds the contact statistics in <b>Stats</b>, so a check you run is a number somebody else can see."
+    },
+    {
+     "at": "#cellContactsPanel_type_vr",
+     "needs": "#cellContactsPanel_type_vr",
+     "press": "#cellContactsPanel_details",
+     "after": "open the Cell contacts panel",
+     "title": "The touch points, in the scene",
+     "say": "<b>🥽 + VR</b> attaches every touch point found to this cell. They are drawn as <b>marks</b> rather than synapses, deliberately — the viewer keeps the two apart because the claims are different, and a figure that colours them alike is a figure that overstates one of them."
+    },
+    {
+     "at": "#tripartitePanel_details",
+     "needs": "#tripartitePanel_details",
+     "press": "#randomOfType",
+     "after": "show a cell, so there is a card to read",
+     "title": "Astrocyte–synapse proximity — the weakest claim, and said so",
+     "say": "Marked <b>experimental</b>, and it earns the label. It takes this cell's synapses from the same CAVE query and asks whether an astrocyte process is near each one. That is a <b>structural proxy</b> for a tripartite synapse: distance only. It does not show the process ensheathing anything."
+    },
+    {
+     "at": "#tripartitePanel_x_astrodist",
+     "needs": "#tripartitePanel_x_astrodist",
+     "press": "#tripartitePanel_details",
+     "after": "open the Astrocyte–synapse panel",
+     "title": "The number you are really choosing",
+     "say": "The gap that counts as a match. EM puts most astrocyte–synapse contacts between roughly 10 and 1100 nm, averaging around 50 — and the default here sits inside that range <b>without being derived from one authoritative source</b>, which the panel states rather than hides. Move it and watch how much the answer depends on it."
+    },
+    {
+     "at": "#tripartitePanel_x_vr",
+     "needs": "#tripartitePanel_x_vr",
+     "press": "#tripartitePanel_details",
+     "after": "open the Astrocyte–synapse panel",
+     "title": "Both points, so you can judge the gap yourself",
+     "say": "<b>🥽 + VR</b> sends the synapse <b>and</b> the astrocyte's nearest point — a synapse row and an astrocyte mark a few tens of nanometres apart. In the scene that is two points you can stand between, which is a better way to judge a 200 nm claim than a number in a table."
+    },
+    {
+     "at": "#vrb-pill",
+     "needs": "#vrb-pill",
+     "press": ".vrb-btn",
+     "after": "add any cell with “+ VR”",
+     "pageWait": true,
+     "title": "Everything lands in one place",
+     "say": "All three buttons add to the <b>same collection</b>, and to the same cell if it is already there — press + VR on a cell, then in Connectivity, then in Cell contacts, and you get one cell carrying all of it. The walkthrough on collecting cells covers the pill and the two ways into the viewer."
+    }
+   ]
+  },
+  {
    "id": "filter",
-   "title": "Filter and show — every cell that matches",
+   "title": "Filter — every cell that matches",
    "blurb": "Describing a population by type, layer, size or place, then counting it and taking it away as a sheet.",
    "steps": [
     {
      "tab": "filter",
-     "say": "The Jump tab is one cell at a time. This tab is the opposite: you describe a population &mdash; a type, a place, a distance, an organelle &mdash; and get back every cell in the volume that matches. The answer comes as a table, a 3D view, or a VR scene."
+     "say": "Here you describe a population &mdash; a type, a place, a distance, an organelle &mdash; and get back every cell in the volume that matches. The answer comes as a table, a 3D view, or a VR scene."
     },
     {
      "at": "#filterSecSelect",
@@ -1082,7 +1226,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
    "blurb": "What every classification rests on, and what the whole dataset looks like once everybody's identifications are counted up.",
    "steps": [
     {
-     "say": "Two tabs that are easy to walk past, and they are a pair. <b>References</b> says where the criteria come from; the <b>Statistics dashboard</b> says what applying them has produced across the whole volume &mdash; including your own contributions. About three minutes.",
+     "say": "Two tabs that are easy to walk past, and they are a pair. <b>Refs</b> says where the criteria come from; <b>Stats</b> says what applying them has produced across the whole volume &mdash; including your own contributions. About three minutes.",
      "title": "The evidence, and the totals"
     },
     {
@@ -1173,7 +1317,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#mainTabs",
      "title": "That is the evidence",
-     "say": "Criteria you can check in <b>References</b>, totals you can check in the <b>dashboard</b>, and provenance on every one of them. What is left is taking the data somewhere else: a <b>region</b> exported to a notebook or Blender, and a collection of cells opened <b>in VR</b>."
+     "say": "Criteria you can check in <b>Refs</b>, totals you can check in <b>Stats</b>, and provenance on every one of them. What is left is taking the data somewhere else: a <b>region</b> exported to a notebook or Blender, and a collection of cells opened <b>in VR</b>."
     }
    ]
   },
@@ -1190,7 +1334,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "at": "#filterSecRegion",
      "tab": "filter",
      "title": "Where to ask for one",
-     "say": "It lives in <b>Filter and show</b>, alongside the conditions, because it is the same question asked geometrically: instead of naming a kind of cell, name a <b>cube</b> and take what is inside it. Open this section and you can type the corners, or use the cell on screen as the centre."
+     "say": "It lives in <b>Filter</b>, alongside the conditions, because it is the same question asked geometrically: instead of naming a kind of cell, name a <b>cube</b> and take what is inside it. Open this section and you can type the corners, or use the cell on screen as the centre."
     },
     {
      "at": "#regionAddBox",
@@ -1215,8 +1359,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     },
     {
      "at": "#mainTabs",
-     "title": "That is the tool",
-     "say": "Four walkthroughs: finding a cell and saying what it is, recording the structures inside it, asking for every cell that matches a description, and taking a region away. VR gets its own once that viewer settles. The Tutorial button brings this list back whenever you want one again."
+     "title": "Taken away, then",
+     "say": "A cube of the volume, with whichever of its image data, labels or meshes you asked for, in something you can open. One walkthrough left, and it goes the other way entirely: gathering cells in order to <b>stand among them</b>."
     }
    ]
   },
@@ -1244,7 +1388,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": ".vrb-btn",
      "after": "add a cell with “+ VR”",
      "title": "The collection, bottom right",
-     "say": "<b>🥽 VR collection (n)</b> appears once there is something in it and says how many. The collection lives in this browser and is shared by every Jump tool on the site, so cells you gather here are still there tomorrow, and still there if you wander off into another tool."
+     "say": "<b>🥽 VR collection (n)</b> appears once there is something in it and says how many. It lives in this browser, so what you gather is still here tomorrow &mdash; and each tool keeps its own: cells collected in µJump do not turn up in δJump's count."
     },
     {
      "at": "#vrb-tray",
@@ -1252,7 +1396,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#vrb-pill",
      "after": "press the collection pill",
      "title": "What is in it, and what travels with it",
-     "say": "Each row is one cell, with its id and a × to drop it. A row may also say “· n synapses” or “· n points”: pressing + VR in <b>Connectivity</b>, <b>Cell contacts</b> or <b>Astrocyte–synapse proximity</b> attaches those points to the cell, and the scene draws them on it. More than about thirty cells and the tray warns you — a standalone Quest 2 will struggle."
+     "say": "Each row is one cell, with its id and a × to drop it. A row may also say “· n synapses” or “· n points” &mdash; those come from the <b>+ VR</b> buttons in Connectivity, Cell contacts and Astrocyte&ndash;synapse proximity, and the scene draws them on the cell. The walkthrough on what a cell does to its neighbours covers those three."
     },
     {
      "at": ".vrb-go",
@@ -1274,7 +1418,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "at": "#filterVR",
      "tab": "filter",
      "title": "Or send a whole population at once",
-     "say": "Back in <b>Filter and show</b>: once you have previewed a set of matches, <b>🥽 Show in VR</b> sends them straight to the scene without collecting them one at a time, and the dropdown beside it caps how many — evenly spread through the list when there are more. Thirty for a headset or a laptop; several hundred on a strong PC."
+     "say": "Back in <b>Filter</b>: once you have previewed a set of matches, <b>🥽 Show in VR</b> sends them straight to the scene without collecting them one at a time — and <b>without touching the collection you just built</b>, because those cells travel in the link instead. The dropdown beside it caps how many, evenly spread through the list when there are more: thirty for a headset or a laptop, several hundred on a strong PC."
     },
     {
      "at": ".vrb-go",
@@ -1292,12 +1436,12 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
 </script>
 <div class="tabbar" id="mainTabs" role="tablist">
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">🔍 Jump</button>
-<button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">📥 Filter and show</button>
-<button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false">📚 References</button>
-<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas. Coordinates and ids written into a post become links — a reader opens exactly what you saw.">💬 Discussion</button>
+<button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false" title="Describe a population — by type, layer, size, place or organelle — and get back every cell in the volume that matches, as a count, a sheet, or a 3D view.">📥 Filter</button>
+<button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas. Coordinates and ids written into a post become links — a reader opens exactly what you saw.">💬 Discuss</button>
 <button type="button" class="tabbtn" data-tour-menu="1"
         title="Guided walkthroughs of the tool, pointing at each control in turn. Pick one; Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
-<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Live/static statistics dashboard built from this dataset + the community-reporting backend — opens inline, no separate tab or re-login">📊 Statistics dashboard</button>
+<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Live/static statistics dashboard built from this dataset + the community-reporting backend — opens inline, no separate tab or re-login">📊 Stats</button>
+<button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false" title="Every paper the identification criteria rest on, with a link to each one.">📚 Refs</button>
 </div>
 <script>
 /* Tab-bar switching + the step-through-review engine moved to core/stepthrough.js
@@ -7817,10 +7961,18 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
       +'<label style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="connSyn" checked> show synapse points</label>'
       +'<label style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="connRemember"'+(savedToken?" checked":"")+'> remember token in this browser</label></div>'
       +'<button class="idbtn" id="connGo">Query</button>'
+      +'<button class="idbtn" id="connVR" disabled title="Adds this cell to the VR collection together with every synapse of the partners shown - input and output, drawn on the cell in the viewer. Nothing is fetched: these are the synapses this query already found." style="padding:3px 10px;font-size:12px">🥽 + VR</button>'
       +'<span id="connStatus" style="margin-left:8px;font-size:12px"></span>'
       +'<div id="connResults" style="margin-top:8px"></div>';
     bod.innerHTML=h;
     const setStatus=(msg,cls)=>{const s2=bod.querySelector("#connStatus");if(s2){s2.textContent=msg;s2.style.color=cls==="err"?"#ff7a7a":cls==="ok"?"#6ee7a0":"var(--mut)";}};
+    /* Filled by the query below; the button stays disabled until it is. 2026-10-23. */
+    let connVRPayload=null;
+    const connVRB=bod.querySelector("#connVR");
+    if(connVRB)connVRB.addEventListener("click",()=>{
+      if(!connVRPayload)return;
+      ujVrPoints(Object.assign({sayEl:bod.querySelector("#connStatus")},connVRPayload));
+    });
     bod.querySelector("#connGo").addEventListener("click",async()=>{
       const tokenRaw=bod.querySelector("#connToken").value;
       const token=sanitizeCaveToken(tokenRaw);
@@ -7946,6 +8098,18 @@ function renderConnectivityToggle(el,containerId,rootId,centerPos,cellType,nucle
         const connGate=saveConnectivitySample(nucleusId,queryRootId,cellType,centerPos,allPoints);
         const shownIds=new Set(shown.map(p=>p.partner));
         const points=doSyn?allPoints.filter(p=>shownIds.has(p.partner)):[];
+        /* The same synapses, in core/vrbasket.js's row shape. Taken from the SHOWN partners (the
+           ones topN/minSyn kept) rather than all of them, so what goes to VR is what the panel
+           is showing -- and regardless of the "show synapse points" checkbox, which is about the
+           Neuroglancer view rather than about this. 2026-10-23. */
+        const typeByRoot=new Map(allPartners.map(p=>[String(p.partner),p.cell_type||""]));
+        connVRPayload={root:queryRootId,nuc:nucleusId,label:(cellType||"Cell"),
+          what:"synapses",
+          syn:allPoints.filter(p=>shownIds.has(p.partner)).map(p=>[
+            p.pos[0],p.pos[1],p.pos[2],p.direction==="input"?0:1,
+            String(p.partner),typeByRoot.get(String(p.partner))||""])};
+        const connVRBtn=bod.querySelector("#connVR");
+        if(connVRBtn)connVRBtn.disabled=!connVRPayload.syn.length;
         const state=buildConnectivityState(centerPos,selfIds,shown,points);
         const viewerEl=document.getElementById("viewer");
         const base=viewerEl?viewerEl.value:"https://ngl.microns-explorer.org/";
@@ -9927,6 +10091,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     +'<div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">'
     +'<button class="idbtn" id="'+uid+'_check" disabled style="padding:3px 10px;font-size:12px">Check contacts with this type</button>'
     +'<button class="idbtn" id="'+uid+'_ngl" disabled style="padding:3px 10px;font-size:12px" title="Opens a 3D view (with EM imagery) of this cell, every checked cell of the chosen type, and all of their touch points (each nearby cell\'s points in their own colour). Use the per-cell \'Open in Neuroglancer\' button in the list below instead to focus on just one neighbour at a time.">Open all in Neuroglancer</button>'
+    +'<button class="idbtn" id="'+uid+'_vr" disabled title="Adds this cell to the VR collection with every touch point found, drawn on it in the viewer. Nothing is fetched: these are the points this panel already computed." style="padding:3px 10px;font-size:12px">🥽 + VR</button>'
     +'<button class="idbtn" id="'+uid+'_xlsx" disabled style="padding:3px 10px;font-size:12px" title="Downloads every evaluated pair (touching or not) with its coordinates, if any.">Download as Excel</button>'
     +'</div><div id="'+uid+'_results" style="margin-top:6px"></div>';
   h+='</details>';
@@ -9936,6 +10101,7 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
     clusterEl=document.getElementById(uid+"_cluster"),thresholdEl=document.getElementById(uid+"_threshold"),
     countEl=document.getElementById(uid+"_count"),checkBtn=document.getElementById(uid+"_check"),
     nglBtn=document.getElementById(uid+"_ngl"),xlsxBtn=document.getElementById(uid+"_xlsx"),
+    vrBtn=document.getElementById(uid+"_vr"),
     resultsEl=document.getElementById(uid+"_results");
   if(!typeSel)return; // shouldn't happen, but keeps this defensive like the rest of the file
   let curRows=[]; // whichever result set is currently "live" -- declared here (before the delegated
@@ -10035,12 +10201,26 @@ function renderCellContactsPanel(el,known,i,rootIdStr,cellType,nucleusId){
         +(checked<totalFound?" — checked nearest "+checked+" (limit "+CELL_CONTACT_TYPE_MAX_FETCH+")":" — all checked")
         +(ccGate?" — "+ccGate:"");
       nglBtn.disabled=!results.length;xlsxBtn.disabled=!results.length;
+      /* Touch points are MARKS, not synapses: a place two membranes come within the gap, which is
+         a different kind of claim from "a synapse is here". vr.html colours them apart for that
+         reason. 2026-10-23. */
+      if(vrBtn)vrBtn.disabled=!results.some(r=>(r.touchPoints||[]).length);
     }catch(err){
       console.warn("[uJump cell contacts by type]",err);
       resultsEl.innerHTML='<div class="nsub" style="color:#f0883e">Failed: '+escHtml(String((err&&err.message)||err))+'</div>';
     }finally{
       checkBtn.textContent=orig;checkBtn.disabled=false;typeSel.disabled=false;radiusEl.disabled=false;clusterEl.disabled=false;thresholdEl.disabled=false;
     }
+  });
+  if(vrBtn)vrBtn.addEventListener("click",function(){
+    const marks=[];
+    curRows.forEach(function(r){
+      (r.touchPoints||[]).forEach(function(v){
+        marks.push([v[0],v[1],v[2],"contact",(r.cellType||"cell")+" \u00b7 nuc "+r.nucleusId]);
+      });
+    });
+    ujVrPoints({root:rootId0,nuc:nucleusId,label:(cellType||"Cell"),what:"touch points",
+      marks:marks,sayEl:statusEl});
   });
   nglBtn.addEventListener("click",function(){
     if(!curRows.length||!rootId0)return;
@@ -10831,6 +11011,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
     +'<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">'
     +'<button class="idbtn" id="'+uid+'_check">Check for nearby astrocyte processes</button>'
     +'<button class="idbtn" id="'+uid+'_ngl" disabled title="Opens every checked synapse, its partner, and every astrocyte process found, together in one 4-panel Neuroglancer view.">Open all in Neuroglancer</button>'
+    +'<button class="idbtn" id="'+uid+'_vr" disabled title="Adds this cell to the VR collection with the synapses checked AND the astrocyte contact point found at each one - so a tripartite candidate is two points you can look between in the viewer. Nothing is fetched here." style="padding:3px 10px;font-size:12px">🥽 + VR</button>'
     +'</div><span id="'+uid+'_status" style="font-size:12px;color:var(--mut)"></span>'
     +'<div id="'+uid+'_results" style="margin-top:6px"></div>';
   h+='</details>';
@@ -10841,6 +11022,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
     rememberEl=document.getElementById(uid+"_remember"),astroDistEl=document.getElementById(uid+"_astrodist"),
     radiusEl=document.getElementById(uid+"_radius"),maxEl=document.getElementById(uid+"_max"),
     checkBtn=document.getElementById(uid+"_check"),nglBtn=document.getElementById(uid+"_ngl"),
+    vrBtn=document.getElementById(uid+"_vr"),
     statusEl=document.getElementById(uid+"_status"),resultsEl=document.getElementById(uid+"_results");
   if(!checkBtn)return;
   let curRows=[],curThresholdNm=Math.round(TRIPARTITE_ASTRO_DIST_UM*1000);
@@ -10899,6 +11081,7 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
       statusEl.textContent=nTri+" of "+results.length+" checked synapse"+(results.length===1?"":"s")+" have an astrocyte process within "+curThresholdNm+" nm"+(allPoints.length>capped.length?" (checked first "+capped.length+" of "+allPoints.length+" synapses found — raise the cap above to check more)":"")+(triGate?" — "+triGate:"");
       statusEl.style.color="var(--mut)";
       nglBtn.disabled=!results.length;
+      if(vrBtn)vrBtn.disabled=!results.length;
     }catch(err){
       console.warn("[uJump tripartite]",err);
       resultsEl.innerHTML='<div class="nsub" style="color:#f0883e">Failed: '+escHtml(String((err&&err.message)||err))+'</div>';
@@ -10907,6 +11090,21 @@ function loadTripartitePanel(containerId,i,rootIdStr,cellType,nucleusId){
     }finally{
       checkBtn.disabled=false;
     }
+  });
+  if(vrBtn)vrBtn.addEventListener("click",function(){
+    /* BOTH kinds, because that is what makes the pair legible in the viewer: the synapse as a
+       synapse (with its direction and partner) and the astrocyte's nearest point as a mark. A
+       tripartite candidate is then two points a few tens of nanometres apart that you can stand
+       between. 2026-10-23. */
+    const syn=[],marks=[];
+    curRows.forEach(function(r){
+      if(r.pos)syn.push([r.pos[0],r.pos[1],r.pos[2],r.direction==="input"?0:1,String(r.partner||""),""]);
+      if(r.astro&&r.astro.touchVoxel)
+        marks.push([r.astro.touchVoxel[0],r.astro.touchVoxel[1],r.astro.touchVoxel[2],"astro",
+          "astrocyte "+r.astro.rootId+(r.astro.distNm!=null?" \u00b7 "+Math.round(r.astro.distNm)+" nm":"")]);
+    });
+    ujVrPoints({root:rootId0,nuc:nucleusId,label:(cellType||"Cell"),
+      what:"synapses and astrocyte points",syn:syn,marks:marks,sayEl:statusEl});
   });
   nglBtn.addEventListener("click",function(){
     if(!curRows.length||!rootId0)return;

@@ -174,13 +174,13 @@
    "blurb": "Getting around, seeing inside, the EM plane, and finding your own tracings and the community's organelles drawn on the cells you collected.",
    "steps": [
     {
-     "say": "You are standing in the collection you just made. The meshes are being fetched now &mdash; nothing was downloaded while you were gathering ids. This part is about getting around, and about the things from the earlier walkthroughs that turn up here on the cells. About three minutes.",
+     "say": "You are standing in whatever was sent to this viewer &mdash; a collection you built, a set of filter matches, or a saved scene. The meshes are being fetched now; nothing was downloaded while you were choosing. This part is about getting around, and about the things from the earlier walkthroughs that turn up here on the cells. About three minutes.",
      "title": "The collection, at scale"
     },
     {
      "at": "#sub",
      "title": "What it is doing, and how heavy it is",
-     "say": "This line is the scene's running commentary: what it is fetching, how many cells arrived, and how many million triangles it is drawing. That last number is the one to watch &mdash; it is what decides whether a headset keeps up."
+     "say": "This line is the scene's running commentary: what it is fetching, how many cells arrived, and how many million triangles it is drawing. That last number is the one that decides whether a headset keeps up, and <b>Light</b> below is the lever for it."
     },
     {
      "at": "#keysCard",
@@ -256,13 +256,13 @@
      "at": "#orgBtn",
      "tab": "struct",
      "title": "...and so do the logged organelles",
-     "say": "<b>Organelles</b> brings in the community-reported points from µJump, inside the box around these cells. A centriole gets a 3D arrow from its cell's nucleus; a cilium an arrow from base to tip. This is the other half of the organelle walkthrough: what was a coordinate in a form is a direction in a room."
+     "say": "<b>Organelles</b> brings in the community-reported points from µJump that fall inside the bounding box enclosing the cells you brought. A centriole gets a 3D arrow from its cell's nucleus; a cilium an arrow from base to tip. This is the other half of the organelle walkthrough: what was a coordinate in a form is a direction in a room."
     },
     {
      "at": "#sceneSave",
      "tab": "share",
      "title": "Keeping it, and taking it to the headset",
-     "say": "<b>&#128190; Save scene</b> saves everything as it stands &mdash; the cells, the view, the EM plane, the cut, the measurements, the paint &mdash; as a link you can share or reopen. It is also how synapses and contact points reach a standalone headset, which the collection link cannot carry: save here, open the saved link there. <b>Copy headset link</b> beside it does the cells alone."
+     "say": "<b>&#128190; Save scene</b> saves everything as it stands &mdash; the cells, the view, the EM plane, the cut, the measurements, the paint &mdash; as a link you can share or reopen &mdash; and the only way to get synapses and contact points into a standalone headset, as the collecting walkthrough explains. <b>Copy headset link</b> beside it does the cells alone."
     },
     {
      "at": "#panel",
@@ -276,7 +276,7 @@
 </script>
   <div class="ctl" id="tourRow"><button type="button" data-tour-menu="1"
       title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button></div>
-    <div class="sub" id="sub">Loading…</div>
+      <div class="sub" id="sub">Loading…</div>
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
       <input id="sceneTitle" placeholder="Scene title" style="flex:1;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
