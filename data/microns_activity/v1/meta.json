@@ -1,6 +1,6 @@
 {
- "version": 1,
- "made": "2026-10-19",
+ "version": 2,
+ "made": "2026-10-23",
  "source": "DANDI:000402 (MICrONS Two Photon Functional Imaging), CC-BY-4.0",
  "coregistration": "coregistration_manual_v4",
  "what": "Mean response to the 6 oracle clips (10 repeats each), robust z-score of the raw fluorescence (median/MAD over the whole scan), resampled on a common grid around each clip start.",
@@ -61,15 +61,78 @@
  ],
  "shards": 512,
  "shard_key": "int(root_id) % shards, file NNN.json",
- "movie": "oracle_movie.mp4",
+ "movie": null,
  "movie_fps": 30,
- "cells": 2052,
- "roots": 1929,
+ "cells": 19175,
+ "roots": 15433,
  "scans": [
+  {
+   "session": 4,
+   "scan": 7,
+   "cells": 1322,
+   "method": "through_all",
+   "agree": 1.0
+  },
   {
    "session": 5,
    "scan": 3,
    "cells": 413,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 5,
+   "scan": 6,
+   "cells": 1358,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 5,
+   "scan": 7,
+   "cells": 1348,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 6,
+   "scan": 2,
+   "cells": 1354,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 6,
+   "scan": 4,
+   "cells": 1516,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 6,
+   "scan": 6,
+   "cells": 1384,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 6,
+   "scan": 7,
+   "cells": 1492,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 7,
+   "scan": 3,
+   "cells": 1093,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 7,
+   "scan": 4,
+   "cells": 1528,
    "method": "through_all",
    "agree": 1.0
   },
@@ -82,8 +145,29 @@
   },
   {
    "session": 8,
+   "scan": 5,
+   "cells": 1626,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 8,
    "scan": 7,
    "cells": 3,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 9,
+   "scan": 3,
+   "cells": 1709,
+   "method": "through_all",
+   "agree": 1.0
+  },
+  {
+   "session": 9,
+   "scan": 4,
+   "cells": 1393,
    "method": "through_all",
    "agree": 1.0
   },
