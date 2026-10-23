@@ -1251,6 +1251,8 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 <!-- The walkthrough overlay, the same one µJump uses. No core/stepthrough.js here:
      this page has no tab bar, so no step names a tab. core/tour.js, 2026-10-23. -->
 <script src="core/tour.js"></script>
+<!-- The chat between everybody working in the Jump tools (core/chat.js, Firebase), 2026-10-23. -->
+<script src="core/chat.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "./core/vendor/three/three.module.min.js",
@@ -14100,6 +14102,16 @@ document.getElementById("mapWbc").addEventListener("change", e => setWbc("on", e
 document.getElementById("wbcAd").addEventListener("change", e => setWbc("ad", e.target.checked));
 document.getElementById("wbcLy6g").addEventListener("change", e => setWbc("ly6g", e.target.checked));
 document.getElementById("wbcTeach").addEventListener("change", e => setWbc("teach", e.target.checked));
+
+/* ── 44. THE CHAT'S HOOKS (core/chat.js, 2026-10-23): the viewer's sign-in, its picked cell and its scenes ── */
+window.UJ_CHAT_CRED = () => credOk() ? CRED : "";
+window.UJ_CHAT_BACKEND = DSX.backend || VR_DATASETS.microns.backend;
+window.UJ_CHAT_CELL = () => { const c = CELLS[SELECTED]; return c && c.root ? { root: String(c.root), label: shortName(c) } : null; };
+window.UJ_CHAT_SCENE = async title => {
+  if (title) document.getElementById("sceneTitle").value = title;
+  await saveScene(false);
+  return SCENE.id ? { url: sceneLink(SCENE.id), title: SCENE.title || title || "scene" } : { error: document.getElementById("sceneOut").textContent };
+};
 
 /* TAP / CLICK A CELL TO PICK IT on a screen (2026-10-23, Søren: "How do I pick a cell while on a
    mobile device?"). Until now only the headset's trigger and the cell list picked a cell. A tap or

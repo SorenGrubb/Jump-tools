@@ -641,6 +641,8 @@ function ujVrPointsSay(el, msg, bad){
 <script src="core/tracedoutlines.js"></script>
 <!-- A coordinate or root id written in a comment becomes a link to the place it names -- core/jumplink.js, 2026-10-01. -->
 <script src="core/jumplink.js"></script>
+<!-- The chat between everybody working in the Jump tools (core/chat.js, Firebase), 2026-10-23. -->
+<script src="core/chat.js"></script>
 <!-- The Discussion tab: findings, bugs and ideas, with the places a post names made
      clickable by core/jumplink.js above. 2026-10-01. -->
 <!-- A coordinate becomes a picture: the EM here, its scale bar, and the cell in 3D beside it
@@ -5531,7 +5533,7 @@ function renderStandalone(st,panel,outOfRegion){
      MICrONS segmentation -- see loadRootIdPanel's render()/buildState()'s ex65/ex35/exNuc65/exNuc35. */
   oh+='<div id="rootIdPanel" style="margin:6px 0"></div>';
   oh+='<div class="idcta"><div class="idcta-top"><span>Already verified &mdash; a good case to practise the guided identification on.</span><button class="idbtn" id="idfgo">Guided identification &rarr;</button></div>'
-    +'<div class="idcta-search">'+leafSearchHtml("mainLeaf","Already know it? Jump straight there")+'</div></div>';
+    +'<div class="idcta-search">'+leafSearchHtml("mainLeaf","Already know it? Jump straight there")+'</div>'+'<div class="idcta-top" style="border-top:1px dashed var(--line);padding-top:10px"><span>Unsure, or think it is mislabelled? Ask the people online.</span><button class="idbtn" id="chatVote" title="Opens the chat with a vote on this cell: everybody online answers with one click">&#x1F5F3; Ask the chat to vote</button></div>'+'</div>';
   panel.innerHTML=oh;
   panel.querySelectorAll(".jump").forEach(b=>b.addEventListener("click",()=>{
     unit="voxel";[...unitsEl.children].forEach(c=>c.classList.toggle("on",c.dataset.u==="voxel"));
@@ -5540,6 +5542,7 @@ function renderStandalone(st,panel,outOfRegion){
   const idfCtx={suggested:null,pos:st.pos};
   const idfBtn=panel.querySelector("#idfgo");
   if(idfBtn)idfBtn.addEventListener("click",()=>openIdentify(idfCtx));
+  { const cvb=panel.querySelector("#chatVote"); if(cvb)cvb.addEventListener("click",()=>{ if(window.UJ&&UJ.chat)UJ.chat.askVote(st.pos.map(Math.round).join(","),"",longName(st.type)); else alert("The chat is not loaded on this page."); }); }
   wireLeafSearch("mainLeaf",slug=>openIdentifyToLeaf(idfCtx,slug));
   window.CUR_POS=st.pos;window.CUR_CELLTYPE_DISPLAY=longName(st.type);window.CUR_ID_SOURCE="own";window.CUR_HAS_CELL=true;
   loadRootIdPanel(st.pos.join(","));
@@ -5826,7 +5829,7 @@ function showNucleus(pos){
   h+= ti.cls
     ? '<div class="idcta"><div class="idcta-top"><span>Not sure? Take the guided identification</span><button class="idbtn" id="idfgo">Guided identification &rarr;</button></div>'
     : '<div class="idcta warn"><div class="idcta-top"><span>No MICrONS suggestion for this nucleus.</span><button class="idbtn" id="idfgo">Start guided identification &rarr;</button></div>';
-  h+='<div class="idcta-search">'+leafSearchHtml("mainLeaf","Already know it? Jump straight there")+'</div></div>';
+  h+='<div class="idcta-search">'+leafSearchHtml("mainLeaf","Already know it? Jump straight there")+'</div>'+'<div class="idcta-top" style="border-top:1px dashed var(--line);padding-top:10px"><span>Unsure, or think it is mislabelled? Ask the people online.</span><button class="idbtn" id="chatVote" title="Opens the chat with a vote on this cell: everybody online answers with one click">&#x1F5F3; Ask the chat to vote</button></div>'+'</div>';
   panel.innerHTML=h;
   try{ cellCardFold(panel); }catch(_e){}
   /* The line lives on the CARD, not in this panel, so it is written after the panel and its own
@@ -5848,6 +5851,7 @@ function showNucleus(pos){
   const idfBtn=panel.querySelector("#idfgo");
   if(idfBtn)idfBtn.addEventListener("click",()=>openIdentify(idfCtx));
   wireLeafSearch("mainLeaf",slug=>openIdentifyToLeaf(idfCtx,slug));
+  { const cvb=panel.querySelector("#chatVote"); if(cvb)cvb.addEventListener("click",()=>{ if(window.UJ&&UJ.chat)UJ.chat.askVote([NX[i],NY[i],NZ[i]].map(Math.round).join(","),"",own?own.type:(ti.cls?longName(ti.name)+(ti.mtype?" ("+ti.mtype+")":""):"")); else alert("The chat is not loaded on this page."); }); }
   /* Deliberately uses the QUERY coordinate (pos, i.e. where the user actually clicked/typed --
      their estimate of the new cell's location) rather than [NX[i],NY[i],NZ[i]] (the far-away,
      unrelated nucleus above) -- and omits nucId/root entirely so this can never be mistaken for
