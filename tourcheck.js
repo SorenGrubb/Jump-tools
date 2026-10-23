@@ -74,15 +74,20 @@ ok("no part is declared without steps",
    && CFG.parts.every(p => (p.steps || []).length > 0),
    CFG && CFG.parts ? CFG.parts.map(p => p.id + " (" + (p.steps || []).length + " steps)").join(", ")
                     : "none");
-const WANTED = ["part1", "part2", "part3"];
+/* NAMES, NOT NUMBERS, since the organelle part was inserted BEFORE Filter and show at Søren's
+   word. Numbered ids meant that inserting a part renamed every part after it -- silently, in
+   saved progress as well as here. These ids say what the part is about and never move again. */
+const WANTED = ["find", "organelles", "filter", "export", "vrcollect"];
 const written = (CFG && CFG.parts ? CFG.parts : []).map(p => p.id);
 const todo = WANTED.filter(id => written.indexOf(id) < 0);
 /* Describing what is MISSING, derived from what is present. The first version spelled the gap out
    in prose written when part two was unwritten, and went on claiming part two was missing after it
    had been written — a check that lies in its own output. */
-const SCOPE = { part1: "finding a cell and saying what it is",
-                part2: "Filter and show",
-                part3: "the tracing pad and the region/Blender export" };
+const SCOPE = { find: "finding a cell and saying what it is",
+                organelles: "logging and outlining the structures inside a cell",
+                filter: "Filter and show",
+                export: "the region box and the Colab/Blender export",
+                vrcollect: "collecting cells for VR and opening the scene" };
 if (todo.length) console.log("NOT YET  " + todo.join(" and ") + "  <- "
   + todo.map(id => SCOPE[id] || id).join("; ")
   + (todo.length === 1 ? " is" : " are") + " not written. This check covers what exists.");
@@ -110,13 +115,29 @@ function inFile(sel, html) {
   const ids = sel.match(/#[A-Za-z][\w-]*/g) || [];
   const classes = sel.match(/\.[A-Za-z][\w-]*/g) || [];
   const attrs = sel.match(/\[[^\]]+\]/g) || [];
-  const idOk = ids.every(i => html.indexOf('id="' + i.slice(1) + '"') >= 0
-                           || html.indexOf("id='" + i.slice(1) + "'") >= 0
-                           || html.indexOf('id="' + i.slice(1)) >= 0);
+  /* AN ID CAN ALSO ARRIVE AS A PROPERTY ASSIGNMENT.                              2026-10-23
+     core/vrbasket.js builds its pill and tray with document.createElement and then
+     `pill.id = "vrb-pill"` -- there is no id="…" anywhere for those two, and looking only for
+     the attribute spelling called both of them missing. Three spellings are accepted now:
+     the attribute, either quote style, and the assignment. */
+  const idOk = ids.every(i => {
+    const n = i.slice(1);
+    return html.indexOf('id="' + n) >= 0
+        || html.indexOf("id='" + n + "'") >= 0
+        || new RegExp("\\.id\\s*=\\s*[\"']" + n.replace(/[-]/g, "\\$&") + "[\"']").test(html);
+  });
   const clOk = classes.every(c => html.indexOf('class="' + c.slice(1)) >= 0
                                || html.indexOf(c.slice(1) + '"') >= 0
                                || html.indexOf("'" + c.slice(1)) >= 0);
-  const atOk = attrs.every(a => html.indexOf(a) >= 0);
+  /* ...and an attribute selector written [data-act="copy"] is spelt data-act='copy' in a module
+     that builds its HTML inside a double-quoted JS string. Both quote styles, and bare. */
+  const atOk = attrs.every(a => {
+    const m = a.match(/^\[([\w-]+)=["']?([^"'\]]+)["']?\]$/);
+    if (!m) return html.indexOf(a) >= 0;
+    const [, k, v] = m;
+    return html.indexOf(k + '="' + v + '"') >= 0 || html.indexOf(k + "='" + v + "'") >= 0
+        || html.indexOf(k + "=" + v) >= 0;
+  });
   return idOk && clOk && atOk;
 }
 /* ...AND THE FILE IS NOT ONLY ujump.html.                                           2026-10-23
@@ -171,6 +192,59 @@ ok("...and nothing claims to wait without waiting", idle.length === 0,
 ok("a tab named by a step is one the page has",
    steps.filter(s => s.tab).every(s => uj.indexOf('data-tab="' + s.tab + '"') >= 0),
    steps.filter(s => s.tab).map(s => s.tab).join(", ") || "none named");
+/* ...AND THE STEP IS ON THE TAB ITS TARGET LIVES ON.                                2026-10-23
+   µJump hides the inactive tab panels, so a step pointing at a control on the Filter tab while
+   the walkthrough is on Jump spotlights a 0x0 rectangle and reports its own target as missing.
+   Nothing above catches that: the selector IS in the page and the tab name IS real; they just
+   disagree. Checked for the ids ujump.html carries in its own markup, by finding which
+   data-tabpanel each one sits inside, and holding the step to the LAST tab named at or before it
+   in its part -- because `tab` is sticky, and only the step that changes tabs declares one.
+
+   Runtime-built targets (#tracePadOpen, #organRows) cannot be placed this way and are skipped
+   rather than guessed at; their own `needs` is what covers them. */
+const PANELS = [];
+uj.replace(/data-tabpanel="([a-z]+)"/g, (m, name, at) => { PANELS.push([at, name]); return m; });
+/* ONLY OCCURRENCES IN MARKUP COUNT, and finding that out cost the first run of this assertion:
+   #idfgo was reported as living on tab-forum. It is built at runtime, and the string id="idfgo"
+   duly appears -- in a <script> further down the file than the forum panel's markup. Placing a
+   step by a match inside a script is placing it by where the code happens to be written, which
+   has nothing to do with where the element ends up. So the script ranges are cut out first, and
+   an id found only there is treated as unplaceable rather than as placed wrongly. */
+const SCRIPTS = [];
+uj.replace(/<script\b[\s\S]*?<\/script>/g, (m, at) => { SCRIPTS.push([at, at + m.length]); return m; });
+const inScript = at => SCRIPTS.some(([a, b]) => at >= a && at < b);
+const panelOf = sel => {
+  const id = (String(sel).match(/^#([A-Za-z][\w-]*)$/) || [])[1];
+  if (!id) return null;
+  const needle = 'id="' + id + '"';
+  let at = uj.indexOf(needle);
+  while (at >= 0 && inScript(at)) at = uj.indexOf(needle, at + 1);
+  if (at < 0) return null;
+  let owner = null;
+  for (const [pos, name] of PANELS) if (pos < at) owner = name;
+  return owner;
+};
+const wrongTab = [];
+let placed = 0;
+for (const p of (CFG ? CFG.parts : [])) {
+  let on = null;
+  (p.steps || []).forEach((s, i) => {
+    if (s.tab) on = s.tab;
+    for (const sel of [s.at, s.press]) {
+      const want = sel ? panelOf(sel) : null;
+      if (!want) continue;
+      placed++;
+      if (want !== on)
+        wrongTab.push(p.id + "#" + (i + 1) + " " + sel + " is on tab-" + want
+                      + " but the walkthrough is on tab-" + (on || "(none named)"));
+    }
+  });
+}
+/* NON-VACUOUS ON PURPOSE. Cutting the script ranges out could in principle leave nothing
+   placeable at all, and then this assertion would pass by having checked nothing -- which this
+   file has shipped before and does not intend to again. The count is part of the claim. */
+ok("...and a step is on the tab its target lives on", wrongTab.length === 0 && placed >= 8,
+   wrongTab.join(" | ") || placed + " targets placed in a tab panel, all on the named tab");
 
 /* ── WHERE THE OVERLAY SITS ON A PAGE THAT ALREADY HAS OVERLAYS ──────────────────  2026-10-23
    Found statically, with no browser, which is the point: the first draft put the dim at 9998 and
@@ -282,6 +356,99 @@ ok("the engine never presses anything itself",
 ok("...and the engine keeps its own storage under the prefix",
    /grubblab_/.test(tour) && (tour.match(/localStorage\.(get|set)Item\(/g) || []).length <= 4);
 
+/* ── THE SECOND PAGE ────────────────────────────────────────────────────────────────  2026-10-23
+   Søren: *"a guide for collecting cells for VR, opening the VR scene and continuing the tutorial
+   there."* Continuing there means vr.html has its own step list, which gets the same scrutiny:
+   every selector looked for in ITS markup and ITS modules, not µJump's.
+
+   WHY THIS HALF EARNS ITS KEEP MORE THAN THE REST. vr.html is being rewritten in another
+   conversation. A written guide to it would still read perfectly after a control was renamed;
+   these assertions go red with the step number. If vr.html is not here at all — a checkout
+   without it — the section says so and does not fail, the same way the fixture half does.
+
+   THE CROSS-PAGE ASSERTIONS ARE THE NEW ONES. A `handoff` on one page naming a part nothing
+   declares is a dead end that nothing else could catch, and a mismatched storage key would mean
+   the note is written where the other page never looks. Both are checkable only by reading the
+   two documents together, which is what this file can do and neither page can. */
+console.log("\n--- the walkthrough carries on in vr.html ---");
+const vrPath = path.join(path.dirname(page_("ujump.html")), "vr.html");
+const vrHtml = fs.existsSync(vrPath) ? fs.readFileSync(vrPath, "utf8") : null;
+const VCFG = vrHtml ? tourdataOf(vrHtml, "vr.html") : null;
+/* Every step on either page that hands the reader to another page. */
+const handoffs = [].concat.apply([], (CFG ? CFG.parts : []).map(p =>
+  (p.steps || []).map((s, i) => s.handoff ? { from: p.id + "#" + (i + 1), to: s.handoff } : null)
+    .filter(Boolean)));
+if (!vrHtml) {
+  console.log("NOT RUN  vr.html is not in this tree, so its half of the walkthrough was not "
+    + "checked. µJump still declares the handoff" + (handoffs.length
+      ? " to “" + handoffs.map(h => h.to).join(", ") + "”." : "."));
+} else {
+  const vrMarkup = vrHtml + "\n" + fs.readdirSync(COREDIR).filter(f => /\.js$/.test(f))
+    .map(f => fs.readFileSync(path.join(COREDIR, f), "utf8").replace(/\\"/g, '"'))
+    .join("\n");
+  ok("vr.html loads core/tour.js and carries a #tourdata block that parses",
+     /<script src="core\/tour\.js"><\/script>/.test(vrHtml) && !!VCFG,
+     VCFG ? "ok" : "missing or invalid");
+  /* THE KEY MUST MATCH, or the handoff note is written where the other page never looks. */
+  ok("...under the same storage key as µJump, which is what lets the note travel",
+     !!VCFG && !!CFG && VCFG.key === CFG.key, (VCFG && VCFG.key) + " vs " + (CFG && CFG.key));
+  ok("...with one Tutorial button, and no per-part ones",
+     (vrHtml.match(/data-tour-menu="[^"]*"/g) || []).length === 1
+     && (vrHtml.match(/data-tour-start="/g) || []).length === 0,
+     (vrHtml.match(/data-tour-menu="[^"]*"/g) || []).length + " menu button(s)");
+  ok("...and it is offered through ready(), never started unasked",
+     /UJ\.tour\.ready\(\)/.test(vrHtml) && vrHtml.indexOf("UJ.tour.start(") < 0);
+  ok("...and exactly one step list, not two",
+     (vrHtml.match(/id="tourdata"/g) || []).length === 1,
+     (vrHtml.match(/id="tourdata"/g) || []).length + " #tourdata block(s)");
+  const vsteps = VCFG ? [].concat.apply([], VCFG.parts.map(p =>
+    (p.steps || []).map((s, i) => Object.assign({ _part: p.id, _i: i + 1 }, s)))) : [];
+  ok("its steps say something, about something",
+     vsteps.length >= 8 && vsteps.every(s => s.say && s.say.length >= 15)
+     && vsteps.filter(s => s._i > 1).every(s => s.at),
+     vsteps.length + " steps");
+  const vbad = vsteps.filter(s => s.at && !inFile(s.at, vrMarkup));
+  ok("...and every selector in them is in vr.html or a module it loads", vbad.length === 0,
+     vbad.map(s => s._part + "#" + s._i + " " + s.at).join(" | ")
+     || vsteps.filter(s => s.at).length + " checked");
+  /* IT DOES HAVE TABS -- SEVEN -- AND THIS ASSERTION USED TO DENY IT.               2026-10-23
+     It read "none of them names a tab, since this page has none", written before the page was
+     driven. vr.html's panel is seven panes built at runtime from a TABS table, only the current
+     one displayed, and it exposes its own switcher because it does not load core/stepthrough.js.
+     Seven of sixteen steps pointed into a closed pane and reported their own targets missing.
+
+     So: a step may name a tab, it must be one of the keys the page actually builds, and the page
+     must declare which global opens them. The keys are read out of that TABS table rather than
+     listed here, so adding an eighth pane needs no change. */
+  const vrTabs = (vrHtml.match(/\[\s*"([a-z]+)",\s*"[a-z]+",\s*"[A-Z]/g) || [])
+    .map(m => (m.match(/"([a-z]+)"/) || [])[1]).filter(Boolean);
+  ok("...and a step that names a tab names one the panel actually builds",
+     vrTabs.length >= 5 && vsteps.filter(s => s.tab).every(s => vrTabs.indexOf(s.tab) >= 0),
+     "panes: " + vrTabs.join(", ") + "; steps use: "
+     + [...new Set(vsteps.filter(s => s.tab).map(s => s.tab))].join(", "));
+  /* ...and something has to open them. core/stepthrough.js is not loaded here, so the step list
+     names the global instead, and core/tour.js calls it rather than knowing about this page. */
+  ok("...and the step list names the switcher that opens them",
+     !!VCFG && !!VCFG.tab && new RegExp("window\\." + VCFG.tab + "\\s*=").test(vrHtml)
+     && /CFG\.tab/.test(tour),
+     (VCFG && VCFG.tab) ? VCFG.tab + ", exposed by the page and used by the engine"
+                        : "no switcher declared");
+  /* THE HANDOFF LANDS. */
+  const vrIds = VCFG ? VCFG.parts.map(p => p.id) : [];
+  ok("the handoff from µJump names a part vr.html actually declares",
+     handoffs.length > 0 && handoffs.every(h => vrIds.indexOf(h.to) >= 0),
+     handoffs.map(h => h.from + " → " + h.to).join(", ") + "; vr.html has "
+     + vrIds.join(", "));
+  ok("...and the engine both writes that note and spends it on arrival",
+     /markHandoff/.test(tour) && /takeHandoff/.test(tour) && /offerHandoff/.test(tour));
+  /* The two step lists must not both claim the same part id, or progress in one would be read as
+     progress in the other under the shared key. */
+  ok("...and no part id is claimed by both pages",
+     (CFG ? CFG.parts : []).every(p => vrIds.indexOf(p.id) < 0),
+     (CFG ? CFG.parts.map(p => p.id).filter(id => vrIds.indexOf(id) >= 0) : []).join(", ")
+     || "all distinct");
+}
+
 function finish() {
   const bad = R.filter(x => !x).length;
   console.log("\n" + (bad ? "*** " + bad + " of " + R.length + " FAILED ***"
@@ -322,7 +489,12 @@ function finish() {
     return { on: !b.hidden, count: b.querySelector(".tour-count").textContent,
              where: UJ.tour.where(), ringOn: !document.querySelector(".tour-ring").hidden };
   });
-  ok("it opens on step 1", s1.on && s1.count === "1 of 7" && s1.where.step === 0, s1.count);
+  /* "1 of <however many the fixture declares>", not "1 of 7". The literal was the last hardcoded
+     count in this file and it broke the moment the fixture grew a handoff step -- while nothing
+     was wrong. Same lesson as the `=== 4` indices, one assertion later. */
+  ok("it opens on step 1",
+     s1.on && s1.count === "1 of " + s1.where.of && s1.where.step === 0 && s1.where.of > 1,
+     s1.count);
   ok("...with no spotlight, because step 1 points at nothing", !s1.ringOn);
 
   await p.click(".tour-next");
@@ -499,13 +671,58 @@ function finish() {
      await p.evaluate(() => !document.querySelector(".tour-menu")
                             && !document.querySelector(".tour-menu-back")));
 
+  /* ── THE HANDOFF ACROSS A PAGE ──────────────────────────────────────────────────  2026-10-23
+     Søren: "collecting cells for VR, opening the VR scene and continuing the tutorial there."
+     Opening the scene is a NAVIGATION, so the walkthrough cannot carry on by itself -- the page
+     it was running in is gone. A step declares `handoff`, which leaves a note beside the
+     progress; the page that declares that part picks the note up on arrival.
+
+     Driven in ONE page rather than two: what has to be true is that showing the step writes the
+     note, that ready() turns a note into a continuation offer for a part THIS document has, and
+     that the note is spent either way. All three are observable here, and a second fixture page
+     would test the browser's navigation rather than this file. */
+  const handoff = await p.evaluate(async () => {
+    UJ.tour.stop();
+    UJ.tour.start("part1");
+    const steps = UJ.tour.parts()[0].steps;
+    const want = steps.findIndex(s => s.handoff);
+    for (let i = 0; i < want; i++) document.querySelector(".tour-next").click();
+    const noted = UJ.tour.handoff();
+    UJ.tour.stop();
+    /* As if the other page had just loaded: ready() reads the note and offers to carry on. */
+    UJ.tour.ready();
+    await new Promise(r => setTimeout(r, 150));
+    const card = document.querySelector(".tour-offer");
+    return { atStep: want + 1, noted: noted,
+             offered: !!card, says: card ? card.textContent.slice(0, 80) : "",
+             spent: UJ.tour.handoff(),
+             yes: !!(card && card.querySelector(".tour-offer-yes")) };
+  });
+  ok("a step that hands the reader to another page leaves a note",
+     handoff.noted === "part2", "step " + handoff.atStep + " noted " + JSON.stringify(handoff.noted));
+  ok("...and the arriving page turns that note into an offer to carry on",
+     handoff.offered && /[Cc]arrying on/.test(handoff.says), JSON.stringify(handoff.says));
+  ok("...worded as a continuation, not as a first visit",
+     !/First time here/.test(handoff.says) && handoff.yes === true);
+  /* A note that survived being answered would offer the same continuation on every later visit. */
+  ok("...and the note is spent, so it does not offer again", handoff.spent === null,
+     JSON.stringify(handoff.spent));
+  const carried = await p.evaluate(async () => {
+    document.querySelector(".tour-offer-yes").click();
+    await new Promise(r => setTimeout(r, 250));
+    return UJ.tour.where();
+  });
+  ok("...and accepting starts the part it names", carried && carried.part === "part2",
+     JSON.stringify(carried));
+  await p.evaluate(() => { UJ.tour.stop(); try { localStorage.clear(); } catch (e) {} });
+
   /* ── READABILITY IN BOTH PALETTES ───────────────────────────────────────────────  2026-10-23
      Søren, on his phone: *"I can't read anything."* A white panel with near-white text, because
      the bubble took its background from a #fff fallback and its text from µJump's own --ink.
      Measured, not eyeballed: the contrast ratio between the rendered text colour and the rendered
      background, in index.html's palette AND in µJump's, both of which the fixture now carries.
      4.5:1 is the WCAG AA threshold for body text. */
-  console.log("\n--- readable in both of the family's palettes ---");
+  console.log("\n--- readable in all three of the family's palettes ---");
   const contrast = async palette => p.evaluate(pal => {
     if (pal) document.documentElement.setAttribute("data-palette", pal);
     else document.documentElement.removeAttribute("data-palette");
@@ -520,20 +737,41 @@ function finish() {
     const ratio = (a, bg) => { const l1 = lum(a), l2 = lum(bg);
       return +(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05))).toFixed(2); };
     const bg = getComputedStyle(b).backgroundColor;
-    return { bg: bg, ink: getComputedStyle(say).color,
+    /* EVERY LINE THE BUBBLE CAN SHOW, not only the body text. The waiting line takes --accent and
+       the "still not here" line took --warn, which vr.html does not define -- a dark orange
+       literal on a dark card is the same bug as dark text on a dark card, and measuring only
+       .tour-say would have passed it. Made visible first: a hidden line has no rendered colour
+       worth trusting. */
+    const wait = b.querySelector(".tour-wait"), gone = b.querySelector(".tour-gone");
+    const wasW = wait.hidden, wasG = gone.hidden;
+    wait.hidden = false; gone.hidden = false;
+    const out = { bg: bg, ink: getComputedStyle(say).color,
              body: ratio(getComputedStyle(say).color, bg),
+             count: ratio(getComputedStyle(b.querySelector(".tour-count")).color, bg),
+             wait: ratio(getComputedStyle(wait).color, bg),
+             gone: ratio(getComputedStyle(gone).color, bg),
              button: ratio(getComputedStyle(go).color, getComputedStyle(go).backgroundColor) };
+    wait.hidden = wasW; gone.hidden = wasG;
+    return out;
   }, palette);
+  /* 4.5:1 is the WCAG AA floor for body text; 3:1 is the large-text/UI floor, which is what the
+     two small status lines are held to -- they are 13px supporting text beside a body line that
+     already says the same thing in full. */
+  const legible = c => c.body >= 4.5 && c.button >= 4.5 && c.count >= 4.5
+                    && c.wait >= 3 && c.gone >= 3;
+  const spell = c => "body " + c.body + ", count " + c.count + ", waiting " + c.wait
+                   + ", not-here " + c.gone + ", button " + c.button + " on " + c.bg;
   await p.evaluate(() => { UJ.tour.stop(); UJ.tour.start("part1"); });
   await p.waitForTimeout(250);
   const light = await contrast(null);
-  ok("the bubble's text is readable on its own background (index.html's palette)",
-     light.body >= 4.5, light.body + ":1  " + light.ink + " on " + light.bg);
-  ok("...and so is the label on the filled button", light.button >= 4.5, light.button + ":1");
+  ok("every line of the bubble is readable (index.html's palette)", legible(light), spell(light));
   const dark = await contrast("ujump");
-  ok("...and in \u00b5Jump's palette, which has no --card at all",
-     dark.body >= 4.5, dark.body + ":1  " + dark.ink + " on " + dark.bg);
-  ok("...and its filled button too", dark.button >= 4.5, dark.button + ":1");
+  ok("...and in \u00b5Jump's palette, which has no --card at all", legible(dark), spell(dark));
+  /* THE PALETTE THE WALKTHROUGH HAD NEVER MET. vr.html defines --card and calls its text --fg,
+     so before --fg went into the chain this measured dark-on-dark -- caught here, not on his
+     phone. The scene is the first page outside the two this overlay grew up on. */
+  const vr = await contrast("vr");
+  ok("...and in vr.html's, which names its text --fg rather than --ink", legible(vr), spell(vr));
   /* THE PICKER, IN BOTH PALETTES TOO. Its rows carry a grey second line (--muted on index.html,
      --mut on µJump), which is the same kind of two-palette token that produced white-on-white in
      the bubble. The phone screenshot is not the place to find that out a second time. */
@@ -566,6 +804,10 @@ function finish() {
   ok("...and in µJump's palette, where the grey comes from --mut instead",
      pDark.title >= 4.5 && pDark.blurb >= 4.5,
      "title " + pDark.title + ":1, what-it-covers " + pDark.blurb + ":1 on " + pDark.bg);
+  const pVr = await pickerContrast("vr");
+  ok("...and in vr.html's, where the title comes from --fg",
+     pVr.title >= 4.5 && pVr.blurb >= 4.5,
+     "title " + pVr.title + ":1, what-it-covers " + pVr.blurb + ":1 on " + pVr.bg);
   await p.evaluate(() => document.documentElement.removeAttribute("data-palette"));
 
   console.log("\n--- on a phone ---");
@@ -604,8 +846,102 @@ function finish() {
   ok("...without pushing the page sideways", !phonePick.wide);
 
   await p.close();
-  await browser.close();
   ok("no script errors on the fixture", errs.length === 0, errs.join(" | ") || "none");
+
+  /* ── AND THEN THE REAL vr.html ──────────────────────────────────────────────────  2026-10-23
+     The static half can say a selector is somewhere in the file. It cannot say the control is on
+     screen when its step runs, and in vr.html that is the whole question: the panel is seven
+     panes with only the current one displayed, and two of the controls are <select>s that the
+     page hides and replaces with a segmented button row. The first run of these steps reported
+     SEVEN of sixteen targets missing, and nothing static could have told me.
+
+     So the steps are walked, in a browser, on the real page. ujump.html cannot be driven here --
+     it is 14.5 MB and takes the renderer down -- but vr.html is 0.9 MB and loads. three.js comes
+     from a CDN this harness blocks, so the 3D never starts; the PANEL does, which is what these
+     steps point at. A target that needs a loaded scene is the one exception and says so.
+
+     Served over HTTP rather than file://, because a module page on file:// is a different thing. */
+  const vrFile = path.join(path.dirname(page_("ujump.html")), "vr.html");
+  if (!fs.existsSync(vrFile)) {
+    console.log("\nNOT RUN  the walkthrough on the real vr.html  <- vr.html is not in this tree.");
+  } else {
+    console.log("\n--- the vr.html steps, walked on the real page ---");
+    const http = require("http");
+    const ROOT = path.dirname(vrFile);
+    const srv = http.createServer((q, r) => {
+      const f = path.join(ROOT, decodeURIComponent(q.url.split("?")[0]));
+      if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+        r.statusCode = 404; return r.end();
+      }
+      r.setHeader("content-type", /\.js$/.test(f) ? "text/javascript"
+        : /\.html$/.test(f) ? "text/html" : "application/octet-stream");
+      r.end(fs.readFileSync(f));
+    });
+    await new Promise(res => srv.listen(0, "127.0.0.1", res));
+    const vp = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const verrs = [];
+    vp.on("pageerror", e => verrs.push(e.message.slice(0, 110)));
+    await vp.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+    let vcrash = false;
+    vp.on("crash", () => { vcrash = true; });
+    await vp.goto("http://127.0.0.1:" + srv.address().port + "/vr.html",
+                  { waitUntil: "domcontentloaded", timeout: 60000 });
+    await vp.waitForTimeout(3500);
+    ok("vr.html loads, and the walkthrough is on it",
+       !vcrash && await vp.evaluate(() => typeof UJ !== "undefined" && !!UJ.tour
+         && UJ.tour.parts().length > 0 && !!document.querySelector("[data-tour-menu]")),
+       vcrash ? "the page crashed" : "tour.js ran and the Tutorial button is there");
+    /* The tab switcher the step list names has to BE there, or every pane step is blind. */
+    ok("...and the switcher its step list names exists on the page",
+       await vp.evaluate(() => { const c = UJ.tour.cfg();
+         return !c.tab || typeof window[c.tab] === "function"; }),
+       (VCFG && VCFG.tab) ? VCFG.tab + "() is a function" : "no switcher declared");
+    const walked = await vp.evaluate(async () => {
+      const o = document.querySelector(".tour-offer");
+      if (o) o.querySelector(".tour-offer-no").click();
+      const id = UJ.tour.parts()[0].id;
+      UJ.tour.start(id);
+      const rows = [];
+      const n = UJ.tour.parts()[0].steps.length;
+      for (let i = 0; i < n; i++) {
+        await new Promise(r => setTimeout(r, 160));
+        const w = UJ.tour.where();
+        const ring = document.querySelector(".tour-ring");
+        const bub = document.querySelector(".tour-bubble").getBoundingClientRect();
+        rows.push({ step: w ? w.step + 1 : null,
+                    ringed: !!(ring && !ring.hidden),
+                    waiting: !document.querySelector(".tour-wait").hidden,
+                    inView: bub.left >= 0 && bub.right <= innerWidth
+                            && bub.top >= 0 && bub.bottom <= innerHeight });
+        document.querySelector(".tour-next").click();
+      }
+      return { rows: rows, missing: UJ.tour.missing() };
+    });
+    /* #list is empty until meshes arrive, and the meshes need the CDN this harness blocks. It is
+       the one target allowed to be unresolved here, and naming it keeps the allowance honest --
+       a second name appearing in this list is a real failure, not a harness limitation. */
+    const ALLOWED = ["#list", "#vrslot button"];
+    const unexpected = walked.missing.filter(m => ALLOWED.indexOf(m) < 0);
+    ok("every step in the scene finds its control",
+       unexpected.length === 0,
+       unexpected.length ? "not found: " + unexpected.join(", ")
+         : walked.rows.length + " steps walked; only " + walked.missing.join(", ")
+           + " unresolved, which this harness cannot load");
+    ok("...and the bubble stays on screen at every one of them",
+       walked.rows.every(r => r.inView),
+       walked.rows.filter(r => !r.inView).map(r => "step " + r.step).join(", ") || "all of them");
+    /* Most steps point at something; an opening step and a waiting step do not have to. */
+    ok("...and the spotlight lands on most of them",
+       walked.rows.filter(r => r.ringed).length >= walked.rows.length - 3,
+       walked.rows.filter(r => r.ringed).length + " of " + walked.rows.length + " spotlighted");
+    ok("...with no script errors from the walkthrough",
+       verrs.filter(e => /tour/i.test(e)).length === 0,
+       verrs.length ? verrs.slice(0, 3).join(" | ") : "none");
+    await vp.close();
+    srv.close();
+  }
+
+  await browser.close();
 
   finish();
 })();

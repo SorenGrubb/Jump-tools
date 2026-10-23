@@ -1,11 +1,25 @@
 # -*- coding: utf-8 -*-
-u"""µJump gets a walkthrough: part one, finding a cell and saying what it is.       2026-10-23
+u"""µJump gets a walkthrough — four of them, behind one Tutorial button.           2026-10-23
 
 Søren: *"We should make a tutorial for uJump that walks the user through the functions and
 features."* Asked which form, he chose **the overlay on the real page** over a written page with
-screenshots, asked for it **in three parts**, and scoped part one as *finding a cell* and
-*identifying one*. Audience: a neuroscientist who has not seen this tool — it explains the tool,
-not the biology.
+screenshots and asked for it **in parts**. The parts, in the order he set them:
+
+  find         finding a cell, and saying what it is                             15 steps
+  organelles   logging a structure, outlining it, and the two being paired       18 steps
+  filter       Filter and show — describing a population instead of a cell       14 steps
+  export       taking a cube of the volume away, to Colab or to Blender           6 steps
+
+ORGANELLES SITS BEFORE FILTER AND SHOW at his word: *"Ok now we need the organelle annotation
+and tracing tutorial, but that should be before the filter and show."* Tracing moved in there
+with it, out of the export part, so a contour is described once and beside the annotation it
+serves. Audience: a neuroscientist who has not seen this tool — it explains the tool, not the
+biology.
+
+THE IDS ARE NAMES, NOT NUMBERS. They were part1/part2/part3, and inserting a part in the middle
+renamed every part after it — silently, in saved progress as well as in the code, and in every
+line of prose that said "part three". Names do not move, the picker numbers its own rows, and
+the steps refer to each other by what they cover.
 
 WHY NOT SCREENSHOTS, IN ONE EXAMPLE FROM TODAY. Three days ago those three buttons read "Random
 example", "Random unassigned cell — help identify one" and "Random community-identified cell —
@@ -33,11 +47,10 @@ WHAT GOES IN
                           DOMContentLoaded, because this script block sits above #tourdata in the
                           document and load() on its own found nothing there
 
-ALL THREE PARTS ARE NOW DECLARED -- finding a cell (15 steps), Filter and show (14), and the
-tracing pad with the region/Blender export (13). VR IS DELIBERATELY ABSENT: vr.html is being
-rewritten elsewhere, and a walkthrough pointing at controls about to move is worse than none.
-tourcheck.js still asserts the invariant rather than a count of three -- every part that EXISTS
-has steps, a title and a line saying what it covers -- so adding a fourth needs no change there.
+VR IS DELIBERATELY ABSENT: vr.html is being rewritten elsewhere, and a walkthrough pointing at
+controls about to move is worse than none. It gets a fifth part once that settles, and
+tourcheck.js asserts the invariant rather than a count -- every part that EXISTS has steps, a
+title and a line saying what it covers -- so adding one needs no change there.
 
 THE STEPS THAT WAIT. Most of the identity card does not exist until a cell has been shown -- it is
 rendered into #nucpanel at runtime. Those steps carry `needs` (the selector to wait for) and
@@ -114,8 +127,8 @@ def edit(path, pairs):
 # ── THE STEPS ─────────────────────────────────────────────────────────────────────────────────
 # Written as Python, emitted as JSON, so the one list in the repository is this one and the page
 # carries a build product of it. Every `at` is a selector tourcheck.js looks for in ujump.html.
-PART1 = {
-    "id": "part1",
+PART_FIND = {
+    "id": "find",
     "title": "Finding a cell, and saying what it is",
     "blurb": u"The Jump tab: landing on a cell, reading its identity card, and recording what "
              u"you think it is.",
@@ -194,16 +207,185 @@ PART1 = {
                 u"saved and credited, and it earns points &mdash; more for a cell nobody has "
                 u"named than for one that already has three votes."},
 
-        {"at": "#mainTabs", "title": u"That is part one",
-         "say": u"You can now find a cell and say what it is. Part two is the other direction "
-                u"&mdash; <b>Filter and show</b>, where you describe a population and get back "
-                u"every cell that matches. Part three is looking at them properly: the EM plane, "
-                u"the 3D mesh, the viewer, VR, and tracing structures of your own."},
+        # NAMED, NOT NUMBERED. Every cross-reference between parts used to say "part two" and
+        # "part three", and inserting the organelle part before Filter and show made all of them
+        # wrong at once -- in prose, where nothing can check it. The picker numbers its own rows;
+        # the text names the walkthrough instead, so reordering costs nothing.
+        {"at": "#mainTabs", "title": u"That is the first part",
+         "say": u"You can now find a cell and say what it is. Next, <b>organelles</b> &mdash; "
+                u"logging where a structure sits and outlining what shape it is, which is the "
+                u"work this tool exists for. After that, <b>Filter and show</b>, where you "
+                u"describe a population instead of a cell, and finally taking a cube of the "
+                u"volume away to work on elsewhere."},
     ],
 }
 
-PART2 = {
-    "id": "part2",
+# ── ORGANELLES ────────────────────────────────────────────────────────────────────  2026-10-23
+# Søren: *"Ok now we need the organelle annotation and tracing tutorial, but that should be before
+# the filter and show."* Asked where tracing should end up, he chose to move it out of the export
+# part and in here, next to the annotation it serves -- so tracing is described once, and the part
+# that follows Filter and show shrinks to taking data away.
+#
+# WHY THESE TWO BELONG TOGETHER, which is also the thing the part has to teach: µJump logs an
+# organelle two different ways and they are not alternatives. A POINT says WHERE a structure is
+# (a point, or a pair of points for anything with two ends); an OUTLINE says WHAT SHAPE it is,
+# contour by contour, with a volume. core/organellelink.js is the rule that marries them -- a
+# point inside an outline is the same organelle -- and the cell panel's Organelles section counts
+# all three: outlined, logged, paired. A tutorial that covered them in different parts would be
+# teaching them as two features, which is exactly the mistake that module was written to undo.
+#
+# THREE ROUTES IN, and the order here is the order of effort: the section on the cell panel that
+# shows what is already known, the per-cell form behind "Log one", and the bulk card for the day
+# you have marked the same kind of structure in forty cells.
+PART_ORGAN = {
+    "id": "organelles",
+    "title": u"Organelles — logging them, and outlining them",
+    "blurb": u"Where a structure sits, what shape it is, and how the two are paired: the cell's "
+             u"Organelles section, the report form, the bulk route, and the tracing pad.",
+    "steps": [
+        {"say": u"A cell's identity is one answer about the whole cell. This part is about the "
+                u"<b>structures inside it</b> &mdash; centrioles, cilia, mitochondria, and the "
+                u"rest of a 61-kind list. Two things can be recorded about each one, and they "
+                u"are not alternatives: a <b>point</b> saying where it is, and an <b>outline</b> "
+                u"saying what shape it is. About four minutes.",
+         "title": u"Where a structure is, and what shape it is"},
+
+        {"at": "#cellOrganDetails", "tab": "jump", "press": "#randomOfType",
+         "needs": "#cellOrganDetails", "after": u"show a cell, so there is something to count",
+         "title": u"What is already known about this cell",
+         "say": u"The cell panel's <b>Organelles</b> section counts three things: how many "
+                u"structures are <b>outlined</b>, how many are <b>logged</b> as points, and how "
+                u"many are <b>paired</b> &mdash; a point that falls inside an outline, which is "
+                u"the same organelle recorded both ways. Open it and each one is listed."},
+
+        {"at": ".organshowall", "needs": ".organshowall", "press": "#randomOfType",
+         "after": u"open the Organelles section on a cell that has some",
+         "title": u"All of them at once, in the viewer",
+         "say": u"This opens Neuroglancer with the cell and every outline on it &mdash; one "
+                u"annotation layer each, in the colours they were drawn in, cell see-through in "
+                u"the 3D pane. It is the quickest way to see whether a set of outlines is "
+                u"distributed the way you expect, or clustered where you happened to be looking."},
+
+        {"at": "#idfOrganelleToggle", "needs": "#idfOrganelleToggle", "press": "#idfgo",
+         "after": u"work through Identify to its result screen",
+         "title": u"Logging one yourself",
+         "say": u"At the end of the guided identification, <b>Log one &rarr;</b> opens the "
+                u"organelle form on the same cell, at the same coordinate. It is deliberately a "
+                u"small line rather than a panel: it is the thing you do <i>after</i> saying what "
+                u"the cell is, not instead of it."},
+
+        {"at": "#organRows", "needs": "#organRows", "press": "#idfOrganelleToggle",
+         "after": u"press “Log one”",
+         "title": u"One row per structure, from a list of 61",
+         "say": u"Each row is one structure: pick its kind from the topic-organised list and give "
+                u"its coordinate. Anything with two ends &mdash; a primary cilium, an NR type II "
+                u"&mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into "
+                u"the first box and all three fill themselves."},
+
+        {"at": "#organAddRow", "needs": "#organAddRow", "press": "#idfOrganelleToggle",
+         "after": u"press “Log one”",
+         "title": u"As many as the cell has",
+         "say": u"<b>+ Add another structure</b> gives you another row, of any kind. Log two "
+                u"centrioles if there are two; log a centriole and the cilium sitting on it, "
+                u"which is the usual pair. One report, one cell, however many structures."},
+
+        {"at": ".organ-paste-box", "needs": ".organ-paste-box", "press": "#idfOrganelleToggle",
+         "after": u"press “Log one”",
+         "title": u"Or point at them in the viewer instead",
+         "say": u"Typing coordinates is the slow way. Ctrl+click each structure in Neuroglancer, "
+                u"paste that link in here, pick what they all are, and every marker becomes a "
+                u"row. It stays shut by default because it is the shortcut for the day you have "
+                u"twelve mitochondria &mdash; not the way in."},
+
+        {"at": "#organSubmit", "needs": "#organSubmit", "press": "#idfOrganelleToggle",
+         "after": u"press “Log one”",
+         "title": u"Submitting it",
+         "say": u"One submission carries every row, with an optional comment on all of them "
+                u"&mdash; the place to say “cilium is short, hard to trace to a clear "
+                u"tip”. Signing in with Google is what credits the report to you and tells "
+                u"you if it is confirmed."},
+
+        {"at": "#bulkOrganPanel", "tab": "jump",
+         "title": u"The other end of the scale: one kind, many cells",
+         "say": u"<b>Bulk organelle annotation</b> is for a survey rather than a cell. Mark the "
+                u"same kind of structure in as many cells as you like in Neuroglancer &mdash; a "
+                u"point, or a line for anything with two ends &mdash; and paste the whole address "
+                u"bar here. You never visit the cells one at a time."},
+
+        {"at": "#bulkOrganResolve",
+         "title": u"It works out which cell each marker is in",
+         "say": u"<b>Find the cells</b> looks every marker up in the real segmentation, in order: "
+                u"the cell at that point; failing that the nucleus at it; failing that the "
+                u"nearest nucleus, with the distance shown so you can judge it. A marker in "
+                u"nothing is listed with the reason and cannot be ticked. Then tick the rows you "
+                u"trust, add a comment, and submit them together &mdash; nothing is guessed."},
+
+        {"at": "#tracingCard", "tab": "jump", "press": "#randomOfType",
+         "needs": "#tracingCard", "after": u"show a cell, so there is a plane to draw on",
+         "title": u"Where the drawing happens",
+         "say": u"This card appears once a cell is on screen. The EM plane you are looking at is "
+                u"a real 4 &times; 4 &times; 40 nm image, and anything you draw on it is in "
+                u"<b>volume coordinates</b> &mdash; not pixels of your screen &mdash; so a "
+                u"contour keeps its meaning when you come back to it or open it somewhere else."},
+
+        {"at": "#tracePadOpen", "needs": "#tracePadOpen", "press": "#tracePadOpen",
+         "after": u"press “Trace it here”",
+         "title": u"Open the pad",
+         "say": u"<b>Trace it here</b> opens the pad over the plane. It is a polygon tool by "
+                u"default: click once per vertex, and close the shape by clicking the first "
+                u"point again. That suits a vessel lumen or a nuclear outline, where a dozen "
+                u"points describe the boundary better than two hundred do."},
+
+        {"at": "#tracePadPen", "needs": "#tracePadPen", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"Or draw it freehand",
+         "say": u"<b>Pen</b> follows the pointer continuously, which is what you want with a "
+                u"graphics tablet and a pen in your hand &mdash; a mitochondrion or an astrocytic "
+                u"process has no corners to click. The two modes write the same contour; only the "
+                u"number of points differs."},
+
+        {"at": "#tracePadGhosts", "needs": "#tracePadGhosts", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"See what is already segmented",
+         "say": u"This lays the cell and its nucleus underneath your drawing, see-through. Use it "
+                u"to check that what you are outlining really is inside the cell you think it is "
+                u"&mdash; the commonest tracing error is a process that belongs to the neighbour."},
+
+        {"at": "#tracePadDraft", "needs": "#tracePadDraft", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"It keeps your work in this browser",
+         "say": u"<b>Save draft</b> puts the contour in this browser's own storage, under the "
+                u"cell it belongs to, so closing the pad does not lose it. It is a draft, in one "
+                u"browser &mdash; not a submission and not a backup. Export anything you want to "
+                u"keep."},
+
+        {"at": "#tracePad3D", "needs": "#tracePad3D", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"Stack the contours into a shape",
+         "say": u"Trace the same structure on several planes and this lifts the stack into 3D "
+                u"&mdash; the same thing you would do in TrakEM2, at a smaller scale. It is how "
+                u"you get a surface out of a structure the automated segmentation never gave a "
+                u"label to."},
+
+        {"at": "#tracingRead", "needs": "#tracingRead", "press": "#randomOfType",
+         "after": u"show a cell, so the tracing card is there",
+         "title": u"And read them back out",
+         "say": u"<b>Read the contours</b> gives you the drafts as coordinates you can paste into "
+                u"Python, FIJI or Blender. Plain numbers, with the resolution written next to "
+                u"them, because a contour whose units you have to guess is not data."},
+
+        {"at": "#mainTabs",
+         "title": u"Both halves, on one cell",
+         "say": u"That is the pair: a <b>point</b> from the report form saying a structure is "
+                u"there, and an <b>outline</b> from the pad saying what shape it is. Record both "
+                u"on the same organelle and the cell panel's Organelles section shows it as "
+                u"<b>paired</b> &mdash; which is the strongest thing this tool can say about a "
+                u"structure."},
+    ],
+}
+
+PART_FILTER = {
+    "id": "filter",
     "title": u"Filter and show \u2014 every cell that matches",
     "blurb": u"Describing a population by type, layer, size or place, then counting it and "
              u"taking it away as a sheet.",
@@ -283,92 +465,127 @@ PART2 = {
 
         {"at": "#filterVR", "title": u"Or look at all of them at once",
          "say": u"<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; "
-                u"<b>Show in VR</b> opens them as meshes you can walk through. Part three goes "
-                u"the other way — making geometry of your own, by hand or by the box."},
+                u"<b>Show in VR</b> opens them as meshes you can walk through. The last "
+                u"walkthrough does the same for a <b>cube of the volume</b> rather than a set of "
+                u"cells &mdash; a region, exported to a notebook or straight to Blender."},
     ],
 }
 
-# ── PART THREE ────────────────────────────────────────────────────────────────────  2026-10-23
-# Drawing rather than reading. The two places in µJump where you produce something instead of
-# fetching something: the tracing pad, where you draw a contour on the EM plane, and the region
-# box, which hands you a notebook for a cube of the volume.
+# ── INTO VR ───────────────────────────────────────────────────  2026-10-23
+# Søren: *"Now we need a guide for collecting cells for VR, opening the VR scene and continuing
+# the tutorial there."* This part is the FIRST half of that -- everything that happens in µJump,
+# ending at the button that opens the scene. The second half lives in vr.html's own step list
+# (src/the_walkthrough_follows_you_into_vr.py) because it is a different document: a walkthrough
+# cannot survive a navigation, so the last step here declares `handoff` and the scene picks it up.
+#
+# THE CONTROLS ARE core/vrbasket.js's AND ARE ALL BUILT AT RUNTIME. ".vrb-btn" is installed beside
+# every mesh-download button, and "#vrb-pill" is display:none until the collection has something
+# in it -- so every step here waits, and `needs` is a VISIBILITY test (rectOf), not an existence
+# test, which is what makes a hidden pill wait rather than spotlight nothing.
+PART_TOVR = {
+    "id": "vrcollect",
+    "title": u"Into VR — collecting cells and opening the scene",
+    "blurb": u"Gathering the cells you want to stand among, what travels with them, and the two "
+             u"ways into the scene: this machine, or a standalone headset.",
+    "steps": [
+        {"say": u"The viewer is a second page, and you decide what goes into it. You build a "
+                u"<b>collection</b> here — a list of cell ids, a few hundred bytes, not "
+                u"megabytes of geometry — and the scene fetches the meshes itself. This part "
+                u"gets you there; the walkthrough then carries on inside the scene. "
+                u"About two minutes.",
+         "title": u"You choose what goes in"},
+
+        {"at": ".vrb-btn", "tab": "jump", "needs": ".vrb-btn", "press": "#randomOfType",
+         "after": u"show a cell, so there is something to collect",
+         "title": u"+ VR, beside every mesh",
+         "say": u"Wherever this tool offers a cell's mesh, there is a <b>+ VR</b> beside it. "
+                u"Pressing it adds that cell to the collection and the button turns into "
+                u"<b>✓ In VR</b> — press it again to take it out. Nothing is fetched by "
+                u"pressing it: you are building a list."},
+
+        {"at": "#vrb-pill", "needs": "#vrb-pill", "press": ".vrb-btn",
+         "after": u"add a cell with “+ VR”",
+         "title": u"The collection, bottom right",
+         "say": u"<b>🥽 VR collection (n)</b> appears once there is something in it and "
+                u"says how many. The collection lives in this browser and is shared by every Jump "
+                u"tool on the site, so cells you gather here are still there tomorrow, and still "
+                u"there if you wander off into another tool."},
+
+        {"at": "#vrb-tray", "needs": "#vrb-tray", "press": "#vrb-pill",
+         "after": u"press the collection pill",
+         "title": u"What is in it, and what travels with it",
+         "say": u"Each row is one cell, with its id and a × to drop it. A row may also say "
+                u"“· n synapses” or “· n points”: pressing + VR in "
+                u"<b>Connectivity</b>, <b>Cell contacts</b> or <b>Astrocyte–synapse "
+                u"proximity</b> attaches those points to the cell, and the scene draws them on "
+                u"it. More than about thirty cells and the tray warns you — a standalone "
+                u"Quest 2 will struggle."},
+
+        {"at": ".vrb-go", "needs": ".vrb-go", "press": "#vrb-pill",
+         "after": u"press the collection pill",
+         "title": u"Opening the scene on this machine",
+         "say": u"<b>Open VR viewer</b> opens the scene in a new tab with this collection in it. "
+                u"On a PC with Quest Link that is the route to take: open it here, then press "
+                u"<b>Enter VR</b> in the scene. On a plain monitor it is still the 3D viewer, "
+                u"with the mouse."},
+
+        {"at": "[data-act=\"copy\"]", "needs": "[data-act=\"copy\"]", "press": "#vrb-pill",
+         "after": u"press the collection pill",
+         "title": u"...or on a standalone headset",
+         "say": u"A standalone Quest has its own browser, which cannot see this collection. "
+                u"<b>Copy headset link</b> puts the list in a URL to send yourself. One "
+                u"limitation the tray states: synapses and contact points are too many for a "
+                u"link — for those, open the scene here, press <b>💾 Save "
+                u"scene</b>, and open the saved scene’s link in the headset instead."},
+
+        {"at": "#filterVR", "tab": "filter",
+         "title": u"Or send a whole population at once",
+         "say": u"Back in <b>Filter and show</b>: once you have previewed a set of matches, "
+                u"<b>🥽 Show in VR</b> sends them straight to the scene without "
+                u"collecting them one at a time, and the dropdown beside it caps how many "
+                u"— evenly spread through the list when there are more. Thirty for a "
+                u"headset or a laptop; several hundred on a strong PC."},
+
+        # THE HANDOFF. Declared on the step that points at the button which leaves this page, and
+        # written when the step is SHOWN -- by the time they have pressed it there is no later
+        # moment to write anything in.
+        {"at": ".vrb-go", "needs": ".vrb-go", "press": "#vrb-pill", "handoff": "vrscene",
+         "after": u"press the collection pill",
+         "title": u"Go on, then",
+         "say": u"Press <b>Open VR viewer</b>. The walkthrough carries on in the scene itself "
+                u"— moving about, seeing inside the cells, and finding the tracings and "
+                u"organelles from earlier drawn on them. If the scene opens and does not offer "
+                u"to continue, its own <b>Tutorial</b> button has it."},
+    ],
+}
+
+# ── THE EXPORT ────────────────────────────────────────────────────────────────────  2026-10-23
+# What is left once tracing moved into the organelle part: taking a CUBE of the volume away. Not
+# a set of cells (that is Filter and show) and not one structure (that is the pad) -- a region,
+# with a notebook that already knows its coordinates.
 #
 # VR IS DELIBERATELY NOT HERE. vr.html is being rewritten in another conversation and a
-# walkthrough that points at controls which are about to move is worse than no walkthrough; it
-# gets its own part once that settles. Part two's closing step says so rather than promising it.
-PART3 = {
-    "id": "part3",
-    "title": u"Drawing your own — the tracing pad and the region box",
-    "blurb": u"Making geometry instead of fetching it: contours drawn by hand on the EM plane, "
-             u"and a cube of volume exported to a notebook or to Blender.",
+# walkthrough pointing at controls which are about to move is worse than no walkthrough; it gets
+# its own part once that settles, and Filter and show's closing step says so rather than
+# promising it.
+PART_EXPORT = {
+    "id": "export",
+    "title": u"Taking a region away — the box, Colab and Blender",
+    "blurb": u"A cube of the volume rather than a list of cells: the region box, and the "
+             u"ready-made notebooks that fetch it, including one that writes a .blend.",
     "steps": [
-        {"say": u"Everything so far has been <b>reading</b> the volume &mdash; landing on a cell, "
-                u"asking what it is, asking for every cell like it. This part is about the two "
-                u"places where you <b>make</b> something: drawing a structure nobody has "
-                u"segmented, and cutting out a cube of the volume to work on elsewhere. "
-                u"About three minutes.",
-         "title": u"Making something, rather than finding it"},
-
-        {"at": "#tracingCard", "tab": "jump", "press": "#randomOfType",
-         "needs": "#tracingCard", "after": u"show a cell, so there is a plane to draw on",
-         "title": u"Where the drawing happens",
-         "say": u"This card appears once a cell is on screen. The EM plane you are looking at is "
-                u"a real 4 &times; 4 &times; 40 nm image, and anything you draw on it is in "
-                u"<b>volume coordinates</b> &mdash; not pixels of your screen &mdash; so a "
-                u"contour keeps its meaning when you come back to it or open it somewhere else."},
-
-        {"at": "#tracePadOpen", "needs": "#tracePadOpen", "press": "#tracePadOpen",
-         "after": u"press “Trace it here”",
-         "title": u"Open the pad",
-         "say": u"<b>Trace it here</b> opens the pad over the plane. It is a polygon tool by "
-                u"default: click once per vertex, and close the shape by clicking the first "
-                u"point again. That suits a vessel lumen or a nuclear outline, where a dozen "
-                u"points describe the boundary better than two hundred do."},
-
-        {"at": "#tracePadPen", "needs": "#tracePadPen", "press": "#tracePadOpen",
-         "after": u"open the pad with \u201cTrace it here\u201d",
-         "title": u"Or draw it freehand",
-         "say": u"<b>Pen</b> follows the pointer continuously, which is what you want with a "
-                u"graphics tablet and a pen in your hand &mdash; a mitochondrion or an astrocytic "
-                u"process has no corners to click. The two modes write the same contour; only the "
-                u"number of points differs."},
-
-        {"at": "#tracePadGhosts", "needs": "#tracePadGhosts", "press": "#tracePadOpen",
-         "after": u"open the pad with \u201cTrace it here\u201d",
-         "title": u"See what is already segmented",
-         "say": u"This lays the cell and its nucleus underneath your drawing, see-through. Use it "
-                u"to check that what you are outlining really is inside the cell you think it is "
-                u"&mdash; the commonest tracing error is a process that belongs to the neighbour."},
-
-        {"at": "#tracePadDraft", "needs": "#tracePadDraft", "press": "#tracePadOpen",
-         "after": u"open the pad with \u201cTrace it here\u201d",
-         "title": u"It keeps your work in this browser",
-         "say": u"<b>Save draft</b> puts the contour in this browser's own storage, under the "
-                u"cell it belongs to, so closing the pad does not lose it. It is a draft, in one "
-                u"browser &mdash; not a submission and not a backup. Export anything you want to "
-                u"keep."},
-
-        {"at": "#tracePad3D", "needs": "#tracePad3D", "press": "#tracePadOpen",
-         "after": u"open the pad with \u201cTrace it here\u201d",
-         "title": u"Stack the contours into a shape",
-         "say": u"Trace the same structure on several planes and this lifts the stack into 3D "
-                u"&mdash; the same thing you would do in TrakEM2, at a smaller scale. It is how "
-                u"you get a surface out of a structure the automated segmentation never gave a "
-                u"label to."},
-
-        {"at": "#tracingRead", "needs": "#tracingRead", "press": "#randomOfType",
-         "after": u"show a cell, so the tracing card is there",
-         "title": u"And read them back out",
-         "say": u"<b>Read the contours</b> gives you the drafts as coordinates you can paste into "
-                u"Python, FIJI or Blender. Plain numbers, with the resolution written next to "
-                u"them, because a contour whose units you have to guess is not data."},
+        {"say": u"Everything so far has happened <b>in</b> the tool. This part is about getting "
+                u"a piece of the volume <b>out</b> of it &mdash; a cube, with its image data, its "
+                u"labels or its meshes, ready to open in a notebook or in Blender. About two "
+                u"minutes.",
+         "title": u"Getting a piece of it out"},
 
         {"at": "#filterSecRegion", "tab": "filter",
-         "title": u"The other way: ask for a box",
-         "say": u"Back in <b>Filter and show</b>. Instead of naming a kind of cell, you can name "
-                u"a <b>cube of the volume</b> and take everything inside it. This is the section "
-                u"for that &mdash; open it and you can type the corners, or use the cell on "
-                u"screen as the centre."},
+         "title": u"Where to ask for one",
+         "say": u"It lives in <b>Filter and show</b>, alongside the conditions, because it is the "
+                u"same question asked geometrically: instead of naming a kind of cell, name a "
+                u"<b>cube</b> and take what is inside it. Open this section and you can type the "
+                u"corners, or use the cell on screen as the centre."},
 
         {"at": "#regionAddBox",
          "title": u"One box, or several",
@@ -395,10 +612,10 @@ PART3 = {
 
         {"at": "#mainTabs",
          "title": u"That is the tool",
-         "say": u"Three parts: finding a cell and saying what it is, asking for every cell that "
-                u"matches, and making geometry of your own. VR gets its own walkthrough once "
-                u"that viewer settles. The Tutorial button brings this list back whenever you "
-                u"want a part again."},
+         "say": u"Four walkthroughs: finding a cell and saying what it is, recording the "
+                u"structures inside it, asking for every cell that matches a description, and "
+                u"taking a region away. VR gets its own once that viewer settles. The Tutorial "
+                u"button brings this list back whenever you want one again."},
     ],
 }
 
@@ -406,10 +623,15 @@ CFG = {
     "key": "grubblab_ujump_tour_v1",
     "offer": u"A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. "
              u"About two minutes.",
-    "menu": u"Three short walkthroughs. Each one points at the real controls, in order, and "
+    "menu": u"Four short walkthroughs. Each one points at the real controls, in order, and "
             u"waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it "
             u"remembers where you got to.",
-    "parts": [PART1, PART2, PART3],
+    # ORDER IS SØREN'S: organelles BEFORE Filter and show. "Ok now we need the organelle
+    # annotation and tracing tutorial, but that should be before the filter and show." It is also
+    # the right order on its own terms -- organelles are about one cell, which is where somebody
+    # who has just done part one still is, and Filter and show is the first thing here that asks
+    # you to think in populations.
+    "parts": [PART_FIND, PART_ORGAN, PART_FILTER, PART_EXPORT, PART_TOVR],
 }
 
 TOURDATA = (u'<script type="application/json" id="tourdata">\n'

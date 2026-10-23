@@ -33,6 +33,12 @@
   :root[data-palette="ujump"]{--bg:#0d1117;--panel:#161b22;--line:#2a313c;--ink:#e6edf3;
     --mut:#8b949e;--accent:#27e0b3;--on-accent:#06231c;--warn:#e3b341;--shadow:rgba(0,0,0,.3);
     --card:initial;--muted:initial;--teal:initial}
+  /* THE THIRD PALETTE: vr.html's own :root, verbatim. It is the dangerous one -- it defines
+     --card (dark) and calls its text --fg, so a chain ending at --ink's near-black literal gave
+     dark-on-dark. --ink/--muted/--teal/--panel/--warn are deliberately absent, as they are there. */
+  :root[data-palette="vr"]{--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--mut:#8b949e;
+    --line:#30363d;--accent:#3fb950;
+    --ink:initial;--panel:initial;--muted:initial;--teal:initial;--warn:initial}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
   .wrap{max-width:720px;margin:0 auto;padding:24px}
   .block{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;
@@ -105,7 +111,9 @@
           "say": "This step cannot be read until a card exists.", "wait": 2500 },
         { "at": "#filterIncludeUnclassified", "say": "Inside a collapsed <details>, which the engine has to open." },
         { "at": "#bottomThing", "say": "At the bottom of a long page, so it has to be scrolled to." },
-        { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." }
+        { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." },
+        { "at": "#bottomThing", "handoff": "part2",
+          "say": "A step that hands the reader to another page, where part two is waiting. Showing it leaves the note; the fixture then checks that ready() picks the note up, offers to carry on, and spends it." }
       ]
     },
     {

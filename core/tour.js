@@ -94,6 +94,40 @@ var UJ = UJ || {};
     writeState(s);
   }
 
+  /* ── A WALKTHROUGH THAT CROSSES A PAGE ─────────────────────────────────────────  2026-10-23
+     Søren: *"Now we need a guide for collecting cells for VR, opening the VR scene and
+     continuing the tutorial there."* Opening the scene is a navigation to another document, so
+     the walkthrough cannot simply carry on -- the page it was running in is gone.
+
+     A step may therefore declare `handoff: "<partId>"`, meaning "the reader is about to be sent
+     somewhere else, where that part is waiting". Rendering such a step writes the part's id
+     beside the progress, under the SAME storage key; the page that declares that part sees the
+     note on arrival, offers to carry on, and clears it.
+
+     AN OFFER, NOT AN AUTO-START, like everything else here -- but a DIFFERENT offer. "First time
+     here?" would be wrong for somebody who was told two seconds ago that the walkthrough
+     continues in the scene, and silence would be a broken promise.
+
+     WHAT THE HEADSET DOES INSTEAD. A standalone Quest has its own browser and therefore its own
+     localStorage, so a note written on the PC is not there when the scene opens in the headset.
+     Nothing breaks: no note means no continuation offer, and the Tutorial button in the scene
+     still has the part. That is the honest degradation, and the reason the note is a nicety
+     rather than the mechanism. */
+  function markHandoff(partId) {
+    var s = readState();
+    if (s.handoff === partId) return;
+    s.handoff = partId;
+    writeState(s);
+  }
+  function takeHandoff() {
+    var s = readState();
+    var h = s.handoff;
+    if (h === undefined) return null;
+    delete s.handoff;
+    writeState(s);
+    return h || null;
+  }
+
   /* ── the overlay ───────────────────────────────────────────────────────────────────────── */
   var CSS = [
     /* The dimming is FOUR panels rather than one box-shadow, because a huge spread shadow is what
@@ -128,6 +162,7 @@ var UJ = UJ || {};
        core/ is loaded by pages with DIFFERENT TOKEN NAMES AND OPPOSITE POLARITY:
          index.html   light by default, dark under [data-theme="dark"]:  --card --ink --muted --teal
          ujump.html   DARK by default, light under [data-theme="light"]: --panel --ink --mut --accent
+         vr.html      dark, one palette, no theme switch:                --card --fg  --mut --accent
        There is no --card on µJump. So `background:var(--card,#fff)` took the #fff fallback while
        `color:var(--ink,…)` took µJump's own --ink, which is #e6edf3 — the background came from the
        fallback and the text from the host, and the two knew nothing about each other.
@@ -135,16 +170,23 @@ var UJ = UJ || {};
        The rule now: EVERY PAIR THAT MUST CONTRAST RESOLVES THROUGH THE SAME CHAIN. --card then
        --panel then the literal, so background and colour are always from one palette and the
        bubble follows whichever light/dark the host is in, with no polarity logic here at all.
-       The fixture carries both palettes and tourcheck.js measures the contrast in each. */
+       The fixture carries all three palettes and tourcheck.js measures the contrast in each.
+
+       THE THIRD PALETTE, FOUND BEFORE IT SHIPPED (2026-10-23). vr.html defines --card as #161b22
+       and names its text --fg, NOT --ink. So the bubble would have taken a DARK background from
+       the host and the near-black #1b1e22 from its own fallback: the phone bug again, in a page
+       nobody had put this overlay on yet. --fg is in the chain now, and the measurement is what
+       says so rather than this comment. The case no chain can save is a host that defines a dark
+       --card and no text token at all; such a host is better off naming one. */
     ".tour-bubble{position:fixed;z-index:10042;max-width:min(380px,calc(100vw - 24px));",
-    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,var(--fg,#1b1e22));",
     "  border:1px solid var(--line,#e4e1da);",
     "  border-radius:12px;padding:14px 16px;box-shadow:0 10px 34px var(--shadow,rgba(0,0,0,.22));",
     "  font:14px/1.5 system-ui,-apple-system,sans-serif}",
     ".tour-bubble h4{margin:0 0 6px;font-size:15px}",
     ".tour-bubble p{margin:0 0 10px}",
     ".tour-bubble .tour-wait{margin:0 0 10px;font-size:13px;color:var(--accent,#2f6f8f)}",
-    ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,#b45309)}",
+    ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,var(--accent,#b45309))}",
     ".tour-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
     ".tour-row .tour-count{color:var(--muted,var(--mut,#5f6873));font-size:13px;margin-right:auto}",
     ".tour-btn{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;padding:6px 12px;",
@@ -167,7 +209,7 @@ var UJ = UJ || {};
     /* LEFT, not right: core/vrbasket.js pins its "+ VR" pill to right:16px bottom:16px, and the
        invitation was landing on top of it. */
     ".tour-offer{position:fixed;left:14px;bottom:14px;z-index:10030;max-width:320px;",
-    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,var(--fg,#1b1e22));",
     "  border:1px solid var(--line,#e4e1da);",
     "  border-radius:12px;padding:13px 15px;box-shadow:0 8px 26px var(--shadow,rgba(0,0,0,.16));",
     "  font:14px/1.45 system-ui,-apple-system,sans-serif}",
@@ -182,7 +224,7 @@ var UJ = UJ || {};
     ".tour-menu-back{position:fixed;inset:0;z-index:10048;background:rgba(0,0,0,.45)}",
     ".tour-menu{position:fixed;z-index:10050;left:50%;top:50%;transform:translate(-50%,-50%);",
     "  width:min(420px,calc(100vw - 28px));max-height:calc(100vh - 40px);overflow:auto;",
-    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,var(--fg,#1b1e22));",
     "  border:1px solid var(--line,#e4e1da);border-radius:14px;padding:16px;",
     "  box-shadow:0 14px 44px var(--shadow,rgba(0,0,0,.3));",
     "  font:14px/1.5 system-ui,-apple-system,sans-serif}",
@@ -389,6 +431,9 @@ var UJ = UJ || {};
     clearWatch();
 
     if (s.tab) hostTab(s.tab);
+    /* Written when the step is SHOWN, not when the reader leaves: by the time they have pressed
+       the button this step is about, this page is unloading and there is no later moment. */
+    if (s.handoff) markHandoff(s.handoff);
 
     /* `needs`: wait for it, say what to press meanwhile, and go on by itself when it lands.
 
@@ -481,6 +526,17 @@ var UJ = UJ || {};
      has tabs; a host without it simply does not get tab switching, rather than an exception. */
   function hostTab(name) {
     try {
+      /* A HOST MAY NAME ITS OWN SWITCHER IN THE STEP LIST.                        2026-10-23
+         vr.html does not load core/stepthrough.js and has tabs of its own: its panel is seven
+         panes built at runtime, only the current one displayed, and it exposes window.uiOpenTab.
+         A step there pointing at a control in a pane that is not open finds a 0x0 element and
+         reports its own target as missing -- which is exactly what the first run of this did,
+         for seven of fifteen steps.
+
+         Hardcoding uiOpenTab here would be core/ knowing about one page. So the step list says
+         which global does it (`"tab": "uiOpenTab"` beside the parts), the same way it says
+         everything else, and a page with no tabs simply does not declare one. */
+      if (CFG && CFG.tab && typeof window[CFG.tab] === "function") { window[CFG.tab](name); return; }
       if (UJ.stepthrough && typeof UJ.stepthrough.activateTab === "function")
         UJ.stepthrough.activateTab(name);
     } catch (_e) {}
@@ -507,28 +563,49 @@ var UJ = UJ || {};
     return true;
   }
 
+  /* The card both offers use. Same shape, different words: what differs between "first time
+     here?" and "you were sent here to carry on" is the sentence and which part it starts, and
+     writing it twice is how the two drift apart. */
+  function offerCard(lead, say, yes, onYes, onClose) {
+    var box = document.createElement("div");
+    box.className = "tour-offer";
+    box.innerHTML = "<p><b>" + lead + "</b> " + say + "</p>"
+      + '<div class="tour-row"><button type="button" class="tour-btn tour-offer-no">No thanks</button>'
+      + '<button type="button" class="tour-btn go tour-offer-yes">' + yes + "</button></div>";
+    document.body.appendChild(box);
+    var close = function () {
+      if (onClose) onClose();
+      if (box.parentNode) box.parentNode.removeChild(box);
+    };
+    box.querySelector(".tour-offer-no").addEventListener("click", close);
+    box.querySelector(".tour-offer-yes").addEventListener("click", function () {
+      close();
+      onYes();
+    });
+    return box;
+  }
+
   /* An invitation, not an auto-start: it says what the tour is and waits to be accepted, and once
      dismissed or finished it does not come back. */
   function offerOnce() {
     if (!CFG || !CFG.parts || !CFG.parts.length) return;
     var first = CFG.parts[0], st = readState()[first.id] || {};
     if (st.done || st.offered) return;
-    var box = document.createElement("div");
-    box.className = "tour-offer";
-    box.innerHTML = '<p><b>First time here?</b> ' + (CFG.offer
-      || "A short walkthrough points out what each control does.") + "</p>"
-      + '<div class="tour-row"><button type="button" class="tour-btn tour-offer-no">No thanks</button>'
-      + '<button type="button" class="tour-btn go tour-offer-yes">Show me</button></div>';
-    document.body.appendChild(box);
-    var close = function () {
-      mark(first.id, "offered", true);
-      if (box.parentNode) box.parentNode.removeChild(box);
-    };
-    box.querySelector(".tour-offer-no").addEventListener("click", close);
-    box.querySelector(".tour-offer-yes").addEventListener("click", function () {
-      close();
-      start(first.id);
-    });
+    offerCard("First time here?",
+      CFG.offer || "A short walkthrough points out what each control does.",
+      "Show me",
+      function () { start(first.id); },
+      function () { mark(first.id, "offered", true); });
+  }
+
+  /* The continuation, for a reader who was sent here by a `handoff` step on another page. Offered
+     however many times they arrive this way -- unlike offerOnce, which is a first-visit thing:
+     being sent here again IS the reason to ask again. */
+  function offerHandoff(p) {
+    offerCard("Carrying on &mdash;",
+      "the walkthrough you were following continues here, with <b>" + p.title + "</b>.",
+      "Carry on",
+      function () { startFromState(p.id); });
   }
 
   /* Resuming, or starting at the top — the one rule, in one place, because both the Tutorial
@@ -648,6 +725,13 @@ var UJ = UJ || {};
         console.warn("[tour] no #tourdata block in this document \u2014 nothing to walk through.");
         return;
       }
+      /* A note left by a `handoff` step on the page the reader came from takes precedence: they
+         were told the walkthrough continues here. Taken rather than read -- it is spent whether
+         they accept or decline, because a note that survives being answered would offer the same
+         continuation on every later visit. */
+      var h = takeHandoff();
+      var p = h ? partById(h) : null;
+      if (p && p.steps && p.steps.length) { offerHandoff(p); return; }
       offerOnce();
     };
     if (!document.getElementById("tourdata") && document.readyState === "loading")
@@ -657,6 +741,9 @@ var UJ = UJ || {};
 
   UJ.tour = {
     load: load, ready: ready, start: start, stop: stop, offerOnce: offerOnce, menu: menu,
+    /* For the check, and for anybody debugging a cross-page handoff: what note is pending, read
+       without spending it. takeHandoff() is deliberately not exported -- ready() owns that. */
+    handoff: function () { var v = readState().handoff; return v === undefined ? null : v; },
     cfg: function () { return CFG; },
     parts: function () { return (CFG && CFG.parts) || []; },
     missing: function () { return MISSING.slice(); },
