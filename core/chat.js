@@ -49,8 +49,13 @@ UJ.chat = (function(){
   function toolId(){
     var p = (location.pathname.split("/").pop() || "index.html").replace(/\.html?$/, "").toLowerCase() || "index";
     if (p === "microns_neuroglancer_jump") p = "ujump";
+    /* THE VR VIEWER IS NOT A TOOL (2026-10-23, Søren: "the VR is not a tool, so it should still state that we are in
+       the uJump tool"). vr.html says which tool's cells it is showing (UJ_CHAT_TOOL, from its dataset) and the chat
+       files its messages, presence and room under that tool. IS_VR only moves the launcher clear of its panel. */
+    if (p === "vr"){ IS_VR = true; return TOOLS[window.UJ_CHAT_TOOL] ? window.UJ_CHAT_TOOL : "ujump"; }
     return TOOLS[p] ? p : (window.UJ_CHAT_TOOL || p);
   }
+  var IS_VR = false;
   var TOOL = toolId();
   function toolName(t){ return (TOOLS[t] || [t])[0]; }
   function toolCol(t){ return (TOOLS[t] || [0, "#8b949e"])[1]; }
@@ -231,7 +236,7 @@ UJ.chat = (function(){
     EL.inp.addEventListener("input", suggest);
     r.classList.toggle("big", ST.big);
     /* the VR viewer's own panel sits bottom-left too: stand clear of it */
-    if (TOOL === "vr"){ l.style.left = "auto"; l.style.right = "12px"; l.style.bottom = "64px"; r.style.left = "auto"; r.style.right = "12px"; r.style.bottom = "104px"; t.style.left = "auto"; t.style.right = "12px"; t.style.bottom = "104px"; }
+    if (IS_VR){ l.style.left = "auto"; l.style.right = "12px"; l.style.bottom = "64px"; r.style.left = "auto"; r.style.right = "12px"; r.style.bottom = "104px"; t.style.left = "auto"; t.style.right = "12px"; t.style.bottom = "104px"; }
   }
   function setOpen(v){
     ST.open = !!v; ls("open", ST.open); EL.root.classList.remove("peek");
@@ -284,9 +289,33 @@ UJ.chat = (function(){
     if (!EL.root || !ST.open) return;
     var L = (ST.rooms[ST.room] || []).filter(function(m){ return !ST.mutedUsers[m.uid]; });
     var near = EL.ms.scrollHeight - EL.ms.scrollTop - EL.ms.clientHeight < 60;
-    EL.ms.innerHTML = (!ON ? '<div class="m sys">' + esc(STATUS) + "</div>" : "") + (L.length ? "" : (ON ? '<div class="m sys">No messages in the last 24 h in ' + esc(roomName(ST.room)) + ". Say hello — or type / for commands.</div>" : "")) + L.map(line).join("") + (LOCAL[ST.room] || []).map(function(t){ return '<div class="m sys">' + esc(t) + "</div>"; }).join("");
+    EL.ms.innerHTML = (!ON ? '<div class="m sys">' + esc(STATUS) + "</div>" + (NEED_SIGNIN ? '<div class="ujc-gsi" style="margin:8px 0"></div>' : "") : "") + (L.length ? "" : (ON ? '<div class="m sys">No messages in the last 24 h in ' + esc(roomName(ST.room)) + ". Say hello — or type / for commands.</div>" : "")) + L.map(line).join("") + (LOCAL[ST.room] || []).map(function(t){ return '<div class="m sys">' + esc(t) + "</div>"; }).join("");
     wire(EL.ms);
+    var gb = EL.ms.querySelector(".ujc-gsi"); if (gb) signInto(gb);
     if (near) scrollEnd();
+  }
+  /* ── A SIGN-IN BUTTON IN THE CHAT ITSELF ──────────────────────────────────────  2026-10-23
+     Søren: "I don't see a google login button anywhere, we need to have that clearly there, also in VR." The chat
+     used to say "Sign in with Google (the button in the tool)", and in several tools that button sits in a panel
+     you may not have open. Now the chat draws Google's own button. It is the PAGE's sign-in: a page that offers
+     UJ_CHAT_SIGNIN(el) draws it (vr.html does), otherwise Google's button is drawn with the callback the page
+     already gave google.accounts.id.initialize -- so signing in here signs you in to the tool too, and the chat
+     notices the new credential by itself. */
+  var NEED_SIGNIN = false, SIGNIN_POLL = 0;
+  function signInto(el){
+    try {
+      if (typeof window.UJ_CHAT_SIGNIN === "function"){ window.UJ_CHAT_SIGNIN(el); return; }
+      if (window.google && google.accounts && google.accounts.id){ google.accounts.id.renderButton(el, { theme: "filled_black", size: "medium", text: "signin_with" }); return; }
+    } catch (e){}
+    el.innerHTML = '<span style="color:#8b949e">Google sign-in is still loading…</span>';
+    setTimeout(function(){ if (el.isConnected && !ON) signInto(el); }, 1000);
+  }
+  function waitForCred(){
+    if (SIGNIN_POLL) return;
+    SIGNIN_POLL = setInterval(function(){
+      if (ON){ clearInterval(SIGNIN_POLL); SIGNIN_POLL = 0; return; }
+      if (!STARTING && cred()){ clearInterval(SIGNIN_POLL); SIGNIN_POLL = 0; NEED_SIGNIN = false; ensure(); }
+    }, 1500);
   }
   function wire(el){
     el.querySelectorAll("[data-href]").forEach(function(c){ c.onclick = function(){ window.open(c.dataset.href, "_blank", "noopener"); }; });
@@ -478,7 +507,7 @@ UJ.chat = (function(){
   }
 
   /* ════════════════════════════════════ CONNECTING ══════════════════════════════════════════ */
-  var STATUS = "Sign in with Google (the button in the tool) to chat.", LISTEN = {};
+  var STATUS = "Sign in with Google to chat:", LISTEN = {};
   function presence(){ if (ON) A.setPresence({ name: ST.name, flag: ST.flag, tool: TOOL, away: !!ST.away }); }
   function listen(room){
     if (LISTEN[room] || !ON) return;
@@ -497,7 +526,8 @@ UJ.chat = (function(){
     if (ON || STARTING) return STARTING;
     if (!CONFIGURED && !window.UJ_CHAT_TEST){ STATUS = "The chat is not set up yet: the Firebase project has to be created and its settings pasted into core/chat.js (see backend/CHAT-SETUP.md)."; render(); return null; }
     var c = cred();
-    if (!c && !window.UJ_CHAT_TEST){ STATUS = "Sign in with Google (the button in the tool) to chat."; render(); return null; }
+    if (!c && !window.UJ_CHAT_TEST){ STATUS = "Sign in with Google to chat:"; NEED_SIGNIN = true; waitForCred(); render(); return null; }
+    NEED_SIGNIN = false;
     STATUS = "Connecting…"; render();
     A = window.UJ_CHAT_TEST ? testAdapter() : firebaseAdapter();
     STARTING = (async function(){
