@@ -161,122 +161,7 @@
 <div id="panel">
   <button id="hide" title="Hide panel">✕</button>
   <h1>🥽 VR collection</h1>
-<script type="application/json" id="tourdata">
-{
- "key": "grubblab_ujump_tour_v1",
- "tab": "uiOpenTab",
- "offer": "A short walkthrough of the scene &mdash; moving about, seeing inside the cells, and what else can be drawn on them. About three minutes.",
- "menu": "The walkthrough for the scene. It points at the real controls, in order, and waits for you &mdash; nothing is pressed for you. Esc leaves at any time.",
- "parts": [
-  {
-   "id": "vrscene",
-   "title": "In the scene — moving about, and what is on the cells",
-   "blurb": "Getting around, seeing inside, the EM plane, and finding your own tracings and the community's organelles drawn on the cells you collected.",
-   "steps": [
-    {
-     "say": "You are standing in whatever was sent to this viewer &mdash; a collection you built, a set of filter matches, or a saved scene. The meshes are being fetched now; nothing was downloaded while you were choosing. This part is about getting around, and about the things from the earlier walkthroughs that turn up here on the cells. About three minutes.",
-     "title": "The collection, at scale"
-    },
-    {
-     "at": "#sub",
-     "title": "What it is doing, and how heavy it is",
-     "say": "This line is the scene's running commentary: what it is fetching, how many cells arrived, and how many million triangles it is drawing. That last number is the one that decides whether a headset keeps up, and <b>Light</b> below is the lever for it."
-    },
-    {
-     "at": "#keysCard",
-     "title": "Moving about",
-     "say": "<b>W A S D</b> walk, <b>Q</b> and <b>E</b> go down and up. With the mouse: drag to turn, scroll to zoom, right-drag to pan, and <b>right-click to fly to a point</b> &mdash; which is the fastest way to get to a cell you can see. Click a cell to pick it. This card folds away with <b>H</b> or a click."
-    },
-    {
-     "at": "#tabs",
-     "title": "The panel is seven tabs",
-     "say": "<b>View</b>, <b>Map</b>, <b>Objects</b>, <b>Activity</b>, <b>Tools</b>, <b>Spray</b> and <b>Share</b>. The walkthrough will move between them, so watch this row rather than hunting for a control that has gone: it has not, its tab is simply not the open one. <b>Aa</b> at the top turns the labels off once you know the icons."
-    },
-    {
-     "at": "#resetBtn",
-     "tab": "view",
-     "title": "When you get lost",
-     "say": "You will. Cells are hundreds of micrometres across at this scale and it is easy to end up inside one, or well outside the lot. <b>Reset view</b> puts the whole collection back in front of you."
-    },
-    {
-     "at": "#list",
-     "needs": "#list",
-     "after": "let the cells finish arriving",
-     "pageWait": true,
-     "wait": 15000,
-     "title": "Everything that is in here",
-     "say": "The list above the tabs is one row per thing in the scene &mdash; your cells, their nuclei, and anything else you switch on. Clicking a row picks that cell, which is what most of the panel then acts on."
-    },
-    {
-     "at": ".segwrap:has(#detail)",
-     "tab": "view",
-     "title": "How fine the meshes are",
-     "say": "<b>Light</b> is the coarsest level of detail &mdash; about 50k triangles for a pyramidal cell &mdash; and is what a standalone Quest 2 handles comfortably. <b>Full</b> is the finest level under 8 MB, about 5 million triangles. On a PC take Full; in a headset start Light and work up."
-    },
-    {
-     "at": "#glassBtn",
-     "tab": "view",
-     "title": "Seeing inside",
-     "say": "<b>See-through</b> makes the cells glassy, which is how you see a nucleus sitting inside its soma rather than guessing. Beside it, <b>Nuclei</b> turns the blue nuclei on and off, and <b>See-through others</b> keeps the cell you picked solid and glasses the rest &mdash; the one you want when a cell is buried in company."
-    },
-    {
-     "at": ".segwrap:has(#colourSel)",
-     "tab": "view",
-     "title": "Colour that means something",
-     "say": "<b>By type</b> gives each cell type its own colour; <b>excitatory / inhibitory / non-neuronal</b> reduces it to amber, lavender and green, which is the view to take when you want the balance of a population rather than its variety."
-    },
-    {
-     "at": "#vrslot button",
-     "needs": "#vrslot button",
-     "wait": 6000,
-     "pageWait": true,
-     "after": "open this on a machine that has a headset",
-     "title": "Into the headset",
-     "say": "<b>Enter VR</b> appears here when the browser can do it &mdash; a PC with Quest Link, or the Quest's own browser. On a plain monitor there is no button and nothing is lost: the whole scene works with the mouse, and everything the rest of this walkthrough points at works in both."
-    },
-    {
-     "at": "#emBtn",
-     "tab": "tools",
-     "title": "The electron micrograph, as a plane",
-     "say": "<b>EM section</b> draws the real micrograph through the picked cell's nucleus as a plane the cells pass through. It is the thing that keeps this honest: the meshes are an interpretation of that image, and here you see both at once, in register."
-    },
-    {
-     "at": "#gameBtn",
-     "tab": "tools",
-     "title": "A reason to come back",
-     "say": "<b>Identify a cell (game)</b> drops a cell in front of you, alone and unnamed, with the EM section through its nucleus: say what it is and score. Half are from the verified dataset and half are MICrONS predictions, so it tests you and the predictions at the same time."
-    },
-    {
-     "at": "#trcBtn",
-     "tab": "struct",
-     "title": "Your own tracings turn up here",
-     "say": "In <b>Objects</b>: <b>Traced</b> draws the structures traced by hand in µJump's tracing pad &mdash; lysosomes, whole cells, nuclei &mdash; on the cells they belong to. The contours you drew on a flat EM plane are a surface you can walk around."
-    },
-    {
-     "at": "#orgBtn",
-     "tab": "struct",
-     "title": "...and so do the logged organelles",
-     "say": "<b>Organelles</b> brings in the community-reported points from µJump that fall inside the bounding box enclosing the cells you brought. A centriole gets a 3D arrow from its cell's nucleus; a cilium an arrow from base to tip. This is the other half of the organelle walkthrough: what was a coordinate in a form is a direction in a room."
-    },
-    {
-     "at": "#sceneSave",
-     "tab": "share",
-     "title": "Keeping it, and taking it to the headset",
-     "say": "<b>&#128190; Save scene</b> saves everything as it stands &mdash; the cells, the view, the EM plane, the cut, the measurements, the paint &mdash; as a link you can share or reopen &mdash; and the only way to get synapses and contact points into a standalone headset, as the collecting walkthrough explains. <b>Copy headset link</b> beside it does the cells alone."
-    },
-    {
-     "at": "#panel",
-     "title": "That is the scene",
-     "say": "There is a great deal more in these tabs than one walkthrough should cover &mdash; flow, stimulation, recorded activity, a timeline, a tissue block. Every control carries a real explanation on hover, which is the right way to meet them: one at a time, when you want one. The <b>Tutorial</b> button at the top brings this back."
-    }
-   ]
-  }
- ]
-}
-</script>
-  <div class="ctl" id="tourRow"><button type="button" data-tour-menu="1"
-      title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button></div>
-      <div class="sub" id="sub">Loading…</div>
+  <div class="sub" id="sub">Loading…</div>
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
       <input id="sceneTitle" placeholder="Scene title" style="flex:1;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
@@ -1184,9 +1069,6 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 <script src="core/emtiles.js"></script>
 <script src="core/tracing.js"></script>
 <script src="core/traceloft.js"></script>
-<!-- The walkthrough overlay, the same one µJump uses. No core/stepthrough.js here:
-     this page has no tab bar, so no step names a tab. core/tour.js, 2026-10-23. -->
-<script src="core/tour.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "./core/vendor/three/three.module.min.js",
@@ -10683,23 +10565,47 @@ function stkRbcBuild(){
   const coarse = renderer.xr.isPresenting || matchMedia("(pointer: coarse)").matches, cap = coarse ? 3000 : 12000;
   let V = 0; const list = [], w = [];
   let VH = 0;
-  for (let c = 0; c < N.nc; c++){ if (!inb[c]) continue; const r = N.rad[N.cp[N.off[c]]], ht = STK.H ? stkHT(STK.H[c], 2 * r) : 0.3; list.push(c); V += N.vol[c] * ht; VH += N.vol[c] * ht; w.push(V); }
+  /* 2026-10-23 (Søren: "the capillaries that terminate at the edges of the dataset look like the RBC flow is stuck
+     there. The RBC should just disappear when they exit the dataset"). A cell that leaves the box is no longer put
+     back anywhere in the box (by volume): it re-enters where blood ENTERS the box -- the in-box chains fed from outside
+     it, weighted by their red-cell flux -- and nothing is placed in vessels without flow (< 10 µm/s), which were
+     filling up with cells that could never leave. */
+  const Q = STK.Q || STK.Q0, spd = c => { const r = Math.max(0.5, N.rad[N.cp[N.off[c]]]); return Math.abs(Q[c]) / (Math.PI * r * r); };
+  for (let c = 0; c < N.nc; c++){ if (!inb[c] || spd(c) < 10) continue; const r = N.rad[N.cp[N.off[c]]], ht = STK.H ? stkHT(STK.H[c], 2 * r) : 0.3; list.push(c); V += N.vol[c] * ht; VH += N.vol[c] * ht; w.push(V); }
+  { const el = [], ew = []; let E = 0;
+    for (let c = 0; c < N.nc; c++){
+      if (!inb[c] || spd(c) < 10) continue;
+      const j = Q[c] >= 0 ? N.ja[c] : N.jb[c];                 // the end blood comes in at
+      let fed = false;
+      for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){ const d = N.jc[t]; if (d === c || !inb[d]) continue; if ((N.jb[d] === j && Q[d] > 0) || (N.ja[d] === j && Q[d] < 0)){ fed = true; break; } }
+      if (fed) continue;
+      E += Math.abs(Q[c]) * (STK.H ? Math.max(0.02, STK.H[c]) : 0.3); el.push(c); ew.push(E);
+    }
+    STK.entry = el.length ? { list: el, w: ew, tot: E } : null; }
   if (!list.length) return;
   const real = Math.round(VH / 50);
   const n = Math.max(1, Math.min(cap, real));
   STK.rbcEvery = real / n;
   STK.pick = () => { const u = Math.random() * V; let lo = 0, hi = w.length - 1; while (lo < hi){ const m = (lo + hi) >> 1; if (w[m] < u) lo = m + 1; else hi = m; } return list[lo]; };
-  const P = { n, c: new Int32Array(n), s: new Float32Array(n), ox: new Float32Array(n), oy: new Float32Array(n), sp: new Float32Array(n) };
-  for (let i = 0; i < n; i++) stkSpawn(P, i);
+  const P = { n, c: new Int32Array(n), s: new Float32Array(n), ox: new Float32Array(n), oy: new Float32Array(n), sp: new Float32Array(n), hid: new Uint8Array(n) };
+  for (let i = 0; i < n; i++) stkSpawn(P, i, true);
   const mat = new THREE.MeshStandardMaterial({ color: "#c1121f", roughness: 0.45, metalness: 0, side: THREE.DoubleSide });
   const mk = geo => { const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.renderOrder = 1; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0; content.add(m); return m; };
   STK.parts = P; STK.rbcMesh = mk(stkRbcGeo()); STK.rbcPara = mk(stkShapeGeo(STK_SHAPES.para)); STK.rbcBullet = mk(stkShapeGeo(STK_SHAPES.bullet));
   stkWalls(true);
 }
 const _sM = new THREE.Matrix4(), _sQ = new THREE.Quaternion(), _sV = new THREE.Vector3(), _sT = new THREE.Vector3(), _sS = new THREE.Vector3(), _sY = new THREE.Vector3(0, 1, 0), _sU = new THREE.Vector3(), _sW = new THREE.Vector3();
-function stkSpawn(P, i){
+function stkSpawn(P, i, anywhere){
   const N = STK.net; let c = 0, s = 0;
-  for (let t = 0; t < 12; t++){
+  const E = STK.entry, Q = STK.Q || STK.Q0;
+  if (!anywhere && E){
+    const u = Math.random() * E.tot; let lo = 0, hi = E.w.length - 1; while (lo < hi){ const m = (lo + hi) >> 1; if (E.w[m] < u) lo = m + 1; else hi = m; }
+    /* it came in at some moment during this frame, so it is already that far along (not all of them heaped at the entry) */
+    c = E.list[lo];
+    const r = Math.max(0.5, N.rad[N.cp[N.off[c]]]), go = 0.5 + Math.random() * Math.abs(Q[c]) / (Math.PI * r * r) * (STK._sdt || 0.03);
+    s = Q[c] >= 0 ? go : N.len[c] - go;                     // may run past the chain's end: the caller carries it on through the junctions
+    if (!P.carry) s = Math.max(0, Math.min(N.len[c], s));
+  } else for (let t = 0; t < 12; t++){
     c = STK.pick(); s = Math.random() * N.len[c];
     const ii = N.cp[Math.min(N.off[c+1] - 1, N.off[c] + Math.floor((N.off[c+1] - N.off[c] - 1) * s / Math.max(1e-6, N.len[c])))];
     if (STK.box.containsPoint(_sV.set(N.pos[ii*3], N.pos[ii*3+1], N.pos[ii*3+2]))) break;
@@ -10747,7 +10653,7 @@ function stkRbcFrame(sdt){
   const volP = STK.rbcPara.geometry.userData.vol, volB = STK.rbcBullet.geometry.userData.vol;
   const rEnd = (c, j) => N.rad[N.ja[c] === j ? N.cp[N.off[c]] : N.cp[N.off[c+1] - 1]];
   for (let i = 0; i < P.n; i++){
-    let c = P.c[i], s = P.s[i];
+    let c = P.c[i], s = P.s[i]; P.hid[i] = 0;
     const o0 = N.off[c], o1 = N.off[c+1];
     let k = o0; while (k < o1 - 2 && N.arc[k+1] < s) k++;
     let r = Math.max(1, Math.min(N.rad[N.cp[k]], N.rad[N.cp[k+1]]) * (FF ? FF[c] : 1));
@@ -10762,9 +10668,11 @@ function stkRbcFrame(sdt){
       for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){
         const o = N.jc[t]; if (o === c) continue;
         const leaves = (N.ja[o] === j && Q[o] > 0) || (N.jb[o] === j && Q[o] < 0);
-        if (leaves && inb[o]){ tot += Math.abs(Q[o]); out.push(o, Math.abs(Q[o])); }
+        /* the branches out of the box count too (a cell taking one leaves the dataset), and a branch with
+           next to no flow (< 2 µm/s) takes no cells -- it was where they piled up (2026-10-23) */
+        if (leaves){ const ro = Math.max(0.5, rEnd(o, j)); if (Math.abs(Q[o]) / (Math.PI * ro * ro) >= 2){ tot += Math.abs(Q[o]); out.push(o, Math.abs(Q[o])); } }
       }
-      if (!out.length || tot <= 0){ stkSpawn(P, i); c = P.c[i]; s = P.s[i]; hops = 99; break; }
+      if (!out.length || tot <= 0){ P.carry = true; stkSpawn(P, i); P.carry = false; c = P.c[i]; s = P.s[i]; continue; }
       let nxt = out[0];
       if (out.length === 4){
         const fa = out[1] / tot, Df = 2 * rEnd(c, j), Da = 2 * rEnd(out[0], j), Db = 2 * rEnd(out[2], j);
@@ -10777,12 +10685,15 @@ function stkRbcFrame(sdt){
         for (let t = 0; t < out.length; t += 2) if (out[t] === want) ok = true;
         if (ok){ nxt = want; RIDE.ri++; } else RIDE.respawn = true;               // the end of the route (or the flow changed): plan a new one
       }
-      c = nxt; s = N.ja[c] === j ? Math.min(over, N.len[c]) : Math.max(0, N.len[c] - over);
+      if (!inb[nxt]){ P.carry = true; stkSpawn(P, i); P.carry = false; c = P.c[i]; s = P.s[i]; continue; }   // out of the dataset: gone, a new one comes in (already on its way)
+      c = nxt; s = N.ja[c] === j ? over : N.len[c] - over;   // not clamped: a fast cell runs on through the next junction too (clamped, they stopped at every chain end -- the "stuck" heaps, 2026-10-23)
     }
-    if (hops >= 20 && hops < 99){ stkSpawn(P, i); c = P.c[i]; s = P.s[i]; }
+    /* a cell that crossed more than 20 branches, or left the box mid-vessel, in ONE frame is a blur at this clock: it is
+       sent back in, and not drawn this frame -- drawn, all of them sat at the fastest entries in a heap (2026-10-23) */
+    if (hops >= 20 && hops < 99){ stkSpawn(P, i); c = P.c[i]; s = P.s[i]; P.hid[i] = 1; }
     P.c[i] = c; P.s[i] = s;
     { const ii = N.cp[Math.min(N.off[c+1] - 1, N.off[c] + Math.floor((N.off[c+1] - N.off[c] - 1) * Math.max(0, Math.min(1, s / Math.max(1e-6, N.len[c])))))];
-      if (!STK.box.containsPoint(_sV.set(N.pos[ii*3], N.pos[ii*3+1], N.pos[ii*3+2]))){ stkSpawn(P, i); c = P.c[i]; s = P.s[i]; } }
+      if (!STK.box.containsPoint(_sV.set(N.pos[ii*3], N.pos[ii*3+1], N.pos[ii*3+2]))){ stkSpawn(P, i); c = P.c[i]; s = P.s[i]; P.hid[i] = 1; } }
     const a0 = N.off[c], a1 = N.off[c+1];
     let kk = a0; while (kk < a1 - 2 && N.arc[kk+1] < s) kk++;
     const ia = N.cp[kk], ib = N.cp[Math.min(a1 - 1, kk + 1)], L = Math.max(1e-6, N.arc[Math.min(a1 - 1, kk + 1)] - N.arc[kk]), f = Math.max(0, Math.min(1, (s - N.arc[kk]) / L));
@@ -10793,7 +10704,8 @@ function stkRbcFrame(sdt){
     _sV.set(N.pos[ia*3] + (N.pos[ib*3] - N.pos[ia*3]) * f, N.pos[ia*3+1] + (N.pos[ib*3+1] - N.pos[ia*3+1]) * f, N.pos[ia*3+2] + (N.pos[ib*3+2] - N.pos[ia*3+2]) * f);
     if (Q[c] < 0) _sT.negate();                               // the cell's front faces downstream
     if (RIDE.on && i === RIDE.idx){ RIDE.pos.copy(_sV); RIDE.dir.copy(_sT); RIDE.c = c; RIDE.rv = rv; RIDE.seen = true; continue; }
-    if (RIDE.on && RIDE.seen && _sV.distanceToSquared(RIDE.eye) < 64) continue;   // riding: cells right at your eye would fill the view
+    if (RIDE.on && RIDE.seen && _sV.distanceToSquared(RIDE.eye) < 64) continue;
+    if (P.hid[i]) continue;   // riding: cells right at your eye would fill the view
     if (rv > 3.5){
       _sU.set(1, 0, 0); if (Math.abs(_sT.x) > 0.9) _sU.set(0, 1, 0); _sU.cross(_sT).normalize(); _sW.crossVectors(_sT, _sU);
       _sV.addScaledVector(_sU, P.ox[i] * (rv - 3)).addScaledVector(_sW, P.oy[i] * (rv - 3));
@@ -10970,7 +10882,7 @@ function bpFrame(sdt){
 /* ── every frame ── */
 function stkFrame(sdt){
   if (!STK.on) return;
-  STK.t += sdt;
+  STK.t += sdt; STK._sdt = sdt;
   /* autoregulation: the arterioles move towards their target with a ~6 s lag */
   if (Math.abs(STK.k - STK.kSolved) > 0.004) STK.dirty = true;
   if (STK.Q && STK.parts && sdt > 0) stkRbcFrame(sdt);
@@ -12631,10 +12543,5 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
   addTracedCells().then(() => { updateLabel(); if (!CELLS.length) subEl.textContent = "Nothing has been traced in " + DSX.label + " yet."; });
 }
 </script>
-<!-- The walkthrough. ready(), never start(): a tutorial that begins by itself is one
-     happening to somebody rather than one they asked for. ready() also picks up the note
-     left by µJump's `handoff` step, so a reader who was told the walkthrough carries
-     on here is offered exactly that instead of "First time here?". -->
-<script>UJ.tour&&UJ.tour.ready();</script>
 </body>
 </html>
