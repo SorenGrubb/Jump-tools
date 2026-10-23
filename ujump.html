@@ -651,7 +651,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 03:10</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 03:29</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -736,10 +736,12 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
 {
  "key": "grubblab_ujump_tour_v1",
  "offer": "A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. About two minutes.",
+ "menu": "Three short walkthroughs. Each one points at the real controls, in order, and waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it remembers where you got to.",
  "parts": [
   {
    "id": "part1",
    "title": "Finding a cell, and saying what it is",
+   "blurb": "The Jump tab: landing on a cell, reading its identity card, and recording what you think it is.",
    "steps": [
     {
      "say": "This tool reads one volume: <b>MICrONS minnie65</b>, about 1.7 &times; 1.4 &times; 0.5&nbsp;mm of mouse visual cortex imaged at 4&nbsp;&times;&nbsp;4 &times; 40&nbsp;nm. A nucleus detector found 144,118 cells in it. Roughly two thirds carry a machine-made guess at what they are; the rest carry nothing at all. This walkthrough is about looking at one and deciding."
@@ -829,6 +831,7 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
   {
    "id": "part2",
    "title": "Filter and show — every cell that matches",
+   "blurb": "Describing a population by type, layer, size or place, then counting it and taking it away as a sheet.",
    "steps": [
     {
      "tab": "filter",
@@ -904,7 +907,107 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#filterVR",
      "title": "Or look at all of them at once",
-     "say": "<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; <b>Show in VR</b> opens them as meshes you can walk through. Part three covers those properly — the EM plane, the 3D mesh, the viewer, VR, and tracing structures of your own."
+     "say": "<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; <b>Show in VR</b> opens them as meshes you can walk through. Part three goes the other way — making geometry of your own, by hand or by the box."
+    }
+   ]
+  },
+  {
+   "id": "part3",
+   "title": "Drawing your own — the tracing pad and the region box",
+   "blurb": "Making geometry instead of fetching it: contours drawn by hand on the EM plane, and a cube of volume exported to a notebook or to Blender.",
+   "steps": [
+    {
+     "say": "Everything so far has been <b>reading</b> the volume &mdash; landing on a cell, asking what it is, asking for every cell like it. This part is about the two places where you <b>make</b> something: drawing a structure nobody has segmented, and cutting out a cube of the volume to work on elsewhere. About three minutes.",
+     "title": "Making something, rather than finding it"
+    },
+    {
+     "at": "#tracingCard",
+     "tab": "jump",
+     "press": "#randomOfType",
+     "needs": "#tracingCard",
+     "after": "show a cell, so there is a plane to draw on",
+     "title": "Where the drawing happens",
+     "say": "This card appears once a cell is on screen. The EM plane you are looking at is a real 4 &times; 4 &times; 40 nm image, and anything you draw on it is in <b>volume coordinates</b> &mdash; not pixels of your screen &mdash; so a contour keeps its meaning when you come back to it or open it somewhere else."
+    },
+    {
+     "at": "#tracePadOpen",
+     "needs": "#tracePadOpen",
+     "press": "#tracePadOpen",
+     "after": "press “Trace it here”",
+     "title": "Open the pad",
+     "say": "<b>Trace it here</b> opens the pad over the plane. It is a polygon tool by default: click once per vertex, and close the shape by clicking the first point again. That suits a vessel lumen or a nuclear outline, where a dozen points describe the boundary better than two hundred do."
+    },
+    {
+     "at": "#tracePadPen",
+     "needs": "#tracePadPen",
+     "press": "#tracePadOpen",
+     "after": "open the pad with “Trace it here”",
+     "title": "Or draw it freehand",
+     "say": "<b>Pen</b> follows the pointer continuously, which is what you want with a graphics tablet and a pen in your hand &mdash; a mitochondrion or an astrocytic process has no corners to click. The two modes write the same contour; only the number of points differs."
+    },
+    {
+     "at": "#tracePadGhosts",
+     "needs": "#tracePadGhosts",
+     "press": "#tracePadOpen",
+     "after": "open the pad with “Trace it here”",
+     "title": "See what is already segmented",
+     "say": "This lays the cell and its nucleus underneath your drawing, see-through. Use it to check that what you are outlining really is inside the cell you think it is &mdash; the commonest tracing error is a process that belongs to the neighbour."
+    },
+    {
+     "at": "#tracePadDraft",
+     "needs": "#tracePadDraft",
+     "press": "#tracePadOpen",
+     "after": "open the pad with “Trace it here”",
+     "title": "It keeps your work in this browser",
+     "say": "<b>Save draft</b> puts the contour in this browser's own storage, under the cell it belongs to, so closing the pad does not lose it. It is a draft, in one browser &mdash; not a submission and not a backup. Export anything you want to keep."
+    },
+    {
+     "at": "#tracePad3D",
+     "needs": "#tracePad3D",
+     "press": "#tracePadOpen",
+     "after": "open the pad with “Trace it here”",
+     "title": "Stack the contours into a shape",
+     "say": "Trace the same structure on several planes and this lifts the stack into 3D &mdash; the same thing you would do in TrakEM2, at a smaller scale. It is how you get a surface out of a structure the automated segmentation never gave a label to."
+    },
+    {
+     "at": "#tracingRead",
+     "needs": "#tracingRead",
+     "press": "#randomOfType",
+     "after": "show a cell, so the tracing card is there",
+     "title": "And read them back out",
+     "say": "<b>Read the contours</b> gives you the drafts as coordinates you can paste into Python, FIJI or Blender. Plain numbers, with the resolution written next to them, because a contour whose units you have to guess is not data."
+    },
+    {
+     "at": "#filterSecRegion",
+     "tab": "filter",
+     "title": "The other way: ask for a box",
+     "say": "Back in <b>Filter and show</b>. Instead of naming a kind of cell, you can name a <b>cube of the volume</b> and take everything inside it. This is the section for that &mdash; open it and you can type the corners, or use the cell on screen as the centre."
+    },
+    {
+     "at": "#regionAddBox",
+     "title": "One box, or several",
+     "say": "<b>+ Add another box</b> gives you a second region, and a third. Boxes are independent, so you can sample three cortical layers at once, or the same column at three depths, and keep them apart in what comes out."
+    },
+    {
+     "at": ".rbox-colab",
+     "needs": ".rbox-colab",
+     "press": "#regionAddBox",
+     "after": "add a box, so there is a region to export",
+     "title": "A notebook for that box",
+     "say": "Each box carries its own <b>Colab notebook</b> &mdash; a ready-made notebook with that box's coordinates already filled in. You do not install anything: it opens in the browser and runs against the public CAVE service, the same one this tool uses."
+    },
+    {
+     "at": ".colab-blender",
+     "needs": ".colab-blender",
+     "press": "#regionAddBox",
+     "after": "add a box, so there is a region to export",
+     "title": "...including one that writes a .blend",
+     "say": "The flavours differ in what they fetch: <b>EM</b> gives the raw image stack, <b>seg</b> the labels, <b>meshes</b> the surfaces, <b>nuclei</b> and <b>vasculature</b> those alone. <b>Blender</b> is the one to take if you want a figure &mdash; it writes the meshes out ready to open, which is the short way to a 3D render or a file you can print."
+    },
+    {
+     "at": "#mainTabs",
+     "title": "That is the tool",
+     "say": "Three parts: finding a cell and saying what it is, asking for every cell that matches, and making geometry of your own. VR gets its own walkthrough once that viewer settles. The Tutorial button brings this list back whenever you want a part again."
     }
    ]
   }
@@ -916,10 +1019,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
 <button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">📥 Filter and show</button>
 <button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false">📚 References</button>
 <button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas. Coordinates and ids written into a post become links — a reader opens exactly what you saw.">💬 Discussion</button>
-<button type="button" class="tabbtn" data-tour-start="part1"
-        title="A guided walkthrough of the Jump tab, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
-<button type="button" class="tabbtn" data-tour-start="part2"
-        title="A guided walkthrough of Filter and show — describing a population and getting back every cell that matches.">❓ Tutorial 2</button>
+<button type="button" class="tabbtn" data-tour-menu="1"
+        title="Guided walkthroughs of the tool, pointing at each control in turn. Pick one; Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
 <button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Live/static statistics dashboard built from this dataset + the community-reporting backend — opens inline, no separate tab or re-login">📊 Statistics dashboard</button>
 </div>
 <script>

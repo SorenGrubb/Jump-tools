@@ -82,7 +82,7 @@ const todo = WANTED.filter(id => written.indexOf(id) < 0);
    had been written — a check that lies in its own output. */
 const SCOPE = { part1: "finding a cell and saying what it is",
                 part2: "Filter and show",
-                part3: "the EM plane, 3D, the viewer, VR and the tracing pad" };
+                part3: "the tracing pad and the region/Blender export" };
 if (todo.length) console.log("NOT YET  " + todo.join(" and ") + "  <- "
   + todo.map(id => SCOPE[id] || id).join("; ")
   + (todo.length === 1 ? " is" : " are") + " not written. This check covers what exists.");
@@ -119,20 +119,36 @@ function inFile(sel, html) {
   const atOk = attrs.every(a => html.indexOf(a) >= 0);
   return idOk && clOk && atOk;
 }
-const badAt = steps.filter(s => s.at && !inFile(s.at, uj));
-ok("every `at` selector appears in ujump.html", badAt.length === 0,
+/* ...AND THE FILE IS NOT ONLY ujump.html.                                           2026-10-23
+   Part three points at the tracing pad, and none of the pad's controls are in ujump.html: the
+   page carries `<div id="tracingCard">` and core/tracingcard.js fills it, so #tracePadOpen and
+   the rest live in that module's HTML strings. Checking only ujump.html called six real controls
+   missing, which would have been the check lying rather than the steps being wrong.
+
+   So the haystack is the page PLUS every module it loads, with \" unescaped first — those strings
+   are written as id=\"tracePadOpen\" inside a JS literal, and the un-escaped search would miss
+   every one of them. The weakness is honest and worth naming: a selector found in a module is
+   found in source, not in a rendered document, so this says the control EXISTS somewhere in the
+   tool, not that it is on screen at that step. What the step list declares for that is `needs`,
+   and the assertions below hold every waiting step to naming how to bring its target about. */
+const COREDIR = path.join(path.dirname(page_("ujump.html")), "core");
+const MARKUP = uj + "\n" + fs.readdirSync(COREDIR).filter(f => /\.js$/.test(f))
+  .map(f => fs.readFileSync(path.join(COREDIR, f), "utf8").replace(/\\"/g, '"'))
+  .join("\n");
+const badAt = steps.filter(s => s.at && !inFile(s.at, MARKUP));
+ok("every `at` selector appears in the page or in a module it loads", badAt.length === 0,
    badAt.map(s => s._part + "#" + s._i + " " + s.at).join(" | ") || steps.filter(s => s.at).length + " checked");
 /* `needs` is a selector OR {at, text} since 2026-10-23 — part two waits for the match count, which
    core/matchcount.js writes ONTO the Preview button rather than into a new element. The check
    crashed on the object form, which is the right way for it to fail. */
 const needsAt = n => (n && typeof n === "object") ? n.at : n;
-const badNeeds = steps.filter(s => s.needs && !inFile(needsAt(s.needs), uj));
+const badNeeds = steps.filter(s => s.needs && !inFile(needsAt(s.needs), MARKUP));
 ok("...and so does every `needs` selector", badNeeds.length === 0,
    badNeeds.map(s => s._part + "#" + s._i + " " + needsAt(s.needs)).join(" | ") || "all found");
 /* A text wait naming words the page never produces is a step nobody can ever pass. */
 const textWaits = steps.filter(s => s.needs && typeof s.needs === "object" && s.needs.text);
 const unsaid = textWaits.filter(s =>
-  uj.toLowerCase().indexOf(String(s.needs.text).toLowerCase()) < 0);
+  MARKUP.toLowerCase().indexOf(String(s.needs.text).toLowerCase()) < 0);
 ok("...and a step waiting on TEXT waits for words the page actually produces", unsaid.length === 0,
    unsaid.map(s => s._part + "#" + s._i + " “" + s.needs.text + "”").join(" | ")
    || (textWaits.map(s => "“" + s.needs.text + "”").join(", ") || "none wait on text"));
@@ -145,7 +161,7 @@ ok("a step that waits for something says how to bring it about", unexplained.len
 const unpointed = steps.filter(s => s.needs && !s.press);
 ok("a waiting step names the control to press, so it can be spotlighted", unpointed.length === 0,
    unpointed.map(s => s._part + "#" + s._i).join(", ") || "all named");
-const badPress = steps.filter(s => s.press && !inFile(s.press, uj));
+const badPress = steps.filter(s => s.press && !inFile(s.press, MARKUP));
 ok("...and it is a control the page has", badPress.length === 0,
    badPress.map(s => s._part + "#" + s._i + " " + s.press).join(" | ")
    || steps.filter(s => s.press).length + " checked");
@@ -200,12 +216,33 @@ ok("...and clears it on a phone, where the invitation spans the width",
    (tour.match(/@media\(max-width:560px\)\{\.tour-offer\{[^}]*\}/) || ["not set"])[0].slice(0, 90));
 
 console.log("\n--- the control that starts it ---");
+/* ONE BUTTON, WHICH ASKS WHICH.                                                     2026-10-23
+   Søren: "There should only be one tutorial button, when that opens you can select which
+   tutorial you want." So the assertion is no longer one button per part — it is exactly one
+   button, and no per-part buttons in the tab bar at all. What makes the parts reachable is the
+   picker, which the engine builds from #tourdata, so the next assertions check that instead of
+   checking markup that no longer carries the parts. */
+const menuBtns = (uj.match(/data-tour-menu="[^"]*"/g) || []);
 const starters = (uj.match(/data-tour-start="[a-z0-9]+"/g) || []);
-ok("there is a button for each part, and a part for each button",
-   !!CFG && (CFG.parts || []).length > 0
-   && (CFG.parts || []).every(p => uj.indexOf('data-tour-start="' + p.id + '"') >= 0)
-   && starters.length === (CFG.parts || []).length,
-   starters.join(", ") || "no start buttons");
+ok("there is exactly one Tutorial button, and it asks which walkthrough",
+   menuBtns.length === 1 && starters.length === 0,
+   menuBtns.length + " menu button(s), " + starters.length + " per-part button(s)");
+ok("...and the engine builds the picker out of the step list, not out of the markup",
+   /function menu\(\)/.test(tour) && /CFG\.parts\.forEach/.test(tour)
+   && /\[data-tour-menu\]/.test(tour),
+   "menu() iterates CFG.parts and wires [data-tour-menu]");
+/* A row with no blurb is a row saying "2. Filter and show" and nothing else, which is the
+   numbered-buttons problem again one level down. */
+ok("...and every part says what it covers, for its row in the picker",
+   !!CFG && (CFG.parts || []).every(p => p.blurb && p.blurb.length > 25),
+   (CFG && CFG.parts ? CFG.parts.filter(p => !p.blurb || p.blurb.length <= 25)
+     .map(p => p.id).join(", ") : "") || "all have one");
+/* The picker is how you leave the dim band, so it has to sit above it. The band is 10030-10042;
+   read both out of the file rather than trusting the comment. */
+const zMenu = +(((tour.match(/\.tour-menu\{[^}]*z-index: *(\d+)/) || [])[1]) || 0);
+const zBubble = +(((tour.match(/\.tour-bubble\{[^}]*z-index: *(\d+)/) || [])[1]) || 0);
+ok("...and the picker sits above the walkthrough's own overlay",
+   zMenu > zBubble && zBubble > 0, "picker " + zMenu + " vs bubble " + zBubble);
 /* The page asks; it does not begin. The engine wires every [data-tour-start] button itself,
    so the page has no reason to call start() at all, and a call there would be a tutorial
    happening TO somebody. */
@@ -404,6 +441,64 @@ function finish() {
   ok("...so pressing the button again resumes there",
      (await p.evaluate(() => UJ.tour.where().step)) === afterBack);
 
+  /* ── THE PICKER, DRIVEN ─────────────────────────────────────────────────────────  2026-10-23
+     Søren: "There should only be one tutorial button, when that opens you can select which
+     tutorial you want." Driven rather than read, for the reason this file learned the hard way:
+     the dim band once covered the very control a step told you to press, and the only thing that
+     caught it was a REAL click plus a hit test. A picker is the same shape of risk — a card that
+     appears over a page that already has overlays — so the row is clicked with p.click(), which
+     refuses when something is on top of it, and the hit test says what is. */
+  await p.keyboard.press("Escape");
+  await p.waitForTimeout(150);
+  await p.click("#menuBtn");
+  await p.waitForTimeout(250);
+  const picker = await p.evaluate(() => {
+    const box = document.querySelector(".tour-menu");
+    if (!box) return { open: false };
+    const rows = Array.from(box.querySelectorAll(".tour-pick"));
+    const r = rows[1].getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { open: true, n: rows.length,
+             ids: rows.map(b => b.getAttribute("data-pick")),
+             blurbs: rows.every(b => !!b.querySelector("span")),
+             states: rows.map(b => (b.querySelector(".tour-pick-state") || {}).textContent),
+             hitInRow: !!hit && (hit === rows[1] || rows[1].contains(hit)),
+             parts: UJ.tour.parts().length };
+  });
+  ok("the one Tutorial button opens a picker", picker.open === true);
+  ok("...with a row for every part the step list declares",
+     picker.n === picker.parts && picker.parts > 1,
+     picker.n + " rows for " + picker.parts + " parts: " + (picker.ids || []).join(", "));
+  ok("...each saying what it covers", picker.blurbs === true);
+  /* The row for part one has to show the progress the keyboard block just left behind, or the
+     picker is a menu that forgets, and "it remembers where you got to" stops being true where
+     the reader can see it. */
+  ok("...and the row for a part left half way through says where you got to",
+     /got to step/.test((picker.states || [])[0] || ""),
+     JSON.stringify((picker.states || [])[0]));
+  ok("...and a row is not covered by anything", picker.hitInRow === true);
+  const started = await (async () => {
+    await p.click('.tour-pick[data-pick="part2"]');
+    await p.waitForTimeout(400);
+    return p.evaluate(() => ({ where: UJ.tour.where(),
+                               gone: !document.querySelector(".tour-menu") }));
+  })();
+  ok("...and picking one starts that part", started.where && started.where.part === "part2",
+     JSON.stringify(started.where));
+  ok("...and closes the picker behind it", started.gone === true);
+  await p.keyboard.press("Escape");
+  await p.waitForTimeout(150);
+  /* Esc has to work on the picker too. The tour's own key handler ignores keys while no part is
+     running, so the picker cannot borrow it and carries its own -- and has to take it off again,
+     or every opening leaves another listener behind. */
+  await p.click("#menuBtn");
+  await p.waitForTimeout(200);
+  await p.keyboard.press("Escape");
+  await p.waitForTimeout(200);
+  ok("Escape closes the picker, and it does not leave its key handler behind",
+     await p.evaluate(() => !document.querySelector(".tour-menu")
+                            && !document.querySelector(".tour-menu-back")));
+
   /* ── READABILITY IN BOTH PALETTES ───────────────────────────────────────────────  2026-10-23
      Søren, on his phone: *"I can't read anything."* A white panel with near-white text, because
      the bubble took its background from a #fff fallback and its text from µJump's own --ink.
@@ -439,6 +534,38 @@ function finish() {
   ok("...and in \u00b5Jump's palette, which has no --card at all",
      dark.body >= 4.5, dark.body + ":1  " + dark.ink + " on " + dark.bg);
   ok("...and its filled button too", dark.button >= 4.5, dark.button + ":1");
+  /* THE PICKER, IN BOTH PALETTES TOO. Its rows carry a grey second line (--muted on index.html,
+     --mut on µJump), which is the same kind of two-palette token that produced white-on-white in
+     the bubble. The phone screenshot is not the place to find that out a second time. */
+  const pickerContrast = async pal => p.evaluate(pp => {
+    if (pp) document.documentElement.setAttribute("data-palette", pp);
+    else document.documentElement.removeAttribute("data-palette");
+    UJ.tour.stop();
+    UJ.tour.menu();
+    const box = document.querySelector(".tour-menu");
+    const row = box.querySelector(".tour-pick");
+    const lum = c => {
+      const m = c.match(/[\d.]+/g).map(Number);
+      const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]);
+    };
+    const ratio = (a, bg) => { const l1 = lum(a), l2 = lum(bg);
+      return +(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05))).toFixed(2); };
+    const bg = getComputedStyle(box).backgroundColor;
+    const out = { bg: bg,
+      title: ratio(getComputedStyle(row.querySelector("b")).color, bg),
+      blurb: ratio(getComputedStyle(row.querySelector("span")).color, bg) };
+    document.querySelector(".tour-menu-close").click();
+    return out;
+  }, pal);
+  const pLight = await pickerContrast(null);
+  ok("the picker's rows are readable, title and all (index.html's palette)",
+     pLight.title >= 4.5 && pLight.blurb >= 4.5,
+     "title " + pLight.title + ":1, what-it-covers " + pLight.blurb + ":1 on " + pLight.bg);
+  const pDark = await pickerContrast("ujump");
+  ok("...and in µJump's palette, where the grey comes from --mut instead",
+     pDark.title >= 4.5 && pDark.blurb >= 4.5,
+     "title " + pDark.title + ":1, what-it-covers " + pDark.blurb + ":1 on " + pDark.bg);
   await p.evaluate(() => document.documentElement.removeAttribute("data-palette"));
 
   console.log("\n--- on a phone ---");
@@ -458,6 +585,23 @@ function finish() {
   ok("the bubble fits the screen", phone.inside);
   ok("...does not cover the control", !phone.overlap);
   ok("...and nothing scrolls sideways", !phone.wide);
+  /* The picker on the same 390px screen. The bubble was 400px wide here three hours ago, which is
+     the whole reason the engine sets its own box-sizing; the picker is a second fixed-width card
+     and gets the same measurement rather than the same assumption. */
+  const phonePick = await p.evaluate(() => {
+    UJ.tour.stop();
+    UJ.tour.menu();
+    const b = document.querySelector(".tour-menu").getBoundingClientRect();
+    const out = { inside: b.left >= 0 && b.right <= window.innerWidth,
+                  tall: b.height <= window.innerHeight,
+                  w: Math.round(b.width), vw: window.innerWidth,
+                  wide: document.documentElement.scrollWidth > window.innerWidth + 1 };
+    document.querySelector(".tour-menu-close").click();
+    return out;
+  });
+  ok("...and the picker fits it too", phonePick.inside && phonePick.tall,
+     phonePick.w + "px wide in " + phonePick.vw + "px");
+  ok("...without pushing the page sideways", !phonePick.wide);
 
   await p.close();
   await browser.close();

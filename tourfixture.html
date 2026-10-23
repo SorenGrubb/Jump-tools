@@ -80,16 +80,22 @@
   <div class="block" id="bottomThing">A control right at the bottom of a long page.</div>
 
   <button type="button" data-tour-start="part1" id="startBtn">Start the walkthrough</button>
+  <!-- The picker, which is what µJump's single Tutorial button does: one button, and the engine
+       lists the parts out of #tourdata. The fixture therefore declares TWO parts, so there is
+       something to choose between. -->
+  <button type="button" data-tour-menu="1" id="menuBtn">Tutorial</button>
 </div>
 
 <script type="application/json" id="tourdata">
 {
   "key": "grubblab_tourfixture_v1",
   "offer": "A fixture, not a tool.",
+  "menu": "Two fixture parts, so the picker has a choice to offer.",
   "parts": [
     {
       "id": "part1",
       "title": "Fixture part one",
+      "blurb": "The engine itself: spotlight, bubble, waiting, keyboard.",
       "steps": [
         { "say": "An opening step with no target at all — the whole page dims and this sits in the middle." },
         { "at": "#randomTypeSelect", "title": "Pick a type", "say": "Points at the select." },
@@ -100,6 +106,14 @@
         { "at": "#filterIncludeUnclassified", "say": "Inside a collapsed <details>, which the engine has to open." },
         { "at": "#bottomThing", "say": "At the bottom of a long page, so it has to be scrolled to." },
         { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." }
+      ]
+    },
+    {
+      "id": "part2",
+      "title": "Fixture part two",
+      "blurb": "A second part, so the picker lists more than one row.",
+      "steps": [
+        { "at": "#randomUnclassified", "say": "A single step, which is all a second part needs here." }
       ]
     }
   ]

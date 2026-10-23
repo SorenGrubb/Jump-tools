@@ -22,15 +22,22 @@ WHAT GOES IN
                           JSON RATHER THAN A JS LITERAL so the page and the check read the SAME
                           BYTES -- the alternative is two copies of one list, which is the shape
                           this project has paid for four times.
-  a "Tutorial" button     in the tab bar, carrying data-tour-start="part1"; the engine wires it
+  a "Tutorial" button     ONE of them, in the tab bar, carrying data-tour-menu; the engine wires
+                          it to a picker it builds out of the step list. Three numbered buttons
+                          -- "Tutorial", "Tutorial 2", "Tutorial 3" -- were tried first and
+                          Søren said so: *"There should only be one tutorial button, when that
+                          opens you can select which tutorial you want."* The picker has room to
+                          say what each part covers and how far the reader got, which a label
+                          reading "Tutorial 2" does not.
   UJ.tour.ready()         reads the block, wires the button, offers it once -- and waits for
                           DOMContentLoaded, because this script block sits above #tourdata in the
                           document and load() on its own found nothing there
 
-ONLY PART ONE IS DECLARED. Parts two and three are real and are coming, but a button that opens an
-empty walkthrough is worse than no button, so nothing is declared until its steps are written.
-tourcheck.js asserts that every part that EXISTS has steps and a button, rather than asserting a
-count that would force an empty one into being.
+ALL THREE PARTS ARE NOW DECLARED -- finding a cell (15 steps), Filter and show (14), and the
+tracing pad with the region/Blender export (13). VR IS DELIBERATELY ABSENT: vr.html is being
+rewritten elsewhere, and a walkthrough pointing at controls about to move is worse than none.
+tourcheck.js still asserts the invariant rather than a count of three -- every part that EXISTS
+has steps, a title and a line saying what it covers -- so adding a fourth needs no change there.
 
 THE STEPS THAT WAIT. Most of the identity card does not exist until a cell has been shown -- it is
 rendered into #nucpanel at runtime. Those steps carry `needs` (the selector to wait for) and
@@ -49,6 +56,37 @@ import os
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UJ = os.path.join(HERE, "ujump.html")
+
+
+def sweep_tutorial_buttons(path):
+    u"""Take out every Tutorial button there is, so the pair below can write the one.
+
+    FIFTH TIME, AND THE LAST. The pair that writes the button has been rewritten four times --
+    one button, then two, then three, now one again -- and each time, on a tree where an earlier
+    version had already run, it INSERTED beside the old buttons instead of replacing them,
+    because `edit()` matches an exact string and the old string was still there under a different
+    label. The tab bar in this tree currently carries FIVE Tutorial buttons for that reason.
+
+    A removal pair per stale version does not scale: it needs the exact bytes of every version
+    that ever shipped, and a version I forget leaves a duplicate nobody notices until Søren sees
+    two Tutorial buttons. So this region is now REGENERATED rather than patched: everything
+    matching a Tutorial button goes, whatever it says, and the insert that follows puts back
+    exactly one. Idempotent by construction -- a second run removes the button it wrote on the
+    first and writes it again.
+
+    Narrow on purpose: a .tabbtn carrying data-tour-start or data-tour-menu. Nothing else in the
+    document matches, and the count is printed so a sweep that eats more than it should is loud.
+    """
+    import re
+    s = io.open(path, encoding="utf-8").read()
+    pat = re.compile(
+        r'<button type="button" class="tabbtn" data-tour-(?:start|menu)="[^"]*"\s*\n'
+        r'[^\n]*</button>\n')
+    s2, n = pat.subn(u"", s)
+    if n:
+        io.open(path, "w", encoding="utf-8").write(s2)
+    print("  swept %d existing Tutorial button(s)" % n)
+    return n
 
 
 def edit(path, pairs):
@@ -79,6 +117,8 @@ def edit(path, pairs):
 PART1 = {
     "id": "part1",
     "title": "Finding a cell, and saying what it is",
+    "blurb": u"The Jump tab: landing on a cell, reading its identity card, and recording what "
+             u"you think it is.",
     "steps": [
         {"say": u"This tool reads one volume: <b>MICrONS minnie65</b>, about 1.7 &times; 1.4 "
                 u"&times; 0.5&nbsp;mm of mouse visual cortex imaged at 4&nbsp;&times;&nbsp;4 "
@@ -165,6 +205,8 @@ PART1 = {
 PART2 = {
     "id": "part2",
     "title": u"Filter and show \u2014 every cell that matches",
+    "blurb": u"Describing a population by type, layer, size or place, then counting it and "
+             u"taking it away as a sheet.",
     "steps": [
         {"tab": "filter",
          "say": u"The Jump tab is one cell at a time. This tab is the opposite: you describe a "
@@ -241,9 +283,122 @@ PART2 = {
 
         {"at": "#filterVR", "title": u"Or look at all of them at once",
          "say": u"<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; "
-                u"<b>Show in VR</b> opens them as meshes you can walk through. Part three covers "
-                u"those properly — the EM plane, the 3D mesh, the viewer, VR, and tracing "
-                u"structures of your own."},
+                u"<b>Show in VR</b> opens them as meshes you can walk through. Part three goes "
+                u"the other way — making geometry of your own, by hand or by the box."},
+    ],
+}
+
+# ── PART THREE ────────────────────────────────────────────────────────────────────  2026-10-23
+# Drawing rather than reading. The two places in µJump where you produce something instead of
+# fetching something: the tracing pad, where you draw a contour on the EM plane, and the region
+# box, which hands you a notebook for a cube of the volume.
+#
+# VR IS DELIBERATELY NOT HERE. vr.html is being rewritten in another conversation and a
+# walkthrough that points at controls which are about to move is worse than no walkthrough; it
+# gets its own part once that settles. Part two's closing step says so rather than promising it.
+PART3 = {
+    "id": "part3",
+    "title": u"Drawing your own — the tracing pad and the region box",
+    "blurb": u"Making geometry instead of fetching it: contours drawn by hand on the EM plane, "
+             u"and a cube of volume exported to a notebook or to Blender.",
+    "steps": [
+        {"say": u"Everything so far has been <b>reading</b> the volume &mdash; landing on a cell, "
+                u"asking what it is, asking for every cell like it. This part is about the two "
+                u"places where you <b>make</b> something: drawing a structure nobody has "
+                u"segmented, and cutting out a cube of the volume to work on elsewhere. "
+                u"About three minutes.",
+         "title": u"Making something, rather than finding it"},
+
+        {"at": "#tracingCard", "tab": "jump", "press": "#randomOfType",
+         "needs": "#tracingCard", "after": u"show a cell, so there is a plane to draw on",
+         "title": u"Where the drawing happens",
+         "say": u"This card appears once a cell is on screen. The EM plane you are looking at is "
+                u"a real 4 &times; 4 &times; 40 nm image, and anything you draw on it is in "
+                u"<b>volume coordinates</b> &mdash; not pixels of your screen &mdash; so a "
+                u"contour keeps its meaning when you come back to it or open it somewhere else."},
+
+        {"at": "#tracePadOpen", "needs": "#tracePadOpen", "press": "#tracePadOpen",
+         "after": u"press “Trace it here”",
+         "title": u"Open the pad",
+         "say": u"<b>Trace it here</b> opens the pad over the plane. It is a polygon tool by "
+                u"default: click once per vertex, and close the shape by clicking the first "
+                u"point again. That suits a vessel lumen or a nuclear outline, where a dozen "
+                u"points describe the boundary better than two hundred do."},
+
+        {"at": "#tracePadPen", "needs": "#tracePadPen", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"Or draw it freehand",
+         "say": u"<b>Pen</b> follows the pointer continuously, which is what you want with a "
+                u"graphics tablet and a pen in your hand &mdash; a mitochondrion or an astrocytic "
+                u"process has no corners to click. The two modes write the same contour; only the "
+                u"number of points differs."},
+
+        {"at": "#tracePadGhosts", "needs": "#tracePadGhosts", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"See what is already segmented",
+         "say": u"This lays the cell and its nucleus underneath your drawing, see-through. Use it "
+                u"to check that what you are outlining really is inside the cell you think it is "
+                u"&mdash; the commonest tracing error is a process that belongs to the neighbour."},
+
+        {"at": "#tracePadDraft", "needs": "#tracePadDraft", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"It keeps your work in this browser",
+         "say": u"<b>Save draft</b> puts the contour in this browser's own storage, under the "
+                u"cell it belongs to, so closing the pad does not lose it. It is a draft, in one "
+                u"browser &mdash; not a submission and not a backup. Export anything you want to "
+                u"keep."},
+
+        {"at": "#tracePad3D", "needs": "#tracePad3D", "press": "#tracePadOpen",
+         "after": u"open the pad with \u201cTrace it here\u201d",
+         "title": u"Stack the contours into a shape",
+         "say": u"Trace the same structure on several planes and this lifts the stack into 3D "
+                u"&mdash; the same thing you would do in TrakEM2, at a smaller scale. It is how "
+                u"you get a surface out of a structure the automated segmentation never gave a "
+                u"label to."},
+
+        {"at": "#tracingRead", "needs": "#tracingRead", "press": "#randomOfType",
+         "after": u"show a cell, so the tracing card is there",
+         "title": u"And read them back out",
+         "say": u"<b>Read the contours</b> gives you the drafts as coordinates you can paste into "
+                u"Python, FIJI or Blender. Plain numbers, with the resolution written next to "
+                u"them, because a contour whose units you have to guess is not data."},
+
+        {"at": "#filterSecRegion", "tab": "filter",
+         "title": u"The other way: ask for a box",
+         "say": u"Back in <b>Filter and show</b>. Instead of naming a kind of cell, you can name "
+                u"a <b>cube of the volume</b> and take everything inside it. This is the section "
+                u"for that &mdash; open it and you can type the corners, or use the cell on "
+                u"screen as the centre."},
+
+        {"at": "#regionAddBox",
+         "title": u"One box, or several",
+         "say": u"<b>+ Add another box</b> gives you a second region, and a third. Boxes are "
+                u"independent, so you can sample three cortical layers at once, or the same "
+                u"column at three depths, and keep them apart in what comes out."},
+
+        {"at": ".rbox-colab", "needs": ".rbox-colab", "press": "#regionAddBox",
+         "after": u"add a box, so there is a region to export",
+         "title": u"A notebook for that box",
+         "say": u"Each box carries its own <b>Colab notebook</b> &mdash; a ready-made notebook "
+                u"with that box's coordinates already filled in. You do not install anything: it "
+                u"opens in the browser and runs against the public CAVE service, the same one "
+                u"this tool uses."},
+
+        {"at": ".colab-blender", "needs": ".colab-blender", "press": "#regionAddBox",
+         "after": u"add a box, so there is a region to export",
+         "title": u"...including one that writes a .blend",
+         "say": u"The flavours differ in what they fetch: <b>EM</b> gives the raw image stack, "
+                u"<b>seg</b> the labels, <b>meshes</b> the surfaces, <b>nuclei</b> and "
+                u"<b>vasculature</b> those alone. <b>Blender</b> is the one to take if you want a "
+                u"figure &mdash; it writes the meshes out ready to open, which is the short way "
+                u"to a 3D render or a file you can print."},
+
+        {"at": "#mainTabs",
+         "title": u"That is the tool",
+         "say": u"Three parts: finding a cell and saying what it is, asking for every cell that "
+                u"matches, and making geometry of your own. VR gets its own walkthrough once "
+                u"that viewer settles. The Tutorial button brings this list back whenever you "
+                u"want a part again."},
     ],
 }
 
@@ -251,12 +406,18 @@ CFG = {
     "key": "grubblab_ujump_tour_v1",
     "offer": u"A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. "
              u"About two minutes.",
-    "parts": [PART1, PART2],
+    "menu": u"Three short walkthroughs. Each one points at the real controls, in order, and "
+            u"waits for you &mdash; nothing is pressed for you. Esc leaves at any time and it "
+            u"remembers where you got to.",
+    "parts": [PART1, PART2, PART3],
 }
 
 TOURDATA = (u'<script type="application/json" id="tourdata">\n'
             + json.dumps(CFG, indent=1, ensure_ascii=False)
             + u'\n</script>\n')
+
+print(os.path.basename(UJ) + " — tab bar")
+sweep_tutorial_buttons(UJ)
 
 changed = edit(UJ, [
     (u"core/tour.js is loaded after stepthrough, whose activateTab a step may use",
@@ -266,14 +427,17 @@ changed = edit(UJ, [
      u'     stepthrough\'s activateTab. core/tour.js, 2026-10-23. -->\n'
      u'<script src="core/tour.js"></script>'),
 
+    # ONE button, which asks which. 2026-10-23, at Søren's word: "There should only be one
+    # tutorial button, when that opens you can select which tutorial you want." Three buttons
+    # labelled Tutorial, Tutorial 2, Tutorial 3 put the tutorial's structure into the tool's
+    # navigation, and "Tutorial 2" says nothing about what is in it. The picker core/tour.js
+    # builds from the step list has room to say what each part covers and how far you got, and
+    # it needs no change here when a part is added.
     (u"a Tutorial button in the tab bar",
      u'<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false"',
-     u'<button type="button" class="tabbtn" data-tour-start="part1"\n'
-     u'        title="A guided walkthrough of the Jump tab, pointing at each control in turn. '
-     u'Esc leaves it; it remembers where you got to.">❓ Tutorial</button>\n'
-     u'<button type="button" class="tabbtn" data-tour-start="part2"\n'
-     u'        title="A guided walkthrough of Filter and show — describing a population and '
-     u'getting back every cell that matches.">❓ Tutorial 2</button>\n'
+     u'<button type="button" class="tabbtn" data-tour-menu="1"\n'
+     u'        title="Guided walkthroughs of the tool, pointing at each control in turn. '
+     u'Pick one; Esc leaves it; it remembers where you got to.">❓ Tutorial</button>\n'
      u'<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false"'),
 
     (u"the step list, as JSON, in one place",
@@ -293,15 +457,9 @@ changed = edit(UJ, [
      u'     ready() waits for DOMContentLoaded when it has to. -->\n'
      u'<script>UJ.tour&&UJ.tour.ready();</script>'),
 
-    # 2026-10-23, part two. The button pair above now writes TWO buttons, and on a tree where the
-    # one-button version has already run it inserts beside it rather than replacing it, leaving
-    # two "Tutorial" buttons for part one. Fourth time this project has paid for an insert where a
-    # replace was meant; the removal is guarded on its input, as every removal here is.
-    (u"...and the superseded single Tutorial button is taken out",
-     u"""<button type="button" class="tabbtn" data-tour-start="part1"
-        title="A guided walkthrough of this tab, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
-""",
-     u""),
+    # The removal pair that used to sit here -- "...and the superseded single Tutorial button is
+    # taken out" -- is gone: sweep_tutorial_buttons() above does that job for every version of
+    # that button at once, including the ones this file no longer remembers the bytes of.
 
     # 2026-10-23, after running the deployed page. The pair above now writes a ready() init, but on
     # a tree where the earlier load() init has already been written it INSERTS rather than
@@ -330,5 +488,5 @@ if cur.group(0) != TOURDATA:
 else:
     print("  already there: the step list matches this file")
 
-print("\n%d steps in part one. Now: python3 src/build_stamps.py, then node tourcheck.js"
-      % len(PART1["steps"]))
+print("\n%s. Now: python3 src/build_stamps.py, then node tourcheck.js"
+      % ", ".join("%s: %d steps" % (p["id"], len(p["steps"])) for p in CFG["parts"]))

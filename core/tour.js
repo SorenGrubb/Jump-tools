@@ -57,8 +57,14 @@
               UJ.tour.load()           the same read, without the waiting, for a host that knows
                                        its data block is already parsed
               UJ.tour.start("part1")   from a button
+              UJ.tour.menu()           the picker: one Tutorial button, listing every part with
+                                       what it covers and how far the reader got. Declare it in
+                                       the markup as [data-tour-menu] and this file wires it.
               UJ.tour.offerOnce()      a dismissable invitation on a first visit — never an
                                        auto-start, which is a tutorial happening TO somebody
+
+     markup   [data-tour-menu]         a button that opens the picker (one per page)
+              [data-tour-start="id"]   a button that starts one named part directly
 
    Check: tourcheck.js */
 var UJ = UJ || {};
@@ -110,7 +116,12 @@ var UJ = UJ || {};
        width unless this says otherwise, and 366px of content plus 16px of padding each side plus
        a border is 400px on a 390px phone -- off the screen, which is how the fixture found it.
        The host's own reset cannot be relied on: core/ is loaded by eight pages and a fixture. */
-    ".tour-bubble,.tour-offer,.tour-dim,.tour-ring{box-sizing:border-box}",
+    /* .tour-menu and .tour-pick are in this list because leaving them out cost 6px on a 390px
+       phone the moment the picker existed: min(420px,100vw - 28px) is a CONTENT width, and the
+       card's 16px padding and 1px border went on the outside of it. Measured by tourcheck.js,
+       not noticed by eye -- which is the same way the bubble's 400px-on-a-390px-screen was
+       found. Anything this file positions by number belongs here. */
+    ".tour-bubble,.tour-offer,.tour-dim,.tour-ring,.tour-menu,.tour-pick{box-sizing:border-box}",
     /* ── THE PALETTE, AND THE BUG THAT FORCED THESE CHAINS ───────────────────  2026-10-23
        Søren, on a phone: *"I can't read anything."* A white panel with near-white text.
 
@@ -162,7 +173,33 @@ var UJ = UJ || {};
     "  font:14px/1.45 system-ui,-apple-system,sans-serif}",
     ".tour-offer p{margin:0 0 10px}",
     /* On a phone it spans the width, so it has to clear the pill vertically instead. */
-    "@media(max-width:560px){.tour-offer{left:14px;right:14px;bottom:72px;max-width:none}}"
+    "@media(max-width:560px){.tour-offer{left:14px;right:14px;bottom:72px;max-width:none}}",
+    /* THE PICKER. One Tutorial button, and this says which walkthrough.               2026-10-23
+       Three buttons labelled Tutorial, Tutorial 2, Tutorial 3 made the tab bar carry the
+       tutorial's own structure, and "Tutorial 2" tells you nothing about what is in it. One
+       button opens this, and the rows can say what each part covers and how far you got.
+       Above the dim band (10030-10042) because it is what you use to leave the band. */
+    ".tour-menu-back{position:fixed;inset:0;z-index:10048;background:rgba(0,0,0,.45)}",
+    ".tour-menu{position:fixed;z-index:10050;left:50%;top:50%;transform:translate(-50%,-50%);",
+    "  width:min(420px,calc(100vw - 28px));max-height:calc(100vh - 40px);overflow:auto;",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  border:1px solid var(--line,#e4e1da);border-radius:14px;padding:16px;",
+    "  box-shadow:0 14px 44px var(--shadow,rgba(0,0,0,.3));",
+    "  font:14px/1.5 system-ui,-apple-system,sans-serif}",
+    ".tour-menu h4{margin:0 0 4px;font-size:16px}",
+    ".tour-menu .tour-menu-lead{margin:0 0 12px;color:var(--muted,var(--mut,#5f6873));",
+    "  font-size:13px}",
+    /* A row is a button, not a link with a click handler: it is reachable by tab and by Enter
+       without this file having to reimplement either. */
+    ".tour-pick{display:block;width:100%;text-align:left;font:inherit;cursor:pointer;",
+    "  margin:0 0 8px;padding:10px 12px;border-radius:10px;",
+    "  border:1px solid var(--line,#e4e1da);background:transparent;color:inherit}",
+    ".tour-pick:hover{border-color:var(--teal,var(--accent,#12a67f))}",
+    ".tour-pick b{display:block;font-size:14px}",
+    ".tour-pick span{display:block;margin-top:2px;font-size:13px;",
+    "  color:var(--muted,var(--mut,#5f6873))}",
+    ".tour-pick .tour-pick-state{margin-top:4px;font-size:12px}",
+    ".tour-pick .tour-pick-state.done{color:var(--teal,var(--accent,#12a67f))}"
   ].join("\n");
 
   function build() {
@@ -494,6 +531,84 @@ var UJ = UJ || {};
     });
   }
 
+  /* Resuming, or starting at the top — the one rule, in one place, because both the Tutorial
+     button and every row of the picker have to apply it identically. A part you left half way
+     through carries on; a part you finished starts again from the beginning. */
+  function startFromState(id) {
+    var st = readState()[id] || {};
+    return start(id, (!st.done && typeof st.at === "number" && st.at > 0) ? "resume" : "top");
+  }
+
+  /* ── THE PICKER ───────────────────────────────────────────────────────────  2026-10-23
+     ONE Tutorial button, which opens this. The tab bar briefly carried three buttons —
+     "Tutorial", "Tutorial 2", "Tutorial 3" — and that put the tutorial's own structure into the
+     tool's navigation while telling you nothing about what was in each one. Here there is room
+     to say what a part covers and how far you got, and the tab bar goes back to being tabs.
+
+     Built from CFG.parts, so a part added to the step list appears here with no change to any
+     page: the declaration stays the single definition. */
+  function menu() {
+    if (!CFG || !CFG.parts || !CFG.parts.length) return false;
+    if (EL.menu) return true;                      /* already open — not a second copy */
+    build();                                       /* the stylesheet lives with the rest */
+    var back = document.createElement("div");
+    back.className = "tour-menu-back";
+    var box = document.createElement("div");
+    box.className = "tour-menu";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", "Choose a walkthrough");
+
+    var st = readState();
+    var html = "<h4>Walkthroughs</h4><p class=\"tour-menu-lead\">"
+      + (CFG.menu || "Each one points at the real controls, in order. Esc leaves at any time.")
+      + "</p>";
+    CFG.parts.forEach(function (p, i) {
+      var s = st[p.id] || {}, n = (p.steps || []).length, state;
+      if (s.done) state = '<span class="tour-pick-state done">✓ you have been through this one'
+        + " — it starts again from the beginning</span>";
+      else if (typeof s.at === "number" && s.at > 0)
+        state = '<span class="tour-pick-state">you got to step ' + (s.at + 1) + " of " + n
+          + " — this carries on from there</span>";
+      else state = '<span class="tour-pick-state">' + n + " steps</span>";
+      html += '<button type="button" class="tour-pick" data-pick="' + p.id + '">'
+        + "<b>" + (i + 1) + ". " + p.title + "</b>"
+        + (p.blurb ? "<span>" + p.blurb + "</span>" : "")
+        + state + "</button>";
+    });
+    html += '<div class="tour-row"><span class="tour-count"></span>'
+      + '<button type="button" class="tour-btn tour-menu-close">Close</button></div>';
+    box.innerHTML = html;
+    document.body.appendChild(back);
+    document.body.appendChild(box);
+    EL.menu = box;
+    EL.menuBack = back;
+
+    var close = function () {
+      if (box.parentNode) box.parentNode.removeChild(box);
+      if (back.parentNode) back.parentNode.removeChild(back);
+      EL.menu = null;
+      EL.menuBack = null;
+      document.removeEventListener("keydown", onMenuKey);
+    };
+    /* Esc closes the picker. The tour's own onKey ignores keys while no part is running, so the
+       picker cannot borrow it and has its own, removed again on close. */
+    var onMenuKey = function (e) {
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+    };
+    document.addEventListener("keydown", onMenuKey);
+    back.addEventListener("click", close);
+    box.querySelector(".tour-menu-close").addEventListener("click", close);
+    Array.prototype.forEach.call(box.querySelectorAll(".tour-pick"), function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-pick");
+        close();
+        startFromState(id);
+      });
+    });
+    return true;
+  }
+
   /* ── reading the host's declaration ────────────────────────────────────────────────────── */
   function load(el) {
     var node = el || document.getElementById("tourdata");
@@ -505,11 +620,12 @@ var UJ = UJ || {};
     }
     /* Every button that says which part it starts. Declared in the markup, wired here. */
     Array.prototype.forEach.call(document.querySelectorAll("[data-tour-start]"), function (b) {
-      b.addEventListener("click", function () {
-        var id = b.getAttribute("data-tour-start");
-        var st = readState()[id] || {};
-        start(id, (!st.done && typeof st.at === "number" && st.at > 0) ? "resume" : "top");
-      });
+      b.addEventListener("click", function () { startFromState(b.getAttribute("data-tour-start")); });
+    });
+    /* ...and every button that asks WHICH. One of these replaces a row of numbered Tutorial
+       buttons: the parts are listed by the engine, from the step list. */
+    Array.prototype.forEach.call(document.querySelectorAll("[data-tour-menu]"), function (b) {
+      b.addEventListener("click", function () { menu(); });
     });
     return CFG;
   }
@@ -540,7 +656,7 @@ var UJ = UJ || {};
   }
 
   UJ.tour = {
-    load: load, ready: ready, start: start, stop: stop, offerOnce: offerOnce,
+    load: load, ready: ready, start: start, stop: stop, offerOnce: offerOnce, menu: menu,
     cfg: function () { return CFG; },
     parts: function () { return (CFG && CFG.parts) || []; },
     missing: function () { return MISSING.slice(); },
