@@ -315,15 +315,19 @@
   </div>
   <div class="ctl">
     <button id="layerBtn" class="on" title="Cortical layer boundaries from µJump's traced pia and white-matter surfaces, divided in Ledderose's proportions — the same model the Jump tab's layer estimate uses">Layers</button>
+    <select id="layerScope" title="How far the coloured layer walls reach: the whole MICrONS volume (default) or only a box around the loaded cells">
+      <option value="whole">Layers: whole volume</option>
+      <option value="cells">Layers: only around the cells</option>
+    </select>
     <select id="vascSel" title="Wan &amp; Wei's TriSAM segmentation of the blood vessels in the whole minnie65 volume (BossDB wei2024; IEEE JBHI 2025, doi:10.1109/JBHI.2025.3576643). One 50 MB download, then cut to the box around your cells.">
       <option value="off">Vessels: off</option>
-      <option value="box">Vessels: around the cells</option>
-      <option value="whole">Vessels: whole volume (PC only, 2.8 M triangles)</option>
+      <option value="whole">Vessels: whole volume (2.8 M triangles)</option>
+      <option value="box">Vessels: only around the cells</option>
     </select>
     <select id="pvsSel" title="Søren's tracing of the perivascular spaces around the penetrating vessels and of the subarachnoid space between the glia limitans and the arachnoid mater, filled between the curves and with the Wan &amp; Wei vessel lumen subtracted. Its inner side moves with the vessel wall (heartbeat, vasomotion, coupling, sleep); its width can be set, and it widens in NREM sleep.">
       <option value="off">Perivascular space: off</option>
-      <option value="box">Perivascular space: around the cells, up to the pia</option>
       <option value="whole">Perivascular space: whole volume</option>
+      <option value="box">Perivascular space: only around the cells, up to the pia</option>
     </select>
     <label id="mapRbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="Red blood cells carried by the blood-flow model through the whole MICrONS vascular network: they speed up and slow down with every dilation, constriction, heartbeat and breath, squeeze into bullets through the precapillary sphincters and stall now and then. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapRbc"> red blood cells (model)</label>
     <label id="mapCsfRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="CSF tracer (MODEL): particles entering along the pial arteries' perivascular spaces, down the penetrating arterioles and into the tissue -- faster in sleep, slowed by a spreading depolarization or by hypertension. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapCsf"> CSF tracer (model)</label>
@@ -636,6 +640,10 @@
       </div>
     </div>
   </div>
+  <div id="fixBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="align-items:center;margin:0"><button id="fixBtn" title="A cell is missing a part (the segmentation split it): open the EM with the segmentation at that place, double-click the missing piece to add its root ID to the cell, move on and add more, then save them all to the cell for everyone (needs Google sign-in)">🧩 Add missing parts</button>
+      <span id="fixInfo" style="font-size:12px;color:var(--mut)">pick a cell first</span></div>
+  </div>
   <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
     <div class="ctl" style="margin:0 0 6px;align-items:center">
       <b style="font-size:13px">Tissue block</b>
@@ -892,10 +900,10 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
-    ["tools", "wrench", "Tools", [["#gameBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
+    ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
   ];
@@ -1181,6 +1189,7 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 <script src="core/mesh.js"></script>
 <script src="core/nucmesh.js"></script>
 <script src="core/segread.js"></script>
+<script src="core/segpaint.js"></script>
 <script src="core/emtiles.js"></script>
 <script src="core/tracing.js"></script>
 <script src="core/traceloft.js"></script>
@@ -1975,12 +1984,25 @@ const LAYER_TINT = { "Leptomeninges": "#3a3f4a", "Layer 1": "#8ecae6", "Layer 2/
                      "Layer 5a": "#fb8500", "Layer 5b": "#d62828", "Layer 6a": "#6a4c93", "Layer 6b": "#4d3579",
                      "White matter": "#c9c9c9" };
 let WALL_SIDE = THREE.BackSide;
+/* v113 (Søren, 2026-10-23: "it only shows a small area around the cell ... should not be the default"):
+   the layer walls span the WHOLE volume by default -- the x/z extent of the traced pia/white-matter
+   grid, 150 µm above the highest pia and below the deepest white matter. "Only around the cells" is
+   the old box (regionBox), kept as the second choice. */
+function layerBox(L){
+  if (document.getElementById("layerScope").value === "cells" || !L || !L.grid) return regionBox();
+  const G = L.grid; let lo = Infinity, hi = -Infinity;
+  for (const v of L.pia) if (isFinite(v)) lo = Math.min(lo, v);
+  for (const v of L.wm) if (isFinite(v)) hi = Math.max(hi, v);
+  if (!isFinite(lo) || !isFinite(hi)) return regionBox();
+  return new THREE.Box3(new THREE.Vector3(Math.min(G.x0, G.x1), lo - 150, Math.min(G.z0, G.z1)),
+                        new THREE.Vector3(Math.max(G.x0, G.x1), hi + 150, Math.max(G.z0, G.z1)));
+}
 async function buildLayers(){
   if (LAYERS.group){ content.remove(LAYERS.group); LAYERS.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); LAYERS.group = null; }
   if (!document.getElementById("layerBtn").classList.contains("on") || !CELL_BOX) return;
   const ds = dsOfCells(); if (!ds.layers) return;
   let L; try { L = await loadLayers(ds); } catch (e){ return; }
-  const b = regionBox(), N = 24, grp = new THREE.Group();
+  const b = layerBox(L), N = 24, grp = new THREE.Group();
   const yAt = (f, x, z) => { const p = surfaceAt(L, L.pia, x, z), w = surfaceAt(L, L.wm, x, z); return p + f * (w - p); };
   /* Leptomeninges and white matter as 150 µm bands either side, as in the Jump tab's diagram;
      in fractions of the local thickness that is −150/thick and 1 + 150/thick, taken at the box centre. */
@@ -2049,6 +2071,7 @@ function layersOn(){ return document.getElementById("layerBtn").classList.contai
 function setLayers(v){ document.getElementById("layerBtn").classList.toggle("on", v); buildLayers(); }
 function setVessels(mode){ document.getElementById("vascSel").value = mode; buildVessels(); }
 document.getElementById("layerBtn").addEventListener("click", () => setLayers(!layersOn()));
+document.getElementById("layerScope").addEventListener("change", buildLayers);
 document.getElementById("vascSel").addEventListener("change", buildVessels);
 
 /* ── 1. THE EM SECTION ─────────────────────────────────────────────────────  2026-10-13
@@ -4202,8 +4225,9 @@ function onCred(resp){
     const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
       .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
     CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
-    for (const id of ["sceneSignin", "gameSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
+    for (const id of ["sceneSignin", "gameSignin", "fixSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
     if (typeof GAME !== "undefined" && GAME.pendingBad){ GAME.pendingBad = false; gameBadSend(); }
+    if (typeof FIX !== "undefined" && FIX.pending){ FIX.pending = false; fixSave(); }
     if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
   } catch (e){}
 }
@@ -6616,7 +6640,7 @@ function setVesselColour(mode){
   if (NV.colour) NV.colourSrc = mode;
   const sel = document.getElementById("vcolSel"); if (sel && sel.value !== mode) sel.value = mode;
   if (VASC.mesh && VASC.mesh.material.userData.nv) VASC.mesh.material.userData.nv.col.value = NV.colour ? 1 : 0;
-  if (NV.colour && document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Showing the TriSAM vessels around the cells, coloured by order…"; setVessels("box"); }
+  if (NV.colour && document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Showing the TriSAM vessels (whole volume), coloured by order…"; setVessels("whole"); }
   const key = document.getElementById("vcolKey");
   if (key){
     key.style.display = NV.colour ? "flex" : "none";
@@ -6636,7 +6660,7 @@ function setNv(v){
   if (!NV.on && typeof STK !== "undefined" && STK.on && STK.quiet && !STK.clots.length) setStroke(false);
   if (NV.on) nvStatic();
   document.getElementById("nvBox").style.display = NV.on ? "" : "none";
-  if (NV.on && document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Vessel dilation needs the vessels: showing the TriSAM vessels around the cells…"; setVessels("box"); }
+  if (NV.on && document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Vessel dilation needs the vessels: showing the TriSAM vessels (whole volume)…"; setVessels("whole"); }
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function nvSetting(k, v){
@@ -7690,7 +7714,7 @@ function applyLook(){
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
-function select(i){ SELECTED = i; applyLook(); renderList(); }
+function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); } catch (e){} }
 
 document.getElementById("detail").addEventListener("change", loadAll);
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
@@ -7997,15 +8021,18 @@ function menuRows(){
   } else if (t === "Map"){
     /* Where the cells are: the layers, the V1 column, the visual areas and the vessels (2026-10-14). */
     if (DS_HAS.layers) rows.push({ label: "Cortical layers", on: layersOn(), act: () => setLayers(!layersOn()) });
+    if (DS_HAS.layers && layersOn()){ const ls = document.getElementById("layerScope");
+      rows.push({ label: "Layers: " + (ls.value === "cells" ? "only around the cells" : "whole volume") + "  ▸", on: true,
+                  act: () => { ls.value = ls.value === "cells" ? "whole" : "cells"; buildLayers(); } }); }
     if (DS_HAS.v1) rows.push({ label: "V1 column: " + ({ off: "off", outline: "outline", cells: "outline + its cells" })[V1COL.mode] + "  ▸",
                 on: V1COL.mode !== "off", act: () => setV1Col(({ off: "outline", outline: "cells", cells: "off" })[V1COL.mode]) });
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
     if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
     const vm = document.getElementById("vascSel").value;
     if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
-                on: vm !== "off", act: () => setVessels(({ off: "box", box: "whole", whole: "off" })[vm]) });
+                on: vm !== "off", act: () => setVessels(({ off: "whole", whole: "box", box: "off" })[vm]) });
     if (DS_HAS.pvs){ const pm = document.getElementById("pvsSel").value;
-      rows.push({ label: "Perivascular space: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[pm] + "  ▸", on: pm !== "off", act: () => { document.getElementById("pvsSel").value = ({ off: "box", box: "whole", whole: "off" })[pm]; buildPvs(); } });
+      rows.push({ label: "Perivascular space: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[pm] + "  ▸", on: pm !== "off", act: () => { document.getElementById("pvsSel").value = ({ off: "whole", whole: "box", box: "off" })[pm]; buildPvs(); } });
       if (pm !== "off"){ rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " − ", act: () => setPvsW(Math.max(0.5, PVS.w - 0.25)) }); rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " + ", act: () => setPvsW(Math.min(2, PVS.w + 0.25)) }); }
     }
     if (DS_HAS.flow){
@@ -11136,7 +11163,7 @@ async function setStroke(v, opt){
   document.getElementById("stkBox").style.display = STK.on && !quiet ? "" : "none";
   if (v && !quiet){ for (const k of ["plot", "hyp"]){ STK[k] = true; const el = document.querySelector('[data-stk="' + k + '"]'); if (el) el.checked = true; } }
   if (STK.on){
-    if (document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Stroke model: showing the TriSAM vessels around the cells…"; setVessels("box"); }
+    if (document.getElementById("vascSel").value === "off"){ ctxNote.textContent = "Stroke model: showing the TriSAM vessels (whole volume)…"; setVessels("whole"); }
     ctxNote.textContent = "Stroke model: reading the blood-flow network…";
     try { await stkNet(); } catch (e){ ctxNote.textContent = "Stroke model: the flow network could not be read — " + (e.message || e); STK.on = false; document.getElementById("stkBtn").classList.remove("on"); return; }
     for (let k = 0; k < 50 && !VASC.mesh; k++) await new Promise(r => setTimeout(r, 200));
@@ -11489,7 +11516,7 @@ async function setRide(v){
     if (!STK.on) await setStroke(true, { quiet: true });
     else if (!STK.parts) stkSetting("rbc", true);
     for (let k = 0; k < 100 && !STK.parts; k++) await new Promise(r => setTimeout(r, 100));
-    if (!STK.parts || !rideSeed()){ ctxNote.textContent = "Ride: no red cells in the box (turn on the vessels around the cells)."; return; }
+    if (!STK.parts || !rideSeed()){ ctxNote.textContent = "Ride: no red cells here (turn on the vessels)."; return; }
     ctxNote.textContent = "Ride (MODEL): a planned route from an arteriole through " + RIDE.route.capN + " capillaries to a venule, " + Math.round(RIDE.route.L) + " µm. Drag to look aside; Esc ends the ride.";
     RIDE.saved = { sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.clone(), cp: camera.position.clone(), ct: controls.target.clone(), en: controls.enabled };
     RIDE.on = true; controls.enabled = false; FLY.on = false;
@@ -11616,7 +11643,7 @@ function csfSpawn(i, anywhere){
 async function setCsf(v){
   if (v){
     if (!DSX.flowNet){ ctxNote.textContent = "The CSF tracer needs the vessel network (MICrONS only)."; return; }
-    if (document.getElementById("vascSel").value === "off") setVessels("box");
+    if (document.getElementById("vascSel").value === "off") setVessels("whole");
     ctxNote.textContent = "CSF tracer: reading the vessel network…";
     for (let k = 0; k < 50 && !VASC.mesh; k++) await new Promise(r => setTimeout(r, 200));
     await stkNet(); if (!STK.Q0) await stkBaseline(); if (!STK.inBox || !STK.on) stkInBox();
@@ -12122,6 +12149,221 @@ function setDomePreview(v){
 }
 document.getElementById("domePrev").addEventListener("click", () => setDomePreview(!DOME.preview));
 document.getElementById("recAspect").addEventListener("change", e => { document.getElementById("domeTilt").style.display = e.target.value === "dome" || DOME.preview ? "" : "none"; });
+
+/* ── 37. ADD MISSING PARTS TO A CELL (2026-10-23) ─────────────────────────────────────────────────
+   Søren: "When you see that a cell is missing a part you should be able to open an EM window with
+   segmentations right there and then when you double click on the segmentation you want to add it
+   adds it to the shown meshes. You can then jump to a new location and add a rootID there. When you
+   are done, you should be asked whether you want to add all of the rootIDs to the cell, and they
+   should be saved. This requires Google login."
+   · The window: the EM at that place (core/emtiles.js) with the segmentation painted over it
+     (core/segpaint.js, the tracing pad's own painter): the cell's present root IDs magenta, the ones
+     added here green. Double-click reads the root ID under the mouse from the flat segmentation
+     (core/segread.js, the same seg_m1300 snapshot the meshes come from) and adds it -- its mesh
+     appears on the cell at once, in a lighter shade of the cell's colour; double-click it again to
+     take it back. A click on the 3D view (a cell, a vessel, anything solid) brings the window there,
+     and the EM plane in 3D shows where it is.
+   · Saving: one "propose_root_id" per part, keyed by the cell's nucleus id, with the segmentation
+     type µJump uses for this dataset (ds.extraSegType) -- the very proposals µJump, its 3D view and
+     this viewer already fold into a cell, so nothing new is needed in the backend. The post is signed
+     with the Google sign-in the viewer already has (Share → scenes, the game). A cell with no
+     nucleus id cannot be saved this way (the proposals are filed by nucleus); the window says so.
+   · PC only for now: the window is a page element, which a headset does not show. */
+const FIX = { on: false, c: null, centre: null, mip: 2, dz: 0, pan: [0, 0], added: [], meshes: new Map(), tok: 0, view: null, hoverAt: 0, saving: false, pending: false };
+function fixDs(){ return dsOfCells(); }
+function fixIdsNow(c){ return [c.root, ...(c.extraUsed || c.extra || [])].filter(x => x && x !== "0").map(String); }
+function fixCell(){ return CELLS[SELECTED] || null; }
+function fixInfo(){
+  const c = fixCell(), el = document.getElementById("fixInfo"); if (!el) return;
+  el.textContent = !DSX.seg ? "this dataset has no flat segmentation to read" : c ? "for " + shortName(c) + (c.nuc && c.nuc !== "0" ? "" : " (no nucleus id: can be explored, not saved)") : "pick a cell first";
+}
+async function setFix(v){
+  const c = fixCell();
+  if (v && !c){ ctxNote.textContent = "Add missing parts: pick the cell first (click it), then press the button again."; return; }
+  if (v && !DSX.seg){ ctxNote.textContent = "This dataset has no flat segmentation the viewer can read, so parts cannot be picked here."; return; }
+  if (!v && FIX.added.length && !confirm("Leave without saving the " + FIX.added.length + " part(s) you added? They are taken off the cell again.")) return;
+  FIX.on = !!v; document.getElementById("fixBtn").classList.toggle("on", FIX.on);
+  document.getElementById("fixWin").style.display = FIX.on ? "" : "none";
+  if (!FIX.on){ fixClear(); return; }
+  FIX.c = c; FIX.added = []; FIX.mip = 2; FIX.dz = 0; FIX.pan = [0, 0];
+  const ds = fixDs();
+  if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
+  if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res });
+  if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
+  FIX.centre = emCentreUm();                                  // the picked cell's nucleus (else its mesh)
+  document.getElementById("fixTitle").textContent = "Add missing parts — " + shortName(c);
+  document.getElementById("fixAsk").style.display = "none";
+  fixList(); await fixDraw();
+  try { if (FIX.centre) await showEM(FIX.centre.slice()); } catch (e){}
+  ctxNote.textContent = "Add missing parts: find the missing piece in the EM window (click the 3D view to move the window there) and double-click it.";
+}
+function fixClear(){
+  for (const [, m] of FIX.meshes){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  FIX.meshes.clear(); FIX.added = []; FIX.c = null; FIX.pending = false; updateTri();
+}
+function fixList(){
+  const el = document.getElementById("fixList");
+  el.innerHTML = FIX.added.length ? "<b>Added (" + FIX.added.length + "):</b> " + FIX.added.map(a => '<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border:1px solid #2f9e44;border-radius:10px">' + a.root + (a.status ? " · " + esc(a.status) : "") + ' <a href="#" data-fx="' + a.root + '" style="color:#ff8787;text-decoration:none" title="Take it off again">✕</a></span>').join("")
+    : '<span style="color:#8b949e">Nothing added yet.</span>';
+  el.querySelectorAll("[data-fx]").forEach(b => b.addEventListener("click", ev => { ev.preventDefault(); fixRemove(b.dataset.fx); }));
+}
+function fixVox(){
+  const ds = fixDs(), r = ds.res;
+  return [Math.round(FIX.centre[0] * 1000 / r[0] + FIX.pan[0]), Math.round(FIX.centre[1] * 1000 / r[1] + FIX.pan[1]), Math.round(FIX.centre[2] * 1000 / r[2] + FIX.dz)];
+}
+async function fixDraw(){
+  if (!FIX.on || !FIX.centre) return;
+  const cv = document.getElementById("fixEm"), lab = document.getElementById("fixLab"), tok = ++FIX.tok, ds = fixDs();
+  lab.textContent = "Loading the EM…";
+  try {
+    const info = await UJ.emtiles.scaleAt(FIX.mip, true); if (FIX.mip > info.count - 1){ FIX.mip = info.count - 1; return fixDraw(); }
+    const tmp = document.createElement("canvas");
+    const view = await UJ.emtiles.drawSection(tmp, { centre: fixVox(), w: 420, h: 420, mip: FIX.mip, slabOk: true });
+    if (tok !== FIX.tok) return;
+    if (document.getElementById("fixSeg").checked){
+      lab.textContent = "Loading the segmentation…";
+      const ids = fixIdsNow(FIX.c);
+      if (ids.length) await UJ.segpaint.paint(tmp, view, { root: ids[0], rootAlso: ids.slice(1), alpha: 0.38 });
+      if (FIX.added.length){
+        const ctx = tmp.getContext("2d"), img = ctx.getImageData(0, 0, view.w, view.h);
+        await UJ.segpaint._layer(img.data, view, UJ.segread._httpBase(ds.seg), FIX.added.map(a => UJ.segpaint.idPair(a.root)).filter(Boolean), [[64, 192, 87]], 0.5);
+        ctx.putImageData(img, 0, 0);
+      }
+      if (tok !== FIX.tok) return;
+    }
+    FIX.view = view;
+    const g = cv.getContext("2d"); cv.width = 420; cv.height = 420; g.drawImage(tmp, 0, 0);
+    const wUm = view.umAcross, bar = [0.5, 1, 2, 5, 10].reverse().find(b => b <= wUm / 4) || 0.5;
+    document.getElementById("fixBar").style.width = (bar / wUm * 100) + "%"; document.getElementById("fixBarL").textContent = bar + " µm";
+    lab.textContent = wUm.toFixed(wUm < 10 ? 1 : 0) + " µm wide · " + Math.round(view.effNmPerPx) + " nm/px · z " + (FIX.dz >= 0 ? "+" : "") + (FIX.dz * ds.res[2] / 1000).toFixed(2) + " µm";
+  } catch (e){ if (tok === FIX.tok) lab.textContent = "The EM could not be read (" + (e.message || e) + ")."; }
+}
+function fixPxToVox(ev){
+  const cv = document.getElementById("fixEm"), r = cv.getBoundingClientRect(), v = FIX.view; if (!v) return null;
+  const px = (ev.clientX - r.left) * cv.width / r.width, py = (ev.clientY - r.top) * cv.height / r.height;
+  return v.toolAt(px, py);
+}
+async function fixRootAt(ev){
+  const vox = fixPxToVox(ev); if (!vox) return null;
+  const r = await UJ.segread.segmentAt(vox).catch(() => ({ rootId: "0" }));
+  return r.rootId && r.rootId !== "0" ? String(r.rootId) : null;
+}
+async function fixToggle(root){
+  const c = FIX.c; if (!c) return;
+  if (FIX.added.some(a => a.root === root)) return fixRemove(root);
+  if (fixIdsNow(c).includes(root)){ ctxNote.textContent = "That piece (" + root + ") is already part of this cell."; return; }
+  const a = { root, status: "loading…" }; FIX.added.push(a); fixList();
+  try {
+    const light = document.getElementById("detail").value === "light";
+    const geo = await UJ.mesh.fetchCombinedMesh(root, () => {}, false, [], light);
+    if (!FIX.added.includes(a)) return;
+    const g = geometryFrom(geo.positions, geo.indices); addActivityAttributes(g);
+    const col = new THREE.Color(cellTint(c, c.colour)).lerp(new THREE.Color("#ffffff"), 0.35);
+    const m = new THREE.Mesh(g, cellMaterial(col)); m.userData.cell = c.i; m.userData.fixPart = root;
+    content.add(m); FIX.meshes.set(root, m); a.status = ""; updateTri();
+    ctxNote.textContent = "Added " + root + " to " + shortName(c) + " (" + Math.round(geo.indices.length / 3000) + "k triangles). Not saved yet — press Done when you have them all.";
+  } catch (e){ a.status = "no mesh"; ctxNote.textContent = "Root ID " + root + " has no mesh in this snapshot; it can still be saved."; }
+  fixList(); fixDraw();
+}
+function fixRemove(root){
+  FIX.added = FIX.added.filter(a => a.root !== root);
+  const m = FIX.meshes.get(root); if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); FIX.meshes.delete(root); updateTri(); }
+  fixList(); fixDraw();
+}
+function fixMoveTo(pUm){
+  FIX.centre = pUm; FIX.pan = [0, 0]; FIX.dz = 0; fixDraw();
+  showEM(pUm.slice()).catch(() => {});
+}
+function fixAsk(){
+  const c = FIX.c, el = document.getElementById("fixAsk"), t = document.getElementById("fixAskText");
+  el.style.display = "";
+  if (!FIX.added.length){ t.textContent = "Nothing was added. Close the window?"; document.getElementById("fixSave").style.display = "none"; return; }
+  document.getElementById("fixSave").style.display = "";
+  const nuc = c.nuc && c.nuc !== "0" ? c.nuc : null;
+  t.innerHTML = nuc ? "Add all " + FIX.added.length + " root ID" + (FIX.added.length > 1 ? "s" : "") + " to <b>" + esc(shortName(c)) + "</b> (nucleus " + nuc + ")? They are saved for everyone, as root-ID proposals for this cell in µJump (signed with your Google account), and drawn with the cell from now on."
+                    : "This cell has no nucleus id, and proposals are filed by nucleus, so they cannot be saved. You can still look at them here.";
+  document.getElementById("fixSave").disabled = !nuc;
+  if (nuc && !credOk()) signInUI("fixSignin");
+}
+async function fixSave(){
+  const c = FIX.c, ds = fixDs(), out = document.getElementById("fixOut2");
+  if (!c || !c.nuc || c.nuc === "0" || !FIX.added.length) return;
+  if (!credOk()){ FIX.pending = true; out.textContent = "Sign in with Google (above) — it saves as soon as you are signed in."; signInUI("fixSignin"); return; }
+  if (FIX.saving) return; FIX.saving = true; FIX.pending = false;
+  const url = ds.backend + (ds.backendDs ? "?ds=" + encodeURIComponent(ds.backendDs) : "");
+  let ok = 0; const bad = [];
+  for (const a of FIX.added){
+    out.textContent = "Saving " + (ok + bad.length + 1) + " of " + FIX.added.length + "…";
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ type: "propose_root_id", credential: CRED, nucleusId: String(c.nuc), rootId: a.root, segType: ds.extraSegType || "img65",
+                               comment: "added in µJump VR (EM window)", timestamp: new Date().toISOString(), tool: "vr", ds: ds.backendDs || "ujump" }) });
+      const d = JSON.parse(await r.text());
+      if (d.ok === false) bad.push(a.root + ": " + (d.error || "refused")); else { ok++; a.saved = true; }
+    } catch (e){ bad.push(a.root + ": could not reach the server"); }
+  }
+  FIX.saving = false;
+  const saved = FIX.added.filter(a => a.saved).map(a => a.root);
+  if (saved.length){
+    c.extra = [...new Set([...(c.extra || []), ...saved])];
+    if (ALL_PROPS){ const L = ALL_PROPS[c.nuc] || (ALL_PROPS[c.nuc] = []); saved.forEach(r => L.push({ rootId: r, segType: ds.extraSegType || "img65" })); }
+  }
+  out.textContent = ok + " saved" + (bad.length ? "; not saved: " + bad.join("; ") : "") + ".";
+  if (!bad.length){
+    ctxNote.textContent = "✓ " + ok + " root ID" + (ok > 1 ? "s" : "") + " added to " + shortName(c) + " for everyone. Redrawing the cell with them…";
+    FIX.added = []; setFix(false);
+    await fixReload(c);
+  } else { FIX.added = FIX.added.filter(a => !a.saved); fixList(); }
+}
+async function fixReload(c){
+  for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  c.mesh = c.nucMesh = null; c.err = false; c.graph = null;
+  await loadOne(c, LOAD_TOKEN, document.getElementById("detail").value === "light");
+  renderList(); applyLook(); updateTri();
+}
+document.getElementById("fixBtn").addEventListener("click", () => setFix(!FIX.on));
+document.getElementById("fixX").addEventListener("click", () => setFix(false));
+document.getElementById("fixCancel").addEventListener("click", () => setFix(false));
+document.getElementById("fixDone").addEventListener("click", fixAsk);
+document.getElementById("fixKeep").addEventListener("click", () => { document.getElementById("fixAsk").style.display = "none"; });
+document.getElementById("fixDrop").addEventListener("click", () => { FIX.added.slice().forEach(a => fixRemove(a.root)); setFix(false); });
+document.getElementById("fixSave").addEventListener("click", fixSave);
+document.getElementById("fixOut").addEventListener("click", () => { FIX.mip = Math.min(6, FIX.mip + 1); fixDraw(); });
+document.getElementById("fixIn").addEventListener("click", () => { FIX.mip = Math.max(0, FIX.mip - 1); fixDraw(); });
+document.getElementById("fixUp").addEventListener("click", () => { FIX.dz -= 5; fixDraw(); });
+document.getElementById("fixDn").addEventListener("click", () => { FIX.dz += 5; fixDraw(); });
+document.getElementById("fixHome").addEventListener("click", () => { if (FIX.c){ const p = emCentreUm(); if (p) fixMoveTo(p); } });
+document.getElementById("fixSeg").addEventListener("change", fixDraw);
+{ const cv = document.getElementById("fixEm"), hv = document.getElementById("fixHover");
+  let drag = null;
+  cv.addEventListener("wheel", e => { e.preventDefault(); FIX.mip = Math.max(0, Math.min(6, FIX.mip + (e.deltaY > 0 ? 1 : -1))); fixDraw(); }, { passive: false });
+  cv.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, moved: false }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    if (drag){ const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3){ drag.moved = true; cv.style.transform = "translate(" + dx + "px," + dy + "px)"; } return; }
+    const now = performance.now(); if (now - FIX.hoverAt < 180) return; FIX.hoverAt = now;
+    fixRootAt(e).then(r => { hv.textContent = r ? (FIX.added.some(a => a.root === r) ? "added: " : fixIdsNow(FIX.c || {}).includes(r) ? "this cell: " : "double-click to add: ") + r : ""; });
+  });
+  cv.addEventListener("pointerup", e => {
+    const d = drag; drag = null; cv.style.transform = ""; if (!d || !d.moved || !FIX.view) return;
+    const k = FIX.view.effNmPerPx / fixDs().res[0], sc = cv.width / cv.getBoundingClientRect().width;
+    FIX.pan[0] -= Math.round((e.clientX - d.x) * sc * k); FIX.pan[1] -= Math.round((e.clientY - d.y) * sc * k); fixDraw();
+  });
+  cv.addEventListener("dblclick", async e => { e.preventDefault(); const r = await fixRootAt(e); if (r) fixToggle(r); else ctxNote.textContent = "Nothing segmented there."; });
+  /* the window can be dragged by its title bar */
+  const head = document.getElementById("fixHead"), win = document.getElementById("fixWin"); let hd = null;
+  head.addEventListener("pointerdown", e => { if (e.target.id === "fixX") return; const r = win.getBoundingClientRect(); hd = { x: e.clientX - r.left, y: e.clientY - r.top }; head.setPointerCapture(e.pointerId); });
+  head.addEventListener("pointermove", e => { if (!hd) return; win.style.left = Math.max(0, e.clientX - hd.x) + "px"; win.style.top = Math.max(0, e.clientY - hd.y) + "px"; win.style.right = "auto"; });
+  head.addEventListener("pointerup", () => { hd = null; }); }
+/* a click on the 3D view (not a drag) brings the window there */
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!FIX.on || e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
+  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm) return;
+  const ndc = canvasNdc(e); _fr.setFromCamera(ndc, camera);
+  const P = flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()); if (!P) return;
+  fixMoveTo(content.worldToLocal(P.clone()).toArray());
+  ctxNote.textContent = "The EM window is now where you clicked. Double-click the missing piece in it.";
+});
+fixInfo();
 
 /* ── loop ─────────────────────────────────────────────────────────────────── */
 const clock = new THREE.Clock();
@@ -12630,7 +12872,7 @@ const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, va
                  nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
-  const gone = { layerBtn: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
+  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
                  emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapCsfRow: "flow", gameBox: "vec" };
   for (const id in gone){
@@ -12651,7 +12893,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
@@ -12666,5 +12908,31 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
      left by µJump's `handoff` step, so a reader who was told the walkthrough carries
      on here is offered exactly that instead of "First time here?". -->
 <script>UJ.tour&&UJ.tour.ready();</script>
+<div id="fixWin" style="display:none;position:fixed;right:12px;top:12px;z-index:20;width:min(440px,calc(100vw - 24px));background:rgba(13,17,23,.97);color:#e6edf3;border:1px solid #30363d;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.5);font:13px system-ui,sans-serif">
+  <div id="fixHead" style="padding:7px 10px;border-bottom:1px solid #30363d;cursor:move;display:flex;align-items:center;gap:8px"><b style="flex:1" id="fixTitle">Add missing parts</b><button id="fixX" title="Close (asks about unsaved parts)" style="border:0;background:none;color:inherit;font-size:16px;cursor:pointer">✕</button></div>
+  <div style="padding:8px 10px">
+    <div style="position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:6px;overflow:hidden">
+      <canvas id="fixEm" width="420" height="420" style="width:100%;height:100%;display:block;touch-action:none;cursor:crosshair"></canvas>
+      <div id="fixLab" style="position:absolute;left:6px;top:4px;font:11px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+      <div id="fixHover" style="position:absolute;right:6px;top:4px;font:11px system-ui;color:#ffe066;text-shadow:0 0 3px #000;pointer-events:none"></div>
+      <div id="fixBar" style="position:absolute;left:8px;bottom:8px;height:3px;background:#fff;pointer-events:none"></div>
+      <div id="fixBarL" style="position:absolute;left:8px;bottom:13px;font:10px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
+    </div>
+    <div style="font-size:11.5px;color:#8b949e;margin:5px 0">Magenta = the cell now · green = parts you added · <b style="color:#e6edf3">double-click</b> a piece of the segmentation to add it (again to remove it) · drag to move · scroll or −/+ to zoom · ▲▼ through the tissue · <b style="color:#e6edf3">click the 3D view</b> to bring the window there</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+      <button id="fixOut">−</button><button id="fixIn">+</button><button id="fixUp">▲</button><button id="fixDn">▼</button>
+      <label style="font-size:12px"><input type="checkbox" id="fixSeg" checked> segmentation</label>
+      <button id="fixHome" title="Back to the cell's nucleus">⌖ nucleus</button>
+    </div>
+    <div id="fixList" style="margin-top:6px;font-size:12px"></div>
+    <div style="display:flex;gap:6px;margin-top:8px"><button id="fixDone" class="on">Done…</button><button id="fixCancel">Cancel</button></div>
+    <div id="fixAsk" style="display:none;margin-top:8px;border-top:1px solid #30363d;padding-top:8px">
+      <div id="fixAskText" style="margin-bottom:6px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button id="fixSave" class="on">Add them all to the cell</button><button id="fixKeep">Keep editing</button><button id="fixDrop">Discard</button></div>
+      <div id="fixSignin" style="margin-top:6px"></div>
+      <div id="fixOut2" style="margin-top:4px;font-size:12px;color:#8b949e"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
