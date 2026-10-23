@@ -334,7 +334,7 @@
       <option value="whole">Perivascular space: whole volume</option>
       <option value="box">Perivascular space: only around the cells, up to the pia</option>
     </select>
-    <label id="mapRbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="Blood cells carried by the blood-flow model through the whole MICrONS vascular network: red cells (they speed up and slow down with every dilation, constriction, heartbeat and breath, and squeeze into bullets through the precapillary sphincters), white cells (about 1 per 1,800 red cells, shown ×20) and the platelet and red-cell jams that stall a capillary now and then. The same switch as under Activity → Vascular regulation &amp; blood flow, where the Alzheimer's model is."><input type="checkbox" id="mapRbc"> blood cells (model)</label>
+    <label id="mapRbcRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="Blood cells carried by the blood-flow model through the whole MICrONS vascular network: red cells (they speed up and slow down with every dilation, constriction, heartbeat and breath, and squeeze into bullets through the precapillary sphincters), white cells (about 1 per 1,800 red cells, the real proportion) and the platelet and red-cell jams that stall a capillary now and then. The same switch as under Activity → Vascular regulation &amp; blood flow, where the Alzheimer's model is."><input type="checkbox" id="mapRbc"> blood cells (model)</label>
     <label id="mapWbcRow" style="display:none"><input type="checkbox" id="mapWbc"></label>
     <label id="mapCsfRow" style="display:flex;margin:2px 0 6px;font-size:12px;align-items:center;gap:6px" title="CSF tracer (MODEL): particles entering along the pial arteries' perivascular spaces, down the penetrating arterioles and into the tissue -- faster in sleep, slowed by a spreading depolarization or by hypertension. The same switch as under Activity → Vascular regulation &amp; blood flow."><input type="checkbox" id="mapCsf"> CSF tracer (model)</label>
     <label id="pvsWRow" style="display:none;font-size:12px;align-items:center;gap:6px" title="Width of the perivascular and subarachnoid space, × the traced width (the vessel side stays on the vessel wall)">width <input type="range" id="pvsW" min="0.5" max="2" step="0.05" value="1" style="width:110px"> <span id="pvsWv">×1.00</span></label>
@@ -571,7 +571,7 @@
       <label style="display:none"><input type="checkbox" id="wbcOn"></label>
       <label title="Alzheimer's model (APP/PS1): ~1.8 % of capillaries stalled, ~86 % by neutrophils (Cruz Hernández et al. 2019 Nat Neurosci 22:413; Bracko et al. 2020 Sci Rep 10:9884)"><input type="checkbox" id="wbcAd"> Alzheimer's model</label>
       <label id="wbcLy6gRow" style="display:none" title="Anti-Ly6G antibody against neutrophils: no new leukocyte stalls, existing ones clear within ~10 min; penetrating-arteriole flow +26–32 % (Cruz Hernández 2019)"><input type="checkbox" id="wbcLy6g"> anti-Ly6G</label>
-      <label title="Show white cells ×20 so they can be found; off = the real proportion (only a few in the box)"><input type="checkbox" id="wbcTeach" checked> ×20 for teaching</label>
+      <label title="Off (default): the real proportion, ~1 white cell per 1,800 red cells. On: ×20, so they are easy to find"><input type="checkbox" id="wbcTeach"> ×20 for teaching</label>
       <label title="Precapillary sphincters (Grubb et al. 2020): rings at penetrating-arteriole branch points narrowing the lumen to ~64 %; high resistance, dilate more than the capillary with activity"><input type="checkbox" data-stk="showSph" checked> show sphincters</label>
       <label title="Clouds where the tissue PO2 (MODEL) is below the chosen level: blue < 10, violet < 5, purple < 2 mmHg"><input type="checkbox" data-stk="hyp" checked> hypoxic pockets</label>
       <select id="stkThr" title="Show tissue below this PO2"><option value="10">below 10 mmHg</option><option value="5">below 5 mmHg</option><option value="2">below 2 mmHg</option><option value="20">below 20 mmHg</option></select>
@@ -632,7 +632,7 @@
     <div class="catick">
       
       <label title="Pial-artery pieces that close a loop (drawn gold) -- the collaterals that can feed the territory of a clotted branch from another. Off: they are closed too."><input type="checkbox" data-stk="collat" checked> pial collaterals open</label>
-      <label title="Every cut end of a pial arteriole at the same pressure (the widest trunk's), as the pial arterial pressure is nearly uniform over one field: blood comes in at every trunk and meets at the collaterals. Off: each end by its width (45 + 0.25·D mmHg, Schmid et al. 2017), which made blood leave through some trunks backwards."><input type="checkbox" data-stk="pialEq" checked> pial inlets at one pressure</label>
+      <label title="Every cut end of a pial arteriole TRUNK (median radius ≥ 6 µm) at the same pressure (the widest trunk's), as the pial arterial pressure is nearly uniform over one field: blood comes in at every trunk and meets at the collaterals. Thin pial branches cut at the edge are closed -- given the trunk's pressure they pushed blood backwards into the trunks. Off: each end by its width (45 + 0.25·D mmHg, Schmid et al. 2017), which made blood leave through some trunks backwards."><input type="checkbox" data-stk="pialEq" checked> pial inlets at one pressure</label>
       <label title="The first neuron that depolarizes for lack of flow starts a spreading depolarization from there (peri-infarct depolarization)"><input type="checkbox" data-stk="sd" checked> peri-infarct depolarization</label>
       <button id="stkUndo" title="Remove the last clot (reperfusion)">Remove last clot</button>
       <button id="stkClear" title="Remove every clot">Remove all</button>
@@ -4452,7 +4452,7 @@ async function openScene(id){
   try { nvApplyUi(u.nv); } catch (e){ console.warn("[vr] vessel settings", e); }
   try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
   try { lfpApplyUi(u.lfp); } catch (e){ console.warn("[vr] LFP settings", e); }
-  try { if (u.phys){ setTemp(u.phys.T); setIcp(u.phys.icp); } if (u.wbc){ WBC.teach = u.wbc.teach !== false; if (u.wbc.on) setWbc("on", true); if (u.wbc.ad) setWbc("ad", true); if (u.wbc.ly6g) setWbc("ly6g", true); } } catch (e){ console.warn("[vr] temperature / ICP / white cells", e); }
+  try { if (u.phys){ setTemp(u.phys.T); setIcp(u.phys.icp); } if (u.wbc){ WBC.teach = u.wbc.teach === true; if (u.wbc.on) setWbc("on", true); if (u.wbc.ad) setWbc("ad", true); if (u.wbc.ly6g) setWbc("ly6g", true); } } catch (e){ console.warn("[vr] temperature / ICP / white cells", e); }
   try { if (u.pvs){ setPvsW(u.pvs.w || 1); if (u.pvs.mode && u.pvs.mode !== document.getElementById("pvsSel").value){ document.getElementById("pvsSel").value = u.pvs.mode; buildPvs(); } } } catch (e){ console.warn("[vr] perivascular settings", e); }
   SCENE.pending = sc;
   renderList(); updateLabel();
@@ -10436,7 +10436,7 @@ document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on
    A CLOT closes the piece between its two branch points (conductance × 10⁻⁴). Pial COLLATERALS: pial-
    artery pieces that close a loop (outside the widest spanning tree), gold; off = closed. */
 const STK = { on: false, net: null, netP: null, clots: [], arm: false, collat: true, rbc: true, colour: true, plot: true, sd: true,
-              map: 90, auto: true, pialEq: true, k: 1, kSolved: 1, lam: 0.06, pulse: true, peri: true, hyp: true, hypThr: 10, cmode: "auto",
+              map: 90, auto: true, pialEq: true, pialCloseR: 6, k: 1, kSolved: 1, lam: 0.06, pulse: true, peri: true, hyp: true, hypThr: 10, cmode: "auto",
               Q0: null, p0: null, Q: null, p: null, Si: null, So: null, solving: false, again: false, dirty: false, lastSolveW: 0, t: 0, hist: [],
               cs: new Map(), vmap: null, vmapFor: null, rbcMesh: null, parts: null, clotGrp: null, colGrp: null, pockMesh: null, cv: null, spr: null,
               note: "", prevColour: null, wallOp: null, firstAD: false, inBox: null, box: null, grid: null, kap: null, dead: null, hypT: null, kapSolved: 0,
@@ -10545,12 +10545,22 @@ function stkBC(map){
      collateral and OUT of the other trunk's cut end. Within one 1.4 mm field the pial arterial pressure is nearly
      uniform -- the drop happens in the penetrating arterioles and the capillaries -- so with this on (default) every
      pial arterial cut end gets the same pressure, the widest one's. Blood then enters at every trunk and meets at
-     the collaterals, the watershed, leaving through the penetrating arterioles. Off: the old diameter rule. */
+     the collaterals, the watershed, leaving through the penetrating arterioles. Off: the old diameter rule.
+     Second round, same evening ("We still have backwards flow in some of the pial arterioles"): the thin pial branches cut at
+     the edge had been made inlets too, at the trunk's pressure, and pushed blood backwards into the trunks. Only TRUNK ends
+     (median radius of the end chain ≥ STK.pialCloseR = 6 µm; the median, because tracings taper where they stop) are inlets
+     now; thin branch ends are closed, so a branch carries blood from its trunk to its own penetrating arterioles only. */
   if (STK.pialEq){
-    if (!N.pialIn){ const m = new Uint8Array(N.nJ); let pm = 0;
-      for (let j = 0; j < N.nJ; j++){ if (isNaN(bc[j]) || N.bcVen[j] || N.jdeg[j+1] <= N.jdeg[j]) continue; const c = N.jc[N.jdeg[j]]; if (N.CL[N.ccls[c]] === "part"){ m[j] = 1; pm = Math.max(pm, bc[j]); } }
-      N.pialIn = m; N.pialP = pm; }
-    for (let j = 0; j < N.nJ; j++) if (N.pialIn[j]) bc[j] = N.pialP;
+    /* 1 = a trunk's cut end (inlet at the common pressure), 2 = a thin branch's cut end (closed). The width is the
+       chain's MEDIAN radius, not the radius at the cut: tracings taper where they stop, so a 25 µm trunk could read
+       4 µm at its tip and be taken for a twig. */
+    if (!N.pialIn || N.pialInR !== STK.pialCloseR){ const m = new Uint8Array(N.nJ); let pm = 0;
+      for (let j = 0; j < N.nJ; j++){ if (isNaN(bc[j]) || N.bcVen[j] || N.jdeg[j+1] <= N.jdeg[j]) continue; const c = N.jc[N.jdeg[j]]; if (N.CL[N.ccls[c]] !== "part") continue;
+        const rr = []; for (let k = N.off[c]; k < N.off[c+1]; k++) rr.push(N.rad[N.cp[k]]); rr.sort((x, y) => x - y); const rm = rr[rr.length >> 1];
+        if (rm < (STK.pialCloseR || 0)) m[j] = 2; else { m[j] = 1; pm = Math.max(pm, bc[j]); }
+        (N.pialW || (N.pialW = new Float32Array(N.nJ)))[j] = Math.min(70, 45 + 0.25 * 2 * rm) * 133.322; }
+      N.pialIn = m; N.pialP = pm; N.pialInR = STK.pialCloseR; }
+    for (let j = 0; j < N.nJ; j++) if (N.pialIn[j] === 1) bc[j] = STK.pialMode === "width" ? N.pialW[j] : N.pialP; else if (N.pialIn[j] === 2) bc[j] = NaN;
   }
   for (let j = 0; j < N.nJ; j++) if (!isNaN(bc[j]) && !N.bcVen[j]) bc[j] = (10 + (bc[j] / 133.322 - 10) * f) * 133.322;
   /* ICP (section 43): no vessel in the skull can hold a pressure below it -- the veins (and the box's open capillary
@@ -11443,6 +11453,13 @@ function bpFrame(sdt){
 /* ── every frame ── */
 function stkFrame(sdt){
   if (!STK.on) return;
+  /* NOTHING OF THE BLOOD WITHOUT ITS VESSELS (2026-10-23, Søren: "Even though I had not yet come to the view on the
+     timeline where I had activated blood cells, there were some blood cells showing and precapillary sphincters.")
+     A timeline that solves the flow ahead of time hides only the vessel surface in its vessel-free views
+     (VASC.tlOff), so the red and white cells, the sphincter rings, the jams, the collaterals and the clots were left
+     floating in empty space. They now show only while the vessels do. */
+  { const show = !!(VASC.mesh && VASC.mesh.visible && !VASC.tlOff);
+    for (const o of [STK.rbcMesh, STK.rbcPara, STK.rbcBullet, STK.sphGrp, STK.plugGrp, STK.colGrp, STK.clotGrp, WBC.mesh]) if (o && o.visible !== show) o.visible = show; }
   STK.t += sdt; STK._sdt = sdt;
   /* autoregulation: the arterioles move towards their target with a ~6 s lag */
   if (Math.abs(STK.k - STK.kSolved) > 0.004) STK.dirty = true;
@@ -14069,7 +14086,8 @@ grpFromLink();
      2014) and flow shifts to non-nutritive shunts (Bragin et al. 2013 Stroke 44:177) -- said, not modelled.
    · CSF tracer influx falls with raised ICP (rat glioma, ICP 15.6 vs 8.1 mmHg, Xu et al. 2022 Front Oncol
      11:790821, no percentage): QUALITATIVE here, 1 / (1 + (ICP − 5)/10). */
-const WBC = { on: false, teach: true, ad: false, ly6g: false, W: null, mesh: null, stall: new Map(), hist: new Set(), p: 0.15, pauses: 0 };
+const WBC = { on: false, teach: false,      /* realistic by default (2026-10-23, Søren: "way too many white blood cells now. It should be realistic") */
+             ad: false, ly6g: false, W: null, mesh: null, stall: new Map(), hist: new Set(), p: 0.15, pauses: 0 };
 const PHYS = { T: 37.7, T0: 37.7, icp: 5, icp0: 5 };
 function wbcCount(){ const real = STK.parts ? STK.parts.n * (STK.rbcEvery || 1) / 1800 : 3; return Math.max(3, Math.round(real * (WBC.teach ? 20 : 1))); }
 function wbcDur(){ return Math.random() < 0.6 ? -Math.log(Math.random()) * 120 : -Math.log(Math.random()) * 2400; }
@@ -14708,7 +14726,7 @@ function tlVessels(want){
   if (sel.value !== want){ sel.value = want; VASC.tlBusy = true; Promise.resolve(buildVessels()).finally(() => { VASC.tlBusy = false; }); }
 }
 function tlRbc(v){
-  if (!v){ setRbcFlow(false); return; }
+  if (!v){ if (STK.on && STK.rbc) stkSetting("rbc", false); return; }   // the flow stays solved for the next view that wants the cells
   STK.tlBusy = true;
   (async () => {
     try { if (!STK.on) await setStroke(true, { quiet: true }); else stkSetting("rbc", true); }
