@@ -884,6 +884,61 @@ function finish() {
   ok("the bubble fits the screen", phone.inside);
   ok("...does not cover the control", !phone.overlap);
   ok("...and nothing scrolls sideways", !phone.wide);
+  /* ── THE BUBBLE ON TOP OF THE BUTTON IT NAMES, ON A PHONE ───────────────────────  2026-10-23
+     Søren, from his phone: a step reading "Waiting for you to press the collection pill" with no
+     pill anywhere on screen -- only a sliver of its green ring showing past the bubble's edge.
+     placeBubble()'s desktop branch tries below the target, then above, then clamps; its PHONE
+     branch pinned the bubble to the bottom whatever the target was doing. core/vrbasket.js's
+     pill is position:fixed at bottom:16px, so the bubble landed exactly on it, and no amount of
+     scrolling could help because neither moves.
+
+     The same lesson as the dimming that covered its own press-target, which only a hit test
+     caught: the engine telling you to press something and then hiding it is the one failure that
+     makes a walkthrough unusable rather than merely imperfect. So the fixture now carries a
+     pinned corner pill and tray, and this walks to that step at phone size and hit-tests it. */
+  const pinned = await p.evaluate(async () => {
+    UJ.tour.stop();
+    try { localStorage.clear(); } catch (e) {}
+    const steps = UJ.tour.parts()[0].steps;
+    const want = steps.findIndex(s => s.press === "#cornerPill");
+    UJ.tour.start("part1");
+    for (let i = 0; i < want; i++) document.querySelector(".tour-next").click();
+    await new Promise(r => setTimeout(r, 450));
+    const pill = document.querySelector("#cornerPill").getBoundingClientRect();
+    const bub = document.querySelector(".tour-bubble").getBoundingClientRect();
+    const hit = document.elementFromPoint(pill.left + pill.width / 2, pill.top + pill.height / 2);
+    return { step: want + 1, waiting: !document.querySelector(".tour-wait").hidden,
+             overlap: !(bub.right < pill.left || bub.left > pill.right
+                     || bub.bottom < pill.top || bub.top > pill.bottom),
+             hitIsPill: !!hit && (hit.id === "cornerPill" || hit.closest("#cornerPill") !== null),
+             hitWas: hit ? (hit.id || hit.className || hit.tagName) : "nothing",
+             bubTop: Math.round(bub.top), pillTop: Math.round(pill.top), h: window.innerHeight };
+  });
+  ok("a step naming a PINNED corner control is waiting on it", pinned.waiting === true,
+     "step " + pinned.step);
+  ok("...and the bubble does not land on top of it", !pinned.overlap,
+     "bubble at y=" + pinned.bubTop + ", pill at y=" + pinned.pillTop + " of " + pinned.h);
+  /* The hit test, not the rectangles: a real tap has to reach the pill. */
+  ok("...and a tap on it reaches the pill itself", pinned.hitIsPill === true,
+     "the tap landed on " + pinned.hitWas);
+  /* ...and once the reader does press it, the step's own target is a pinned tray at the bottom,
+     so the bubble has to stay out of the way a second time rather than snapping back down onto
+     it. This is the exact step Søren was looking at. */
+  const opened = await p.evaluate(async () => {
+    document.querySelector("#cornerPill").click();
+    await new Promise(r => setTimeout(r, 500));
+    const tray = document.querySelector("#cornerTray").getBoundingClientRect();
+    const bub = document.querySelector(".tour-bubble").getBoundingClientRect();
+    return { waiting: !document.querySelector(".tour-wait").hidden,
+             overlap: !(bub.right < tray.left || bub.left > tray.right
+                     || bub.bottom < tray.top || bub.top > tray.bottom),
+             bubTop: Math.round(bub.top), trayTop: Math.round(tray.top) };
+  });
+  ok("...and pressing it stops the wait", opened.waiting === false);
+  ok("...with the bubble still clear of the tray it has just opened", !opened.overlap,
+     "bubble at y=" + opened.bubTop + ", tray at y=" + opened.trayTop);
+  await p.evaluate(() => { UJ.tour.stop(); try { localStorage.clear(); } catch (e) {} });
+  await p.setViewportSize({ width: 1280, height: 900 });
   /* The picker on the same 390px screen. The bubble was 400px wide here three hours ago, which is
      the whole reason the engine sets its own box-sizing; the picker is a second fixed-width card
      and gets the same measurement rather than the same assumption. */
@@ -994,6 +1049,42 @@ function finish() {
     ok("...with no script errors from the walkthrough",
        verrs.filter(e => /tour/i.test(e)).length === 0,
        verrs.length ? verrs.slice(0, 3).join(" | ") : "none");
+    /* ── AND THE SAME WALK ON A PHONE ─────────────────────────────────────────────  2026-10-23
+       vr.html is the only real page in this family that can be driven here, and it is full of
+       position:fixed furniture -- #keysCard bottom-right, #panel down the left -- which is
+       exactly the shape that put the bubble on top of the control it named on Søren's phone.
+       The fixture proves the placement rule; this proves it against real furniture. */
+    await vp.setViewportSize({ width: 390, height: 780 });
+    const vphone = await vp.evaluate(async () => {
+      UJ.tour.stop();
+      try { localStorage.clear(); } catch (e) {}
+      const id = UJ.tour.parts()[0].id;
+      UJ.tour.start(id);
+      const bad = [];
+      const n = UJ.tour.parts()[0].steps.length;
+      for (let i = 0; i < n; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        const w = UJ.tour.where();
+        const ring = document.querySelector(".tour-ring");
+        const bub = document.querySelector(".tour-bubble").getBoundingClientRect();
+        if (bub.left < 0 || bub.right > innerWidth)
+          bad.push("step " + (w ? w.step + 1 : "?") + " off-screen");
+        if (ring && !ring.hidden) {
+          const rr = ring.getBoundingClientRect();
+          /* A target taller than the free space cannot be missed in either slot; only count a
+             target that WOULD have fitted beside the bubble. */
+          const fits = rr.height < innerHeight - bub.height - 24;
+          const over = !(bub.right < rr.left || bub.left > rr.right
+                      || bub.bottom < rr.top || bub.top > rr.bottom);
+          if (fits && over) bad.push("step " + (w ? w.step + 1 : "?") + " covered");
+        }
+        document.querySelector(".tour-next").click();
+      }
+      return { bad: bad, steps: n };
+    });
+    ok("...and on a phone the bubble never covers a target that could have fitted beside it",
+       vphone.bad.length === 0,
+       vphone.bad.join(", ") || vphone.steps + " steps walked at 390px");
     await vp.close();
     srv.close();
   }

@@ -335,9 +335,31 @@ var UJ = UJ || {};
     var bw = Math.min(380, W - 24);
     b.style.width = bw + "px";
     var bh = b.offsetHeight;
+    /* ── THE PHONE BRANCH USED TO IGNORE THE TARGET ENTIRELY ──────────────────────  2026-10-23
+       Søren, from his phone: a step reading "Waiting for you to press the collection pill" with
+       no pill on screen -- just a sliver of its ring past the bubble's edge. This branch pinned
+       the bubble to the bottom whatever the target was doing, and core/vrbasket.js's pill is
+       position:fixed at bottom:16px. The bubble landed on it, and scrolling could not help
+       because neither of them moves.
+
+       It now does what the desktop branch has always done -- try a slot, and if the target is in
+       it, use the other one. Bottom stays the preference, because that is where a thumb is and
+       what every other step has trained the reader to look at; the top is the fallback, and when
+       a tall bubble cannot miss the target in either slot it takes the lesser overlap. */
     if (!r || W < 560) {
-      Object.assign(b.style, { left: Math.round((W - bw) / 2) + "px",
-                               top: (r ? (H - bh - gap) : Math.round((H - bh) / 2)) + "px" });
+      var cx = Math.round((W - bw) / 2);
+      if (!r) {
+        Object.assign(b.style, { left: cx + "px", top: Math.round((H - bh) / 2) + "px" });
+        return;
+      }
+      var lo = H - bh - gap, hi = gap;
+      var over = function (t) {
+        return Math.max(0, Math.min(t + bh, r.bottom) - Math.max(t, r.top));
+      };
+      var pick = over(lo) === 0 ? lo
+               : over(hi) === 0 ? hi
+               : (over(lo) <= over(hi) ? lo : hi);
+      Object.assign(b.style, { left: cx + "px", top: Math.round(pick) + "px" });
       return;
     }
     var left = Math.min(Math.max(gap, r.left), W - bw - gap), top;

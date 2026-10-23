@@ -49,6 +49,15 @@
      somewhere to sit that is not on top of it. */
   .tall{height:1400px}
   #nucpanel:empty{display:none}
+  /* A PINNED CORNER CONTROL, which is the shape core/vrbasket.js's "+ VR" pill has: position
+     fixed, bottom right, and therefore immune to scrolling. A step telling the reader to press
+     one of these was covered by the bubble on a phone, because the phone branch of placeBubble()
+     pinned the bubble to the bottom whatever the target was doing. Reproduced here. */
+  #cornerPill{position:fixed;right:16px;bottom:16px;z-index:9998}
+  #cornerTray{position:fixed;right:16px;bottom:60px;z-index:9999;width:min(320px,calc(100vw - 32px));
+    background:var(--card,var(--panel,#fff));border:1px solid var(--line);border-radius:10px;
+    padding:10px;display:none}
+  #cornerTray.open{display:block}
 </style>
 </head>
 <body>
@@ -86,6 +95,10 @@
   <div class="block" id="bottomThing">A control right at the bottom of a long page.</div>
 
   <button type="button" data-tour-start="part1" id="startBtn">Start the walkthrough</button>
+  <!-- The pinned pair: a corner pill that opens a corner tray, the shape core/vrbasket.js has. -->
+  <button type="button" id="cornerPill">🥽 Collection (1)</button>
+  <div id="cornerTray">A tray that only exists once the pill has been pressed.</div>
+
   <!-- The picker, which is what µJump's single Tutorial button does: one button, and the engine
        lists the parts out of #tourdata. The fixture therefore declares TWO parts, so there is
        something to choose between. -->
@@ -112,6 +125,9 @@
         { "at": "#filterIncludeUnclassified", "say": "Inside a collapsed <details>, which the engine has to open." },
         { "at": "#bottomThing", "say": "At the bottom of a long page, so it has to be scrolled to." },
         { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." },
+        { "at": "#cornerTray", "needs": "#cornerTray", "press": "#cornerPill",
+          "after": "press the collection pill",
+          "say": "A step whose target is a PINNED corner tray, and whose press-target is the pinned pill beside it. On a phone the bubble used to be dropped on top of both of them." },
         { "at": "#bottomThing", "handoff": "part2",
           "say": "A step that hands the reader to another page, where part two is waiting. Showing it leaves the note; the fixture then checks that ready() picks the note up, offers to carry on, and spends it." }
       ]
@@ -131,6 +147,9 @@
 <script>
 /* The late element, made only when the button is pressed — exactly as µJump's identity card is
    only built once a cell has been shown. */
+document.getElementById("cornerPill").addEventListener("click", function () {
+  document.getElementById("cornerTray").classList.toggle("open");
+});
 document.getElementById("randomOfType").addEventListener("click", function () {
   var p = document.getElementById("nucpanel");
   if (p.querySelector(".celltype")) return;
