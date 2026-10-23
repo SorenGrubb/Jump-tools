@@ -361,6 +361,43 @@ function finish() {
   ok("...so pressing the button again resumes there",
      (await p.evaluate(() => UJ.tour.where().step)) === 4);
 
+  /* ── READABILITY IN BOTH PALETTES ───────────────────────────────────────────────  2026-10-23
+     Søren, on his phone: *"I can't read anything."* A white panel with near-white text, because
+     the bubble took its background from a #fff fallback and its text from µJump's own --ink.
+     Measured, not eyeballed: the contrast ratio between the rendered text colour and the rendered
+     background, in index.html's palette AND in µJump's, both of which the fixture now carries.
+     4.5:1 is the WCAG AA threshold for body text. */
+  console.log("\n--- readable in both of the family's palettes ---");
+  const contrast = async palette => p.evaluate(pal => {
+    if (pal) document.documentElement.setAttribute("data-palette", pal);
+    else document.documentElement.removeAttribute("data-palette");
+    const b = document.querySelector(".tour-bubble");
+    const say = b.querySelector(".tour-say");
+    const go = b.querySelector(".tour-next");
+    const lum = c => {
+      const m = c.match(/[\d.]+/g).map(Number);
+      const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]);
+    };
+    const ratio = (a, bg) => { const l1 = lum(a), l2 = lum(bg);
+      return +(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05))).toFixed(2); };
+    const bg = getComputedStyle(b).backgroundColor;
+    return { bg: bg, ink: getComputedStyle(say).color,
+             body: ratio(getComputedStyle(say).color, bg),
+             button: ratio(getComputedStyle(go).color, getComputedStyle(go).backgroundColor) };
+  }, palette);
+  await p.evaluate(() => { UJ.tour.stop(); UJ.tour.start("part1"); });
+  await p.waitForTimeout(250);
+  const light = await contrast(null);
+  ok("the bubble's text is readable on its own background (index.html's palette)",
+     light.body >= 4.5, light.body + ":1  " + light.ink + " on " + light.bg);
+  ok("...and so is the label on the filled button", light.button >= 4.5, light.button + ":1");
+  const dark = await contrast("ujump");
+  ok("...and in \u00b5Jump's palette, which has no --card at all",
+     dark.body >= 4.5, dark.body + ":1  " + dark.ink + " on " + dark.bg);
+  ok("...and its filled button too", dark.button >= 4.5, dark.button + ":1");
+  await p.evaluate(() => document.documentElement.removeAttribute("data-palette"));
+
   console.log("\n--- on a phone ---");
   await p.keyboard.press("Escape");
   await p.setViewportSize({ width: 390, height: 780 });

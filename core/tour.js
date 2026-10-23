@@ -100,34 +100,62 @@ var UJ = UJ || {};
        to rely on. These clear every one of them. The toast deliberately stays above: a message
        about what just happened should not be hidden by a tutorial. */
     ".tour-dim{position:fixed;background:rgba(10,14,18,.55);z-index:10040;pointer-events:auto}",
-    ".tour-ring{position:fixed;z-index:10041;border:2px solid var(--teal,#12a67f);border-radius:8px;",
+    ".tour-ring{position:fixed;z-index:10041;border:2px solid var(--teal,var(--accent,#12a67f));",
+    "  border-radius:8px;",
     "  box-shadow:0 0 0 3px rgba(18,166,127,.25);pointer-events:none;transition:all .18s ease-out}",
     /* box-sizing ON THE ENGINE'S OWN ELEMENTS. The width set in placeBubble() is a content
        width unless this says otherwise, and 366px of content plus 16px of padding each side plus
        a border is 400px on a 390px phone -- off the screen, which is how the fixture found it.
        The host's own reset cannot be relied on: core/ is loaded by eight pages and a fixture. */
     ".tour-bubble,.tour-offer,.tour-dim,.tour-ring{box-sizing:border-box}",
+    /* ── THE PALETTE, AND THE BUG THAT FORCED THESE CHAINS ───────────────────  2026-10-23
+       Søren, on a phone: *"I can't read anything."* A white panel with near-white text.
+
+       core/ is loaded by pages with DIFFERENT TOKEN NAMES AND OPPOSITE POLARITY:
+         index.html   light by default, dark under [data-theme="dark"]:  --card --ink --muted --teal
+         ujump.html   DARK by default, light under [data-theme="light"]: --panel --ink --mut --accent
+       There is no --card on µJump. So `background:var(--card,#fff)` took the #fff fallback while
+       `color:var(--ink,…)` took µJump's own --ink, which is #e6edf3 — the background came from the
+       fallback and the text from the host, and the two knew nothing about each other.
+
+       The rule now: EVERY PAIR THAT MUST CONTRAST RESOLVES THROUGH THE SAME CHAIN. --card then
+       --panel then the literal, so background and colour are always from one palette and the
+       bubble follows whichever light/dark the host is in, with no polarity logic here at all.
+       The fixture carries both palettes and tourcheck.js measures the contrast in each. */
     ".tour-bubble{position:fixed;z-index:10042;max-width:min(380px,calc(100vw - 24px));",
-    "  background:var(--card,#fff);color:var(--ink,#1b1e22);border:1px solid var(--line,#e4e1da);",
-    "  border-radius:12px;padding:14px 16px;box-shadow:0 10px 34px rgba(0,0,0,.22);",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  border:1px solid var(--line,#e4e1da);",
+    "  border-radius:12px;padding:14px 16px;box-shadow:0 10px 34px var(--shadow,rgba(0,0,0,.22));",
     "  font:14px/1.5 system-ui,-apple-system,sans-serif}",
     ".tour-bubble h4{margin:0 0 6px;font-size:15px}",
     ".tour-bubble p{margin:0 0 10px}",
     ".tour-bubble .tour-wait{margin:0 0 10px;font-size:13px;color:var(--accent,#2f6f8f)}",
-    ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:#b45309}",
+    ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,#b45309)}",
     ".tour-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
-    ".tour-row .tour-count{color:var(--muted,#5f6873);font-size:13px;margin-right:auto}",
+    ".tour-row .tour-count{color:var(--muted,var(--mut,#5f6873));font-size:13px;margin-right:auto}",
     ".tour-btn{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;padding:6px 12px;",
     "  border:1px solid var(--line,#e4e1da);background:transparent;color:inherit}",
-    ".tour-btn:hover{border-color:var(--teal,#12a67f);color:var(--teal,#12a67f)}",
-    ".tour-btn.go{background:var(--teal,#12a67f);border-color:var(--teal,#12a67f);color:#fff}",
-    ".tour-btn.go:hover{color:#fff;opacity:.9}",
+    ".tour-btn:hover{border-color:var(--teal,var(--accent,#12a67f));",
+    "  color:var(--teal,var(--accent,#12a67f))}",
+    /* THE FILLED BUTTON CARRIES ITS OWN COLOURS, and that is deliberate after measuring.
+       Taking the fill from the host's accent gave white-on-#12a67f at 3.09:1 on index.html's
+       palette — below the 4.5:1 floor, and it had been that way in every screenshot. Taking the
+       label from --on-accent only helped where the host happens to define it (µJump does,
+       index.html does not), and --accent-dim is dark on µJump's dark theme but a PALE mint on its
+       light one, so there is no host token that is reliably safe behind white text.
+
+       So the one control that must always be legible stops asking. #0e7c5f with #fff is 5.10:1,
+       and it reads the same in both tools, which for a tutorial's own button is right. The outline
+       buttons still tint from the host, because their text sits on the panel and measured fine. */
+    ".tour-btn.go{background:#0e7c5f;border-color:#0e7c5f;color:#fff}",
+    ".tour-btn.go:hover{opacity:.9}",
     /* The invitation: a quiet card, never a modal. */
     /* LEFT, not right: core/vrbasket.js pins its "+ VR" pill to right:16px bottom:16px, and the
        invitation was landing on top of it. */
     ".tour-offer{position:fixed;left:14px;bottom:14px;z-index:10030;max-width:320px;",
-    "  background:var(--card,#fff);color:var(--ink,#1b1e22);border:1px solid var(--line,#e4e1da);",
-    "  border-radius:12px;padding:13px 15px;box-shadow:0 8px 26px rgba(0,0,0,.16);",
+    "  background:var(--card,var(--panel,#fff));color:var(--ink,#1b1e22);",
+    "  border:1px solid var(--line,#e4e1da);",
+    "  border-radius:12px;padding:13px 15px;box-shadow:0 8px 26px var(--shadow,rgba(0,0,0,.16));",
     "  font:14px/1.45 system-ui,-apple-system,sans-serif}",
     ".tour-offer p{margin:0 0 10px}",
     /* On a phone it spans the width, so it has to clear the pill vertically instead. */

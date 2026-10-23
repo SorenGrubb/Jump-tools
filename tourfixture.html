@@ -22,8 +22,17 @@
   names and one button that creates a late element, which is the shape the engine has to handle.
 -->
 <style>
+  /* TWO PALETTES, because core/ is loaded by pages that disagree about both the NAMES and the
+     polarity. index.html is light by default with --card/--ink/--muted/--teal; ujump.html is DARK
+     by default with --panel/--ink/--mut/--accent and no --card at all. The tour read its
+     background from one and its text from the other and came out white-on-white; the fixture now
+     carries both so tourcheck.js can measure the contrast in each. */
   :root{--bg:#fbfaf8;--ink:#1b1e22;--muted:#5f6873;--line:#e4e1da;--card:#fff;--teal:#12a67f;
     --accent:#2f6f8f}
+  /* µJump's own tokens, verbatim from its :root, with --card/--muted/--teal deliberately absent. */
+  :root[data-palette="ujump"]{--bg:#0d1117;--panel:#161b22;--line:#2a313c;--ink:#e6edf3;
+    --mut:#8b949e;--accent:#27e0b3;--on-accent:#06231c;--warn:#e3b341;--shadow:rgba(0,0,0,.3);
+    --card:initial;--muted:initial;--teal:initial}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
   .wrap{max-width:720px;margin:0 auto;padding:24px}
   .block{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;
