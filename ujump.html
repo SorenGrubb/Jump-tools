@@ -628,9 +628,13 @@ document.addEventListener("DOMContentLoaded", function(){
 <script src="core/recact.js"></script>
 <script>UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns")&&UJ.recact.load();</script>
 <!-- The walkthrough: read the step list, wire the Tutorial button, and OFFER it on a first
-     visit. offerOnce, never start: a tutorial that begins by itself is one happening to
-     somebody rather than one they asked for. -->
-<script>UJ.tour&&UJ.tour.load()&&UJ.tour.offerOnce();</script>
+     visit. ready(), never start(): a tutorial that begins by itself is one happening to
+     somebody rather than one they asked for.
+     ready() RATHER THAN load(): this script block sits ~25,000 characters ABOVE the
+     #tourdata block, so at this point the data is not in the document yet. load() returned
+     null here and the whole walkthrough was dead on the deployed page until 2026-10-23;
+     ready() waits for DOMContentLoaded when it has to. -->
+<script>UJ.tour&&UJ.tour.ready();</script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head><body>
@@ -647,7 +651,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 02:12</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 02:27</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------

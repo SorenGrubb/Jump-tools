@@ -192,9 +192,36 @@ ok("there is a button for each part, and a part for each button",
 /* The page asks; it does not begin. The engine wires every [data-tour-start] button itself,
    so the page has no reason to call start() at all, and a call there would be a tutorial
    happening TO somebody. */
+/* The invariant is "the page never starts it", and that has not changed. What changed is HOW the
+   offer is made: the page used to call offerOnce() itself and now goes through ready(), which
+   does the offering after the document is complete. Rewritten to the new truth rather than
+   deleted -- the thing worth forbidding is still forbidden. */
 ok("...and the page offers it once, rather than starting it unasked",
-   /UJ\.tour\.offerOnce\(\)/.test(uj) && uj.indexOf("UJ.tour.start(") < 0,
-   uj.indexOf("UJ.tour.start(") < 0 ? "offered, never auto-started" : "the page calls start()");
+   (/UJ\.tour\.ready\(\)/.test(uj) || /UJ\.tour\.offerOnce\(\)/.test(uj))
+   && uj.indexOf("UJ.tour.start(") < 0
+   && /offerOnce\(\)/.test(tour),
+   uj.indexOf("UJ.tour.start(") < 0 ? "offered through ready(), never auto-started"
+                                    : "the page calls start()");
+/* THE ORDERING BUG, 2026-10-23. µJump's init script sits ~25,000 characters above its #tourdata
+   block, so when it ran, the data was not in the document: load() returned null, the `&&` chain
+   short-circuited, and the walkthrough was dead on the deployed page. Neither half of this file
+   could see it -- the static half does not execute anything, and the fixture declares its JSON
+   above its script, which is the lucky order.
+
+   Two assertions now. The page must use ready(), the entry point that waits; and the engine must
+   actually wait, rather than ready() being a renamed load(). */
+const initAt = uj.indexOf("UJ.tour.ready()");
+const dataAt = uj.indexOf('id="tourdata"');
+ok("the page wires the walkthrough through ready(), which waits for the document",
+   initAt > 0 && uj.indexOf("UJ.tour.load()") < 0,
+   initAt > 0 ? (initAt < dataAt
+     ? "init at " + initAt + " is above #tourdata at " + dataAt + " \u2014 which is exactly why"
+     : "init below the data block") : "the page still calls load() directly");
+ok("...and ready() really defers when the block is not there yet",
+   /document\.readyState === "loading"/.test(tour)
+   && /addEventListener\("DOMContentLoaded"/.test(tour)
+   && /getElementById\("tourdata"\)/.test(tour));
+
 ok("the engine never presses anything itself",
    !/\.click\(\)/.test(tour),
    /\.click\(\)/.test(tour) ? "tour.js calls .click()" : "no .click() in tour.js");

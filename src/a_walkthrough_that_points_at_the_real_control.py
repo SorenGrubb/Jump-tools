@@ -23,7 +23,9 @@ WHAT GOES IN
                           BYTES -- the alternative is two copies of one list, which is the shape
                           this project has paid for four times.
   a "Tutorial" button     in the tab bar, carrying data-tour-start="part1"; the engine wires it
-  UJ.tour.offerOnce()     a dismissable invitation on a first visit, never an auto-start
+  UJ.tour.ready()         reads the block, wires the button, offers it once -- and waits for
+                          DOMContentLoaded, because this script block sits above #tourdata in the
+                          document and load() on its own found nothing there
 
 ONLY PART ONE IS DECLARED. Parts two and three are real and are coming, but a button that opens an
 empty walkthrough is worse than no button, so nothing is declared until its steps are written.
@@ -194,9 +196,26 @@ changed = edit(UJ, [
      u'<script>UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns")&&UJ.recact.load();</script>',
      u'<script>UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns")&&UJ.recact.load();</script>\n'
      u'<!-- The walkthrough: read the step list, wire the Tutorial button, and OFFER it on a first\n'
-     u'     visit. offerOnce, never start: a tutorial that begins by itself is one happening to\n'
-     u'     somebody rather than one they asked for. -->\n'
-     u'<script>UJ.tour&&UJ.tour.load()&&UJ.tour.offerOnce();</script>'),
+     u'     visit. ready(), never start(): a tutorial that begins by itself is one happening to\n'
+     u'     somebody rather than one they asked for.\n'
+     u'     ready() RATHER THAN load(): this script block sits ~25,000 characters ABOVE the\n'
+     u'     #tourdata block, so at this point the data is not in the document yet. load() returned\n'
+     u'     null here and the whole walkthrough was dead on the deployed page until 2026-10-23;\n'
+     u'     ready() waits for DOMContentLoaded when it has to. -->\n'
+     u'<script>UJ.tour&&UJ.tour.ready();</script>'),
+
+    # 2026-10-23, after running the deployed page. The pair above now writes a ready() init, but on
+    # a tree where the earlier load() init has already been written it INSERTS rather than
+    # replaces, leaving two init blocks. This takes the stale one out; on a fresh checkout its
+    # input is absent and the removal guard skips it. A removal is guarded on its input being
+    # gone, never on its (empty) output.
+    (u"...and the superseded load() init is taken out",
+     u"""<!-- The walkthrough: read the step list, wire the Tutorial button, and OFFER it on a first
+     visit. offerOnce, never start: a tutorial that begins by itself is one happening to
+     somebody rather than one they asked for. -->
+<script>UJ.tour&&UJ.tour.load()&&UJ.tour.offerOnce();</script>
+""",
+     u""),
 ])
 
 # The JSON block is rewritten wholesale whenever the steps here change, which is what keeps this

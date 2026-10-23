@@ -47,7 +47,12 @@
      declare  a <script type="application/json" id="tourdata"> block holding {key, parts:[…]}
               — JSON, not a JS literal, so the page and tourcheck.js read the SAME BYTES rather
               than two copies of one list.
-     call     UJ.tour.load()           reads that block and wires the buttons
+     call     UJ.tour.ready()          reads that block, wires the buttons and offers the
+                                       walkthrough once — and WAITS for DOMContentLoaded if the
+                                       block is not in the document yet, so it may be called from
+                                       anywhere on the page. Use this one.
+              UJ.tour.load()           the same read, without the waiting, for a host that knows
+                                       its data block is already parsed
               UJ.tour.start("part1")   from a button
               UJ.tour.offerOnce()      a dismissable invitation on a first visit — never an
                                        auto-start, which is a tutorial happening TO somebody
@@ -430,8 +435,33 @@ var UJ = UJ || {};
     return CFG;
   }
 
+  /* ── READY: load AND offer, once the document actually has the data block ────  2026-10-23
+     THE BUG THIS EXISTS FOR, found by running the deployed page in his own browser. µJump's
+     init script sits at character 52,781 and its #tourdata block at 77,936 -- the script runs
+     BEFORE the data exists. So load() found nothing, returned null, and
+     `UJ.tour.load() && UJ.tour.offerOnce()` short-circuited: the Tutorial button was never wired
+     and the walkthrough was simply dead on the live site.
+
+     Neither half of the check could see it. The static half does not execute the page, and the
+     fixture happens to declare its JSON above its script, which is the lucky order.
+
+     Fixing it in the host would fix one page. Fixing it here fixes every host: this waits for
+     DOMContentLoaded when the block is not there yet, so a page may call it from anywhere. */
+  function ready() {
+    var go = function () {
+      if (!load()) {
+        console.warn("[tour] no #tourdata block in this document \u2014 nothing to walk through.");
+        return;
+      }
+      offerOnce();
+    };
+    if (!document.getElementById("tourdata") && document.readyState === "loading")
+      document.addEventListener("DOMContentLoaded", go);
+    else go();
+  }
+
   UJ.tour = {
-    load: load, start: start, stop: stop, offerOnce: offerOnce,
+    load: load, ready: ready, start: start, stop: stop, offerOnce: offerOnce,
     cfg: function () { return CFG; },
     parts: function () { return (CFG && CFG.parts) || []; },
     missing: function () { return MISSING.slice(); },
