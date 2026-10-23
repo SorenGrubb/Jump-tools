@@ -12222,14 +12222,13 @@ async function fixDraw(){
     if (tok !== FIX.tok) return;
     if (document.getElementById("fixSeg").checked){
       lab.textContent = "Loading the segmentation…";
-      const ids = fixIdsNow(FIX.c);
-      if (ids.length) await UJ.segpaint.paint(tmp, view, { root: ids[0], rootAlso: ids.slice(1), alpha: 0.38 });
-      if (FIX.added.length){
-        const ctx = tmp.getContext("2d"), img = ctx.getImageData(0, 0, view.w, view.h);
-        await UJ.segpaint._layer(img.data, view, UJ.segread._httpBase(ds.seg), FIX.added.map(a => UJ.segpaint.idPair(a.root)).filter(Boolean), [[64, 192, 87]], 0.5);
-        ctx.putImageData(img, 0, 0);
-      }
+      const ctx = tmp.getContext("2d"), img = ctx.getImageData(0, 0, view.w, view.h);
+      await fixMosaic(img.data, view, ds);
+      /* the cell's nucleus, blue, from the nucleus segmentation (its ids ARE the nucleus ids) */
+      if (ds.nucSource && FIX.c && FIX.c.nuc && /^\d+$/.test(String(FIX.c.nuc)))
+        try { await UJ.segpaint._layer(img.data, view, UJ.segread._httpBase(ds.nucSource), [UJ.segpaint.idPair(FIX.c.nuc)], [UJ.segpaint.NUC_COLOR], 0.35); } catch (e){}
       if (tok !== FIX.tok) return;
+      ctx.putImageData(img, 0, 0);
     }
     FIX.view = view;
     const g = cv.getContext("2d"); cv.width = 420; cv.height = 420; g.drawImage(tmp, 0, 0);
@@ -12237,6 +12236,71 @@ async function fixDraw(){
     document.getElementById("fixBar").style.width = (bar / wUm * 100) + "%"; document.getElementById("fixBarL").textContent = bar + " µm";
     lab.textContent = wUm.toFixed(wUm < 10 ? 1 : 0) + " µm wide · " + Math.round(view.effNmPerPx) + " nm/px · z " + (FIX.dz >= 0 ? "+" : "") + (FIX.dz * ds.res[2] / 1000).toFixed(2) + " µm";
   } catch (e){ if (tok === FIX.tok) lab.textContent = "The EM could not be read (" + (e.message || e) + ")."; }
+}
+/* EVERY SEGMENT, not only the cell's (2026-10-23, Søren: "only the rootID shows in the EM
+   segmentation, not the nucleus ID and not the rootIDs of other cells. So there is nothing to add").
+   The plane is decoded in full, like the tissue block's (blkCsClasses / blkRawClasses): the cell's
+   ids magenta, the parts added here green, every other segment a pale colour of its own, so the
+   piece you want to add is visible before you double-click it. A thin darker line where two
+   segments meet shows the boundaries. */
+const FIX_CELL = [224, 108, 212], FIX_ADD = [64, 192, 87];
+function fixPale(k){ const h = (k * 0.618034) % 1, f = x => Math.min(1, Math.max(0, Math.abs(((h * 6 + x) % 6) - 3) - 1));
+  return [f(0), f(4), f(2)].map(v => Math.round(255 * (v * 0.58 + 0.42))); }
+async function fixMosaic(px, view, ds){
+  const base = UJ.segread._httpBase(ds.seg), info = await UJ.segread._getInfo(base);
+  const sc = UJ.segpaint.pickScale(info, view.effNmPerPx), words = /uint64/.test(String(info.data_type || "")) ? 2 : 1;
+  const res = sc.resolution, ch = sc.chunk_sizes[0], off = sc.voxel_offset || [0, 0, 0], R = ds.res;
+  const want = new Map();
+  for (const id of fixIdsNow(FIX.c || {})){ const q = UJ.segpaint.idPair(id); if (q) want.set(q.lo + ":" + q.hi, 1); }
+  for (const a of FIX.added){ const q = UJ.segpaint.idPair(a.root); if (q) want.set(q.lo + ":" + q.hi, 2); }
+  const clsOf = (lo, hi) => { if (!lo && !hi) return 0; const m = want.get(lo + ":" + hi); if (m) return m;
+    return 3 + ((Math.imul(lo, 2654435761) ^ Math.imul(hi + 0x9e37, 40503)) >>> 0) % 253; };
+  const t0 = view.toolAt(0, 0), perPx = view.effNmPerPx;
+  const nmX0 = t0[0] * R[0], nmY0 = t0[1] * R[1], nmZ = view.z * R[2];
+  const sx0 = Math.floor(nmX0 / res[0]), sy0 = Math.floor(nmY0 / res[1]);
+  const sx1 = Math.ceil((nmX0 + view.w * perPx) / res[0]), sy1 = Math.ceil((nmY0 + view.h * perPx) / res[1]);
+  const sz = Math.floor(nmZ / res[2]);
+  const grid = [0, 1, 2].map(i => Math.ceil(sc.size[i] / ch[i]));
+  const cz = Math.floor((sz - off[2]) / ch[2]), list = [];
+  for (let iy = Math.floor((sy0 - off[1]) / ch[1]); iy <= Math.floor((sy1 - off[1]) / ch[1]); iy++)
+    for (let ix = Math.floor((sx0 - off[0]) / ch[0]); ix <= Math.floor((sx1 - off[0]) / ch[0]); ix++)
+      if (ix >= 0 && iy >= 0 && cz >= 0 && ix < grid[0] && iy < grid[1] && cz < grid[2]) list.push([ix, iy, cz]);
+  /* one class per screen pixel, then coloured in one pass */
+  const L = new Uint8Array(view.w * view.h);
+  await UJ.segread.mapPool(list, 6, async cc => {
+    const start = [0, 1, 2].map(i => off[i] + cc[i] * ch[i]);
+    const end = [0, 1, 2].map(i => Math.min(start[i] + ch[i], off[i] + sc.size[i]));
+    const buf = await UJ.segread._chunkBuf(base, sc, { c: cc, grid, start, end, local: [0, 0, 0], shape: ch });
+    if (!buf) return;
+    const sh = sc.encoding === "raw" ? [0, 1, 2].map(a => end[a] - start[a]) : ch;
+    const lz = sz - start[2]; if (lz < 0 || lz >= sh[2]) return;
+    const cls = sc.encoding === "raw"
+      ? blkRawClasses(buf, sh, { uint8: 1, uint16: 2, uint32: 4, uint64: 8 }[sc.data_type || info.data_type] || words * 4, clsOf)
+      : blkCsClasses(buf, sh, sc.compressed_segmentation_block_size, words, clsOf);
+    const z0 = lz * sh[0] * sh[1];
+    for (let yy = 0; yy < sh[1]; yy++){
+      let pT = Math.round(((start[1] + yy) * res[1] - nmY0) / perPx), pB = Math.round(((start[1] + yy + 1) * res[1] - nmY0) / perPx);
+      if (pB <= 0 || pT >= view.h) continue; if (pB === pT) pB = pT + 1;
+      for (let xx = 0; xx < sh[0]; xx++){
+        const k = cls[z0 + yy * sh[0] + xx]; if (!k) continue;
+        let pL = Math.round(((start[0] + xx) * res[0] - nmX0) / perPx), pR = Math.round(((start[0] + xx + 1) * res[0] - nmX0) / perPx);
+        if (pR <= 0 || pL >= view.w) continue; if (pR === pL) pR = pL + 1;
+        for (let oy = Math.max(0, pT); oy < Math.min(view.h, pB); oy++){ const o = oy * view.w;
+          for (let ox = Math.max(0, pL); ox < Math.min(view.w, pR); ox++) L[o + ox] = k; }
+      }
+    }
+  });
+  const pal = new Array(256);
+  for (let y = 0; y < view.h; y++) for (let x = 0; x < view.w; x++){
+    const i = y * view.w + x, k = L[i]; if (!k) continue;
+    const col = k === 1 ? FIX_CELL : k === 2 ? FIX_ADD : (pal[k] || (pal[k] = fixPale(k)));
+    const a = k === 1 ? 0.42 : k === 2 ? 0.55 : 0.2;
+    const edge = (x > 0 && L[i - 1] !== k) || (y > 0 && L[i - view.w] !== k);
+    const o = i * 4;
+    if (edge){ px[o] *= 0.55; px[o + 1] *= 0.55; px[o + 2] *= 0.55; continue; }
+    px[o] += (col[0] - px[o]) * a; px[o + 1] += (col[1] - px[o + 1]) * a; px[o + 2] += (col[2] - px[o + 2]) * a;
+  }
+  return list.length;
 }
 function fixPxToVox(ev){
   const cv = document.getElementById("fixEm"), r = cv.getBoundingClientRect(), v = FIX.view; if (!v) return null;
@@ -12343,12 +12407,23 @@ document.getElementById("fixSeg").addEventListener("change", fixDraw);
     const now = performance.now(); if (now - FIX.hoverAt < 180) return; FIX.hoverAt = now;
     fixRootAt(e).then(r => { hv.textContent = r ? (FIX.added.some(a => a.root === r) ? "added: " : fixIdsNow(FIX.c || {}).includes(r) ? "this cell: " : "double-click to add: ") + r : ""; });
   });
+  let lastTap = null;
   cv.addEventListener("pointerup", e => {
-    const d = drag; drag = null; cv.style.transform = ""; if (!d || !d.moved || !FIX.view) return;
+    const d = drag; drag = null; cv.style.transform = "";
+    /* a double TAP on a phone or tablet (iOS does not send dblclick to a touch-action:none canvas) */
+    if (d && !d.moved && e.pointerType !== "mouse"){
+      const now = performance.now();
+      if (lastTap && now - lastTap.t < 400 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24){
+        lastTap = null; FIX.tapAt = now; fixRootAt(e).then(r => { if (r) fixToggle(r); else ctxNote.textContent = "Nothing segmented there."; }); return; }
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+      fixRootAt(e).then(r => { hv.textContent = r ? (FIX.added.some(a => a.root === r) ? "added: " : fixIdsNow(FIX.c || {}).includes(r) ? "this cell: " : "double-tap to add: ") + r : ""; });
+      return;
+    }
+    if (!d || !d.moved || !FIX.view) return;
     const k = FIX.view.effNmPerPx / fixDs().res[0], sc = cv.width / cv.getBoundingClientRect().width;
     FIX.pan[0] -= Math.round((e.clientX - d.x) * sc * k); FIX.pan[1] -= Math.round((e.clientY - d.y) * sc * k); fixDraw();
   });
-  cv.addEventListener("dblclick", async e => { e.preventDefault(); const r = await fixRootAt(e); if (r) fixToggle(r); else ctxNote.textContent = "Nothing segmented there."; });
+  cv.addEventListener("dblclick", async e => { e.preventDefault(); if (FIX.tapAt && performance.now() - FIX.tapAt < 800) return; const r = await fixRootAt(e); if (r) fixToggle(r); else ctxNote.textContent = "Nothing segmented there."; });
   /* the window can be dragged by its title bar */
   const head = document.getElementById("fixHead"), win = document.getElementById("fixWin"); let hd = null;
   head.addEventListener("pointerdown", e => { if (e.target.id === "fixX") return; const r = win.getBoundingClientRect(); hd = { x: e.clientX - r.left, y: e.clientY - r.top }; head.setPointerCapture(e.pointerId); });
@@ -12908,7 +12983,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { get SELECTED(){ return SELECTED; }, canvasNdc, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
@@ -12933,7 +13008,7 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
       <div id="fixBar" style="position:absolute;left:8px;bottom:8px;height:3px;background:#fff;pointer-events:none"></div>
       <div id="fixBarL" style="position:absolute;left:8px;bottom:13px;font:10px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
     </div>
-    <div style="font-size:11.5px;color:#8b949e;margin:5px 0">Magenta = the cell now · green = parts you added · <b style="color:#e6edf3">double-click</b> a piece of the segmentation to add it (again to remove it) · drag to move · scroll or −/+ to zoom · ▲▼ through the tissue · <b style="color:#e6edf3">click the 3D view</b> to bring the window there</div>
+    <div style="font-size:11.5px;color:#8b949e;margin:5px 0">Magenta = the cell now · blue = its nucleus · green = parts you added · pale colours = every other segment · <b style="color:#e6edf3">double-click</b> (double-tap) a piece of the segmentation to add it (again to remove it) · drag to move · scroll or −/+ to zoom · ▲▼ through the tissue · <b style="color:#e6edf3">click the 3D view</b> to bring the window there</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
       <button id="fixOut">−</button><button id="fixIn">+</button><button id="fixUp">▲</button><button id="fixDn">▼</button>
       <label style="font-size:12px"><input type="checkbox" id="fixSeg" checked> segmentation</label>
