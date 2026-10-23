@@ -69,6 +69,13 @@
        rather than skip. -->
   <div class="block" id="nucpanel"></div>
 
+  <!-- A control inside a COLLAPSED <details>, which is how every one of µJump's twelve filter
+       sections ships. A step pointing in here found nothing until the engine learned to open it. -->
+  <details class="block" id="filterSecSelect">
+    <summary>Select the cell(s) of interest</summary>
+    <label><input type="checkbox" id="filterIncludeUnclassified"> include unclassified</label>
+  </details>
+
   <div class="tall"></div>
   <div class="block" id="bottomThing">A control right at the bottom of a long page.</div>
 
@@ -90,6 +97,7 @@
         { "at": "#nucpanel", "needs": "#nucpanel .celltype", "press": "#randomOfType",
           "after": "press “Random example”",
           "say": "This step cannot be read until a card exists.", "wait": 2500 },
+        { "at": "#filterIncludeUnclassified", "say": "Inside a collapsed <details>, which the engine has to open." },
         { "at": "#bottomThing", "say": "At the bottom of a long page, so it has to be scrolled to." },
         { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." }
       ]

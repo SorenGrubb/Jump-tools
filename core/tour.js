@@ -17,7 +17,10 @@
        tab:   "jump"                 optional: switch the host's tab bar there first
        needs: "#nucpanel .celltype"  optional: a selector that must EXIST before the step can be
                                      read. Most of µJump's identity card does not exist until a
-                                     cell has been shown.
+                                     cell has been shown. May instead be
+                                     {at:"#filterRun", text:"matching"} to wait for an element
+                                     that is already there to SAY something -- the match count is
+                                     written onto the button, not into a new element.
        after: "press “Random example”"
                                      required WHENEVER `needs` is set: what the reader does to
                                      bring it into being. The engine waits, watching the DOM, and
@@ -265,6 +268,32 @@ var UJ = UJ || {};
     Object.assign(b.style, { left: Math.round(left) + "px", top: Math.round(top) + "px" });
   }
 
+  /* ── WAITING ON TEXT, NOT ONLY ON EXISTENCE ──────────────────────────────────  2026-10-23
+     Part two's central step is "press Preview matches", and what that produces is not a new
+     element: core/matchcount.js writes the count ONTO THE BUTTON ("1,234 matching cells found"),
+     deliberately, because a line of text under a row of buttons is a line people do not read.
+     So `needs` may be an object as well as a selector:
+
+        "needs": "#idfgo"                                  exists
+        "needs": {"at": "#filterRun", "text": "matching"}  exists AND says that
+
+     One concept, two shapes, and the string form is untouched. `text` is matched case-insensitively
+     as a plain substring rather than a regex: a regex in a JSON step list is a thing that throws
+     at the reader rather than at a check. */
+  function needsSel(n) { return (n && typeof n === "object") ? n.at : n; }
+  function needsMet(n) {
+    var sel = needsSel(n);
+    if (!sel) return true;
+    if (!rectOf(sel)) return false;
+    if (n && typeof n === "object" && n.text) {
+      var e = null;
+      try { e = document.querySelector(sel); } catch (_e) { return false; }
+      if (!e) return false;
+      return (e.textContent || "").toLowerCase().indexOf(String(n.text).toLowerCase()) >= 0;
+    }
+    return true;
+  }
+
   function rectOf(sel) {
     if (!sel) return null;
     var e;
@@ -273,6 +302,24 @@ var UJ = UJ || {};
     var r = e.getBoundingClientRect();
     if (r.width < 1 && r.height < 1) return null;    /* present but not drawn is not pointable */
     return r;
+  }
+
+  /* ── A STEP MAY POINT INSIDE A CLOSED DRAWER ─────────────────────────────────  2026-10-23
+     µJump's filter panel is twelve <details> sections and every one of them is COLLAPSED by
+     default, so a step pointing at a control inside one found a zero-size element and reported
+     "could not find this control on the page" — truthfully, and uselessly. Opening the drawer is
+     what a walkthrough pointing into it should do anyway: it is showing the reader where the
+     control lives.
+
+     It is left open afterwards. Closing it again would undo the thing the step just demonstrated,
+     and the reader is mid-tutorial, not mid-task. */
+  function revealAncestors(sel) {
+    var e = null;
+    try { e = sel ? document.querySelector(sel) : null; } catch (_e) { return; }
+    while (e && e !== document.body) {
+      if (e.tagName === "DETAILS" && !e.open) e.open = true;
+      e = e.parentElement;
+    }
   }
 
   function scrollTo(sel) {
@@ -314,24 +361,27 @@ var UJ = UJ || {};
        point. A step may name the control in `press`, and then that one is spotlighted and sits in
        the hole, where it is clickable; with nothing named, the dimming is simply off and the whole
        page stays usable. */
-    if (s.needs && !rectOf(s.needs)) {
+    if (s.needs && !needsMet(s.needs)) {
       waitEl.hidden = false;
       waitEl.textContent = "Waiting for you to " + (s.after || "open this part of the page") + ".";
       var done = function () {
         if (!PART || PART.steps[IX] !== s) return;
-        if (!rectOf(s.needs)) return;
+        if (!needsMet(s.needs)) return;
         clearWatch();
         render();
       };
       WATCH = new MutationObserver(done);
-      WATCH.observe(document.body, { childList: true, subtree: true, attributes: true });
+      /* characterData too: a count written onto a button changes a text node, not the tree. */
+      WATCH.observe(document.body, { childList: true, subtree: true, attributes: true,
+                                     characterData: true });
       TIMER = setTimeout(function () {
-        if (!PART || PART.steps[IX] !== s || rectOf(s.needs)) return;
+        if (!PART || PART.steps[IX] !== s || needsMet(s.needs)) return;
         waitEl.hidden = true;
         goneEl.hidden = false;
         goneEl.textContent = "Still not here — " + (s.after || "that control is not open")
           + ". You can carry on and come back to it.";
       }, s.wait || 20000);
+      revealAncestors(s.press);
       var pressAt = s.press ? rectOf(s.press) : null;
       if (pressAt) { scrollTo(s.press); }
       requestAnimationFrame(function () {
@@ -343,6 +393,7 @@ var UJ = UJ || {};
       return;
     }
 
+    revealAncestors(s.at);
     scrollTo(s.at);
     /* After a scroll the rectangle is only right on the next frame. */
     requestAnimationFrame(function () {

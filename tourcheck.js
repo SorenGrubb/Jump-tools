@@ -77,9 +77,15 @@ ok("no part is declared without steps",
 const WANTED = ["part1", "part2", "part3"];
 const written = (CFG && CFG.parts ? CFG.parts : []).map(p => p.id);
 const todo = WANTED.filter(id => written.indexOf(id) < 0);
-if (todo.length) console.log("NOT YET  " + todo.join(" and ")
-  + "  <- part two (the EM plane, 3D, the viewer and VR) and part three (the tracing pad and the "
-  + "Blender export) are not written. This check covers what exists.");
+/* Describing what is MISSING, derived from what is present. The first version spelled the gap out
+   in prose written when part two was unwritten, and went on claiming part two was missing after it
+   had been written — a check that lies in its own output. */
+const SCOPE = { part1: "finding a cell and saying what it is",
+                part2: "Filter and show",
+                part3: "the EM plane, 3D, the viewer, VR and the tracing pad" };
+if (todo.length) console.log("NOT YET  " + todo.join(" and ") + "  <- "
+  + todo.map(id => SCOPE[id] || id).join("; ")
+  + (todo.length === 1 ? " is" : " are") + " not written. This check covers what exists.");
 ok("...each with a title and at least one step",
    !!CFG && (CFG.parts || []).every(p => p.id && p.title && (p.steps || []).length));
 
@@ -116,9 +122,20 @@ function inFile(sel, html) {
 const badAt = steps.filter(s => s.at && !inFile(s.at, uj));
 ok("every `at` selector appears in ujump.html", badAt.length === 0,
    badAt.map(s => s._part + "#" + s._i + " " + s.at).join(" | ") || steps.filter(s => s.at).length + " checked");
-const badNeeds = steps.filter(s => s.needs && !inFile(s.needs, uj));
+/* `needs` is a selector OR {at, text} since 2026-10-23 — part two waits for the match count, which
+   core/matchcount.js writes ONTO the Preview button rather than into a new element. The check
+   crashed on the object form, which is the right way for it to fail. */
+const needsAt = n => (n && typeof n === "object") ? n.at : n;
+const badNeeds = steps.filter(s => s.needs && !inFile(needsAt(s.needs), uj));
 ok("...and so does every `needs` selector", badNeeds.length === 0,
-   badNeeds.map(s => s._part + "#" + s._i + " " + s.needs).join(" | ") || "all found");
+   badNeeds.map(s => s._part + "#" + s._i + " " + needsAt(s.needs)).join(" | ") || "all found");
+/* A text wait naming words the page never produces is a step nobody can ever pass. */
+const textWaits = steps.filter(s => s.needs && typeof s.needs === "object" && s.needs.text);
+const unsaid = textWaits.filter(s =>
+  uj.toLowerCase().indexOf(String(s.needs.text).toLowerCase()) < 0);
+ok("...and a step waiting on TEXT waits for words the page actually produces", unsaid.length === 0,
+   unsaid.map(s => s._part + "#" + s._i + " “" + s.needs.text + "”").join(" | ")
+   || (textWaits.map(s => "“" + s.needs.text + "”").join(", ") || "none wait on text"));
 /* The pairing that keeps the waiting honest. */
 const unexplained = steps.filter(s => s.needs && !s.after);
 ok("a step that waits for something says how to bring it about", unexplained.length === 0,
@@ -268,7 +285,7 @@ function finish() {
     return { on: !b.hidden, count: b.querySelector(".tour-count").textContent,
              where: UJ.tour.where(), ringOn: !document.querySelector(".tour-ring").hidden };
   });
-  ok("it opens on step 1", s1.on && s1.count === "1 of 6" && s1.where.step === 0, s1.count);
+  ok("it opens on step 1", s1.on && s1.count === "1 of 7" && s1.where.step === 0, s1.count);
   ok("...with no spotlight, because step 1 points at nothing", !s1.ringOn);
 
   await p.click(".tour-next");
@@ -317,6 +334,25 @@ function finish() {
   ok("...and stops waiting the moment it appears, without a click on Next",
      !arrived.waiting && arrived.ring && arrived.step === 3);
 
+  /* ── INTO A CLOSED DRAWER ─────────────────────────────────────────────────────  2026-10-23
+     Every one of µJump's twelve filter sections is a <details> that ships COLLAPSED, and part two
+     points at a tick inside one. Before the engine learned to open them the step found a zero-size
+     element and said "could not find this control" — true, and useless. */
+  await p.click(".tour-next");
+  await p.waitForTimeout(500);
+  const drawer = await p.evaluate(() => {
+    const d = document.getElementById("filterSecSelect");
+    const t = document.getElementById("filterIncludeUnclassified").getBoundingClientRect();
+    const r = document.querySelector(".tour-ring").getBoundingClientRect();
+    return { opened: d.open, ringOff: +Math.hypot(r.left - (t.left - 6), r.top - (t.top - 6)).toFixed(1),
+             missing: UJ.tour.missing() };
+  });
+  ok("a step pointing inside a collapsed <details> opens it", drawer.opened);
+  ok("...and the spotlight lands on the control within", drawer.ringOff < 2,
+     "off by " + drawer.ringOff + " px");
+  ok("...so nothing is reported as missing", drawer.missing.indexOf("#filterIncludeUnclassified") < 0,
+     JSON.stringify(drawer.missing));
+
   /* The bottom of a long page: the target must be scrolled into view, not merely pointed at. */
   await p.click(".tour-next");
   await p.waitForTimeout(500);
@@ -343,9 +379,16 @@ function finish() {
      JSON.stringify(gone.missing));
 
   console.log("\n--- keyboard, memory and leaving ---");
+  /* RELATIVE, not a hardcoded index. These assertions said `=== 4`, and adding one step to the
+     fixture broke three of them at once while nothing was actually wrong — a check that has to be
+     renumbered whenever the thing it checks grows is a check that will eventually be renumbered
+     carelessly. */
+  const beforeBack = await p.evaluate(() => UJ.tour.where().step);
   await p.keyboard.press("ArrowLeft");
   await p.waitForTimeout(200);
-  ok("the left arrow steps back", (await p.evaluate(() => UJ.tour.where().step)) === 4);
+  const afterBack = await p.evaluate(() => UJ.tour.where().step);
+  ok("the left arrow steps back", afterBack === beforeBack - 1,
+     beforeBack + " \u2192 " + afterBack);
   await p.keyboard.press("Escape");
   await p.waitForTimeout(200);
   const closed = await p.evaluate(() => ({
@@ -354,12 +397,12 @@ function finish() {
   ok("Escape closes it and clears the dimming",
      closed.where === null && closed.bubble && closed.dim);
   const kept = await p.evaluate(() => UJ.tour.state());
-  ok("...and it remembers how far you got", kept.part1 && kept.part1.at === 4,
-     JSON.stringify(kept));
+  ok("...and it remembers how far you got", !!kept.part1 && kept.part1.at === afterBack,
+     JSON.stringify(kept) + " against step " + afterBack);
   await p.click("#startBtn");
   await p.waitForTimeout(300);
   ok("...so pressing the button again resumes there",
-     (await p.evaluate(() => UJ.tour.where().step)) === 4);
+     (await p.evaluate(() => UJ.tour.where().step)) === afterBack);
 
   /* ── READABILITY IN BOTH PALETTES ───────────────────────────────────────────────  2026-10-23
      Søren, on his phone: *"I can't read anything."* A white panel with near-white text, because

@@ -155,9 +155,95 @@ PART1 = {
                 u"named than for one that already has three votes."},
 
         {"at": "#mainTabs", "title": u"That is part one",
-         "say": u"You can now find a cell and say what it is. Part two is about looking at it "
-                u"properly &mdash; the EM plane, the 3D mesh, the viewer and VR. Part three is "
-                u"tracing your own structures and taking a block of the volume into Blender."},
+         "say": u"You can now find a cell and say what it is. Part two is the other direction "
+                u"&mdash; <b>Filter and show</b>, where you describe a population and get back "
+                u"every cell that matches. Part three is looking at them properly: the EM plane, "
+                u"the 3D mesh, the viewer, VR, and tracing structures of your own."},
+    ],
+}
+
+PART2 = {
+    "id": "part2",
+    "title": u"Filter and show \u2014 every cell that matches",
+    "steps": [
+        {"tab": "filter",
+         "say": u"The Jump tab is one cell at a time. This tab is the opposite: you describe a "
+                u"population &mdash; a type, a place, a distance, an organelle &mdash; and get "
+                u"back every cell in the volume that matches. The answer comes as a table, a 3D "
+                u"view, or a VR scene."},
+
+        {"at": "#filterSecSelect", "tab": "filter", "title": u"Start with what counts as a cell",
+         "say": u"Which types are in play. Everything below this narrows that set, so if nothing "
+                u"is ticked here nothing else matters. Tick several and you get them all; the "
+                u"table says which is which."},
+
+        {"at": "#filterIncludeUnclassified", "title": u"And the ones with no prediction",
+         "say": u"Fifty thousand of the 144,118 cells carry no machine guess at all. They are off "
+                u"by default because they would swamp a count &mdash; but when you are after "
+                u"something the predictor is bad at, which around vessels is most things, this is "
+                u"the tick that finds it."},
+
+        {"at": "#filterSecBorders", "title": u"How close to a vessel, or to the edge",
+         "say": u"Distance to the vasculature, to the glia limitans, or to the white matter. This "
+                u"is the condition most of the papers on this site were written from: "
+                u"&ldquo;every pericyte within 5&nbsp;&micro;m of a penetrating arteriole&rdquo; "
+                u"is a question you can ask here and almost nowhere else."},
+
+        {"at": "#filterSecNear", "title": u"Or close to another kind of cell",
+         "say": u"Cells of one type within a chosen distance of another &mdash; microglia near "
+                u"endothelium, say. The distance is between nucleus centres, not surfaces, so set "
+                u"it wider than the contact you actually have in mind."},
+
+        {"at": "#filterSecLayer", "title": u"Where in the cortex",
+         "say": u"Cortical layer, fitted to this volume rather than assumed from depth. "
+                u"<b>Which visual area</b> just below does the same across V1 and the higher "
+                u"areas, and the <b>V1 column</b> section restricts you to the Allen Institute's "
+                u"hand-proofread ground truth — the subset to use when you need to be certain."},
+
+        {"at": "#filterSecVol", "title": u"How big, and what is around it",
+         "say": u"Cell volume in cubic micrometres, measured from the mesh. "
+                u"<b>Perivascular space</b> below it filters on the depth of the space around a "
+                u"vessel, which is how the waste-clearance work picked its arterioles."},
+
+        {"at": "#filterSecOrganelle", "title": u"What people have found inside it",
+         "say": u"Filter on organelles the community has logged &mdash; a cilium, a centriole, a "
+                u"lysosome. This is the part that compounds: every identification anyone makes in "
+                u"the Jump tab becomes a condition you can select on here."},
+
+        {"at": "#filterSecRec", "title": u"Whether it was watched while alive",
+         "say": u"About 1,900 excitatory neurons in this volume were imaged with two-photon "
+                u"calcium before the tissue was fixed, and matched to their EM cell by hand. You "
+                u"can ask for only those &mdash; and for the ones active during a particular "
+                u"second of a particular movie clip."},
+
+        {"at": "#filterSecRegion", "title": u"Inside a box you draw",
+         "say": u"One or more bounding boxes, typed in or pasted from Neuroglancer. A box is also "
+                u"what the Blender and Colab downloads cut out, so this is usually where a figure "
+                u"starts."},
+
+        {"at": "#filterSecViewer", "title": u"Scenery, not conditions",
+         "say": u"Extra layers for the 3D view &mdash; the pia, the white matter, the vasculature. "
+                u"The heading says it does not change which cells match, and that is worth "
+                u"believing: it only changes what you see around them."},
+
+        {"at": "#filterRun", "needs": {"at": "#filterRun", "text": "matching"},
+         "press": "#filterRun", "after": u"press \u201cPreview matches\u201d",
+         "title": u"Count them before you fetch them",
+         "say": u"Nothing is downloaded until you press this. The number comes back <b>on the "
+                u"button itself</b> &mdash; deliberately, because a line of text under a row of "
+                u"buttons is a line nobody reads. Press it and watch the label change."},
+
+        {"at": "#filterDownload", "title": u"Then take it away",
+         "say": u"An Excel sheet of every match: coordinates, ids, type, layer, volume, and "
+                u"whatever else your conditions touched. It stays disabled until you have "
+                u"previewed, so the sheet and the number on the button are always the same "
+                u"population."},
+
+        {"at": "#filterVR", "title": u"Or look at all of them at once",
+         "say": u"<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; "
+                u"<b>Show in VR</b> opens them as meshes you can walk through. Part three covers "
+                u"those properly — the EM plane, the 3D mesh, the viewer, VR, and tracing "
+                u"structures of your own."},
     ],
 }
 
@@ -165,7 +251,7 @@ CFG = {
     "key": "grubblab_ujump_tour_v1",
     "offer": u"A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. "
              u"About two minutes.",
-    "parts": [PART1],
+    "parts": [PART1, PART2],
 }
 
 TOURDATA = (u'<script type="application/json" id="tourdata">\n'
@@ -183,8 +269,11 @@ changed = edit(UJ, [
     (u"a Tutorial button in the tab bar",
      u'<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false"',
      u'<button type="button" class="tabbtn" data-tour-start="part1"\n'
-     u'        title="A guided walkthrough of this tab, pointing at each control in turn. '
+     u'        title="A guided walkthrough of the Jump tab, pointing at each control in turn. '
      u'Esc leaves it; it remembers where you got to.">❓ Tutorial</button>\n'
+     u'<button type="button" class="tabbtn" data-tour-start="part2"\n'
+     u'        title="A guided walkthrough of Filter and show — describing a population and '
+     u'getting back every cell that matches.">❓ Tutorial 2</button>\n'
      u'<button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false"'),
 
     (u"the step list, as JSON, in one place",
@@ -203,6 +292,16 @@ changed = edit(UJ, [
      u'     null here and the whole walkthrough was dead on the deployed page until 2026-10-23;\n'
      u'     ready() waits for DOMContentLoaded when it has to. -->\n'
      u'<script>UJ.tour&&UJ.tour.ready();</script>'),
+
+    # 2026-10-23, part two. The button pair above now writes TWO buttons, and on a tree where the
+    # one-button version has already run it inserts beside it rather than replacing it, leaving
+    # two "Tutorial" buttons for part one. Fourth time this project has paid for an insert where a
+    # replace was meant; the removal is guarded on its input, as every removal here is.
+    (u"...and the superseded single Tutorial button is taken out",
+     u"""<button type="button" class="tabbtn" data-tour-start="part1"
+        title="A guided walkthrough of this tab, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
+""",
+     u""),
 
     # 2026-10-23, after running the deployed page. The pair above now writes a ready() init, but on
     # a tree where the earlier load() init has already been written it INSERTS rather than
