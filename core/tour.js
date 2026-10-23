@@ -80,6 +80,7 @@ var UJ = UJ || {};
   var TIMER = null;
   var AIM = null;           /* the selector the overlay is currently following */
   var LAST = null;          /* its last placed rectangle, as a string, so a still page is free */
+  var DOCKED = false;      /* this step's oversized target has been scrolled to the top once */
   var FRAME = 0;            /* the follow() frame request, while a step is showing */
 
   /* ── what it remembers ─────────────────────────────────────────────────────────────────── */
@@ -190,6 +191,8 @@ var UJ = UJ || {};
     ".tour-bubble p{margin:0 0 10px}",
     ".tour-bubble .tour-wait{margin:0 0 10px;font-size:13px;color:var(--accent,#2f6f8f)}",
     ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,var(--accent,#b45309))}",
+    ".tour-bubble .tour-example{margin:-4px 0 10px}",
+    ".tour-bubble.tour-dock{max-width:min(760px,calc(100vw - 24px))}",
     /* THE WAY ON, on the last step of a part.                                      2026-10-23
        Søren: "There should be a small link to the next tutorial in the last step." Small is the
        point -- it is an offer, not the end of a funnel -- so it is a text link rather than a
@@ -285,6 +288,7 @@ var UJ = UJ || {};
     EL.bubble.innerHTML =
       '<h4 class="tour-title"></h4><p class="tour-say"></p>' +
       '<p class="tour-wait" hidden></p><p class="tour-gone" hidden></p>' +
+      '<p class="tour-example" hidden><button type="button" class="tour-btn go"></button></p>' +
       '<p class="tour-onward" hidden></p>' +
       '<div class="tour-row"><span class="tour-count"></span>' +
       '<button type="button" class="tour-btn tour-quit">Close</button>' +
@@ -409,6 +413,7 @@ var UJ = UJ || {};
   function aimAt(sel) {
     AIM = sel || null;
     LAST = null;
+    DOCKED = false;
   }
   function follow() {
     if (FRAME) return;
@@ -439,6 +444,7 @@ var UJ = UJ || {};
   function placeBubble(r) {
     var b = EL.bubble, W = window.innerWidth, H = window.innerHeight, gap = 12;
     b.style.maxHeight = "";
+    b.classList.remove("tour-dock");
     var bw = Math.min(380, W - 24);
     b.style.width = bw + "px";
     var bh = b.offsetHeight;
@@ -470,9 +476,42 @@ var UJ = UJ || {};
       return;
     }
     var left = Math.min(Math.max(gap, r.left), W - bw - gap), top;
+    var clampTop = function (t) { return Math.max(gap, Math.min(H - bh - gap, t)); };
     if (r.bottom + gap + bh <= H) top = r.bottom + gap;
     else if (r.top - gap - bh >= 0) top = r.top - gap - bh;
-    else top = Math.max(gap, Math.min(H - bh - gap, r.top));
+    /* BESIDE, which the comment above always promised and the code never did. */
+    else if (r.right + gap + bw <= W - gap) { left = r.right + gap; top = clampTop(r.top); }
+    else if (r.left - gap - bw >= gap) { left = r.left - gap - bw; top = clampTop(r.top); }
+    else {
+      /* ── A TARGET BIGGER THAN THE ROOM AROUND IT ────────────────────────────  2026-10-23
+         Søren, three screenshots of Filter-tab steps: "it is shadowing what we need to see". A
+         whole fieldset is often most of the window, so none of below / above / beside fits, and
+         the old fallback pinned the bubble to the target's own top-left -- on top of the very
+         heading and first options the step was describing.
+
+         Now the bubble turns into a wide, short bar at the bottom of the window (twice as wide, so
+         about half as tall), and the target is scrolled once so its TOP sits at the top of the
+         window. What gets covered is the far end of the section, which the reader can scroll to
+         -- the overlay follows the scroll -- rather than its beginning. If the bottom still
+         covers more of it than the top would, it goes to the top instead. */
+      b.classList.add("tour-dock");
+      bw = Math.min(760, W - 24);
+      b.style.width = bw + "px";
+      bh = b.offsetHeight;
+      if (!DOCKED) {
+        DOCKED = true;
+        var el = null;
+        try { el = AIM ? document.querySelector(AIM) : null; } catch (_e) {}
+        if (el && el.scrollIntoView && Math.abs(r.top - gap) > 4) {
+          el.scrollIntoView({ block: "start", inline: "nearest" });
+          return;                     /* the follow loop places it again from the scrolled rect */
+        }
+      }
+      var lo = H - bh - gap, hi = gap;
+      var over = function (t) { return Math.max(0, Math.min(t + bh, r.bottom) - Math.max(t, r.top)); };
+      top = over(lo) <= over(hi) ? lo : hi;
+      left = Math.round((W - bw) / 2);
+    }
     Object.assign(b.style, { left: Math.round(left) + "px", top: Math.round(top) + "px" });
   }
 
@@ -558,6 +597,39 @@ var UJ = UJ || {};
 
     var waitEl = b.querySelector(".tour-wait"), goneEl = b.querySelector(".tour-gone");
     waitEl.hidden = true; goneEl.hidden = true;
+    /* AN EXAMPLE, FETCHED FOR YOU.                                                 2026-10-23
+       Søren: "If the walkthrough depends on finding a cell with organelles, nobody can use it
+       because they won't go through hundreds of cells to find one that has organelles annotated."
+       A waiting step may name an `example`; the host page answers it with
+       window.UJ_TOUR_EXAMPLE(name), which takes the reader to a cell that has the thing, and the
+       ordinary `needs` watch then carries the step on by itself. The engine knows nothing about
+       cells -- which cell, and how to get there, is the page's business. */
+    var exEl = b.querySelector(".tour-example"), exBtn = exEl.querySelector("button");
+    exEl.hidden = true;
+    var canExample = !!(s.example && typeof window.UJ_TOUR_EXAMPLE === "function");
+    if (canExample) {
+      exBtn.disabled = false;
+      exBtn.textContent = s.exampleLabel || "Take me to one";
+      exBtn.onclick = function () {
+        exBtn.disabled = true; exBtn.textContent = "Finding one…";
+        Promise.resolve().then(function () { return window.UJ_TOUR_EXAMPLE(s.example); })
+          .then(function (r) {
+            if (!PART || PART.steps[IX] !== s) return;
+            if (r && r.ok === false) {
+              goneEl.hidden = false; goneEl.textContent = r.msg || "No example was found.";
+              exBtn.disabled = false; exBtn.textContent = s.exampleLabel || "Take me to one";
+            } else {
+              /* Already arrived (a fast page): the step has re-rendered itself; say nothing. */
+              if (needsMet(s.needs)) return;
+              exBtn.textContent = "On its way…";
+              if (r && r.msg) { waitEl.hidden = false; waitEl.textContent = r.msg; }
+            }
+          }, function (err) {
+            goneEl.hidden = false; goneEl.textContent = "Could not fetch an example (" + (err && err.message || err) + ").";
+            exBtn.disabled = false; exBtn.textContent = s.exampleLabel || "Take me to one";
+          });
+      };
+    }
     onward(IX === PART.steps.length - 1);
     clearWatch();
 
@@ -577,6 +649,7 @@ var UJ = UJ || {};
     if (s.needs && !needsMet(s.needs)) {
       waitEl.hidden = false;
       waitEl.textContent = "Waiting for you to " + (s.after || "open this part of the page") + ".";
+      if (canExample) exEl.hidden = false;
       var done = function () {
         if (!PART || PART.steps[IX] !== s) return;
         if (!needsMet(s.needs)) return;

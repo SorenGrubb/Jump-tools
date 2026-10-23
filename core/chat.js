@@ -180,14 +180,16 @@ UJ.chat = (function(){
   /* ════════════════════════════════════ UI ═══════════════════════════════════════════════════ */
   var EL = {};
   var CSS = ''
-    + '#ujc-launch{position:fixed;left:12px;bottom:12px;z-index:9990;display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:18px;border:1px solid #30363d;background:rgba(13,17,23,.88);color:#e6edf3;font:13px system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)}'
+    /* Windows has no flag emoji (it shows the letters "DK"), so flags come from a small font that only covers flag characters */
+    + "@font-face{font-family:'Twemoji Country Flags';unicode-range:U+1F1E6-1F1FF,U+1F3F4,U+E0062-E0063,U+E0065,U+E0067,U+E006C,U+E006E,U+E0073-E0074,U+E0077,U+E007F;src:url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1.8/dist/TwemojiCountryFlags.woff2') format('woff2');font-display:swap}"
+    + '#ujc-launch{position:fixed;left:12px;bottom:12px;z-index:9990;display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:18px;border:1px solid #30363d;background:rgba(13,17,23,.88);color:#e6edf3;font:13px \'Twemoji Country Flags\',system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)}'
     + '#ujc-launch .b{background:#f85149;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;display:none}'
-    + '#ujc{position:fixed;left:12px;bottom:52px;z-index:9991;width:min(380px,calc(100vw - 24px));height:min(42vh,420px);display:none;flex-direction:column;font:13px system-ui,sans-serif;color:#e6edf3;border-radius:12px;overflow:hidden;'
+    + '#ujc{position:fixed;left:12px;bottom:52px;z-index:9991;width:min(380px,calc(100vw - 24px));height:min(42vh,420px);display:none;flex-direction:column;font:13px \'Twemoji Country Flags\',system-ui,sans-serif;color:#e6edf3;border-radius:12px;overflow:hidden;'
     + 'background:linear-gradient(to top,rgba(13,17,23,.93) 0%,rgba(13,17,23,.78) 45%,rgba(13,17,23,.18) 100%);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}'
     + '#ujc.big{height:min(78vh,760px);background:rgba(13,17,23,.95)}'
     + '#ujc.peek{display:flex;pointer-events:none;height:auto;max-height:30vh}#ujc.peek .hd,#ujc.peek .in,#ujc.peek .dd{display:none}#ujc.peek .ms{mask-image:none;-webkit-mask-image:none;overflow:hidden}'
     + '#ujc .hd{display:flex;gap:4px;align-items:center;padding:6px 8px;flex-wrap:wrap;background:rgba(13,17,23,.6)}'
-    + '#ujc .hd button,#ujc .hd select{background:transparent;color:#e6edf3;border:1px solid #30363d;border-radius:12px;padding:2px 8px;font:12px system-ui;cursor:pointer}'
+    + '#ujc .hd button,#ujc .hd select{background:transparent;color:#e6edf3;border:1px solid #30363d;border-radius:12px;padding:2px 8px;font:12px \'Twemoji Country Flags\',system-ui;cursor:pointer}'
     + '#ujc .hd button.on{background:#238636;border-color:#2ea043}#ujc .hd .sp{flex:1}'
     + '#ujc .ms{flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:3px;-webkit-mask-image:linear-gradient(to top,#000 60%,rgba(0,0,0,.35) 100%);mask-image:linear-gradient(to top,#000 60%,rgba(0,0,0,.35) 100%)}'
     + '#ujc.big .ms{-webkit-mask-image:none;mask-image:none}'
@@ -197,11 +199,11 @@ UJ.chat = (function(){
     + '#ujc .m .x{float:right;color:#8b949e;cursor:pointer;font-size:11px;margin-left:6px;display:none}#ujc .m:hover .x{display:inline}'
     + '#ujc .chip{display:inline-block;border:1px solid #30363d;border-radius:10px;padding:0 7px;margin:0 2px;color:#79c0ff;cursor:pointer;background:rgba(56,139,253,.12)}'
     + '#ujc .vote{border:1px solid #30363d;border-radius:8px;padding:6px 8px;margin:3px 0;background:rgba(22,27,34,.9)}#ujc .vote button{margin:4px 4px 0 0;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:2px 8px;cursor:pointer}#ujc .vote button.mine{border-color:#2ea043;background:#238636}'
-    + '#ujc .in{display:flex;gap:6px;padding:6px 8px;background:rgba(13,17,23,.85);position:relative}#ujc .in input{flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:6px 8px;font:13px system-ui}'
+    + '#ujc .in{display:flex;gap:6px;padding:6px 8px;background:rgba(13,17,23,.85);position:relative}#ujc .in input{flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:6px 8px;font:13px \'Twemoji Country Flags\',system-ui}'
     + '#ujc .dd{position:absolute;left:8px;right:8px;bottom:42px;background:#161b22;border:1px solid #30363d;border-radius:8px;max-height:220px;overflow-y:auto;display:none;z-index:2}'
     + '#ujc .dd div{padding:5px 8px;cursor:pointer}#ujc .dd div.sel,#ujc .dd div:hover{background:#1f6feb33}#ujc .dd small{color:#8b949e;margin-left:6px}'
     + '#ujc .pane{position:absolute;inset:40px 8px 48px 8px;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:auto;padding:8px;display:none;z-index:3}'
-    + '#ujc-toast{position:fixed;left:12px;bottom:52px;z-index:9992;max-width:min(380px,calc(100vw - 24px));padding:6px 10px;border-radius:10px;background:rgba(13,17,23,.88);border:1px solid #30363d;color:#e6edf3;font:12.5px system-ui;opacity:0;transition:opacity .5s;pointer-events:none}'
+    + '#ujc-toast{position:fixed;left:12px;bottom:52px;z-index:9992;max-width:min(380px,calc(100vw - 24px));padding:6px 10px;border-radius:10px;background:rgba(13,17,23,.88);border:1px solid #30363d;color:#e6edf3;font:12.5px \'Twemoji Country Flags\',system-ui;opacity:0;transition:opacity .5s;pointer-events:none}'
     + '#ujc-toast.show{opacity:1}';
 
   function build(){

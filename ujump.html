@@ -886,8 +886,9 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": ".organshowall",
      "needs": ".organshowall",
-     "press": "#randomOfType",
-     "after": "open the Organelles section on a cell that has some",
+     "example": "organelles",
+     "exampleLabel": "Take me to a cell with outlined organelles",
+     "after": "open a cell with outlined organelles \u2014 the button below picks one for you",
      "title": "All of them at once, in the viewer",
      "say": "This opens Neuroglancer with the cell and every outline on it &mdash; one annotation layer each, in the colours they were drawn in, cell see-through in the 3D pane. It is the quickest way to see whether a set of outlines is distributed the way you expect, or clustered where you happened to be looking."
     },
@@ -15054,6 +15055,47 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",later);
   else later();
 })();
+
+/* ── THE WALKTHROUGH'S "TAKE ME TO ONE" ─────────────────────────────────────────  2026-10-23
+   Søren: "If the walkthrough depends on finding a cell with organelles, nobody can use it because
+   they won't go through hundreds of cells to find one that has organelles annotated."
+   core/tour.js calls this for a step with `"example": "organelles"`. It reads the same tracing
+   index the Organelles section reads (?tracings=1, one sheet scan), counts outlined organelles per
+   cell by the cell centre they were filed at, and opens one of the three best-covered cells the way
+   ?at= does: unit to voxel, fill #x #y #z, press #go. The section is opened first (__organOpen) so
+   its rings are fetched and the "Show the cell with all …" button appears without a second click.
+   Nothing is hard-coded: the example is whatever the community has outlined most. */
+window.UJ_TOUR_EXAMPLE=async function(what){
+  if(what!=="organelles")return{ok:false,msg:"This page has no example of that."};
+  if(typeof REPORT_ENDPOINT==="undefined"||!REPORT_ENDPOINT)return{ok:false,msg:"The backend is not configured on this page."};
+  var list=(typeof PANEL_TRACINGS!=="undefined"&&PANEL_TRACINGS)||null;
+  if(!list){
+    var r=await fetch(REPORT_ENDPOINT+"?tracings=1"+(typeof panelDsQS==="function"?panelDsQS():""));
+    var d=await r.json();list=(d&&d.tracings)||[];
+  }
+  var by={};
+  list.forEach(function(t){
+    if(!t||typeof organIsOrganelle!=="function"||!organIsOrganelle(t))return;
+    var c=(window.UJ&&UJ.tracing)?UJ.tracing.cellOf(t):{at:String(t.cellCoord||"")};
+    var at=(window.UJ&&UJ.tracing)?UJ.tracing.coordKey(c.at):c.at;
+    if(!at)return;
+    (by[at]=by[at]||{at:at,n:0}).n++;
+  });
+  var cells=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return b.n-a.n;});
+  if(!cells.length)return{ok:false,msg:"Nobody has outlined an organelle in this dataset yet \u2014 you can carry on with Next."};
+  var pick=cells[Math.floor(Math.random()*Math.min(3,cells.length))];
+  var p=pick.at.split(",").map(Number);
+  window.__organOpen=true;
+  if(typeof unit!=="undefined"&&typeof unitsEl!=="undefined"&&unitsEl){
+    unit="voxel";
+    [].slice.call(unitsEl.children).forEach(function(c){c.classList.toggle("on",c.dataset.u==="voxel");});
+  }
+  document.getElementById("x").value=p[0];
+  document.getElementById("y").value=p[1];
+  document.getElementById("z").value=p[2];
+  document.getElementById("go").click();
+  return{ok:true,msg:"Opening a cell with "+pick.n+" outlined organelle"+(pick.n===1?"":"s")+" \u2014 the button appears when its outlines have loaded."};
+};
 
 </script>
 </body>

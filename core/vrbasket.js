@@ -73,6 +73,12 @@ UJ.vrbasket = (function(){
     var list = load().filter(function(e){ return keyOf(e.ds, e.root) !== k; });
     save(list); return list;
   }
+  /* Several at once, one write: the tray's "remove all" on a group. */
+  function removeKeys(keys){
+    var drop = {}; keys.forEach(function(k){ drop[k] = 1; });
+    var list = load().filter(function(e){ return !drop[keyOf(e.ds, e.root)]; });
+    save(list); return list;
+  }
   /* SEPARATE PER TOOL (2026-10-18, Søren in δJump: "It said 6 cells in the VR already, but they
      were from uJump. I think we should keep them separate, or else it will be confusing.") One
      stored list still, every entry carrying its dataset, but each tool sees, counts, opens and
@@ -180,7 +186,18 @@ UJ.vrbasket = (function(){
     "#vrb-tray .vrb-go{background:var(--accent,#3fb950);color:#0d1117;border:0;font-weight:600;padding:7px 12px}" +
     "#vrb-tray .vrb-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}" +
     "#vrb-tray .vrb-note{color:var(--mut,#8b949e);font-size:12px;margin-top:8px;line-height:1.4}" +
-    "#vrb-tray .vrb-warn{color:#f0883e}";
+    "#vrb-tray .vrb-warn{color:#f0883e}" +
+    "#vrb-tray details{border-top:1px solid var(--line,#30363d)}" +
+    "#vrb-tray details details{border-top:0;margin-left:10px}" +
+    "#vrb-tray summary{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;list-style:none;font-weight:600}" +
+    "#vrb-tray summary::-webkit-details-marker{display:none}" +
+    "#vrb-tray summary:before{content:'\\25B8';color:var(--mut,#8b949e);width:10px;display:inline-block}" +
+    "#vrb-tray details[open]>summary:before{content:'\\25BE'}" +
+    "#vrb-tray summary span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    "#vrb-tray summary i{font-style:normal;color:var(--mut,#8b949e);font-weight:400}" +
+    "#vrb-tray details details summary{font-weight:500}" +
+    "#vrb-tray details .vrb-row{margin-left:18px}" +
+    "#vrb-tray .vrb-acts.top{margin:0 0 8px}";
   function injectStyle(){
     if (document.getElementById("vrb-style")) return;
     var s = document.createElement("style"); s.id = "vrb-style"; s.textContent = STYLE;
@@ -206,7 +223,10 @@ UJ.vrbasket = (function(){
     tray = document.createElement("div"); tray.id = "vrb-tray";
     tray.addEventListener("click", function(ev){
       var b = ev.target.closest("button"); if (!b) return;
-      if (b.dataset.rm){ remove(b.dataset.rm, b.dataset.ds); }
+      if (b.closest("summary")) ev.preventDefault();          // a button in a fold's title must not fold it
+      if (b.dataset.rmgrp){ var ks = GROUPKEYS[b.dataset.rmgrp] || [];
+        if (ks.length < 2 || window.confirm("Remove these " + ks.length + " cells from the VR collection?")) removeKeys(ks); }
+      else if (b.dataset.rm){ remove(b.dataset.rm, b.dataset.ds); }
       else if (b.dataset.act === "open"){ window.open(linkFor(), "_blank"); }
       else if (b.dataset.act === "traced"){ window.open(tracedLink(), "_blank"); }
       else if (b.dataset.act === "copy"){
@@ -218,8 +238,62 @@ UJ.vrbasket = (function(){
       }
       else if (b.dataset.act === "clear"){ clear(); tray.style.display = "none"; }
     });
+    tray.addEventListener("toggle", function(ev){
+      var d = ev.target; if (d && d.dataset && d.dataset.k) setOpen(d.dataset.k, d.open);
+    }, true);
     document.body.appendChild(pill); document.body.appendChild(tray);
     render(load());
+  }
+  /* ── GROUPS (2026-10-23, Søren: "This list is getting ridiculously long, we need to collapse it or
+     organise it.") Connectivity brings in partners by the dozen, so the tray sorts them:
+     the cells you collected yourself, then input partners, then output partners -- read from the
+     label the partner was given ("…, input partner)") -- and inside each, one fold per cell type
+     ("PTC ×3"). Every fold has its own × to remove the lot. Which folds are open is remembered per
+     browser; partners start folded, your own cells open. */
+  var OPEN_KEY = "jump_vr_tray_open_v1", OPEN = {};
+  try { OPEN = JSON.parse(localStorage.getItem(OPEN_KEY) || "{}") || {}; } catch (e){ OPEN = {}; }
+  function isOpen(k, dflt){ return k in OPEN ? !!OPEN[k] : dflt; }
+  function setOpen(k, v){ OPEN[k] = v ? 1 : 0; try { localStorage.setItem(OPEN_KEY, JSON.stringify(OPEN)); } catch (e){} }
+  var ROLES = [["cell", "Your cells"], ["in", "Input partners"], ["out", "Output partners"]];
+  function roleOf(e){
+    var l = String(e.label || "");
+    return /\binput partner\b/i.test(l) ? "in" : /\boutput partner\b/i.test(l) ? "out" : "cell";
+  }
+  function typeOf(e){ return String(e.label || "Cell").replace(/\s*\(.*$/, "").trim() || "Cell"; }
+  function rowHtml(e){
+    var pts = (e.syn && e.syn.length ? " · " + e.syn.length + " synapses" : "") +
+              (e.marks && e.marks.length ? " · " + e.marks.length + " points" : "");
+    return "<div class='vrb-row'><div><b title='" + esc(e.label) + "'>" + esc(e.label || "Cell") + "</b>" +
+           "<small>" + esc(e.root) + esc(pts) + "</small></div>" +
+           "<button data-rm='" + esc(e.root) + "' data-ds='" + esc(e.ds) + "' title='Remove'>×</button></div>";
+  }
+  var GROUPKEYS = {};
+  function foldHtml(key, title, n, inner, dflt){
+    return "<details data-k='" + esc(key) + "'" + (isOpen(key, dflt) ? " open" : "") + "><summary><span>" + esc(title) +
+           " <i>×" + n + "</i></span><button data-rmgrp='" + esc(key) + "' title='Remove all " + n + "'>×</button></summary>" +
+           inner + "</details>";
+  }
+  function groupsHtml(list){
+    GROUPKEYS = {};
+    var h = "";
+    ROLES.forEach(function(R){
+      var role = R[0], items = list.filter(function(e){ return roleOf(e) === role; });
+      if (!items.length) return;
+      GROUPKEYS[role] = items.map(function(e){ return keyOf(e.ds, e.root); });
+      var byType = {}, order = [];
+      items.forEach(function(e){ var t = typeOf(e); if (!byType[t]){ byType[t] = []; order.push(t); } byType[t].push(e); });
+      order.sort(function(a, b){ return byType[b].length - byType[a].length || a.localeCompare(b); });
+      var inner = "";
+      order.forEach(function(t){
+        var g = byType[t];
+        if (g.length === 1 || (role === "cell" && items.length <= 6)){ g.forEach(function(e){ inner += rowHtml(e); }); return; }
+        var k = role + "|" + t;
+        GROUPKEYS[k] = g.map(function(e){ return keyOf(e.ds, e.root); });
+        inner += foldHtml(k, t, g.length, g.map(rowHtml).join(""), false);
+      });
+      h += foldHtml(role, R[1], items.length, inner, role === "cell");
+    });
+    return h;
   }
   function render(all){
     if (!pill) return;
@@ -236,19 +310,13 @@ UJ.vrbasket = (function(){
         "<div class='vrb-acts'><button class='vrb-go' data-act='traced'>Open the traced cells in VR</button></div>";
       return;
     }
-    var h = "<h4>VR collection</h4>";
-    list.forEach(function(e){
-      var pts = (e.syn && e.syn.length ? " · " + e.syn.length + " synapses" : "") +
-                (e.marks && e.marks.length ? " · " + e.marks.length + " points" : "");
-      h += "<div class='vrb-row'><div><b title='" + esc(e.label) + "'>" + esc(e.label || "Cell") + "</b>" +
-           "<small>" + esc(e.root) + esc(pts) + "</small></div>" +
-           "<button data-rm='" + esc(e.root) + "' data-ds='" + esc(e.ds) + "' title='Remove'>×</button></div>";
-    });
+    var h = "<h4>VR collection</h4>" +
+            "<div class='vrb-acts top'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +
+            "<button data-act='copy'>Copy headset link</button><button data-act='clear'>Clear</button></div>";
+    h += groupsHtml(list);
     if (list.length > SOFT_MAX)
       h += "<div class='vrb-note vrb-warn'>More than " + SOFT_MAX + " cells may be too heavy for a standalone Quest 2.</div>";
-    h += "<div class='vrb-acts'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +
-         "<button data-act='copy'>Copy headset link</button><button data-act='clear'>Clear</button></div>" +
-         "<div class='vrb-note'>On the PC with Quest Link: open the viewer and press <b>Enter VR</b>.<br>" +
+    h += "<div class='vrb-note'>On the PC with Quest Link: open the viewer and press <b>Enter VR</b>.<br>" +
          "Standalone Quest: send yourself the headset link and open it in the Quest browser.</div>" +
          (list.some(function(e){ return (e.syn && e.syn.length) || (e.marks && e.marks.length); })
            ? "<div class='vrb-note'>Synapses and contact points are too many for the headset link: open the viewer here, " +
@@ -324,5 +392,5 @@ UJ.vrbasket = (function(){
   }
 
   return { KEY: KEY, load: load, save: save, add: add, remove: remove, clear: clear, has: has,
-           merge: merge, mergeAll: mergeAll, linkFor: linkFor, sweep: sweep };
+           merge: merge, mergeAll: mergeAll, removeKeys: removeKeys, linkFor: linkFor, sweep: sweep };
 })();
