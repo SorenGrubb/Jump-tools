@@ -12341,6 +12341,9 @@ function fixMoveTo(pUm){
 function fixAsk(){
   const c = FIX.c, el = document.getElementById("fixAsk"), t = document.getElementById("fixAskText");
   el.style.display = "";
+  /* on a phone the window is taller than the screen: it scrolls (max-height + overflow), and the
+     question is brought into view (Søren, 2026-10-23: "I can't see the text below the screen") */
+  setTimeout(() => { try { el.scrollIntoView({ block: "end", behavior: "smooth" }); } catch (e){} }, 30);
   if (!FIX.added.length){ t.textContent = "Nothing was added. Close the window?"; document.getElementById("fixSave").style.display = "none"; return; }
   document.getElementById("fixSave").style.display = "";
   const nuc = c.nuc && c.nuc !== "0" ? c.nuc : null;
@@ -12998,13 +13001,13 @@ else if (/[#&]traced=1/.test(location.hash) || DSX.tracedOnly){
      left by µJump's `handoff` step, so a reader who was told the walkthrough carries
      on here is offered exactly that instead of "First time here?". -->
 <script>UJ.tour&&UJ.tour.ready();</script>
-<div id="fixWin" style="display:none;position:fixed;right:12px;top:12px;z-index:20;width:min(440px,calc(100vw - 24px));background:rgba(13,17,23,.97);color:#e6edf3;border:1px solid #30363d;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.5);font:13px system-ui,sans-serif">
+<div id="fixWin" style="display:none;position:fixed;right:12px;top:12px;z-index:20;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:rgba(13,17,23,.97);color:#e6edf3;border:1px solid #30363d;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.5);font:13px system-ui,sans-serif">
   <div id="fixHead" style="padding:7px 10px;border-bottom:1px solid #30363d;cursor:move;display:flex;align-items:center;gap:8px"><b style="flex:1" id="fixTitle">Add missing parts</b><button id="fixX" title="Close (asks about unsaved parts)" style="border:0;background:none;color:inherit;font-size:16px;cursor:pointer">✕</button></div>
   <div style="padding:8px 10px">
     <div style="position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:6px;overflow:hidden">
       <canvas id="fixEm" width="420" height="420" style="width:100%;height:100%;display:block;touch-action:none;cursor:crosshair"></canvas>
       <div id="fixLab" style="position:absolute;left:6px;top:4px;font:11px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
-      <div id="fixHover" style="position:absolute;right:6px;top:4px;font:11px system-ui;color:#ffe066;text-shadow:0 0 3px #000;pointer-events:none"></div>
+      <div id="fixHover" style="position:absolute;right:6px;bottom:4px;font:11px system-ui;color:#ffe066;text-shadow:0 0 3px #000;pointer-events:none"></div>
       <div id="fixBar" style="position:absolute;left:8px;bottom:8px;height:3px;background:#fff;pointer-events:none"></div>
       <div id="fixBarL" style="position:absolute;left:8px;bottom:13px;font:10px system-ui;color:#fff;text-shadow:0 0 3px #000;pointer-events:none"></div>
     </div>
