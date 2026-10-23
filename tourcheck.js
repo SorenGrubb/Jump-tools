@@ -77,7 +77,7 @@ ok("no part is declared without steps",
 /* NAMES, NOT NUMBERS, since the organelle part was inserted BEFORE Filter and show at Søren's
    word. Numbered ids meant that inserting a part renamed every part after it -- silently, in
    saved progress as well as here. These ids say what the part is about and never move again. */
-const WANTED = ["find", "organelles", "filter", "export", "vrcollect"];
+const WANTED = ["find", "organelles", "filter", "evidence", "export", "vrcollect"];
 const written = (CFG && CFG.parts ? CFG.parts : []).map(p => p.id);
 const todo = WANTED.filter(id => written.indexOf(id) < 0);
 /* Describing what is MISSING, derived from what is present. The first version spelled the gap out
@@ -86,6 +86,7 @@ const todo = WANTED.filter(id => written.indexOf(id) < 0);
 const SCOPE = { find: "finding a cell and saying what it is",
                 organelles: "logging and outlining the structures inside a cell",
                 filter: "Filter and show",
+                evidence: "the References tab and the statistics dashboard",
                 export: "the region box and the Colab/Blender export",
                 vrcollect: "collecting cells for VR and opening the scene" };
 if (todo.length) console.log("NOT YET  " + todo.join(" and ") + "  <- "
@@ -177,11 +178,67 @@ ok("...and a step waiting on TEXT waits for words the page actually produces", u
 const unexplained = steps.filter(s => s.needs && !s.after);
 ok("a step that waits for something says how to bring it about", unexplained.length === 0,
    unexplained.map(s => s._part + "#" + s._i).join(", ") || "all explained");
-/* A waiting step must name the control to press, and it must be a real one: with no `press` the
-   engine takes the dimming off entirely, which works but leaves the reader hunting for it. */
-const unpointed = steps.filter(s => s.needs && !s.press);
-ok("a waiting step names the control to press, so it can be spotlighted", unpointed.length === 0,
-   unpointed.map(s => s._part + "#" + s._i).join(", ") || "all named");
+/* TWO KINDS OF WAIT, AND THEY ARE NOT THE SAME.                                    2026-10-23
+   This read "a waiting step names the control to press" and demanded `press` on every step with
+   a `needs`. That is right for a step waiting on the READER -- with no `press` the engine takes
+   the dimming off entirely, which works but leaves them hunting for the button. It is wrong for
+   a step waiting on the PAGE: the dashboard's charts do not exist until Plotly has drawn them,
+   and there is nothing to press. Naming a button there would be inventing an instruction.
+
+   So a step may declare `pageWait: true`, which says the omission is deliberate: nothing on this
+   page will make it happen sooner. The engine needs no change -- it already does the right thing
+   with no `press`. The field exists so a MISSING press is distinguishable from a FORGOTTEN one,
+   which is the only version of this a check can hold anybody to. */
+const unpointed = steps.filter(s => s.needs && !s.press && !s.pageWait);
+ok("a waiting step names the control to press, unless it is waiting on the page",
+   unpointed.length === 0,
+   unpointed.map(s => s._part + "#" + s._i).join(", ")
+   || steps.filter(s => s.pageWait).length + " wait on the page, the rest name a control");
+/* ── A WAIT THAT WAS ALREADY OVER ──────────────────────────────────────────────────  2026-10-23
+   THREE TIMES IN ONE DAY, which is what makes it worth a check rather than more care.
+   `needsMet()` asks whether the target has a non-zero rectangle. That is the right question for
+   something built at runtime -- and the wrong one for a container CSS has already given a size:
+
+     #vrb-pill    saved by accident: core/vrbasket.js keeps it display:none while empty.
+     #vrslot      NOT saved: an empty 330x0 box... which became non-zero as soon as anything was
+                  in the panel, so the step waiting on the SLOT would have pointed at nothing and
+                  reported success. Fixed to wait on `#vrslot button`.
+     .plot        NOT saved: `.plot{width:100%;height:360px}`. Every chart div in the dashboard
+                  has a 360px rectangle the instant the tab becomes .active, drawn or not, so
+                  every chart step's wait was over before Plotly started. Fixed to `#id > *`.
+
+   THE RULE, stated so it can be mechanised: if a step waits on a bare id, and the stylesheet
+   gives that element an explicit height (by id, or by any class in its markup tag), then its
+   rectangle proves nothing and the step must wait on something INSIDE it instead. A selector
+   with a combinator -- `#id > *`, `#id option` -- is exempt, because that is the fix. */
+function sizedByCss(sel, html) {
+  const id = (String(sel).match(/^#([A-Za-z][\w-]*)$/) || [])[1];
+  if (!id) return null;                                /* has a combinator: already the fix */
+  const at = html.indexOf('id="' + id + '"');
+  if (at < 0) return null;                             /* runtime-built: nothing to read */
+  const tag = html.slice(html.lastIndexOf("<", at), at + 240);
+  const names = ["#" + id].concat(
+    ((tag.match(/class="([^"]*)"/) || [])[1] || "").split(/\s+/).filter(Boolean).map(c => "." + c));
+  for (const n of names) {
+    const re = new RegExp(n.replace(/[.#]/g, "\\$&") + "\\s*\\{[^}]*?\\b(?:min-)?height\\s*:\\s*[^};]+", "g");
+    const m = html.match(re);
+    if (m) return n + " sets " + (m[0].match(/(?:min-)?height\s*:\s*[^};]+/) || [""])[0].trim();
+  }
+  return null;
+}
+const vacuous = steps.filter(s => s.needs)
+  .map(s => ({ s: s, why: sizedByCss(needsAt(s.needs), uj) })).filter(x => x.why);
+ok("...and a step never waits on a container the stylesheet has already sized",
+   vacuous.length === 0,
+   vacuous.map(x => x.s._part + "#" + x.s._i + " " + needsAt(x.s.needs) + " \u2014 " + x.why)
+     .join(" | ")
+   || steps.filter(s => s.needs).length + " waits checked against the stylesheet");
+
+/* ...and `pageWait` is for a step that really does wait. On a step with no `needs` it is a claim
+   about nothing, which means somebody has misunderstood what it is for. */
+const idleClaim = steps.filter(s => s.pageWait && !s.needs);
+ok("...and nothing claims to wait on the page without waiting at all", idleClaim.length === 0,
+   idleClaim.map(s => s._part + "#" + s._i).join(", ") || "none");
 const badPress = steps.filter(s => s.press && !inFile(s.press, MARKUP));
 ok("...and it is a control the page has", badPress.length === 0,
    badPress.map(s => s._part + "#" + s._i + " " + s.press).join(" | ")

@@ -212,11 +212,12 @@ PART_FIND = {
         # wrong at once -- in prose, where nothing can check it. The picker numbers its own rows;
         # the text names the walkthrough instead, so reordering costs nothing.
         {"at": "#mainTabs", "title": u"That is the first part",
-         "say": u"You can now find a cell and say what it is. Next, <b>organelles</b> &mdash; "
-                u"logging where a structure sits and outlining what shape it is, which is the "
-                u"work this tool exists for. After that, <b>Filter and show</b>, where you "
-                u"describe a population instead of a cell, and finally taking a cube of the "
-                u"volume away to work on elsewhere."},
+         "say": u"You can now find a cell and say what it is. The rest go outwards from there: "
+                u"<b>organelles</b>, logging where a structure sits and outlining what shape it "
+                u"is; <b>Filter and show</b>, describing a population instead of a cell; "
+                u"<b>where the numbers come from</b>, which is what all of it adds up to; and "
+                u"two on taking it elsewhere &mdash; a <b>region</b> exported to a notebook, and "
+                u"a collection of cells opened <b>in VR</b>."},
     ],
 }
 
@@ -463,11 +464,173 @@ PART_FILTER = {
                 u"previewed, so the sheet and the number on the button are always the same "
                 u"population."},
 
+        # ── STEPPING THROUGH THE MATCHES ──────────────────────────────────────  2026-10-23
+        # The one card in the Filter tab nothing pointed at, and the least guessable thing in
+        # the tool: it is a WORKLIST, with memory, and it moves the identification panel into
+        # itself so you never leave the tab. It is display:none until a preview has run, so all
+        # three steps wait on it.
+        {"at": "#stepThroughCard", "needs": "#stepThroughCard", "press": "#filterRun",
+         "after": u"press \u201cPreview matches\u201d",
+         "title": u"Going through them one at a time",
+         "say": u"Once you have previewed a set, this card appears. <b>Systematically step "
+                u"through matches</b> visits every matched cell <b>exactly once, in a fixed "
+                u"order</b> &mdash; which is the difference between it and the random buttons on "
+                u"the Jump tab, where nothing stops a cell coming up twice or never."},
+
+        {"at": "#stepNext", "needs": "#stepNext", "press": "#filterRun",
+         "after": u"press \u201cPreview matches\u201d",
+         "title": u"...without leaving the tab",
+         "say": u"<b>Next \u2192</b> loads the next match, and the cell panel and the whole "
+                u"identification screen move <b>into this card</b> rather than sending you back "
+                u"to the Jump tab. The counter above says where you are and how many you have "
+                u"checked. This is the shape to use for a survey: describe the population once, "
+                u"then work down it."},
+
+        {"at": "#stepReset", "needs": "#stepReset", "press": "#filterRun",
+         "after": u"press \u201cPreview matches\u201d",
+         "title": u"It remembers, per set of matches",
+         "say": u"Your position is kept in this browser <b>for this exact set of matches</b>, so "
+                u"you can close the tab and resume tomorrow. Change the conditions and preview "
+                u"again and the count starts fresh &mdash; which is right: it is a different "
+                u"population, so being \u201chalf way\u201d through the old one means nothing. "
+                u"<b>Reset progress</b> does it deliberately."},
+
         {"at": "#filterVR", "title": u"Or look at all of them at once",
          "say": u"<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; "
-                u"<b>Show in VR</b> opens them as meshes you can walk through. The last "
-                u"walkthrough does the same for a <b>cube of the volume</b> rather than a set of "
-                u"cells &mdash; a region, exported to a notebook or straight to Blender."},
+                u"<b>Show in VR</b> opens them as meshes you can walk through. The "
+                u"<b>region</b> walkthrough does the same for a <b>cube of the volume</b> rather "
+                u"than a set of cells &mdash; exported to a notebook or straight to Blender."},
+    ],
+}
+
+# ── WHERE THE NUMBERS COME FROM ──────────────────────────────────  2026-10-23
+# Søren: *"Let's do a common one for ref and stats."* One part, and it is the right pairing
+# rather than a convenience: the References tab says where the CRITERIA come from and the
+# dashboard says what applying them has produced. Separately, References is three steps of
+# "here are some links" and the dashboard is sixteen charts with nothing to anchor them.
+#
+# WHY REFERENCES WOULD NOT CARRY A PART ALONE. It is one card of citations. The thing worth
+# saying about it is not the list, it is that every rung of the guided tree is traceable to a
+# paper, and that one of those papers argues the subtypes grade into one another -- which is why
+# the tree offers a plain "Pericyte". That is a sentence, not a walkthrough.
+#
+# THE REFS TAB HAS NO IDS AT ALL in its markup, so these steps point at the tab panel itself and
+# at a citation link by class. Both are real selectors tourcheck.js can find; neither is an id,
+# which is why `inFile` grew its class and attribute spellings.
+#
+# THE CHARTS DO NOT EXIST UNTIL THE TAB IS OPENED. core/stepthrough.js loads Plotly and calls
+# initDashboardTab the first time the dashboard tab is activated, so the plot divs are empty --
+# and therefore 0x0 -- before that. Every chart step waits. The `tab` on the first dashboard step
+# is what sets the load going, so by the time the reader reaches a chart it is usually there.
+PART_EVIDENCE = {
+    "id": "evidence",
+    "title": u"Where the numbers come from — references and the dashboard",
+    "blurb": u"What every classification rests on, and what the whole dataset looks like once "
+             u"everybody's identifications are counted up.",
+    "steps": [
+        {"say": u"Two tabs that are easy to walk past, and they are a pair. <b>References</b> "
+                u"says where the criteria come from; the <b>Statistics dashboard</b> says what "
+                u"applying them has produced across the whole volume &mdash; including your own "
+                u"contributions. About three minutes.",
+         "title": u"The evidence, and the totals"},
+
+        {"at": "[data-tabpanel=\"refs\"]", "tab": "refs",
+         "title": u"Nothing here is this tool's opinion",
+         "say": u"Every rung of the guided identification traces to a paper, and they are all "
+                u"here: the pericyte subtype naming, the criteria tested against serial "
+                u"block-face SEM, the MICrONS cell-type predictions, the perisomatic "
+                u"classification. If you disagree with a branch of the tree, this is where to go "
+                u"and argue with it."},
+
+        {"at": "a.ref", "tab": "refs",
+         "title": u"...and every one is a link you can follow",
+         "say": u"DOIs and PMC links, not just titles. One of them matters more than the rest: "
+                u"the 2023 review argues the mural subtypes <b>grade into one another</b> rather "
+                u"than forming discrete classes, which is exactly why the tree always offers a "
+                u"plain <b>Pericyte</b> as well as the three subtypes. A classifier that hides "
+                u"that is lying about its own confidence."},
+
+        {"at": "#dashPanel", "tab": "dashboard",
+         "title": u"What it all adds up to",
+         "say": u"Sixteen charts over the whole dataset, drawn from the same tables this tool "
+                u"reads &mdash; not a snapshot pasted in. Each one carries its own note saying "
+                u"what it is counting and which identifications it trusts, which is worth "
+                u"reading before quoting a number from it."},
+
+        {"at": "#refreshBtn",
+         "title": u"“Live” means live",
+         "say": u"The charts are built when you first open this tab. <b>↻ Refresh live "
+                u"data</b> fetches again, so an identification somebody submitted ten minutes "
+                u"ago is in it. The line beside the button says what state it is in."},
+
+        {"at": "#plotCellsPerType", "needs": "#plotCellsPerType > *",
+         "after": u"let the charts finish drawing", "pageWait": True, "wait": 20000,
+         "title": u"How many of each kind there are",
+         "say": u"<b>Cells per cell type</b>, across the whole volume. The companion below it, "
+                u"<b>cells per type per cortical layer</b>, is the one to look at before "
+                u"believing a count: a type that looks rare overall may simply live in a layer "
+                u"this volume barely reaches."},
+
+        {"at": "#plotIdentifiedUnclassified", "needs": "#plotIdentifiedUnclassified > *",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"How much is still unknown",
+         "say": u"<b>Identified vs. unclassified</b> is the size of the job, and the reason this "
+                u"tool exists. Beside it, unclassified cells per layer shows where the gaps are "
+                u"&mdash; which is a reasonable way to choose what to work on next, rather than "
+                u"taking random cells."},
+
+        {"at": "#plotIdentitySource", "needs": "#plotIdentitySource > *",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"Who said so — the chart to understand first",
+         "say": u"<b>MICrONS-predicted vs. verified by Grubb et al. vs. community-identified</b> "
+                u"separates an automatic prediction from a checked call from a crowd call. It is "
+                u"where your own identifications appear, and it is the chart that decides how "
+                u"much any of the others can be trusted. Read it as provenance, not as a score."},
+
+        {"at": "#plotCiliaPercent", "needs": "#plotCiliaPercent > *",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"Where the organelle logging ends up",
+         "say": u"<b>% of cells with a primary cilium, by cell type</b> &mdash; and below it, "
+                u"cilium length and nucleus-to-centriole distance by type. These are built from "
+                u"exactly the points logged in the organelle walkthrough. One cilium is an "
+                u"observation; three hundred is a distribution with a shape to it."},
+
+        {"at": "#neighborTypePicker", "needs": "#neighborTypePicker option",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"Charts you can re-aim",
+         "say": u"Several charts have a picker above them &mdash; this one chooses whose "
+                u"<b>5 nearest physical neighbours</b> you are looking at. The same goes for the "
+                u"volume charts, the connectivity ones and the synapse ones: the question is "
+                u"fixed, the cell type is yours."},
+
+        {"at": "#connectivityArea", "needs": "#connectivityArea > *",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"...and what the cells do to each other",
+         "say": u"Below the counting charts: the types with the most synaptic connections, "
+                u"<b>input vs. output synapses</b> per type, and average mesh contact points "
+                u"between types. This is the part of the dashboard that is about relationships "
+                u"rather than inventory."},
+
+        {"at": "#plotReportsOverTime", "needs": "#plotReportsOverTime > *",
+         "after": u"let the charts finish drawing", "pageWait": True,
+         "title": u"And the project's own history",
+         "say": u"<b>Cumulative community reports over time</b> is this tool watching itself "
+                u"fill up. It is also the honest answer to “how much of this is crowd "
+                u"data?” &mdash; you can see the curve and judge for yourself."},
+
+        {"at": "#dashXlsxBtn",
+         "title": u"Take the numbers, not a screenshot",
+         "say": u"<b>Download the numbers as Excel</b> gives you every chart's underlying "
+                u"figures in one workbook, a sheet per chart. If a number from here is going "
+                u"into a paper or a talk, take it from this file &mdash; then the figure and "
+                u"your source agree, and you can say which day you pulled it."},
+
+        {"at": "#mainTabs",
+         "title": u"That is the evidence",
+         "say": u"Criteria you can check in <b>References</b>, totals you can check in the "
+                u"<b>dashboard</b>, and provenance on every one of them. What is left is taking "
+                u"the data somewhere else: a <b>region</b> exported to a notebook or Blender, "
+                u"and a collection of cells opened <b>in VR</b>."},
     ],
 }
 
@@ -631,7 +794,8 @@ CFG = {
     # the right order on its own terms -- organelles are about one cell, which is where somebody
     # who has just done part one still is, and Filter and show is the first thing here that asks
     # you to think in populations.
-    "parts": [PART_FIND, PART_ORGAN, PART_FILTER, PART_EXPORT, PART_TOVR],
+    "parts": [PART_FIND, PART_ORGAN, PART_FILTER, PART_EVIDENCE, PART_EXPORT,
+              PART_TOVR],
 }
 
 TOURDATA = (u'<script type="application/json" id="tourdata">\n'

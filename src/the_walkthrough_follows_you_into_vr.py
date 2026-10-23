@@ -93,7 +93,8 @@ PART_VRSCENE = {
         # #list is empty, and therefore 0x0, until cells arrive -- so this one waits. No `press`:
         # there is nothing for the reader to do but let the fetch finish, and with nothing named
         # the dimming comes off entirely rather than pointing at a button that would not help.
-        {"at": "#list", "needs": "#list", "after": u"let the cells finish arriving", "wait": 15000,
+        {"at": "#list", "needs": "#list", "after": u"let the cells finish arriving",
+         "pageWait": True, "wait": 15000,
          "title": u"Everything that is in here",
          "say": u"The list above the tabs is one row per thing in the scene &mdash; your cells, "
                 u"their nuclei, and anything else you switch on. Clicking a row picks that cell, "
@@ -126,7 +127,7 @@ PART_VRSCENE = {
         # #vrslot is always in the document; the BUTTON inside it is only put there when the
         # browser can actually enter VR. So the step waits on the button, not the slot -- waiting
         # on the slot would spotlight an empty 330x0 box and claim success.
-        {"at": "#vrslot button", "needs": "#vrslot button", "wait": 6000,
+        {"at": "#vrslot button", "needs": "#vrslot button", "wait": 6000, "pageWait": True,
          "after": u"open this on a machine that has a headset",
          "title": u"Into the headset",
          "say": u"<b>Enter VR</b> appears here when the browser can do it &mdash; a PC with Quest "

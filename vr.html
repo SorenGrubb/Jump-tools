@@ -202,6 +202,7 @@
      "at": "#list",
      "needs": "#list",
      "after": "let the cells finish arriving",
+     "pageWait": true,
      "wait": 15000,
      "title": "Everything that is in here",
      "say": "The list above the tabs is one row per thing in the scene &mdash; your cells, their nuclei, and anything else you switch on. Clicking a row picks that cell, which is what most of the panel then acts on."
@@ -228,6 +229,7 @@
      "at": "#vrslot button",
      "needs": "#vrslot button",
      "wait": 6000,
+     "pageWait": true,
      "after": "open this on a machine that has a headset",
      "title": "Into the headset",
      "say": "<b>Enter VR</b> appears here when the browser can do it &mdash; a PC with Quest Link, or the Quest's own browser. On a plain monitor there is no button and nothing is lost: the whole scene works with the mouse, and everything the rest of this walkthrough points at works in both."
@@ -274,7 +276,7 @@
 </script>
   <div class="ctl" id="tourRow"><button type="button" data-tour-menu="1"
       title="A guided walkthrough of this scene, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button></div>
-  <div class="sub" id="sub">Loading…</div>
+    <div class="sub" id="sub">Loading…</div>
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
       <input id="sceneTitle" placeholder="Scene title" style="flex:1;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
