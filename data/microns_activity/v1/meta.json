@@ -61,7 +61,7 @@
  ],
  "shards": 512,
  "shard_key": "int(root_id) % shards, file NNN.json",
- "movie": null,
+ "movie": "oracle_movie.mp4",
  "movie_fps": 30,
  "cells": 19175,
  "roots": 15433,

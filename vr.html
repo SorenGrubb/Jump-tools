@@ -5725,14 +5725,14 @@ function raDrawCellPlot(c){
 }
 /* ── the movie screen ── */
 function raScreenEnsure(){
-  if (RA.scr || !RA.meta || !RA.meta.movie) return !!RA.scr;
+  if (RA.scr || !RA.meta || !(RA.meta.movie || RA.meta.movie_webm)) return !!RA.scr;
   const v = document.createElement("video");
   /* H.264 wherever it plays -- every phone, Safari, Chrome, Edge and the Quest browser; the VP9
      copy only for a browser without it (v66: on the iPhone the VP9 copy showed its first frame and
      then stood still). */
   const mp4ok = v.canPlayType('video/mp4; codecs="avc1.42E01E"');
   const webm = RA.meta.movie_webm && !mp4ok && v.canPlayType('video/webm; codecs="vp9"');
-  v.src = RA.base + (webm ? RA.meta.movie_webm : RA.meta.movie); v.muted = true; v.playsInline = true; v.crossOrigin = "anonymous"; v.preload = "auto"; v.loop = false;
+  v.src = RA.base + (webm || !RA.meta.movie ? RA.meta.movie_webm : RA.meta.movie); /* either file will do: bake v2 wrote movie: null (2026-10-23, the screen vanished) */ v.muted = true; v.playsInline = true; v.crossOrigin = "anonymous"; v.preload = "auto"; v.loop = false;
   v.setAttribute("playsinline", ""); v.setAttribute("muted", ""); v.setAttribute("webkit-playsinline", "");
   /* In the page, tiny and nearly invisible: iOS Safari does not advance a video that is not in the
      document, and a WebGL texture of it then keeps its first frame. */
@@ -5766,7 +5766,7 @@ function raScreenPlace(){
   RA.scr.lookAt(cp.x, p.y, cp.z);
 }
 function raScreenFrame(){
-  const want = RA.on && RA.screen && RA.meta && RA.meta.movie;
+  const want = RA.on && RA.screen && RA.meta && (RA.meta.movie || RA.meta.movie_webm);
   if (!want){
     if (RA.scr) RA.scr.visible = false; if (RA.cap) RA.cap.visible = false;
     if (RA.video && !RA.video.paused) RA.video.pause();
@@ -5834,7 +5834,7 @@ function raSetting(k, v){
 }
 function setRaScreen(v){
   RA.screen = v; document.getElementById("raScreen").classList.toggle("on", v); RA.place = "";
-  if (v && RA.on && RA.meta && !RA.meta.movie) ctxNote.textContent = "This bake has no movie file.";
+  if (v && RA.on && RA.meta && !RA.meta.movie && !RA.meta.movie_webm) ctxNote.textContent = "This bake has no movie file.";
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function setRaPlot(v){ RA.plot = v; document.getElementById("raPlot").classList.toggle("on", v); if (!v && RA.plotSpr) RA.plotSpr.visible = false; if (typeof MENU !== "undefined") MENU.dirty = true; }
