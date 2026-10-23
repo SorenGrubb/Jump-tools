@@ -5115,7 +5115,7 @@ async function raMeta(){
     const base = raBase(); if (!base) throw new Error("no recorded activity for this dataset");
     const r = await fetch(base + "meta.json"); if (!r.ok) throw new Error("meta.json: HTTP " + r.status);
     const m = await r.json();
-    try { const q = await fetch(base + "index.json"); if (q.ok) RA.index = (await q.json()).roots || null; } catch (e){}
+    try { const q = await fetch(base + "index.json"); if (q.ok){ const j = await q.json(); RA.index = j.roots || null; RA.nucs = j.nucs || null; } } catch (e){}
     RA.base = base; RA.meta = m; RA.G = m.grid;
     RA.total = Math.max(...m.clips.map(c => c.movie_start + c.duration));
     raClipOptions();
@@ -5146,7 +5146,10 @@ async function raAttach(){
     await Promise.all(CELLS.map(async c => {
       if (c.raRoot === String(c.root)) return;
       if (!raDs(c) || !c.root){ c.ra = null; c.raRoot = String(c.root); return; }
-      const sh = await raShard(String(c.root)), L = sh[String(c.root)];
+      /* by root id; failing that by nucleus id (index v2, 2026-10-23): a root id proofread since the
+         coregistration is still the same cell, and its nucleus id says so */
+      let rk = String(c.root), sh = await raShard(rk), L = sh[rk];
+      if (!(L && L.length) && c.nuc && RA.nucs && RA.nucs[String(c.nuc)]){ rk = RA.nucs[String(c.nuc)]; sh = await raShard(rk); L = sh[rk]; }
       c.ra = L && L.length ? { list: L.map(raDecode) } : null;
       if (c.ra){ c.ra.use = 0; c.ra.list.forEach((e, i) => { if ((e.os || 0) > (c.ra.list[c.ra.use].os || 0)) c.ra.use = i; }); }
       c.raRoot = String(c.root);

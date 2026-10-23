@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>core/tour.js fixture</title>
+<!--
+  tourfixture.html — the page tourcheck.js drives core/tour.js on.                   2026-10-23
+
+  WHY A FIXTURE AND NOT µJUMP ITSELF. ujump.html is 14.5 MB and headless Chromium does not survive
+  loading it here — it takes the renderer down part way through, reproducibly, while the same
+  harness loads a 17-October copy in about a second. So the ENGINE is exercised here, on a page
+  small enough to drive: the spotlight, the bubble placement, waiting for a control that does not
+  exist yet, a target that never appears, the keyboard, the counter and what it remembers.
+
+  The STEP LIST in ujump.html is then checked a different way — statically, against the markup —
+  because the thing that can actually rot there is a selector, and a selector can be read off the
+  file without a browser. tourcheck.js does both halves and says which is which.
+
+  The ids below deliberately mirror µJump's: #randomTypeSelect, #randomOfType, #nucpanel. The
+  fixture is NOT a copy of the tool and makes no claim to be; it is four controls with the right
+  names and one button that creates a late element, which is the shape the engine has to handle.
+-->
+<style>
+  :root{--bg:#fbfaf8;--ink:#1b1e22;--muted:#5f6873;--line:#e4e1da;--card:#fff;--teal:#12a67f;
+    --accent:#2f6f8f}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+  .wrap{max-width:720px;margin:0 auto;padding:24px}
+  .block{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;
+    margin:0 0 18px}
+  button,select{font:inherit;font-size:14px;padding:7px 12px;border:1px solid var(--line);
+    border-radius:8px;background:transparent;color:inherit;cursor:pointer}
+  /* Tall on purpose: a step near the bottom has to be scrolled to, and the bubble has to find
+     somewhere to sit that is not on top of it. */
+  .tall{height:1400px}
+  #nucpanel:empty{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>core/tour.js fixture</h1>
+  <p class="muted">Four controls with µJump's names, and one that makes a late element.</p>
+
+  <div class="block" id="mainTabs">
+    <button type="button" data-tab="jump">Jump</button>
+    <button type="button" data-tab="filter">Filter and show</button>
+  </div>
+
+  <div class="block">
+    <select id="randomTypeSelect"><option>Layer 5 ET thick-tufted pyramidal</option></select>
+    <button type="button" id="randomOfType">Random example</button>
+    <button type="button" id="randomUnclassified">Random unassigned cell</button>
+  </div>
+
+  <div class="block" id="coordPanel">
+    <input id="x" value="240640"><input id="y" value="207872"><input id="z" value="21360">
+  </div>
+
+  <!-- Empty until "Random example" is pressed: this is the late element the engine must wait for
+       rather than skip. -->
+  <div class="block" id="nucpanel"></div>
+
+  <div class="tall"></div>
+  <div class="block" id="bottomThing">A control right at the bottom of a long page.</div>
+
+  <button type="button" data-tour-start="part1" id="startBtn">Start the walkthrough</button>
+</div>
+
+<script type="application/json" id="tourdata">
+{
+  "key": "grubblab_tourfixture_v1",
+  "offer": "A fixture, not a tool.",
+  "parts": [
+    {
+      "id": "part1",
+      "title": "Fixture part one",
+      "steps": [
+        { "say": "An opening step with no target at all — the whole page dims and this sits in the middle." },
+        { "at": "#randomTypeSelect", "title": "Pick a type", "say": "Points at the select." },
+        { "at": "#randomOfType", "say": "Points at the button you are told to press." },
+        { "at": "#nucpanel", "needs": "#nucpanel .celltype", "press": "#randomOfType",
+          "after": "press “Random example”",
+          "say": "This step cannot be read until a card exists.", "wait": 2500 },
+        { "at": "#bottomThing", "say": "At the bottom of a long page, so it has to be scrolled to." },
+        { "at": "#noSuchControl", "say": "Points at something that is not here, on purpose." }
+      ]
+    }
+  ]
+}
+</script>
+<script src="core/tour.js"></script>
+<script>
+/* The late element, made only when the button is pressed — exactly as µJump's identity card is
+   only built once a cell has been shown. */
+document.getElementById("randomOfType").addEventListener("click", function () {
+  var p = document.getElementById("nucpanel");
+  if (p.querySelector(".celltype")) return;
+  var h = document.createElement("div");
+  h.className = "celltype";
+  h.textContent = "Pericyte";
+  p.appendChild(h);
+});
+UJ.tour.load();
+</script>
+</body>
+</html>

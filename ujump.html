@@ -619,11 +619,18 @@ document.addEventListener("DOMContentLoaded", function(){
 <script src="core/tree.js"></script>
 <script src="core/report.js"></script>
 <script src="core/stepthrough.js"></script>
+<!-- The walkthrough overlay. AFTER core/stepthrough.js: a step may name a tab, and that is
+     stepthrough's activateTab. core/tour.js, 2026-10-23. -->
+<script src="core/tour.js"></script>
 <!-- Previous / Next of the same type on the identity card -- core/typestep.js, 2026-09-21. -->
 <script src="core/typestep.js"></script>
 <!-- MICrONS recorded activity (two-photon, DANDI:000402): identity card + filter -- core/recact.js, 2026-10-19 -->
 <script src="core/recact.js"></script>
 <script>UJ.recact&&(!UJ.cfg||!UJ.cfg.id||UJ.cfg.id==="microns")&&UJ.recact.load();</script>
+<!-- The walkthrough: read the step list, wire the Tutorial button, and OFFER it on a first
+     visit. offerOnce, never start: a tutorial that begins by itself is one happening to
+     somebody rather than one they asked for. -->
+<script>UJ.tour&&UJ.tour.load()&&UJ.tour.offerOnce();</script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head><body>
@@ -640,7 +647,7 @@ document.addEventListener("DOMContentLoaded", function(){
 <div id="gameChipSlot"></div>
 </div>
 </div>
-<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-20 12:23</span></p>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build 2026-10-23 02:12</span></p>
 <script>document.getElementById("logoHome").href=location.pathname;</script>
 <script>
 /* ---------------------------------------------------------------------------------------------
@@ -721,11 +728,110 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
   setTheme(currentTheme());
 })();
 </script>
+<script type="application/json" id="tourdata">
+{
+ "key": "grubblab_ujump_tour_v1",
+ "offer": "A short walkthrough of the Jump tab &mdash; finding a cell and saying what it is. About two minutes.",
+ "parts": [
+  {
+   "id": "part1",
+   "title": "Finding a cell, and saying what it is",
+   "steps": [
+    {
+     "say": "This tool reads one volume: <b>MICrONS minnie65</b>, about 1.7 &times; 1.4 &times; 0.5&nbsp;mm of mouse visual cortex imaged at 4&nbsp;&times;&nbsp;4 &times; 40&nbsp;nm. A nucleus detector found 144,118 cells in it. Roughly two thirds carry a machine-made guess at what they are; the rest carry nothing at all. This walkthrough is about looking at one and deciding."
+    },
+    {
+     "at": "#mainTabs",
+     "title": "Five tabs",
+     "say": "<b>Jump</b> is one cell at a time, and is where this part stays. <b>Filter and show</b> is the opposite &mdash; every cell matching a set of conditions. The other three are the references behind the cell types, a discussion board, and the statistics for this dataset."
+    },
+    {
+     "at": "#randomTypeSelect",
+     "tab": "jump",
+     "title": "Start from a type",
+     "say": "Thirty-three cell types, from pyramidal neurons down to pericytes. Picking one here does not filter anything yet &mdash; it just says which type the three buttons below should fetch."
+    },
+    {
+     "at": "#randomOfType",
+     "title": "Show",
+     "say": "A random cell of that type, and a different one on every press. This is the fastest way to learn what a type actually looks like: press it six or seven times for one type before you try to identify anything."
+    },
+    {
+     "at": "#nucpanel",
+     "needs": "#nucpanel .celltype",
+     "press": "#randomOfType",
+     "after": "press “Show”",
+     "title": "The identity card",
+     "say": "Everything known about the cell now in front of you: where it is, what the segmentation claims it is, its organelles, its neighbours, and the links that open it elsewhere."
+    },
+    {
+     "at": "#nucpanel .celltype",
+     "needs": "#nucpanel .celltype",
+     "press": "#randomOfType",
+     "after": "press “Show”",
+     "title": "What the heading is, and is not",
+     "say": "This is MICrONS's own machine prediction, not a fact. It is right most of the time for neurons and wrong often enough around blood vessels that this site exists. Treat it as the first opinion, not the answer."
+    },
+    {
+     "at": "#idfgo",
+     "needs": "#idfgo",
+     "press": "#randomOfType",
+     "after": "press “Show”",
+     "title": "Say what you think it is",
+     "say": "This opens a decision tree &mdash; one question at a time about what you can see, rather than a list of 33 names to choose between. Every question is backed by a reference you can open from the References tab."
+    },
+    {
+     "at": "#randomUnclassified",
+     "title": "Identify",
+     "say": "A cell nobody has named yet, of any type. This is the actual work: these cells have no prediction at all, so whatever you say is the first thing anyone has said about them."
+    },
+    {
+     "at": "#unclCount",
+     "title": "How much is left",
+     "say": "How many the community has named, how many are still unnamed, and how many have been verified by hand. The unnamed number is the one this site is trying to bring down."
+    },
+    {
+     "at": "#randomCommunityId",
+     "title": "Review",
+     "say": "A cell somebody else has already identified. You either confirm their call or challenge it, and agreement between independent readers is what turns a pile of opinions into data worth using."
+    },
+    {
+     "at": "#coordPanel",
+     "title": "Arriving from somewhere else",
+     "say": "Paste an <code>x, y, z</code> out of Neuroglancer &mdash; or off a figure in a paper &mdash; and this says which cell is there and what type it is. All three boxes fill from one paste."
+    },
+    {
+     "at": "#rootNucSearchPanel",
+     "title": "Or by id",
+     "say": "A root ID or a nucleus ID, if you already have one. Root IDs change whenever a cell is re-proofread, which is why a coordinate is the more durable way to refer to a cell here."
+    },
+    {
+     "at": "#recentlyViewedPanel",
+     "title": "Where you have been",
+     "say": "The cells you have looked at this session, so comparing two of them is a click rather than a re-search. Back and Forward above it do the same thing in order."
+    },
+    {
+     "at": "#gameChipSlot",
+     "title": "Signing in is optional",
+     "say": "Browsing needs no account. Signing in is what lets your identifications be saved and credited, and it earns points &mdash; more for a cell nobody has named than for one that already has three votes."
+    },
+    {
+     "at": "#mainTabs",
+     "title": "That is part one",
+     "say": "You can now find a cell and say what it is. Part two is about looking at it properly &mdash; the EM plane, the 3D mesh, the viewer and VR. Part three is tracing your own structures and taking a block of the volume into Blender."
+    }
+   ]
+  }
+ ]
+}
+</script>
 <div class="tabbar" id="mainTabs" role="tablist">
 <button type="button" class="tabbtn active" data-tab="jump" role="tab" aria-selected="true">🔍 Jump</button>
 <button type="button" class="tabbtn" data-tab="filter" role="tab" aria-selected="false">📥 Filter and show</button>
 <button type="button" class="tabbtn" data-tab="refs" role="tab" aria-selected="false">📚 References</button>
 <button type="button" class="tabbtn" data-tab="forum" role="tab" aria-selected="false" title="Findings, bugs and ideas. Coordinates and ids written into a post become links — a reader opens exactly what you saw.">💬 Discussion</button>
+<button type="button" class="tabbtn" data-tour-start="part1"
+        title="A guided walkthrough of this tab, pointing at each control in turn. Esc leaves it; it remembers where you got to.">❓ Tutorial</button>
 <button type="button" class="tabbtn" data-tab="dashboard" role="tab" aria-selected="false" title="Live/static statistics dashboard built from this dataset + the community-reporting backend — opens inline, no separate tab or re-login">📊 Statistics dashboard</button>
 </div>
 <script>
