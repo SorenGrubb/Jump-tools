@@ -4352,7 +4352,7 @@ function captureScene(){
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
-          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), phys: { T: PHYS.T, icp: PHYS.icp }, wbc: { on: WBC.on, ad: WBC.ad, ly6g: WBC.ly6g, teach: WBC.teach }, pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
+          selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), csdPlot: CSD.plot, lfp: lfpUi(), phys: { T: PHYS.T, icp: PHYS.icp }, wbc: { on: WBC.on, ad: WBC.ad, ly6g: WBC.ly6g, teach: WBC.teach }, pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid, vpart: Object.assign({}, VPART.on) },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
@@ -4504,6 +4504,7 @@ async function openScene(id){
   try { slApplyUi(u.sl); } catch (e){ console.warn("[vr] sleep settings", e); }
   try { lfpApplyUi(u.lfp); } catch (e){ console.warn("[vr] LFP settings", e); }
   try { if (u.phys){ setTemp(u.phys.T); setIcp(u.phys.icp); } if (u.wbc){ WBC.teach = u.wbc.teach === true; if (u.wbc.on) setWbc("on", true); if (u.wbc.ad) setWbc("ad", true); if (u.wbc.ly6g) setWbc("ly6g", true); } } catch (e){ console.warn("[vr] temperature / ICP / white cells", e); }
+  if (u.csdPlot != null) setCsdPlot(u.csdPlot);
   try { if (u.pvs){ setPvsW(u.pvs.w || 1); if (u.pvs.mode && u.pvs.mode !== document.getElementById("pvsSel").value){ document.getElementById("pvsSel").value = u.pvs.mode; buildPvs(); } } } catch (e){ console.warn("[vr] perivascular settings", e); }
   SCENE.pending = sc;
   /* A FILM OPENS AS ITS FIRST VIEW (2026-10-24, Søren: "when I load the scene, even though I have tried to turn off the
@@ -5888,8 +5889,9 @@ async function setRa(v, quiet){
   document.getElementById("raBox").style.display = v ? "" : "none";
   if (!v){ RA.playing = false; raPlayBtn(); raApplyGlow(false); if (RA.hud) RA.hud.visible = false; if (RA.plotSpr) RA.plotSpr.visible = false; if (typeof MENU !== "undefined") MENU.dirty = true; return; }
   if (!quiet) ctxNote.textContent = "Recorded activity: reading which of the loaded cells were imaged…";
-  try { await raMeta(); } catch (e){ ctxNote.textContent = "Recorded activity could not be read: " + (e.message || e); return; }
-  await raAttach();
+  RA.metaBusy = true;
+  try { await raMeta(); } catch (e){ RA.metaBusy = false; ctxNote.textContent = "Recorded activity could not be read: " + (e.message || e); return; }
+  try { await raAttach(); } finally { RA.metaBusy = false; }
   if (!quiet && !RA.tlKey && raCells().length){ RA.playing = true; raPlayBtn(); simRecommend("rec"); }
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -9710,7 +9712,10 @@ function tlApplyView(v){
   if (v.nv != null && v.nv !== NV.on && DS_HAS.vasc) setNv(v.nv);
   if (v.vcol && v.vcol !== (NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one") && DS_HAS.vasc) setVesselColour(v.vcol);
   if (v.rbc != null && v.rbc !== !!(STK.on && STK.rbc) && DS_HAS.flow) tlRbc(v.rbc);
-  if (v.vpart && JSON.stringify(v.vpart) !== JSON.stringify(VPART.on)) setVpart(Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, v.vpart));
+  /* a key made before the vessel parts were kept shows them all (2026-10-24, Søren: "the capillaries were removed before
+     I asked them to be removed" -- the early keys had no parts, so the parts unticked for a later view stayed off) */
+  { const vp = Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, v.vpart || {});
+    if (JSON.stringify(vp) !== JSON.stringify(Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, VPART.on))) setVpart(vp); }
   /* The CSF tracer takes seconds to start (the vessel network, the cortical layers). A view without it reached in that
      time used to find it still "off" and leave it, so it came on in the wrong view; and one that failed to start said
      so only in the status line. The view now sets what it wants, and the start checks that again when it is done. */
@@ -10008,7 +10013,7 @@ function tlPlay(){
   { const first = TL.keys.stim.length ? Math.min(...TL.keys.stim.map(k => k.t)) : Infinity;
     if (TL.t <= first + 1e-3) try { resetActivity(); } catch (e){} }
   tlStateReset();
-  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepCells().catch(e => console.warn("[vr] film cells", e)).then(() => tlPrepVessels()).catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
+  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepCells().catch(e => console.warn("[vr] film cells", e)).then(() => tlPrepVessels()).then(() => tlPrepMovie()).catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
@@ -10825,7 +10830,19 @@ function csdPlace(){
 document.getElementById("csdBtn").addEventListener("click", () => setCsd(!CSD.on));
 document.getElementById("csdDir").addEventListener("change", e => { CSD.dir = e.target.value; if (CSD.on) csdStart(); });
 document.getElementById("csdTeach").addEventListener("change", e => { CSD.teach = e.target.checked; });
-document.getElementById("csdPlot").addEventListener("change", e => { CSD.plot = e.target.checked; if (!CSD.plot && CSD.spr) CSD.spr.visible = false; });
+/* THE PLOT STAYS AS SET (2026-10-24, Søren: "I keep removing the spreading depolarization plot but it keeps coming back").
+   The tick was not kept anywhere: a reload, a saved scene or a shared link brought the plot back. It is now kept in the
+   browser and in the scene, and unticked while a film's depolarization effect runs, it is kept on that effect too. */
+function setCsdPlot(v){
+  CSD.plot = !!v; const el = document.getElementById("csdPlot"); if (el) el.checked = CSD.plot;
+  if (!CSD.plot && CSD.spr) CSD.spr.visible = false;
+  try { localStorage.setItem("vr_csd_plot", CSD.plot ? "1" : "0"); } catch (e){}
+}
+try { const sv = localStorage.getItem("vr_csd_plot"); if (sv != null) setCsdPlot(sv === "1"); } catch (e){}
+document.getElementById("csdPlot").addEventListener("change", e => {
+  setCsdPlot(e.target.checked);
+  const k = typeof TL !== "undefined" && TL.fxCsd != null && TL.keys.fx.find(x => x.id === TL.fxCsd); if (k) k.plot = CSD.plot;
+});
 document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on) csdStart(); else setCsd(true); });
 
 /* ── 30. STROKE: CLOTS, BLOOD FLOW, OXYGEN, PRESSURE (MODEL) ───────────────────────────  2026-10-22
@@ -14589,7 +14606,11 @@ grpFromLink();
 const WBC = { on: false, teach: false,      /* realistic by default (2026-10-23, Søren: "way too many white blood cells now. It should be realistic") */
              ad: false, ly6g: false, W: null, mesh: null, stall: new Map(), hist: new Set(), p: 0.15, pauses: 0 };
 const PHYS = { T: 37.7, T0: 37.7, icp: 5, icp0: 5 };
-function wbcCount(){ const real = STK.parts ? STK.parts.n * (STK.rbcEvery || 1) / 1800 : 3; return Math.max(3, Math.round(real * (WBC.teach ? 20 : 1))); }
+/* SAMPLED LIKE THE RED CELLS (2026-10-24, Søren: "There are still way too many white blood cells ... compared with" the red
+   ones). The count was the box's real number (blood volume / 1,800 red cells), but the red cells are drawn one for every
+   STK.rbcEvery real ones (up to 20,000 drawn of ~10⁶ in the whole volume), so on screen there was one white cell per ~36
+   red ones. White cells now take the same sampling: one per ~1,800 DRAWN red cells, the ratio of mouse blood. */
+function wbcCount(){ const drawn = STK.parts ? STK.parts.n / 1800 : 1; return Math.max(1, Math.round(drawn * (WBC.teach ? 20 : 1))); }
 function wbcDur(){ return Math.random() < 0.6 ? -Math.log(Math.random()) * 120 : -Math.log(Math.random()) * 2400; }
 function wbcNarrow(c){ const N = STK.net; let r = 99; for (let k = N.off[c]; k < N.off[c+1]; k++) r = Math.min(r, N.rad[N.cp[k]]); return N.kind[c] === 0 && r < 3.25; }
 function wbcBuild(){
@@ -14698,7 +14719,7 @@ function setWbc(k, v){
 function wbcNote(){
   if (!WBC.on){ return; }
   const pct = STK.nCapBox ? 100 * WBC.stall.size / STK.nCapBox : 0, other = STK.stall ? STK.stall.size : 0;
-  ctxNote.textContent = "White blood cells (MODEL): " + (WBC.W ? WBC.W.n : 0) + " moving" + (WBC.teach ? " (×20 for teaching)" : " (realistic, ~1 per 1,800 red cells)")
+  ctxNote.textContent = "White blood cells (MODEL): " + (WBC.W ? WBC.W.n : 0) + " moving" + (WBC.teach ? " (×20 for teaching)" : " (realistic: ~1 per 1,800 of the red cells drawn)")
     + (WBC.ad ? " · Alzheimer's model: " + WBC.stall.size + " capillaries stalled by a white cell (" + pct.toFixed(2) + " % of " + STK.nCapBox + "; APP/PS1 ~1.8 %)" + (WBC.ly6g ? " — anti-Ly6G: they are clearing, no new ones" : "")
                 : " · healthy: stalls (" + other + " now) are red-cell/platelet jams; white cells only pause") + ".";
 }
@@ -15239,6 +15260,7 @@ async function tlPrepBlock(){
   if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
   await tlPrepCells();          // first: the cells make the box the vessels are cut to
   await tlPrepVessels();
+  await tlPrepMovie();
 }
 
 /* ── THE FILM'S BRAIN STATES (2026-10-22, Søren's planetarium film for the NAD annual meeting: the EM block
@@ -15258,10 +15280,30 @@ function tlWaitWhy(){
   const w = [];
   if (NV.recolBusy || NV._attaching) w.push("the vessel colours");
   if (BLOCK.loading) w.push("the tissue block"); if (VASC.tlBusy) w.push("the vessels"); if (STK.tlBusy) w.push("the blood flow");
-  if (TL.prepBusy) w.push("the film's preparation"); if (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length)) w.push((LOD.busy + LOD.queue.length) + " cell(s) at another detail");
+  if (TL.prepBusy) w.push("the film's preparation"); if (raVidWait()) w.push("the movie screen"); if (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length)) w.push((LOD.busy + LOD.queue.length) + " cell(s) at another detail");
   return w.join(", ") || "something";
 }
-function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || NV.recolBusy || NV._attaching
+/* THE MOVIE SCREEN TOO (2026-10-24, Søren: "the recording moviescreen started with a black screen, indicating it did not
+   finish loading before recording"). Inside a "recorded" effect with its screen, the film holds until the movie has a
+   frame to show -- and, while recording frame by frame (the video is paused and moved to each frame's time), until it
+   has got there. */
+function raVidWait(){
+  if (typeof RA === "undefined" || !RA.tlKey || RA.tlKey.screen === false) return false;
+  if (RA.metaBusy) return true;
+  if (!RA.meta || !(RA.meta.movie || RA.meta.movie_webm)) return false;
+  const v = RA.video; return !v || v.error ? !v : (v.readyState < 2 || ((TL.rec || REC.on) && v.seeking));
+}
+/* …and the movie is read before the film starts, so it is not first opened at the key */
+async function tlPrepMovie(){
+  if (!TL.keys.fx.some(k => k.kind === "rec" && k.screen !== false)) return;
+  try {
+    if (!RA.meta){ ctxNote.textContent = "Reading the recorded activity before the film…"; await setRa(true, true); }
+    if (!RA.meta || !raScreenEnsure()) return;
+    const v = RA.video; ctxNote.textContent = "Loading the movie the mouse watched…";
+    for (let k = 0; k < 300 && v.readyState < 2 && !v.error; k++) await new Promise(r => setTimeout(r, 100));
+  } catch (e){ console.warn("[vr] film movie", e); }
+}
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || NV.recolBusy || NV._attaching || raVidWait()
   || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length) && (TL.rec || REC.on || !TL.playing))); }
 function tlVessels(want){
   const sel = document.getElementById("vascSel");
@@ -15320,6 +15362,7 @@ function tlStateFx(t){
   if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
   if (csd && TL.fxCsd !== csd.id){
     TL.fxCsd = csd.id; CSD.dir = csd.dir || "x-"; const d = document.getElementById("csdDir"); if (d) d.value = CSD.dir;
+    if (csd.plot != null && csd.plot !== CSD.plot) setCsdPlot(csd.plot);
     if (CSD.on) setCsd(false); setCsd(true);
   } else if (!csd && TL.fxCsd){ TL.fxCsd = null; if (CSD.on) setCsd(false); }
   /* OUTSIDE ITS KEYS THE FILM OWNS THE STATE (2026-10-24, Søren: the recorded/sleep spikes fired before their time --
