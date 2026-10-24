@@ -538,9 +538,9 @@
     <div style="font-size:11.5px;color:var(--mut);margin:6px 0 0">Mean of 10 repeats per clip · excitatory neurons only (GCaMP6s) · DANDI:000402, MICrONS Consortium, CC-BY-4.0 · r = oracle score (how alike the repeats were)</div>
   </div>
   <div class="ctl">
-    <button id="nvBtn" class="on" title="The TriSAM vessels move: a heartbeat, breathing, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vascular regulation &amp; blood flow</button>
+    <button id="nvBtn" title="The TriSAM vessels move: a heartbeat, breathing, ~0.1 Hz vasomotion, and dilation driven by the cells' activity — starting at the 1st-order capillary near an active cell, conducted to its penetrating arteriole and the pial arteriole above, with a passive widening of nearby venules. A MODEL on Søren's traced vessel network, not a measurement.">Vascular regulation &amp; blood flow</button>
   </div>
-  <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+  <div id="nvBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0;display:none">
     <div class="ctl" style="margin:0 0 6px">
       <select id="nvPreset" title="Realistic: sizes and speeds of the right order for an awake mouse. Teaching: four times the dilation and a larger heartbeat and breathing; the timing is set by the clock (bottom centre)"><option value="real" selected>Realistic</option><option value="teach">Teaching (larger)</option></select>
     </div>
@@ -6002,7 +6002,8 @@ document.getElementById("raCsv").addEventListener("click", raCsv);
      scored from by plethysmography, Bastianini et al. 2017, Sci Rep 7:41698). Teaching: 0.3 Hz
      and four times larger. The class is carried in the phase texel as phase + 2π·k (k 0 capillary,
      1 arteriole, 2 venous) so sin() of the phase is unchanged everywhere. */
-const NV = { mc: true, tint: false, useShih: true, colour: false, on: true, preset: "real", act: true, pulse: true, vaso: true, resp: true, rrJit: 0, drv: { rec: true, stim: true, ca: true },
+const NV = { mc: true, tint: false, useShih: true, colour: false, on: false,      /* off until asked for (2026-10-24, Søren) */
+             preset: "real", act: true, pulse: true, vaso: true, resp: true, rrJit: 0, drv: { rec: true, stim: true, ca: true },
              net: null, netP: null, err: "", geo: null, nodes: null, tex: null, texData: null, W: 1024, H: 1,
              src: new Map(), spk: new Map(), lastTick: 0, t0: performance.now(), hud: null, plotSpr: null, plotCv: null, hist: [], plot: true, routed: 0 };
 const NV_PRESET = {
@@ -9491,11 +9492,17 @@ function tlCaptureView(){
            plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), glassCells: CELLS.map(c => !!c.glass), glassLevel: GLASS_LEVEL, plotShow: Object.assign({}, PLOT_SHOW), bg: LOOK.bg, grid: LOOK.grid,
            /* the vessels' story (2026-10-22, the planetarium film): colour, the vascular regulation, the red cells */
            vcol: NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one", nv: NV.on, rbc: !!(STK.on && STK.rbc),
-           vessels: VASC.tlOff ? "off" : document.getElementById("vascSel").value };
+           vessels: VASC.tlOff ? "off" : document.getElementById("vascSel").value,
+           /* the mesh detail too (2026-10-24, Søren: "I wanted the detail of the first 3 views to be high and the 4th to be
+              low, because I included many more cells ... when I changed to low for the 4th, all of them changed to low") */
+           detail: document.getElementById("detail").value };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
   if (!v) return;
+  /* Detail first, then the cells it applies to: each cell on show is re-read at this view's detail (lodCheck, run
+     again by applyLook once the hidden/shown cells below are set), and the film holds until they are in (tlWaiting). */
+  if (v.detail && v.detail !== document.getElementById("detail").value){ const d = document.getElementById("detail"); d.value = v.detail; d.dispatchEvent(new Event("change")); }
   if (v.bg && v.bg !== LOOK.bg) setBackground(v.bg);
   if (v.grid != null && v.grid !== LOOK.grid) setGrid(v.grid);
   if (v.nuc !== SHOW_NUC) setNuclei(v.nuc);
@@ -14980,7 +14987,7 @@ async function tlPrepBlock(){
    · Nothing loads in the middle of a film: before recording, the vessels and the flow model the film will
      need are read (the vessels are then hidden, not thrown away, where a view key says "off"), and while
      anything is still loading the film holds -- no frame is written and no time passes. */
-function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy); }
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length))); }
 function tlVessels(want){
   const sel = document.getElementById("vascSel");
   if (want === "off"){
