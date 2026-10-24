@@ -9515,6 +9515,19 @@ function crom(a, b, c, d, u, out){
    still. For the curve through the other keys an orbiting key counts twice: as itself at its start
    and as its turned pose at the end of the orbit, so the camera flows into and out of the circle.
    One key, one circle; no need to place a key every few degrees. */
+/* AROUND A CELL (2026-10-24, Søren: "the camera in the timeline should be able to orbit around the selected object,
+   not just turn around itself"). The circle's centre was the key's target -- wherever the view happened to point, which
+   after flying in is often a few millimetres in front of the lens, so the camera turned on the spot. A key's orbit may
+   now name a cell (k.orb.cell): its target becomes that cell's nucleus, worked out under the KEY's own stage pose, so
+   the camera looks at the cell from this key on and circles it at the distance it stands. */
+function tlOrbitPivot(k){
+  if (!k || !k.orb || k.orb.cell == null) return;
+  const c = CELLS[k.orb.cell], p = c && nucCentreOf(c); if (!p) return;
+  const sp = stage.position.clone(), sq = stage.quaternion.clone(), ss = stage.scale.x;
+  stage.position.fromArray(k.sp); stage.quaternion.fromArray(k.sq); stage.scale.setScalar(k.ss); stage.updateMatrixWorld(true);
+  k.tg = content.localToWorld(p.clone()).toArray();
+  stage.position.copy(sp); stage.quaternion.copy(sq); stage.scale.setScalar(ss); stage.updateMatrixWorld(true);
+}
 function tlCamList(){
   const E = [];
   for (const k of TL.keys.cam){
@@ -9983,7 +9996,9 @@ function tlEditor(){
     h += ` <button id="tlKset">Set to the current view</button>
            then orbit <select id="tlKodeg">${[0, 90, 180, 360, 720].map(d => `<option value="${d}"${(o.deg || 0) === d ? " selected" : ""}>${d ? d + "°" : "no"}</option>`).join("")}</select>
            <select id="tlKodir"><option value="1"${(o.dir || 1) === 1 ? " selected" : ""}>left</option><option value="-1"${o.dir === -1 ? " selected" : ""}>right</option></select>
-           over <input id="tlKodur" type="number" min="1" max="120" step="1" value="${o.dur || 8}"> s`;
+           over <input id="tlKodur" type="number" min="1" max="120" step="1" value="${o.dur || 8}"> s
+           around <select id="tlKoab" title="What the camera circles: the point it is looking at, or a cell (its nucleus) — the camera then looks at that cell from this key on">
+             <option value=""${o.cell == null ? " selected" : ""}>the centre of view</option>${CELLS.map((c, i) => c.mesh || c.nucMesh ? `<option value="${i}"${o.cell === i ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("")}</select>`;
   }
   if (k.lane === "view") h += ` <button id="tlKset">Set to what is shown now</button>
            fade <input id="tlKfade" type="number" min="0" max="5" step="0.25" value="${k.fade != null ? k.fade : 0.5}"> s`;
@@ -10049,7 +10064,7 @@ function tlEditor(){
   ed.innerHTML = h;
   const $e = id => ed.querySelector("#" + id);
   $e("tlKt").onchange = e => { k.t = Math.max(0, Math.min(TL.dur, +e.target.value || 0)); tlSort(); tlSave(); tlSync(); };
-  if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ Object.assign(k, tlCaptureCam()); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
+  if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ Object.assign(k, tlCaptureCam()); tlOrbitPivot(k); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
   if (k.lane === "stim"){
     $e("tlKkind").onchange = e => { k.kind = e.target.value === "ca" ? "ca" : undefined; tlSave(); tlSync(); };
     $e("tlKcell").onchange = e => { const v = [...e.target.selectedOptions].map(o => +o.value); if (v.length){ k.cells = v; k.cell = v[0]; } tlSave(); tlDraw(); };
@@ -10060,8 +10075,15 @@ function tlEditor(){
     $e("tlKe").onchange = e => { k.every = Math.max(0.05, +e.target.value || 0.5); tlSave(); tlDraw(); };
   }
   if (k.lane === "cam"){
-    const upd = () => { const deg = +$e("tlKodeg").value; k.orb = deg ? { deg, dir: +$e("tlKodir").value, dur: Math.max(1, Math.min(120, +$e("tlKodur").value || 8)) } : null; tlSave(); tlDraw(); };
-    $e("tlKodeg").onchange = upd; $e("tlKodir").onchange = upd; $e("tlKodur").onchange = upd;
+    const upd = e => {
+      const deg = +$e("tlKodeg").value, was = k.orb;
+      /* turning an orbit on with a cell picked: around that cell, unless told otherwise */
+      if (deg && !was && e && e.target.id === "tlKodeg" && SELECTED >= 0 && CELLS[SELECTED] && $e("tlKoab").value === "") $e("tlKoab").value = String(SELECTED);
+      const ab = $e("tlKoab").value;
+      k.orb = deg ? Object.assign({ deg, dir: +$e("tlKodir").value, dur: Math.max(1, Math.min(120, +$e("tlKodur").value || 8)) }, ab !== "" ? { cell: +ab } : {}) : null;
+      tlOrbitPivot(k); tlSave(); tlDraw();
+    };
+    $e("tlKodeg").onchange = upd; $e("tlKodir").onchange = upd; $e("tlKodur").onchange = upd; $e("tlKoab").onchange = upd;
   }
   if (k.lane === "view") $e("tlKfade").onchange = e => { k.fade = Math.max(0, Math.min(5, +e.target.value || 0)); tlSave(); };
   if (k.lane === "fx"){
