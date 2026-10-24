@@ -94,7 +94,9 @@
   #tlBar button{padding:3px 8px;font-size:12px}
   #tlBar input[type=number]{width:52px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:5px;padding:2px 4px;font:inherit}
   #tlBar select{padding:2px 6px;font-size:12px}
-  #tlBar .tlTime{font:12px ui-monospace,monospace;min-width:84px}
+  #tlBar .tlTime{font:12px ui-monospace,monospace;min-width:84px;white-space:nowrap}
+  #tlBar .tlNum{font:12px ui-monospace,monospace;width:58px;padding:2px 4px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:5px;-moz-appearance:textfield}
+  #tlBar .tlNum::-webkit-inner-spin-button{opacity:.4}
   #tlBar .tlSep{width:1px;height:18px;background:var(--line)}
   #tlBar .tlLab{color:var(--mut)}
   #tlBar .tlEdit{min-height:24px;color:var(--mut)}
@@ -1734,7 +1736,7 @@ function loadUi(c, f, msg){
 async function loadOne(c, token, light){
   LOADUI.busy++; loadUi(c, 0, "starting");
   try { return await loadOneInner(c, token, light); }
-  finally { LOADUI.busy = Math.max(0, LOADUI.busy - 1); LOADUI.msg = ""; loadUi(null, 0); if (!LOADUI.busy) try { updateLabel(); } catch (e){} }
+  finally { c.lod = light ? "light" : "full";      /* even after a failure: a cell that cannot be read is not asked for again and again */ LOADUI.busy = Math.max(0, LOADUI.busy - 1); LOADUI.msg = ""; loadUi(null, 0); if (!LOADUI.busy) try { updateLabel(); } catch (e){} }
 }
 async function loadOneInner(c, token, light){
   const ds = VR_DATASETS[c.ds];
@@ -7960,10 +7962,46 @@ function applyLook(){
   try { applyContactsLook(); } catch (e){}
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
+  if (typeof LOD !== "undefined") lodCheck();
 }
 function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); } catch (e){} }
 
-document.getElementById("detail").addEventListener("change", loadAll);
+/* ── DETAIL FOR WHAT IS SHOWN (2026-10-24, Søren: "If you have selected a single cell out of many and then press full
+   resolution, it starts loading all of the cells in full resolution. I want it so that you can just load the full
+   resolution of the cells shown in the scene and then when you show the other cells they also load in full resolution
+   or in the resolution set when loading. Of course when switching back to low resolution all visible cells should
+   switch back.") Changing Detail no longer reloads the collection: each cell remembers the detail it was read at
+   (c.lod), the cells on show are re-read at the new one, two or three at a time, and a hidden cell is re-read the
+   moment it is shown again (applyLook asks). Nothing else is thrown away: the stage keeps its place. */
+var LOD = { queue: [], busy: 0 };   // var: applyLook may run before this line during start-up
+function lodWant(){ return document.getElementById("detail").value === "light" ? "light" : "full"; }
+function lodShown(c){ return !(c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED !== c.i)); }
+function lodCheck(){
+  const want = lodWant();
+  for (const c of CELLS) if (c.lod && c.lod !== want && !c.lodBusy && lodShown(c) && (c.mesh || c.nucMesh)){ c.lodBusy = true; LOD.queue.push(c); }
+  lodPump();
+}
+function lodPump(){
+  while (LOD.busy < 3 && LOD.queue.length){
+    const c = LOD.queue.shift(); LOD.busy++;
+    (async () => {
+      try {
+        if (CELLS[c.i] === c && lodShown(c) && c.lod !== lodWant()){
+          for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+          c.mesh = c.nucMesh = null; c.err = false; c.graph = null;
+          await loadOne(c, LOAD_TOKEN, lodWant() === "light");
+          renderList(); applyLook(); updateTri();
+        }
+      } finally { c.lodBusy = false; LOD.busy--; if (!LOD.queue.length && !LOD.busy) lodCheck(); else lodPump(); }
+    })();
+  }
+}
+document.getElementById("detail").addEventListener("change", () => {
+  const n = CELLS.filter(c => c.lod && lodShown(c)).length, h = CELLS.filter(c => c.lod && !lodShown(c)).length;
+  ctxNote.textContent = "Detail: " + (lodWant() === "light" ? "light" : "full") + " — re-reading the " + n + " cell" + (n === 1 ? "" : "s") + " on show"
+    + (h ? "; the " + h + " hidden ones follow when you show them" : "") + ".";
+  lodCheck();
+});
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
 document.getElementById("nucBtn").addEventListener("click", () => setNuclei(!SHOW_NUC));
 function syncVisChecks(){ renderList(); }
@@ -9761,7 +9799,7 @@ function tlBuild(){
     <div class="tlRow">
       <button id="tlPlay" title="Play / pause (space)">▶</button>
       <button id="tlHome" title="Back to the start">⏮</button>
-      <span id="tlTime" class="tlTime">0.0 / 20 s</span>
+      <span id="tlTime" class="tlTime"><input id="tlNow" class="tlNum" type="text" inputmode="decimal" value="0" title="Where the playhead is, in seconds — type a time and press Enter to jump there"> / <input id="tlLen" class="tlNum" type="text" inputmode="decimal" value="20" title="The film's length in seconds — type a new length and press Enter"> s</span>
       <span class="tlSep"></span>
       <button id="tlAddCam" title="Add a camera key here: the current view">+ ◆ Camera</button>
       <button id="tlAddView" title="Add a view key here: what is shown now (layers, nuclei, vessels, …)">+ ■ View</button>
@@ -9773,7 +9811,7 @@ function tlBuild(){
       <button id="tlSnap" class="on" title="Snap keys to half seconds, to other keys and to the playhead while dragging">Snap</button>
       <button id="tlPath" class="on" title="Show the camera's path as a dotted line in the 3D view">Path</button>
       <span class="tlSep"></span>
-      <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="300" step="1" value="20"> s</label>
+      <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="600" step="1" value="20"> s</label>
       <label class="tlLab" title="Fade in from black at the start and out to black at the end, in seconds (0 = none). Shown only while playing and in the movie.">Black in <input id="tlFin" type="number" min="0" max="10" step="0.5" value="0"> out <input id="tlFout" type="number" min="0" max="10" step="0.5" value="0"> s</label>
       <button id="tlRec" title="Film the timeline from start to end with the recorder's size, shape and frame rate">⏺ Film it</button>
       <button id="tlClear" title="Remove every key">Clear</button>
@@ -9782,7 +9820,16 @@ function tlBuild(){
     <div class="tlRow tlEdit" id="tlEdit"></div>
     <canvas id="tlCv" height="162"></canvas><div id="tlThumb"></div>`;
   document.body.appendChild(bar);
-  Object.assign(TLD, { bar, cv: bar.querySelector("#tlCv"), edit: bar.querySelector("#tlEdit"), time: bar.querySelector("#tlTime"), play: bar.querySelector("#tlPlay") });
+  Object.assign(TLD, { bar, cv: bar.querySelector("#tlCv"), edit: bar.querySelector("#tlEdit"), time: bar.querySelector("#tlTime"), now: bar.querySelector("#tlNow"), len: bar.querySelector("#tlLen"), play: bar.querySelector("#tlPlay") });
+  { const num = v => +String(v).replace(",", ".");
+    const goNow = () => { const t = num(TLD.now.value); if (isFinite(t)){ tlStop(); tlSeek(Math.max(0, Math.min(TL.dur, t))); } };
+    const goLen = () => { const d = num(TLD.len.value); if (isFinite(d) && d > 0){ TL.dur = Math.max(2, Math.min(600, Math.round(d * 10) / 10)); TL.t = Math.min(TL.t, TL.dur);
+      const f = bar.querySelector("#tlDur"); if (f) f.value = TL.dur; tlSave(); tlSync(); } };
+    for (const [el, fn] of [[TLD.now, goNow], [TLD.len, goLen]]){
+      el.addEventListener("change", fn);
+      el.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter"){ fn(); el.blur(); } if (e.key === "Escape") el.blur(); });
+      el.addEventListener("blur", () => { try { tlDraw(); } catch (_e){} });
+    } }
   TLD.play.onclick = () => TL.playing ? tlStop() : tlPlay();
   bar.querySelector("#tlHome").onclick = () => { tlStop(); tlSeek(0); };
   bar.querySelector("#tlAddCam").onclick = () => tlAdd("cam", tlCaptureCam());
@@ -9805,7 +9852,7 @@ function tlBuild(){
   bar.querySelector("#tlPath").onclick = e => { TL.showPath = !TL.showPath; e.currentTarget.classList.toggle("on", TL.showPath); tlPathBuild(); };
   bar.querySelector("#tlFin").onchange = e => { TL.fadeIn = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
   bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
-  bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(300, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
+  bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(600, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
   bar.querySelector("#tlRec").onclick = () => tlRecord();
   bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.sel = null; tlSave(); tlSync(); };
   bar.querySelector("#tlClose").onclick = () => setTimeline(false);
@@ -9856,7 +9903,7 @@ function tlRecFit(k){
   const len = k.clip == null || k.clip === "all" ? (RA.meta ? RA.total : n * one) : (RA.meta && RA.meta.clips[k.clip] ? RA.meta.clips[k.clip].duration : one);
   k.dur = Math.round(len * 10) / 10;
   const end = (k.t || TL.t || 0) + k.dur;
-  if (end > TL.dur) TL.dur = Math.min(300, Math.ceil(end));
+  if (end > TL.dur) TL.dur = Math.min(600, Math.ceil(end));
 }
 function tlSort(){ for (const l in TL.keys) TL.keys[l].sort((a, b) => a.t - b.t); }
 function tlAdd(lane, o){
@@ -10080,7 +10127,10 @@ function tlDraw(){
   /* playhead */
   const x = tlX(TL.t, W); g.strokeStyle = "#f85149"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, 2); g.lineTo(x, H); g.stroke();
   g.fillStyle = "#f85149"; g.beginPath(); g.moveTo(x - 5, 0); g.lineTo(x + 5, 0); g.lineTo(x, 7); g.closePath(); g.fill();
-  if (TLD.time) TLD.time.textContent = TL.t.toFixed(1) + " / " + TL.dur + " s";
+  /* EDITABLE (2026-10-24, Søren: "I want these to be editable numbers so that I can quickly jump to a location or change
+     the length of the video"): the two numbers are inputs, written here only while nobody is typing in them. */
+  if (TLD.now && document.activeElement !== TLD.now) TLD.now.value = TL.t.toFixed(1);
+  if (TLD.len && document.activeElement !== TLD.len) TLD.len.value = TL.dur;
 }
 function tlSync(){
   if (!TLD.bar) return;
