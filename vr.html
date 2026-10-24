@@ -8019,6 +8019,14 @@ function lodCheck(){
    going back and forth is an instant swap, and before a film plays (or records, or a shared film offers its ▶) every
    cell the film will show is read, hidden, at each detail its views ask for (tlPrepCells) -- the film then never reads
    a mesh while it runs. */
+/* The box around the cells grows with each cell read later -- and when there was none (a film whose first view shows no
+   cell), the first one makes it and the context (layers, vessels …) is built then (2026-10-24, Søren: "Now it does not
+   show the vasculature" -- buildVessels draws nothing without a box, and nothing ever asked again). */
+function cellBoxGrow(c){
+  const cb = cellBoxOf(c); if (!cb) return;
+  if (!CELL_BOX){ CELL_BOX = cb.clone(); try { buildContext(); } catch (e){ console.warn("[vr] context", e); } }
+  else if (!CELL_BOX.containsBox(cb)) CELL_BOX.union(cb);
+}
 function lodStash(c){
   if (c.mesh || c.nucMesh){
     c.lodCache = c.lodCache || {};
@@ -8059,7 +8067,7 @@ async function tlPrepCells(){
       for (const d of byCell.get(c)){
         const keep = (c.mesh || c.nucMesh) && !c.deferred ? c.lod : null;
         lodStash(c); c.err = false; c.deferred = false;
-        await loadOne(c, LOAD_TOKEN, d === "light");
+        await loadOne(c, LOAD_TOKEN, d === "light"); cellBoxGrow(c);
         if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWant()) lodSwapIn(c, keep);   // the one on show stays on show
         done++; note();
       }
@@ -8086,7 +8094,7 @@ function lodPump(){
           if (c.lodCache && c.lodCache[lodWant()]){ lodSwapIn(c, lodWant()); renderList(); applyLook(); updateTri(); return; }   // read before: no network, no decoding
           lodStash(c); c.err = false; c.deferred = false;
           await loadOne(c, LOAD_TOKEN, lodWant() === "light");
-          { const cb = cellBoxOf(c); if (cb){ if (!CELL_BOX){ CELL_BOX = cb.clone(); try { buildContext(); } catch (e){} } else if (!CELL_BOX.containsBox(cb)) CELL_BOX.union(cb); } }
+          cellBoxGrow(c);
           renderList(); applyLook(); updateTri();
         }
       } finally { c.lodBusy = false; LOD.busy--; if (!LOD.queue.length && !LOD.busy){ lodSweep(); lodCheck(); } else lodPump(); }
@@ -8177,6 +8185,19 @@ function updateLabel(){
                   : [CELLS.length + " cells — " + (VR_DATASETS[(CELLS[0] || {}).ds] || {}).label, (renderer.xr && renderer.xr.isPresenting ? "Trigger on a cell to pick it" : (matchMedia("(pointer: coarse)").matches ? "Tap a cell to pick it" : "Click a cell to pick it"))];
   label = textSprite(lines, { border: c ? c.colour : "#30363d" });
   scene.add(label);
+}
+/* ── NO INFO CARDS IN A FILM (2026-10-24, Søren: "I want these text boxes to be gone from the timeline film unless I
+   click them on") ── While a timeline plays or records, the cards the viewer floats in the scene -- the collection's
+   name, the stimulation run's card and its summary, the Ca²⁺ card, the recording's clock card -- are hidden, unless
+   the timeline's "Cards" is on (saved with the film). Each card's own code keeps setting it up every frame; this runs
+   last, just before the picture is drawn, and puts back what it hid once the film stops. */
+function filmCards(){
+  const film = typeof TL !== "undefined" && (TL.playing || (REC.on && TL.rec)) && !TL.cards;
+  const cards = [label, STIM.warn, STIM.hud && STIM.hud.spr, CA.hud && CA.hud.spr, RA.hud].filter(Boolean);
+  for (const o of cards){
+    if (film){ if (o.visible){ o.visible = false; o.userData.filmHid = true; } }
+    else if (o.userData.filmHid){ o.visible = true; o.userData.filmHid = false; }
+  }
 }
 function placeLabel(){
   if (!label) return;
@@ -9890,7 +9911,7 @@ function tlFrame(dt){
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
   tlStateReset();
-  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepVessels().catch(() => {}).then(() => tlPrepCells()).catch(e => console.warn("[vr] film cells", e)).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
+  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepCells().catch(e => console.warn("[vr] film cells", e)).then(() => tlPrepVessels()).catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
@@ -10054,6 +10075,7 @@ function tlBuild(){
       <button id="tlUndo" title="Undo (Ctrl+Z)">↶</button><button id="tlRedo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
       <button id="tlSnap" class="on" title="Snap keys to half seconds, to other keys and to the playhead while dragging">Snap</button>
       <button id="tlPath" class="on" title="Show the camera's path as a dotted line in the 3D view">Path</button>
+      <button id="tlCards" title="The info cards in the 3D view — the collection's name, the stimulation and Ca²⁺ cards, warnings, the recording's clock card — in the film too. Off: the film shows none of them (captions and plots are not affected).">Cards</button>
       <span class="tlSep"></span>
       <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="600" step="1" value="20"> s</label>
       <label class="tlLab" title="Fade in from black at the start and out to black at the end, in seconds (0 = none). Shown only while playing and in the movie.">Black in <input id="tlFin" type="number" min="0" max="10" step="0.5" value="0"> out <input id="tlFout" type="number" min="0" max="10" step="0.5" value="0"> s</label>
@@ -10093,6 +10115,7 @@ function tlBuild(){
   bar.querySelector("#tlUndo").onclick = () => tlUndo(-1);
   bar.querySelector("#tlRedo").onclick = () => tlUndo(1);
   bar.querySelector("#tlSnap").onclick = e => { TL.snap = !TL.snap; e.currentTarget.classList.toggle("on", TL.snap); };
+  bar.querySelector("#tlCards").onclick = e => { TL.cards = !TL.cards; e.currentTarget.classList.toggle("on", !!TL.cards); tlSave(); };
   bar.querySelector("#tlPath").onclick = e => { TL.showPath = !TL.showPath; e.currentTarget.classList.toggle("on", TL.showPath); tlPathBuild(); };
   bar.querySelector("#tlFin").onchange = e => { TL.fadeIn = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
   bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
@@ -10432,7 +10455,7 @@ function setTimeline(v){
   tlSync(); STIM._edgeKey = null;
 }
 /* Kept in this browser between visits, and in saved scenes. */
-function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) } }; }
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) } }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
 function tlSave(){
   const j = JSON.stringify(tlData());
@@ -10447,6 +10470,7 @@ function tlUndo(d){
 }
 function tlLoad(o, fromHistory){
   if (!o || !o.keys) return;
+  TL.cards = !!o.cards; { const b = document.getElementById("tlCards"); if (b) b.classList.toggle("on", TL.cards); }
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
@@ -14657,6 +14681,7 @@ renderer.setAnimationLoop(() => {
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
+  filmCards();
   if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
@@ -15102,8 +15127,8 @@ async function sceneAutoplay(){
 async function tlPrepBlock(){
   const k = tlPeelKeys().find(x => x.blk);
   if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
+  await tlPrepCells();          // first: the cells make the box the vessels are cut to
   await tlPrepVessels();
-  await tlPrepCells();
 }
 
 /* ── THE FILM'S BRAIN STATES (2026-10-22, Søren's planetarium film for the NAD annual meeting: the EM block
@@ -15233,7 +15258,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, raOutside, tlPrepCells, LOD, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
