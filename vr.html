@@ -336,6 +336,14 @@
       <option value="whole">Vessels: whole volume (2.8 M triangles)</option>
       <option value="box">Vessels: only around the cells</option>
     </select>
+    <div id="vpartRow" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:2px 0 6px;font-size:12px" title="Which vessels to draw. The kind is read from the vessel's order (Søren's tracings, then Shih et al.'s skeletons — the same as Colour: by order); pial or penetrating / ascending from the depth: within 25 µm of the traced pia counts as pial. The first change reads the orders (~30 MB) once.">
+      <label><input type="checkbox" data-vpart="pa" checked> pial arterioles</label>
+      <label><input type="checkbox" data-vpart="pen" checked> penetrating arterioles</label>
+      <label><input type="checkbox" data-vpart="cap" checked> capillaries</label>
+      <label><input type="checkbox" data-vpart="av" checked> ascending venules</label>
+      <label><input type="checkbox" data-vpart="pv" checked> pial venules</label>
+      <label><input type="checkbox" data-vpart="unk" checked> not classified</label>
+    </div>
     <select id="pvsSel" title="Søren's tracing of the perivascular spaces around the penetrating vessels and of the subarachnoid space between the glia limitans and the arachnoid mater, filled between the curves and with the Wan &amp; Wei vessel lumen subtracted. Its inner side moves with the vessel wall (heartbeat, vasomotion, coupling, sleep); its width can be set, and it widens in NREM sleep.">
       <option value="off">Perivascular space: off</option>
       <option value="whole">Perivascular space: whole volume</option>
@@ -971,7 +979,7 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
@@ -4346,7 +4354,7 @@ function captureScene(){
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
           selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), lfp: lfpUi(), phys: { T: PHYS.T, icp: PHYS.icp }, wbc: { on: WBC.on, ad: WBC.ad, ly6g: WBC.ly6g, teach: WBC.teach }, pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
           pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
-          bg: LOOK.bg, grid: LOOK.grid },
+          bg: LOOK.bg, grid: LOOK.grid, vpart: Object.assign({}, VPART.on) },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
        after it opened is centred and fitted on fewer cells than it holds, and recomputing either
        on reopening would move it. */
@@ -4484,6 +4492,7 @@ async function openScene(id){
   window.__vr && (window.__vr.CELLS = CELLS);
   const u = sc.ui || {};
   if (u.detail) document.getElementById("detail").value = u.detail;
+  if (u.vpart) setVpart(Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, u.vpart));
   if (u.stimMode) document.getElementById("stimMode").value = u.stimMode;
   if (u.stimGain && GAIN_NAME[u.stimGain]) document.getElementById("stimGain").value = u.stimGain;
   if (u.plots === false) setPlots(false);
@@ -6206,7 +6215,14 @@ function nvShihTone(p){
   if (a != null && v != null){ const fa = Math.max(0, a - 3), fv = Math.max(0, v - 3); return 3 + fa / Math.max(1e-6, fa + fv); }
   return a != null ? 3 + Math.min(0.5, (a - 3) / 12) : 4 - Math.min(0.5, (v - 3) / 12);
 }
+/* Counted while it runs, so a film can wait for it (tlWaiting) -- the colouring by order reads ~30 MB of skeletons and
+   used to arrive after the film had already moved on (2026-10-24, Søren: "it does not wait for all the capillary orders
+   to be loaded"). */
 async function nvRecolour(){
+  NV.recolBusy = (NV.recolBusy || 0) + 1;
+  try { return await nvRecolourInner(); } finally { NV.recolBusy--; }
+}
+async function nvRecolourInner(){
   const mesh = VASC.mesh; if (!mesh || !NV.vTone || NV.geo !== mesh.geometry.uuid) return;
   if (NV.colourSrc === "flow"){ stkRecolour(); return; }
   const g = mesh.geometry, P = g.attributes.position.array, nv = P.length / 3, col = g.attributes.vnCol.array, src = NV.colourSrc || "order";
@@ -6278,6 +6294,7 @@ async function nvRecolour(){
     grey -= filled;
   }
   g.attributes.vnCol.needsUpdate = true;
+  if (src !== "agree"){ NV.vT = T; NV.vTgeo = g.uuid; }          // the order of every vertex, for the vessel parts (VPART)
   const pc = n => Math.round(100 * n / Math.max(1, nv));
   const pl = NV.pialLab;
   const cal = NV.cal;
@@ -6326,7 +6343,7 @@ function nvEach(id, fn){
 }
 /* Tie the TriSAM mesh to the network: once per vessel mesh. */
 async function nvAttach(){
-  const mesh = VASC.mesh; if (!mesh || !(NV.on || NV.colour)){ return; }
+  const mesh = VASC.mesh; if (!mesh || !(NV.on || NV.colour || NV.forParts)){ return; }     // forParts: the vessel kinds (VPART) need the orders
   if (NV.geo === mesh.geometry.uuid) return;
   let net; try { net = await nvNet(); } catch (e){ NV.err = String(e.message || e); ctxNote.textContent = "Vessel dilation: the traced network could not be read — " + NV.err; return; }
   if (VASC.mesh !== mesh) return;
@@ -6783,6 +6800,58 @@ function nvPlace(){
   else s.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - s.scale.y / 2, 0));
 }
 /* ── switches ── */
+/* ── WHICH VESSELS (2026-10-24, Søren: "Somewhere I should be able to choose which vascular elements I want shown. Pial
+   arterioles, penetrating arterioles, capillaries, ascending venules, pial venules.") ── The TriSAM surface is one mesh;
+   each vertex already gets an order when the vessels are coloured by order (NV.vT: 0 arteriole … 7 venule, -1 unknown).
+   Arterioles and venules are split into pial and penetrating/ascending by depth: within 25 µm below the traced pia
+   (µJump's surface, the one the layers use) is pial. A triangle is drawn when all its corners belong to a kind that is
+   ticked; the full index is kept, so ticking it again puts it back at once. Saved in scenes and in view keys. */
+const VPART = { on: { pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, busy: false };
+function vpartKey(){ return Object.keys(VPART.on).filter(k => VPART.on[k]).join(","); }
+function vpartAll(){ return Object.values(VPART.on).every(Boolean); }
+async function vpartApply(){
+  const mesh = VASC.mesh; if (!mesh || VPART.busy) return;
+  const g = mesh.geometry, key = vpartKey() + "|" + g.uuid;
+  if (mesh.userData.vpartKey === key) return;
+  if (!g.userData.fullIndex && g.index) g.userData.fullIndex = g.index.array.slice();
+  if (vpartAll()){ if (g.userData.fullIndex) g.setIndex(new THREE.BufferAttribute(g.userData.fullIndex.slice(), 1)); mesh.userData.vpartKey = key; return; }
+  VPART.busy = true;
+  try {
+    if (!NV.vT || NV.vTgeo !== g.uuid){
+      ctxNote.textContent = "Vessels: reading the orders to tell the kinds apart (~30 MB, once)…";
+      for (let k = 0; k < 600 && NV._attaching; k++) await new Promise(r => setTimeout(r, 100));
+      NV.forParts = true;
+      if (NV.geo !== g.uuid){ NV._attaching = true; try { await nvAttach(); } finally { NV._attaching = false; } }
+      if (!NV.vT || NV.vTgeo !== g.uuid){ const was = NV.colourSrc; if (!NV.colourSrc || NV.colourSrc === "flow" || NV.colourSrc === "agree") NV.colourSrc = "order"; await nvRecolour(); NV.colourSrc = was; }
+    }
+    if (VASC.mesh !== mesh || !NV.vT || NV.vTgeo !== g.uuid){ ctxNote.textContent = "Vessels: the orders could not be read, so all vessels stay shown."; return; }
+    if (!g.userData.vCls || g.userData.vClsFor !== g.uuid){
+      let L = null; try { L = await loadLayers(DSX); } catch (e){}
+      const P = g.attributes.position.array, n = P.length / 3, C = new Uint8Array(n), T = NV.vT;   // 0 pa 1 pen 2 cap 3 av 4 pv 5 unk
+      for (let v = 0; v < n; v++){
+        const t = T[v];
+        if (t < 0){ C[v] = 5; continue; }
+        if (t > 0.5 && t < 6.5){ C[v] = 2; continue; }
+        const pial = L ? P[v*3+1] < surfaceAt(L, L.pia, P[v*3], P[v*3+2]) + 25 : false;
+        C[v] = t <= 0.5 ? (pial ? 0 : 1) : (pial ? 4 : 3);
+      }
+      g.userData.vCls = C; g.userData.vClsFor = g.uuid;
+    }
+    const C = g.userData.vCls, F = g.userData.fullIndex, ok = ["pa", "pen", "cap", "av", "pv", "unk"].map(k => VPART.on[k]);
+    const out = new Uint32Array(F.length); let m = 0;
+    for (let t = 0; t < F.length; t += 3){ const a = F[t], b = F[t+1], c = F[t+2]; if (ok[C[a]] && ok[C[b]] && ok[C[c]]){ out[m++] = a; out[m++] = b; out[m++] = c; } }
+    g.setIndex(new THREE.BufferAttribute(out.slice(0, m), 1));
+    mesh.userData.vpartKey = key;
+    ctxNote.textContent = "Vessels shown: " + ["pial arterioles", "penetrating arterioles", "capillaries", "ascending venules", "pial venules", "not classified"].filter((x, i) => ok[i]).join(", ") + ".";
+  } finally { VPART.busy = false; }
+}
+function setVpart(k, v){
+  if (typeof k === "object"){ Object.assign(VPART.on, k); } else VPART.on[k] = !!v;
+  document.querySelectorAll("[data-vpart]").forEach(el => { el.checked = !!VPART.on[el.dataset.vpart]; });
+  if (VASC.mesh) VASC.mesh.userData.vpartKey = "changed";
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.querySelectorAll("[data-vpart]").forEach(el => el.addEventListener("change", () => setVpart(el.dataset.vpart, el.checked)));
 function setVesselColour(mode){
   if (mode === true || mode === "traced" || mode === "shih" || mode === "agree") mode = "order";   /* 2026-10-22: Søren -- only one colour or by order */
   NV.colour = mode === "order" || mode === "traced" || mode === "shih" || mode === "agree" || mode === "flow";
@@ -9608,7 +9677,11 @@ function tlCaptureView(){
            vessels: VASC.tlOff ? "off" : document.getElementById("vascSel").value,
            /* the mesh detail too (2026-10-24, Søren: "I wanted the detail of the first 3 views to be high and the 4th to be
               low, because I included many more cells ... when I changed to low for the 4th, all of them changed to low") */
-           detail: document.getElementById("detail").value };
+           detail: document.getElementById("detail").value,
+           /* the CSF tracer is part of what a view shows (2026-10-24, Søren: "the CSF tracer does not disappear when I
+              restart the timeline"); a key made before it was kept counts as "off" */
+           csf: !!(typeof CSFT !== "undefined" && CSFT.on),
+           vpart: Object.assign({}, VPART.on) };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
@@ -9634,6 +9707,8 @@ function tlApplyView(v){
   if (v.nv != null && v.nv !== NV.on && DS_HAS.vasc) setNv(v.nv);
   if (v.vcol && v.vcol !== (NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one") && DS_HAS.vasc) setVesselColour(v.vcol);
   if (v.rbc != null && v.rbc !== !!(STK.on && STK.rbc) && DS_HAS.flow) tlRbc(v.rbc);
+  if (v.vpart && JSON.stringify(v.vpart) !== JSON.stringify(VPART.on)) setVpart(Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, v.vpart));
+  if (!!v.csf !== CSFT.on && DS_HAS.flow && !(v.csf && CSFT.starting)){ if (v.csf){ CSFT.starting = true; Promise.resolve(setCsf(true)).finally(() => { CSFT.starting = false; }); } else setCsf(false); }
   if (v.v1 && v.v1 !== V1COL.mode) setV1Col(v.v1);
   if (v.areas !== AREAS.on) setAreas(v.areas);
   if (v.skel && v.skel !== SKEL.mode) setSkel(v.skel);
@@ -9903,7 +9978,7 @@ function tlFrame(dt){
       if (tp >= t0 - 1e-9 && (tp < t1 || (t1 >= TL.dur && tp <= t1))) tlFireStim(k, ci);
     });
   }
-  for (const f of [() => tlApplyViewAt(TL.t, true), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
+  for (const f of [() => tlApplyViewAt(TL.t, true), () => { if (!RIDE.on) tlApplyCam(TL.t); }, () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
     try { f(); } catch (e){ if (!TL.errWarned){ TL.errWarned = true; console.warn("[vr] timeline:", e); } }
   if (TL.t >= TL.dur) tlStop(true);
   tlDraw();
@@ -9916,6 +9991,7 @@ function tlPlay(){
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
+  if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
   TL.playing = false; TL.frozen = false; TL.follow = null; controls.enabled = true; controls.update();
   if (ended && TL.rec){ TL.rec = false; stopRecording(); }
@@ -10238,7 +10314,7 @@ function tlEditor(){
            every <input id="tlKe" type="number" min="0.05" step="0.05" value="${k.every || 0.5}"> s`;
   }
   if (k.lane === "fx"){
-    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"], ["csd", "spreading depolarization"], ["sleep", "sleep"], ["clock", "set the clock"], ["focus", "focus (depth of field)"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+    h += ` <select id="tlKkind">${[["highlight", "highlight a cell"], ["freeze", "freeze the spikes"], ["follow", "follow the spike"], ["electrodes", "set the electrodes"], ["synapses", "hide / show synapses"], ["peel", "peel the tissue block"], ["rec", "recorded activity (the mouse watches)"], ["csd", "spreading depolarization"], ["sleep", "sleep"], ["clock", "set the clock"], ["focus", "focus (depth of field)"], ["ride", "ride a red cell"]].map(([v, l]) => `<option value="${v}"${k.kind === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
     if (k.kind === "focus"){
       const fo = (sel, none) => (none ? `<option value=""${sel == null || sel === "" ? " selected" : ""}>${none}</option>` : "") + CELLS.map((c, i) => c.mesh || c.nucMesh ? `<option value="${i}"${String(i) === String(sel) ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("");
       h += ` on <select id="tlKfcell">${fo(k.cell)}</select> then rack to <select id="tlKfcell2">${fo(k.cell2, "— stay —")}</select>
@@ -10246,6 +10322,7 @@ function tlEditor(){
              <span class="tlHint">nearer and farther things blur with their distance from the focused cell; not in the headset or the dome</span>`;
     }
     if (k.kind === "csd") h += ` from <select id="tlKcdir">${[["x-", "−x"], ["x+", "+x"], ["z-", "−z"], ["z+", "+z"]].map(([v, l]) => `<option value="${v}"${(k.dir || "x-") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">starts the wave; it ends (and the tissue is reset) when the effect ends</span>`;
+    if (k.kind === "ride") h += ` <span class="tlHint">the camera rides a red cell from an arteriole through the capillaries for as long as the effect lasts, then returns to the camera keys (the film's clock key sets how fast; without one, 1/100)</span>`;
     if (k.kind === "sleep") h += ` <select id="tlKslst">${[["nrem", "NREM (slow waves)"], ["rem", "REM"], ["awake", "awake"], ["cycle", "the whole cycle"]].map(([v, l]) => `<option value="${v}"${(k.st || "nrem") === v ? " selected" : ""}>${l}</option>`).join("")}</select> <span class="tlHint">sleep keys back to back change the stage; after the last one the mouse is awake again</span>`;
     if (k.kind === "clock") h += ` brain time runs <select id="tlKclk">${[0.0002, 0.0005, 0.002, 0.01, 0.1, 0.25, 0.5, 1, 2, 4, 5, 10, 20].map(v => `<option value="${v}"${(k.v || 1) === v ? " selected" : ""}>${simFmt(v)}</option>`).join("")}</select> <span class="tlHint">from here until the next clock key</span>`;
     if (k.kind === "rec"){
@@ -10317,6 +10394,7 @@ function tlEditor(){
       if (k.kind === "csd"){ if (!k.dir) k.dir = CSD.dir || "x-"; if (!(k.dur > 3)) k.dur = 25; }
       if (k.kind === "sleep"){ if (!k.st) k.st = "nrem"; if (!(k.dur > 3)) k.dur = 20; }
       if (k.kind === "clock"){ if (!k.v) k.v = 1; k.dur = 0.5; }
+      if (k.kind === "ride"){ if (!(k.dur > 3)) k.dur = 12; }
       if (k.kind === "focus"){ if (k.cell == null) k.cell = SELECTED >= 0 ? SELECTED : 0; if (!k.blur) k.blur = 8; if (!(k.dur > 0) || k.dur === 3) k.dur = 4; }
       tlSave(); tlSync(); };
     if ($e("tlKfcell")) $e("tlKfcell").onchange = e => { k.cell = +e.target.value; tlSave(); tlDraw(); };
@@ -14681,6 +14759,7 @@ renderer.setAnimationLoop(() => {
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
+  if (VASC.mesh && !VPART.busy && VASC.mesh.userData.vpartKey !== vpartKey() + "|" + VASC.mesh.geometry.uuid && (!vpartAll() || VASC.mesh.userData.vpartKey)) vpartApply();
   filmCards();
   if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
   renderLogo();
@@ -15146,11 +15225,12 @@ async function tlPrepBlock(){
    when it was supposed to load the lower resolution cells"). */
 function tlWaitWhy(){
   const w = [];
+  if (NV.recolBusy || NV._attaching) w.push("the vessel colours");
   if (BLOCK.loading) w.push("the tissue block"); if (VASC.tlBusy) w.push("the vessels"); if (STK.tlBusy) w.push("the blood flow");
   if (TL.prepBusy) w.push("the film's preparation"); if (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length)) w.push((LOD.busy + LOD.queue.length) + " cell(s) at another detail");
   return w.join(", ") || "something";
 }
-function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || NV.recolBusy || NV._attaching
   || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length) && (TL.rec || REC.on || !TL.playing))); }
 function tlVessels(want){
   const sel = document.getElementById("vascSel");
@@ -15174,20 +15254,32 @@ function tlRbc(v){
 async function tlPrepVessels(){
   const vs = TL.keys.view.map(k => k.v || {});
   const mode = (vs.find(v => v.vessels && v.vessels !== "off") || {}).vessels;
+  if ((!mode || !DS_HAS.vasc) && TL.keys.fx.some(k => k.kind === "ride") && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow for the ride…"; await setStroke(true, { quiet: true }); }
   if (!mode || !DS_HAS.vasc) return;
   const sel = document.getElementById("vascSel");
   if (!VASC.mesh || sel.value !== mode){ ctxNote.textContent = "Reading the vessels before recording…"; sel.value = mode; VASC.tlOff = false; await buildVessels(); }
   VASC.tlKeep = true;
-  if (vs.some(v => v.rbc) && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow before recording…"; await setStroke(true, { quiet: true, rbc: false }); }
+  if ((vs.some(v => v.rbc) || TL.keys.fx.some(k => k.kind === "ride")) && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow before recording…"; await setStroke(true, { quiet: true, rbc: false }); }
+  /* the colouring by order too, before the film, not in the middle of it */
+  if (vs.some(v => v.vcol === "order") && VASC.mesh){
+    ctxNote.textContent = "Colouring the vessels by order before the film…";
+    try {
+      for (let k = 0; k < 600 && NV._attaching; k++) await new Promise(r => setTimeout(r, 100));
+      if (NV.geo !== VASC.mesh.geometry.uuid){ NV._attaching = true; try { await nvAttach(); } finally { NV._attaching = false; } }
+      await nvRecolour();
+    } catch (e){ console.warn("[vr] vessel colour", e); }
+  }
 }
 function tlStateReset(){
+  if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   if (TL.fxCsd){ TL.fxCsd = null; if (CSD.on) setCsd(false); }
   if (TL.fxSleep){ TL.fxSleep = null; if (SL.on) setSleep(false); }
   TL.fxClock = null;
 }
 function tlStateFx(t){
-  let csd = null, sl = null, clk = null;
+  let csd = null, sl = null, clk = null, ride = null;
   for (const k of TL.keys.fx){
+    if (k.kind === "ride" && k.dur > 0 && t >= k.t && t < k.t + k.dur && (!ride || k.t > ride.t)){ ride = k; continue; }
     if (k.kind === "clock"){ if (k.t <= t + 1e-6 && (!clk || k.t >= clk.t)) clk = k; continue; }
     if (!(k.dur > 0) || t < k.t || t >= k.t + k.dur) continue;
     if (k.kind === "csd" && (!csd || k.t > csd.t)) csd = k;
@@ -15206,6 +15298,11 @@ function tlStateFx(t){
     TL.fxSleep = sl.id;
   } else if (TL.fxSleep){ TL.fxSleep = null; if (SL.on) setSleep(false); }
   if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
+  /* RIDE A RED CELL (2026-10-24, Søren: "There should also be a ride a cell to add to the timeline"): while the effect
+     runs and the film plays, the camera rides; when it ends the ride ends and the camera keys take over again. */
+  if (ride && TL.playing){
+    if (!RIDE.on && !RIDE.tlStarting){ RIDE.tlStarting = true; Promise.resolve(setRide(true)).finally(() => { RIDE.tlStarting = false; if (RIDE.on) RIDE.tlFx = ride.id; }); }
+  } else if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
 }
 
 document.getElementById("blkSrc").addEventListener("change", blkSrcUI);
@@ -15258,7 +15355,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
