@@ -8042,24 +8042,40 @@ async function tlPrepCells(){
   const want = new Map(), cur = document.getElementById("detail").value;
   for (const k of TL.keys.view){ const v = k.v || {}, d = v.detail || cur;
     CELLS.forEach((c, i) => { if (!(v.hidden && v.hidden[i])){ if (!want.has(i)) want.set(i, new Set()); want.get(i).add(d); } }); }
+  /* ONE JOB PER CELL, its details one after the other (2026-10-24, Søren: "the cell I wanted hidden in the beginning is
+     showing"). Two workers reading the same cell at two details at once each put a mesh in the scene and only one was
+     kept track of -- the other stayed drawn for good, whatever the views said. */
   const jobs = [];
-  want.forEach((ds, i) => { const c = CELLS[i]; if (!c) return;
-    ds.forEach(d => { if (c.lodBusy) return; const have = (c.lod === d && !c.deferred && (c.mesh || c.nucMesh)) || (c.lodCache && c.lodCache[d]); if (!have) jobs.push([c, d]); }); });
+  want.forEach((ds, i) => { const c = CELLS[i]; if (!c || c.lodBusy) return;
+    const need = [...ds].filter(d => !((c.lod === d && !c.deferred && (c.mesh || c.nucMesh)) || (c.lodCache && c.lodCache[d])));
+    need.forEach(d => jobs.push([c, d])); });
   if (!jobs.length) return;
   let done = 0; const note = () => { ctxNote.textContent = "Getting the film ready: cells " + done + " of " + jobs.length + "…"; }; note();
-  let next = 0;
-  const worker = async () => { while (next < jobs.length){ const [c, d] = jobs[next++];
+  const byCell = new Map(); jobs.forEach(([c, d]) => { if (!byCell.has(c)) byCell.set(c, []); byCell.get(c).push(d); });
+  const cells = [...byCell.keys()]; let next = 0;
+  const worker = async () => { while (next < cells.length){ const c = cells[next++];
     c.lodBusy = true;
     try {
-      const keep = (c.mesh || c.nucMesh) && !c.deferred ? c.lod : null;
-      lodStash(c); c.err = false; c.deferred = false;
-      await loadOne(c, LOAD_TOKEN, d === "light");
-      if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWant()) lodSwapIn(c, keep);   // the one on show stays on show
-    } finally { c.lodBusy = false; done++; note(); }
+      for (const d of byCell.get(c)){
+        const keep = (c.mesh || c.nucMesh) && !c.deferred ? c.lod : null;
+        lodStash(c); c.err = false; c.deferred = false;
+        await loadOne(c, LOAD_TOKEN, d === "light");
+        if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWant()) lodSwapIn(c, keep);   // the one on show stays on show
+        done++; note();
+      }
+    } finally { c.lodBusy = false; }
+    applyLook();                                   // a hidden cell read for later is hidden again at once
   } };
   await Promise.all([worker(), worker(), worker()]);
+  lodSweep();
   renderList(); applyLook(); updateTri();
   ctxNote.textContent = "The film is ready.";
+}
+/* Anything in the scene that claims to be a cell but is neither that cell's mesh nor kept for later goes. */
+function lodSweep(){
+  const keep = new Set();
+  for (const c of CELLS){ for (const m of [c.mesh, c.nucMesh]) if (m) keep.add(m); if (c.lodCache) for (const k in c.lodCache){ const e = c.lodCache[k]; if (e.mesh) keep.add(e.mesh); if (e.nuc) keep.add(e.nuc); } }
+  for (const o of [...content.children]) if (o.isMesh && o.userData && o.userData.cell != null && !o.userData.fixPart && !keep.has(o)){ content.remove(o); o.geometry.dispose(); o.material.dispose(); }
 }
 function lodPump(){
   while (LOD.busy < 3 && LOD.queue.length){
@@ -8073,7 +8089,7 @@ function lodPump(){
           { const cb = cellBoxOf(c); if (cb){ if (!CELL_BOX){ CELL_BOX = cb.clone(); try { buildContext(); } catch (e){} } else if (!CELL_BOX.containsBox(cb)) CELL_BOX.union(cb); } }
           renderList(); applyLook(); updateTri();
         }
-      } finally { c.lodBusy = false; LOD.busy--; if (!LOD.queue.length && !LOD.busy) lodCheck(); else lodPump(); }
+      } finally { c.lodBusy = false; LOD.busy--; if (!LOD.queue.length && !LOD.busy){ lodSweep(); lodCheck(); } else lodPump(); }
     })();
   }
 }
@@ -9832,7 +9848,16 @@ function tlFireStim(k, ci){
 function tlFrame(dt){
   tlEffects();
   if (!TL.playing) return;
-  if (tlWaiting()){ tlDraw(); return; }
+  /* HELD, AND SAYING WHY (2026-10-24, Søren: "It stalled after that" -- the cells were in, and the film stood still).
+     A film waits while something it needs is loading; it now says what, and when played live (not recorded) it gives
+     up waiting after 10 s and plays on, rather than standing still for ever on something that never finishes. */
+  if (tlWaiting()){
+    TL.heldFor = (TL.heldFor || 0) + Math.max(dt, 0.016);
+    const why = tlWaitWhy();
+    if (!TL.rec && !REC.on && TL.heldFor > 10){
+      if (!TL.heldWarned){ TL.heldWarned = true; console.warn("[vr] timeline: still waiting for " + why + " after 10 s — playing on"); ctxNote.textContent = "Playing on: " + why + " did not finish loading within 10 s."; }
+    } else { ctxNote.textContent = "Film waiting for " + why + "…"; tlDraw(); return; }
+  } else { TL.heldFor = 0; TL.heldWarned = false; }
   const t0 = TL.t, t1 = Math.min(TL.dur, TL.t + dt);
   TL.t = t1;
   /* Stimuli in [t0, t1) fire this frame -- the end is open so no pulse fires twice. */
@@ -9843,7 +9868,8 @@ function tlFrame(dt){
       if (tp >= t0 - 1e-9 && (tp < t1 || (t1 >= TL.dur && tp <= t1))) tlFireStim(k, ci);
     });
   }
-  tlApplyViewAt(TL.t, true); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlApplySynAt(TL.t); tlFollow(dt);
+  for (const f of [() => tlApplyViewAt(TL.t, true), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
+    try { f(); } catch (e){ if (!TL.errWarned){ TL.errWarned = true; console.warn("[vr] timeline:", e); } }
   if (TL.t >= TL.dur) tlStop(true);
   tlDraw();
 }
@@ -10120,7 +10146,10 @@ function tlAdd(lane, o){
 }
 function tlSeek(t){
   TL.t = Math.max(0, Math.min(TL.dur, t)); TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
-  tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlApplyElectrodesAt(TL.t); tlApplySynAt(TL.t); if (!TL.playing) controls.update();
+  /* each part on its own: one that fails must not leave the camera and the rest where they were */
+  for (const f of [() => tlApplyViewAt(TL.t), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t)])
+    try { f(); } catch (e){ console.warn("[vr] timeline seek:", e); }
+  if (!TL.playing) controls.update();
   tlSync();
 }
 /* The editor row: what the selected key is, and what can be changed about it. */
@@ -14901,7 +14930,8 @@ async function buildBlock(sp){
   try { got = await job; }
   catch (e){ blkSay("The block could not be read: " + (e.message || e)); }
   if (BLOCK.loadingKey === key){ BLOCK.loading = null; BLOCK.loadingKey = ""; }
-  if (!got) return false;
+  if (!got){ BLOCK.failedKey = key; return false; }      // not asked for again every frame by a timeline (tlApplyPeelAt)
+  BLOCK.failedKey = "";
   blkMake(sp, got);
   BLOCK.spec = sp; BLOCK.key = key; BLOCK.hasSeg = !!got.lab;
   BLOCK.info = got.nx + "×" + got.ny + "×" + got.nz + " voxels at " + got.res[0] * got.st + " × " + got.res[1] * got.st + " × " + (got.res[2] * got.zs) + " nm" + got.segNote;
@@ -15004,7 +15034,7 @@ function tlApplyPeelAt(t){
     const u = x.dur > 0 ? Math.min(1, (t - x.t) / x.dur) : 1, e = u * u * (3 - 2 * u);
     p = ((x.p0 || 0) + ((x.p1 != null ? x.p1 : 100) - (x.p0 || 0)) * e) / 100;
   }
-  if (k.blk && blkKey(k.blk) !== BLOCK.key){ if (!BLOCK.loading) buildBlock(k.blk); return; }
+  if (k.blk && blkKey(k.blk) !== BLOCK.key){ if (!BLOCK.loading && BLOCK.failedKey !== blkKey(k.blk)) buildBlock(k.blk); return; }
   BLOCK.on = true; BLOCK.axis = k.axis || "front"; BLOCK.showSeg = k.seg !== false; BLOCK.peel = p; blkApply();
 }
 /* Before a recording starts: the first block it needs, read now rather than in the middle of a take. */
@@ -15073,6 +15103,12 @@ async function tlPrepBlock(){
 /* Cells being re-read at another detail hold a RECORDING (no frame may miss them) and the start of a shared film, but not
    a film played live: it plays on and the cells come in as they arrive (2026-10-24, Søren: "the timeline play stopped
    when it was supposed to load the lower resolution cells"). */
+function tlWaitWhy(){
+  const w = [];
+  if (BLOCK.loading) w.push("the tissue block"); if (VASC.tlBusy) w.push("the vessels"); if (STK.tlBusy) w.push("the blood flow");
+  if (TL.prepBusy) w.push("the film's preparation"); if (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length)) w.push((LOD.busy + LOD.queue.length) + " cell(s) at another detail");
+  return w.join(", ") || "something";
+}
 function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy
   || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length) && (TL.rec || REC.on || !TL.playing))); }
 function tlVessels(want){
