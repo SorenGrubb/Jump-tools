@@ -10266,7 +10266,8 @@ function tlAdd(lane, o){
 function tlSeek(t){
   TL.t = Math.max(0, Math.min(TL.dur, t));
   /* a jump in time leaves no spike of another moment running */
-  if (TL.keys.stim.length) try { resetActivity(); } catch (e){} TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
+  if (TL.keys.stim.length) try { resetActivity(); } catch (e){}
+  TL.stateForce = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
   /* each part on its own: one that fails must not leave the camera and the rest where they were */
   for (const f of [() => tlApplyViewAt(TL.t), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t)])
     try { f(); } catch (e){ console.warn("[vr] timeline seek:", e); }
@@ -15304,6 +15305,15 @@ function tlStateFx(t){
     TL.fxCsd = csd.id; CSD.dir = csd.dir || "x-"; const d = document.getElementById("csdDir"); if (d) d.value = CSD.dir;
     if (CSD.on) setCsd(false); setCsd(true);
   } else if (!csd && TL.fxCsd){ TL.fxCsd = null; if (CSD.on) setCsd(false); }
+  /* OUTSIDE ITS KEYS THE FILM OWNS THE STATE (2026-10-24, Søren: the recorded/sleep spikes fired before their time --
+     "looks like it is coming from sleep mode"). Sleep or a spreading depolarization switched on by hand, or saved on in
+     the scene, kept running between the film's own sleep / depolarization keys. In a film that has such keys, playing
+     or jumping to a moment outside them now turns them off. */
+  const force = TL.playing || TL.stateForce; TL.stateForce = false;
+  if (force){
+    if (!sl && SL.on && TL.keys.fx.some(k => k.kind === "sleep")){ TL.fxSleep = null; setSleep(false); }
+    if (!csd && CSD.on && TL.keys.fx.some(k => k.kind === "csd")){ TL.fxCsd = null; setCsd(false); }
+  }
   if (sl){
     const st = sl.st || "nrem";
     if (!SL.on){ slSetting("mode", st); setSleep(true); }
