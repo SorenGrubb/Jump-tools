@@ -9671,10 +9671,22 @@ function tlCamList(){
 }
 /* A pose: the key's own, or turned `rot` degrees about the vertical through its target. */
 const _tpv = new THREE.Vector3(), _tpy = new THREE.Vector3(0, 1, 0);
+/* UP AND DOWN TOO (2026-10-24, Søren: "There should also be an orbit up and down"). An orbit's axis is the vertical
+   (left / right) or the camera's own sideways axis (up / down, k.orb.axis = "v"): the camera then goes over the top of
+   the target or under it, and its up direction turns with it, so it does not flip at the poles. dir 1 = up, -1 = down. */
+const _tpr = new THREE.Vector3(), _tpu = new THREE.Vector3();
 function tlPose(e, extraRot){
   const k = e.k, rot = (e.rot || 0) + (extraRot || 0);
   if (!rot) return k;
-  _tpv.fromArray(k.p).sub(_tc3.fromArray(k.tg)).applyAxisAngle(_tpy, THREE.MathUtils.degToRad(rot)).add(_tc3);
+  const a = THREE.MathUtils.degToRad(rot);
+  if (k.orb && k.orb.axis === "v"){
+    _tc3.fromArray(k.tg); _tpv.fromArray(k.p).sub(_tc3);
+    _tpr.copy(_tpv).negate().cross(_tpy).normalize();                 // the camera's right-hand side
+    if (_tpr.lengthSq() < 1e-9) _tpr.set(1, 0, 0);
+    _tpv.applyAxisAngle(_tpr, -a).add(_tc3); _tpu.copy(_tpy).applyAxisAngle(_tpr, -a);
+    return { p: _tpv.toArray(), tg: k.tg, sp: k.sp, sq: k.sq, ss: k.ss, up: _tpu.toArray() };
+  }
+  _tpv.fromArray(k.p).sub(_tc3.fromArray(k.tg)).applyAxisAngle(_tpy, a).add(_tc3);
   return { p: _tpv.toArray(), tg: k.tg, sp: k.sp, sq: k.sq, ss: k.ss };
 }
 function tlCamAt(t){
@@ -9697,11 +9709,12 @@ function tlCamAt(t){
   return { a, b, c, d, u };
 }
 const _tlM = new THREE.Matrix4(), _tlUp = new THREE.Vector3(0, 1, 0);
-function tlLookQ(k){ _tlM.lookAt(_tc2.fromArray(k.p), _tc3.fromArray(k.tg), _tlUp); return new THREE.Quaternion().setFromRotationMatrix(_tlM); }
+function tlLookQ(k){ _tlM.lookAt(_tc2.fromArray(k.p), _tc3.fromArray(k.tg), k.up ? new THREE.Vector3().fromArray(k.up) : _tlUp); return new THREE.Quaternion().setFromRotationMatrix(_tlM); }
 function tlApplyCam(t){
   const s = tlCamAt(t); if (!s) return;
   if (s.pose){
     const k = s.pose;
+    if (k.up) camera.up.fromArray(k.up); else camera.up.set(0, 1, 0);
     camera.position.fromArray(k.p); controls.target.fromArray(k.tg);
     stage.position.fromArray(k.sp); stage.quaternion.fromArray(k.sq); stage.scale.setScalar(k.ss);
   } else {
@@ -9712,6 +9725,7 @@ function tlApplyCam(t){
        collection) the line from the camera to a target moving at another pace swung up and back down. Now the
        position follows its curve, the DIRECTION of view turns evenly from one key's to the next (a slerp), and the
        distance to the target changes evenly on a log scale; the target is put back from those. */
+    camera.up.set(0, 1, 0);
     const pos = P("p"), qb = tlLookQ(s.b), qc = tlLookQ(s.c), q = qb.slerp(qc, s.u);
     const db = Math.max(1e-6, _tc0.fromArray(s.b.p).distanceTo(_tc1.fromArray(s.b.tg))), dc = Math.max(1e-6, _tc0.fromArray(s.c.p).distanceTo(_tc1.fromArray(s.c.tg)));
     const dd = Math.exp(Math.log(db) + (Math.log(dc) - Math.log(db)) * s.u);
@@ -9881,6 +9895,7 @@ function tlPlay(){
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
+  camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
   TL.playing = false; TL.frozen = false; TL.follow = null; controls.enabled = true; controls.update();
   if (ended && TL.rec){ TL.rec = false; stopRecording(); }
   tlSync();
@@ -10179,7 +10194,7 @@ function tlEditor(){
     const o = k.orb || {};
     h += ` <button id="tlKset">Set to the current view</button>
            then orbit <select id="tlKodeg">${[0, 90, 180, 360, 720].map(d => `<option value="${d}"${(o.deg || 0) === d ? " selected" : ""}>${d ? d + "°" : "no"}</option>`).join("")}</select>
-           <select id="tlKodir"><option value="1"${(o.dir || 1) === 1 ? " selected" : ""}>left</option><option value="-1"${o.dir === -1 ? " selected" : ""}>right</option></select>
+           <select id="tlKodir"><option value="1"${o.axis !== "v" && (o.dir || 1) === 1 ? " selected" : ""}>left</option><option value="-1"${o.axis !== "v" && o.dir === -1 ? " selected" : ""}>right</option><option value="u"${o.axis === "v" && (o.dir || 1) === 1 ? " selected" : ""}>up (over the top)</option><option value="d"${o.axis === "v" && o.dir === -1 ? " selected" : ""}>down (underneath)</option></select>
            over <input id="tlKodur" type="number" min="1" max="120" step="1" value="${o.dur || 8}"> s
            around <select id="tlKoab" title="What the camera circles: the point it is looking at, or a cell (its nucleus) — the camera then looks at that cell from this key on">
              <option value=""${o.cell == null ? " selected" : ""}>the centre of view</option>${CELLS.map((c, i) => c.mesh || c.nucMesh ? `<option value="${i}"${o.cell === i ? " selected" : ""}>${esc(shortName(c))}</option>` : "").join("")}</select>`;
@@ -10264,7 +10279,8 @@ function tlEditor(){
       /* turning an orbit on with a cell picked: around that cell, unless told otherwise */
       if (deg && !was && e && e.target.id === "tlKodeg" && SELECTED >= 0 && CELLS[SELECTED] && $e("tlKoab").value === "") $e("tlKoab").value = String(SELECTED);
       const ab = $e("tlKoab").value;
-      k.orb = deg ? Object.assign({ deg, dir: +$e("tlKodir").value, dur: Math.max(1, Math.min(120, +$e("tlKodur").value || 8)) }, ab !== "" ? { cell: +ab } : {}) : null;
+      const dv = $e("tlKodir").value, vert = dv === "u" || dv === "d";
+      k.orb = deg ? Object.assign({ deg, dir: vert ? (dv === "u" ? 1 : -1) : +dv, dur: Math.max(1, Math.min(120, +$e("tlKodur").value || 8)) }, vert ? { axis: "v" } : {}, ab !== "" ? { cell: +ab } : {}) : null;
       tlOrbitPivot(k); tlSave(); tlDraw();
     };
     $e("tlKodeg").onchange = upd; $e("tlKodir").onchange = upd; $e("tlKodur").onchange = upd; $e("tlKoab").onchange = upd;
