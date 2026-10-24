@@ -9047,6 +9047,35 @@ function recDims(){
   const long = Math.round(short * 16 / 9 / 2) * 2;
   return asp === "1:1" || asp === "dome" ? [short, short] : asp === "9:16" ? [short, long] : [long, short];
 }
+/* ── WHAT THE FILM WILL SHOW (2026-10-24, Søren: "There should be an indication to where the film will be filmed when at
+   different ratios. Like a box with less transparency around the box.") While the timeline or the recording settings
+   are open, the part of the window that ends up in the movie is outlined and everything outside it is dimmed. The
+   recording keeps the window's vertical field of view and changes only the width, so the frame is the window's full
+   height and (height × the movie's aspect) wide, centred. A movie wider than the window shows MORE than the window at
+   the sides; then the whole window is in it and the outline says so. Not for the dome (another projection), and not
+   while recording (the canvas itself is cut to the frame then). */
+function recGuide(){
+  let g = document.getElementById("recGuide");
+  const sel = document.getElementById("recAspect");
+  const want = !REC.on && !renderer.xr.isPresenting && sel && sel.value !== "dome" && recDims()
+    && ((typeof TL !== "undefined" && TL.open) || sel.offsetParent !== null);
+  if (!want){ if (g) g.style.display = "none"; return; }
+  const d = recDims(), a = d[0] / d[1], W = innerWidth, H = innerHeight;
+  let w = H * a, h = H, wider = false;
+  if (w > W){ wider = true; w = W; }
+  const key = [W, H, a.toFixed(4)].join(",");
+  if (!g){
+    g = document.createElement("div"); g.id = "recGuide";
+    g.style.cssText = "position:fixed;z-index:0;pointer-events:none;box-shadow:0 0 0 200vmax rgba(0,0,0,.5);outline:2px dashed rgba(255,255,255,.55);outline-offset:-2px";
+    g.innerHTML = '<span style="position:absolute;right:8px;top:6px;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);padding:2px 6px;border-radius:4px"></span>';
+    /* right above the 3D picture and under every panel: the controls stay as bright as ever */
+    renderer.domElement.after(g);
+  }
+  g.style.display = "";
+  if (g._key === key) return; g._key = key;
+  Object.assign(g.style, { left: Math.round((W - w) / 2) + "px", top: Math.round((H - h) / 2) + "px", width: Math.round(w) + "px", height: Math.round(h) + "px" });
+  g.firstChild.textContent = "Film frame " + d[0] + "×" + d[1] + (wider ? " — wider than this window: it also shows a little more at both sides" : "");
+}
 /* Letterbox the canvas to w×h for the recording; null puts it back. */
 function recSize(wh){
   const el = renderer.domElement;
@@ -9563,6 +9592,8 @@ function tlCamAt(t){
   else if (i + 1 === E.length - 1) u = u * (1 + u - u * u);
   return { a, b, c, d, u };
 }
+const _tlM = new THREE.Matrix4(), _tlUp = new THREE.Vector3(0, 1, 0);
+function tlLookQ(k){ _tlM.lookAt(_tc2.fromArray(k.p), _tc3.fromArray(k.tg), _tlUp); return new THREE.Quaternion().setFromRotationMatrix(_tlM); }
 function tlApplyCam(t){
   const s = tlCamAt(t); if (!s) return;
   if (s.pose){
@@ -9571,7 +9602,16 @@ function tlApplyCam(t){
     stage.position.fromArray(k.sp); stage.quaternion.fromArray(k.sq); stage.scale.setScalar(k.ss);
   } else {
     const P = f => crom(_tc0.fromArray(s.a[f]), _tc1.fromArray(s.b[f]), _tc2.fromArray(s.c[f]), _tc3.fromArray(s.d[f]), s.u, new THREE.Vector3());
-    camera.position.copy(P("p")); controls.target.copy(P("tg")); stage.position.copy(P("sp"));
+    /* THE LOOK TURNS, IT DOES NOT WOBBLE (2026-10-24, Søren: "the camera goes backwards then looks a bit upwards and
+       then downwards again. I want it to be a smooth motion from a to b"). The target was its own curve, and when the
+       two keys looked at points at very different distances (one a few millimetres ahead, one across the
+       collection) the line from the camera to a target moving at another pace swung up and back down. Now the
+       position follows its curve, the DIRECTION of view turns evenly from one key's to the next (a slerp), and the
+       distance to the target changes evenly on a log scale; the target is put back from those. */
+    const pos = P("p"), qb = tlLookQ(s.b), qc = tlLookQ(s.c), q = qb.slerp(qc, s.u);
+    const db = Math.max(1e-6, _tc0.fromArray(s.b.p).distanceTo(_tc1.fromArray(s.b.tg))), dc = Math.max(1e-6, _tc0.fromArray(s.c.p).distanceTo(_tc1.fromArray(s.c.tg)));
+    const dd = Math.exp(Math.log(db) + (Math.log(dc) - Math.log(db)) * s.u);
+    camera.position.copy(pos); controls.target.copy(pos).addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(q), dd); stage.position.copy(P("sp"));
     _tq1.fromArray(s.b.sq); _tq2.fromArray(s.c.sq); stage.quaternion.copy(_tq1).slerp(_tq2, s.u);
     stage.scale.setScalar(Math.exp(Math.log(s.b.ss) + (Math.log(s.c.ss) - Math.log(s.b.ss)) * s.u));
   }
@@ -9768,7 +9808,17 @@ function tlCaptureElectrodes(){ const out = []; CELLS.forEach((c, i) => (c.elect
 function tlApplySynAt(t, crossing){
   /* While playing: the key acts when it is crossed. Scrubbing: the state the latest key left. */
   let k = null; for (const f of TL.keys.fx) if (f.kind === "synapses" && f.t <= t + 1e-6) k = f;
-  if (!k || TL.synApplied === k.id) return;
+  /* BEFORE ANY KEY SAYS OTHERWISE, A FILM SHOWS NO SYNAPSE THAT HAS NOT BEEN USED (2026-10-24, Søren: "These balls are
+     they synapses that have been activated by an action potential previously? They appear in the film before the
+     first AP. They should not."). They were every synapse between the loaded cells, drawn from the moment the
+     synapses were read. In a timeline with stimuli they are now hidden from the start -- and again on every jump or
+     replay -- and each one appears when a spike reaches it (deliver() shows it). A "synapses: show" effect key still
+     shows them all from its moment. */
+  if (!k){
+    if (TL.synApplied !== "default" && TL.keys.stim.length){ TL.synApplied = "default"; setSynCleared(true); }
+    return;
+  }
+  if (TL.synApplied === k.id) return;
   TL.synApplied = k.id; setSynCleared(!k.show);
 }
 function tlApplyElectrodesAt(t){
@@ -9986,6 +10036,23 @@ function tlSeek(t){
   tlSync();
 }
 /* The editor row: what the selected key is, and what can be changed about it. */
+/* DUPLICATE (2026-10-24, Søren: "There should be a duplicate button"): an exact copy of the key -- its camera, view,
+   stimulus, caption or effect with every setting -- put at the playhead, or 1 s after the original when the playhead
+   is on it. The copy is selected, so it can be moved or edited at once. */
+function tlDuplicate(k){
+  if (!k) return;
+  const o = JSON.parse(JSON.stringify(k)); delete o.id; delete o.lane;
+  let t = Math.abs(TL.t - k.t) > 0.05 ? TL.t : k.t + 1;
+  t = Math.max(0, Math.min(TL.dur, Math.round(t * 10) / 10));
+  TL.keys[k.lane] = TL.keys[k.lane].filter(x => x === k || Math.abs(x.t - t) > 0.05);
+  const n = tlKey(k.lane, Object.assign(o, { t })); TL.keys[k.lane].push(n);
+  tlSort(); TL.sel = n; tlSave(); tlSync();
+}
+addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.code !== "KeyD" || typeof TL === "undefined" || !TL.sel || !TL.open) return;
+  const a = document.activeElement; if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) return;
+  e.preventDefault(); tlDuplicate(TL.sel);
+});
 function tlEditor(){
   const k = TL.sel, ed = TLD.edit; if (!ed) return;
   if (!k){ ed.innerHTML = '<span class="tlHint">Click a key to edit it · drag it to move it · drag the ruler to scrub · double-click a key to jump to it</span>'; return; }
@@ -10060,7 +10127,7 @@ function tlEditor(){
            <button id="tlKall" title="Give every caption in this film this caption's size, font, colour and background">Style all</button>
            <br><textarea id="tlKtext" rows="2" placeholder="Caption text — a new line starts a new line in the movie">${esc(k.text || "")}</textarea>`;
   }
-  h += ` <button id="tlKdel" title="Delete this key (Delete)">🗑</button>`;
+  h += ` <button id="tlKdup" title="Duplicate this key — the copy goes to the playhead, or 1 s later if the playhead is on this key (Ctrl+D)">⧉ Duplicate</button> <button id="tlKdel" title="Delete this key (Delete)">🗑</button>`;
   ed.innerHTML = h;
   const $e = id => ed.querySelector("#" + id);
   $e("tlKt").onchange = e => { k.t = Math.max(0, Math.min(TL.dur, +e.target.value || 0)); tlSort(); tlSave(); tlSync(); };
@@ -10128,6 +10195,7 @@ function tlEditor(){
     $e("tlKtext").oninput = e => { k.text = e.target.value; tlSave(); tlDraw(); };
   }
   $e("tlKdel").onclick = () => tlDelete(k);
+  $e("tlKdup").onclick = () => tlDuplicate(k);
 }
 function tlDelete(k){ TL.keys[k.lane] = TL.keys[k.lane].filter(x => x !== k); TL.sel = null; tlSave(); tlSync(); }
 function tlDraw(){
@@ -14435,6 +14503,7 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
   else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
   placeLabel();
+  try { recGuide(); } catch (e){}
   cutFrame();
   scaleBarFrame();
   measureFrame();
@@ -15018,7 +15087,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
