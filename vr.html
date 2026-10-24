@@ -9252,7 +9252,7 @@ function recGuide(){
   if (!g){
     g = document.createElement("div"); g.id = "recGuide";
     g.style.cssText = "position:fixed;z-index:0;pointer-events:none;box-shadow:0 0 0 200vmax rgba(0,0,0,.5);outline:2px dashed rgba(255,255,255,.55);outline-offset:-2px";
-    g.innerHTML = '<span style="position:absolute;right:8px;top:6px;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);padding:2px 6px;border-radius:4px"></span>';
+    g.innerHTML = '<span style="position:absolute;left:8px;top:6px;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);padding:2px 6px;border-radius:4px"></span>';
     /* right above the 3D picture and under every panel: the controls stay as bright as ever */
     renderer.domElement.after(g);
   }
@@ -9633,7 +9633,12 @@ function renderLogo(){
   renderer.getSize(_ls);
   const W = _ls.x, H = _ls.y, h = Math.max(34, H * 0.075), w = h * LOGO.aspect, m = Math.max(8, H * 0.018);
   LOGO.cam.left = 0; LOGO.cam.right = W; LOGO.cam.top = H; LOGO.cam.bottom = 0; LOGO.cam.updateProjectionMatrix();
-  LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(W - m - w / 2, H - m - h / 2, 0);
+  /* INSIDE THE FILM FRAME (2026-10-24, Søren: "When the screen ratio changes the logo should still be in the image").
+     While the frame guide is shown (a film ratio narrower than the window), the logo sits in the frame's top-right
+     corner, where the recording will put it, not in the window's. */
+  let xr = W; { const g = document.getElementById("recGuide");
+    if (g && g.style.display !== "none" && !REC.on){ const d = recDims(); if (d){ const fw = Math.min(W, H * d[0] / d[1]); xr = (W + fw) / 2; } } }
+  LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(xr - m - w / 2, H - m - h / 2, 0);
   if (domeActive()){ const R = Math.min(W, H) / 2 * 0.82; LOGO.mesh.position.set(W / 2 + R * Math.sin(0.55), H / 2 - R * Math.cos(0.55), 0); }   // inside the circle, front right
   if (STIM.plots) edgePlots(W, H);
   fxFrame(W, H); capFrame(W, H);
