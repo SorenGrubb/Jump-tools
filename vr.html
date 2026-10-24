@@ -710,6 +710,7 @@
         <option value="centre">a centre and a size</option>
         <option value="corners">two corners</option>
         <option value="cells">around the cells</option>
+        <option value="soma">around the picked cell's soma</option>
       </select>
       <span id="blkUnitWrap"><select id="blkUnit" title="The unit the coordinates are typed in">
         <option value="vox">voxels (as in Neuroglancer)</option>
@@ -719,6 +720,11 @@
     <div class="ctl" id="blkCorners" style="margin:0 0 6px;display:none">
       <input id="blkA" placeholder="corner x, y, z" style="width:140px" title="One corner: x, y, z (Danish decimals: separate with ;)">
       <input id="blkB" placeholder="opposite corner x, y, z" style="width:160px" title="The opposite corner">
+    </div>
+    <div class="ctl" id="blkSomaRow" style="margin:0 0 6px;display:none;align-items:center">
+      <span style="font-size:12px;color:var(--mut)">margin around the soma</span>
+      <input id="blkSomaM" value="5" style="width:50px" title="µm added on every side of the soma's box (the nucleus plus ~4 µm of cytoplasm)"> µm
+      <span id="blkSomaInfo" style="font-size:12px;color:var(--mut)"></span>
     </div>
     <div class="ctl" id="blkCentre" style="margin:0 0 6px">
       <input id="blkC" placeholder="centre x, y, z" style="width:140px" title="The box's centre: x, y, z">
@@ -7955,7 +7961,7 @@ function applyLook(){
   updateTri(); updateLabel();
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
 }
-function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); } catch (e){} }
+function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); } catch (e){} }
 
 document.getElementById("detail").addEventListener("change", loadAll);
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
@@ -8435,6 +8441,8 @@ function menuRows(){
       if (BLOCK.hasSeg) rows.push({ label: "   Other cells' segmentation", on: BLOCK.showSeg, act: () => { BLOCK.showSeg = !BLOCK.showSeg; document.getElementById("blkSeg").checked = BLOCK.showSeg; blkApply(); } });
     } else if (RBOX.list.length || CELL_BOX) rows.push({ label: "Tissue block around " + (RBOX.list.length ? "the region box" : "the cells"),
       act: () => { document.getElementById("blkSrc").value = RBOX.list.length ? "rbox:0" : "cells"; blkSrcUI(); blockFromUI(); } });
+    if (!(BLOCK.group || BLOCK.loading) && CELLS[SELECTED]) rows.push({ label: "Tissue block around the picked cell's soma",
+      act: () => { document.getElementById("blkSrc").value = "soma"; blkSrcUI(); blockFromUI(); } });
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
@@ -14398,6 +14406,8 @@ function blkSrcUI(){
   document.getElementById("blkCorners").style.display = v === "corners" ? "" : "none";
   document.getElementById("blkCentre").style.display = v === "centre" ? "" : "none";
   document.getElementById("blkUnitWrap").style.display = v === "corners" || v === "centre" ? "" : "none";
+  document.getElementById("blkSomaRow").style.display = v === "soma" ? "flex" : "none";
+  if (v === "soma"){ const c = CELLS[SELECTED]; document.getElementById("blkSomaInfo").textContent = c ? "· " + shortName(c) : "· pick a cell first"; }
 }
 /* What the panel describes, as a spec, or a reason it cannot be one. */
 function blkSpecFromUI(){
@@ -14419,6 +14429,22 @@ function blkSpecFromUI(){
     if (!CELL_BOX) return { err: "Load the cells first." };
     const b = CELL_BOX.clone().expandByScalar(3);
     box = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z];
+  } else if (src === "soma"){
+    /* AROUND THE SOMA (2026-10-24, Søren: "there should also be an option to have it around the soma of the selected
+       cell"). The soma is not segmented on its own, so its box is the NUCLEUS's box plus ~4 µm of perinuclear
+       cytoplasm on every side, plus the margin asked for. A cell drawn without a nucleus mesh falls back to a 30 µm
+       cube on its centre, and says so. */
+    const c = CELLS[SELECTED];
+    if (!c) return { err: "Pick a cell first (click it, or its name in the list)." };
+    const m = Math.max(0, +String($("blkSomaM").value).replace(",", ".") || 0);
+    if (c.nucMesh){
+      const g = c.nucMesh.geometry; g.computeBoundingBox(); const b = g.boundingBox.clone().expandByScalar(4 + m);
+      box = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z];
+    } else {
+      const p = nucCentreOf(c); if (!p) return { err: "That cell is not loaded yet." };
+      const h = 15 + m; box = [p.x - h, p.y - h, p.z - h, p.x + h, p.y + h, p.z + h];
+      blkSay("No nucleus drawn for this cell: a " + (2 * h) + " µm cube on its centre instead.");
+    }
   } else if (src.startsWith("rbox:")){
     const b = RBOX.list[+src.slice(5)]; if (!b) return { err: "That region box is gone." };
     box = b.slice(1, 7);
