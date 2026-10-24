@@ -1873,6 +1873,7 @@ async function loadAll(){
   /* Drop whatever an earlier load put there. */
   for (const c of CELLS){
     for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    lodClearCache(c);
     c.mesh = c.nucMesh = null; c.err = false; c.status = "waiting…"; c.tris = 0;
   }
   renderList(); updateTri();
@@ -1883,6 +1884,11 @@ async function loadAll(){
      list is redrawn at most every 300 ms instead of after every cell. */
   let next = 0, lastList = 0;
   const one = async c => {
+    /* A HIDDEN CELL WAITS (2026-10-24, Søren: "it is loading all cells in high resolution ... even though I only show 0
+       cells to begin with"). A cell that is hidden when the collection is read -- by its own tick, or by a film's first
+       view -- is not read now; lodCheck reads it, at the detail of the moment, when it is first shown. */
+    if (!lodShown(c)){ c.deferred = true; c.status = "hidden — read when it is shown"; return; }
+    c.deferred = false;
     await loadOne(c, token, light);
     if (token !== LOAD_TOKEN) return;
     const cb = cellBoxOf(c); if (cb) box.union(cb);
@@ -4497,6 +4503,7 @@ async function openScene(id){
      showed its defaults (layers on) and the recording's screen. The first view key's look is now applied before the
      cells are read (and its detail is the one they are read at); what needs the cells (vessels, blood, selection) waits
      for the key to be applied again afterwards. The recording draws nothing until the scene is in. */
+  if (sc.timeline) try { tlLoad(sc.timeline); } catch (e){}          // its keys known from the start: raOutside, the first view
   { const fv = sc.timeline && sc.timeline.keys && (sc.timeline.keys.view || []).slice().sort((a, b) => a.t - b.t)[0];
     if (fv && fv.v){ const v = Object.assign({}, fv.v); ["vessels", "rbc", "nv", "vcol", "sel"].forEach(k => delete v[k]);
       try { tlApplyView(v); } catch (e){ console.warn("[vr] first view", e); } } }
@@ -5592,7 +5599,7 @@ function raTlAt(t){
     if (RA.tlScreen){ setRaScreen(false); RA.tlScreen = false; }
   }
 }
-function raOutside(){ return !!(typeof TL !== "undefined" && TL.open && !RA.tlKey && raTlKeys().length); }
+function raOutside(){ return !!(typeof TL !== "undefined" && (TL.open || (typeof SCENE !== "undefined" && SCENE.pending)) && !RA.tlKey && raTlKeys().length); }
 function raTlKeys(){ return typeof TL !== "undefined" ? TL.keys.fx.filter(k => k.kind === "rec") : []; }
 function raFrame(dt){
   if (!RA.on){ if (RA.lit){ raApplyGlow(false); RA.lit = false; } raScreenFrame(); return; }
@@ -8002,19 +8009,68 @@ function lodShown(c){ return !(c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED
 function lodCheck(){
   const want = lodWant();
   /* a cell queued for a view that has since hidden it is let go of again */
-  LOD.queue = LOD.queue.filter(c => { if (lodShown(c) && c.lod !== want) return true; c.lodBusy = false; return false; });
-  for (const c of CELLS) if (c.lod && c.lod !== want && !c.lodBusy && lodShown(c) && (c.mesh || c.nucMesh)){ c.lodBusy = true; LOD.queue.push(c); }
+  LOD.queue = LOD.queue.filter(c => { if (lodShown(c) && (c.lod !== want || c.deferred)) return true; c.lodBusy = false; return false; });
+  for (const c of CELLS) if (!c.lodBusy && lodShown(c) && ((c.lod && c.lod !== want && (c.mesh || c.nucMesh)) || c.deferred)){ c.lodBusy = true; LOD.queue.push(c); }
   if (!LOD.tick){ LOD.tick = setTimeout(() => { LOD.tick = 0; lodPump(); }, 0); }    // next tick: whatever else this moment hides or shows is in by then
+}
+/* ── BOTH DETAILS KEPT (2026-10-24, Søren: "Now it stopped at some point in the scene") ─────────────────────────────
+   A view key that changes the detail made every cell on show be fetched and decoded again in the middle of the film --
+   seconds of a frozen picture with 26 cells. A cell's other detail is now kept (c.lodCache) rather than thrown away, so
+   going back and forth is an instant swap, and before a film plays (or records, or a shared film offers its ▶) every
+   cell the film will show is read, hidden, at each detail its views ask for (tlPrepCells) -- the film then never reads
+   a mesh while it runs. */
+function lodStash(c){
+  if (c.mesh || c.nucMesh){
+    c.lodCache = c.lodCache || {};
+    const old = c.lodCache[c.lod]; if (old) lodDispose(old);
+    for (const m of [c.mesh, c.nucMesh]) if (m) content.remove(m);
+    c.lodCache[c.lod] = { mesh: c.mesh, nuc: c.nucMesh, tris: c.tris, status: c.status };
+  }
+  c.mesh = c.nucMesh = null; c.graph = null; lodForgetNodes(c);
+}
+function lodDispose(e){ for (const m of [e.mesh, e.nuc]) if (m){ m.geometry.dispose(); m.material.dispose(); } }
+function lodClearCache(c){ if (c.lodCache){ for (const k in c.lodCache) lodDispose(c.lodCache[k]); c.lodCache = null; } }
+function lodForgetNodes(c){ try { if (STIM.syn) for (const s of STIM.syn){ if (s.post === c.i) s.postNode = null; if (s.pre === c.i) s.preNode = null; } } catch (e){} }
+function lodSwapIn(c, d){
+  const e = c.lodCache[d]; delete c.lodCache[d];
+  lodStash(c);
+  for (const m of [e.mesh, e.nuc]) if (m) content.add(m);
+  c.mesh = e.mesh; c.nucMesh = e.nuc; c.tris = e.tris; c.status = e.status; c.lod = d; c.deferred = false; c.graph = null;
+}
+/* Every cell the film shows, at every detail it is shown at, read now (hidden). */
+async function tlPrepCells(){
+  const want = new Map(), cur = document.getElementById("detail").value;
+  for (const k of TL.keys.view){ const v = k.v || {}, d = v.detail || cur;
+    CELLS.forEach((c, i) => { if (!(v.hidden && v.hidden[i])){ if (!want.has(i)) want.set(i, new Set()); want.get(i).add(d); } }); }
+  const jobs = [];
+  want.forEach((ds, i) => { const c = CELLS[i]; if (!c) return;
+    ds.forEach(d => { if (c.lodBusy) return; const have = (c.lod === d && !c.deferred && (c.mesh || c.nucMesh)) || (c.lodCache && c.lodCache[d]); if (!have) jobs.push([c, d]); }); });
+  if (!jobs.length) return;
+  let done = 0; const note = () => { ctxNote.textContent = "Getting the film ready: cells " + done + " of " + jobs.length + "…"; }; note();
+  let next = 0;
+  const worker = async () => { while (next < jobs.length){ const [c, d] = jobs[next++];
+    c.lodBusy = true;
+    try {
+      const keep = (c.mesh || c.nucMesh) && !c.deferred ? c.lod : null;
+      lodStash(c); c.err = false; c.deferred = false;
+      await loadOne(c, LOAD_TOKEN, d === "light");
+      if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWant()) lodSwapIn(c, keep);   // the one on show stays on show
+    } finally { c.lodBusy = false; done++; note(); }
+  } };
+  await Promise.all([worker(), worker(), worker()]);
+  renderList(); applyLook(); updateTri();
+  ctxNote.textContent = "The film is ready.";
 }
 function lodPump(){
   while (LOD.busy < 3 && LOD.queue.length){
     const c = LOD.queue.shift(); LOD.busy++;
     (async () => {
       try {
-        if (CELLS[c.i] === c && lodShown(c) && c.lod !== lodWant()){
-          for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
-          c.mesh = c.nucMesh = null; c.err = false; c.graph = null;
+        if (CELLS[c.i] === c && lodShown(c) && (c.lod !== lodWant() || c.deferred)){
+          if (c.lodCache && c.lodCache[lodWant()]){ lodSwapIn(c, lodWant()); renderList(); applyLook(); updateTri(); return; }   // read before: no network, no decoding
+          lodStash(c); c.err = false; c.deferred = false;
           await loadOne(c, LOAD_TOKEN, lodWant() === "light");
+          { const cb = cellBoxOf(c); if (cb){ if (!CELL_BOX){ CELL_BOX = cb.clone(); try { buildContext(); } catch (e){} } else if (!CELL_BOX.containsBox(cb)) CELL_BOX.union(cb); } }
           renderList(); applyLook(); updateTri();
         }
       } finally { c.lodBusy = false; LOD.busy--; if (!LOD.queue.length && !LOD.busy) lodCheck(); else lodPump(); }
@@ -9794,7 +9850,7 @@ function tlFrame(dt){
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
   tlStateReset();
-  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepVessels().catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
+  if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepVessels().catch(() => {}).then(() => tlPrepCells()).catch(e => console.warn("[vr] film cells", e)).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
@@ -13118,6 +13174,7 @@ async function fixSave(){
 }
 async function fixReload(c){
   for (const m of [c.mesh, c.nucMesh]) if (m){ content.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  lodClearCache(c);
   c.mesh = c.nucMesh = null; c.err = false; c.graph = null;
   await loadOne(c, LOAD_TOKEN, document.getElementById("detail").value === "light");
   renderList(); applyLook(); updateTri();
@@ -15000,6 +15057,7 @@ async function tlPrepBlock(){
   const k = tlPeelKeys().find(x => x.blk);
   if (k && blkKey(k.blk) !== BLOCK.key){ ctxNote.textContent = "Reading the tissue block before recording…"; await buildBlock(k.blk); }
   await tlPrepVessels();
+  await tlPrepCells();
 }
 
 /* ── THE FILM'S BRAIN STATES (2026-10-22, Søren's planetarium film for the NAD annual meeting: the EM block
@@ -15123,7 +15181,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, raOutside, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, raOutside, tlPrepCells, LOD, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
