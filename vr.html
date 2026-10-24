@@ -285,7 +285,8 @@
   <div id="sceneBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 10px">
     <div class="ctl" style="margin:0">
       <input id="sceneTitle" placeholder="Scene title" style="flex:1;font:13px system-ui;padding:5px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px">
-      <button id="sceneSave" title="Save everything as it is now — cells, view, EM, cut, measurements, paint — as a link you can share">💾 Save scene</button>
+      <button id="sceneSave" title="Save everything as it is now — cells, view, EM, cut, measurements, paint, timeline — as a link you can share. On a scene of yours this UPDATES it: the same link, and everybody who opens it sees the new version.">💾 Save scene</button>
+      <button id="sceneSaveNew" style="display:none" title="Save this as a NEW scene with a new link; the scene you opened stays as it was">＋ Save as new</button>
     </div>
     <div id="sceneSignin" style="margin-top:6px"></div>
     <div id="sceneOut" class="help" style="margin-top:6px"></div>
@@ -4299,7 +4300,7 @@ function onCred(resp){
     if (typeof FIX !== "undefined" && FIX.pending){ FIX.pending = false; fixSave(); }
     if (typeof TRW !== "undefined" && TRW.pending){ TRW.pending = false; trwSave(); }
     if (typeof CN !== "undefined" && CN.tpPending){ CN.tpPending = false; tpSave(); }
-    if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr); }
+    if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr, w.asNew); }
   } catch (e){}
 }
 function signInUI(boxId){
@@ -4364,11 +4365,26 @@ function previewJpeg(){
   } catch (e){ return ""; }
 }
 function sceneLink(id){ return location.href.replace(/[#?].*$/, "") + "#scene=" + id; }
-async function saveScene(fromVR){
+/* ── YOUR SCENES (2026-10-24, Søren: "When you are editing the scene yourself, you should be able to either update your
+   scene by saving it or save as a new scene. When updating the scene the link ... should contain the update, so that
+   everyone sees the updated version. Creating a new scene should also make a new link.")
+   💾 Save on a scene of yours UPDATES it: the server rewrites the same file under the same id, so the link everybody
+   already has opens the new version. ＋ Save as new sends no id: a new scene, a new link, the old one untouched. Which
+   scenes are yours is remembered in this browser (MY_SCENES) and checked by the server anyway -- saving somebody
+   else's scene always makes your own copy, so an id is sent even when this browser does not know you made it. */
+const MY_SCENES_KEY = "vr_my_scenes_v1";
+function myScenes(){ try { return JSON.parse(localStorage.getItem(MY_SCENES_KEY) || "[]") || []; } catch (e){ return []; } }
+function rememberMyScene(id){ try { const a = myScenes().filter(x => x !== id); a.unshift(id); localStorage.setItem(MY_SCENES_KEY, JSON.stringify(a.slice(0, 200))); } catch (e){} }
+function sceneButtons(){
+  const b = document.getElementById("sceneSave"), n = document.getElementById("sceneSaveNew"); if (!b) return;
+  b.textContent = SCENE.id && SCENE.mine ? "💾 Update scene" : SCENE.id ? "💾 Save as my copy" : "💾 Save scene";
+  if (n) n.style.display = SCENE.id ? "" : "none";
+}
+async function saveScene(fromVR, asNew){
   const out = document.getElementById("sceneOut");
   if (!CELLS.length){ out.textContent = "Nothing to save yet."; return; }
   if (!credOk()){
-    SCENE.waiting = { vr: fromVR };
+    SCENE.waiting = { vr: fromVR, asNew: !!asNew };
     out.textContent = "Sign in with Google to save — the scene will carry your name.";
     if (fromVR) ctxNote.textContent = "To save from the headset, sign in once on the PC panel (the button under the scene title), then save again here.";
     signInUI(); return;
@@ -4379,17 +4395,21 @@ async function saveScene(fromVR){
   out.textContent = "Saving " + Math.round(json.length / 1024) + " kB…";
   const body = { type: "vr_scene", credential: CRED, title, scene: json, preview, cells: CELLS.length, ds: "ujump",
                  story: tlCount() ? Math.round(TL.dur) : 0 };      // the forum offers "▶ Play its story" when there is one
-  if (SCENE.id && SCENE.mine) body.sceneId = SCENE.id;
+  if (SCENE.id && !asNew) body.sceneId = SCENE.id;          // the server updates it only if it is yours
   let d = null;
   try {
     const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
     d = JSON.parse(await r.text());
   } catch (e){ d = { ok: false, error: "could not reach the server" }; }
   if (!d || !d.ok){ out.textContent = "Not saved: " + ((d && d.error) || "no answer") + (d && /unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : ""); return; }
-  SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title;
+  const wasId = SCENE.id;
+  SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title; rememberMyScene(d.sceneId); sceneButtons();
   history.replaceState(null, "", "#scene=" + d.sceneId);
   const link = sceneLink(d.sceneId);
-  out.innerHTML = (d.updated ? "Updated" : "Saved") + ": <b>" + esc(title) + "</b><br><a href='" + esc(link) + "' target='_blank' style='color:var(--accent);word-break:break-all'>" + esc(link) + "</a>"
+  const what = d.updated ? "Updated — the same link; everybody who opens it now sees this version"
+             : wasId && wasId !== d.sceneId ? (asNew ? "Saved as a new scene, with its own link (the old one is unchanged)" : "Saved as your own copy, with its own link")
+             : "Saved";
+  out.innerHTML = what + ": <b>" + esc(title) + "</b><br><a href='" + esc(link) + "' target='_blank' style='color:var(--accent);word-break:break-all'>" + esc(link) + "</a>"
     + "<div class='ctl' style='margin:6px 0 0'><button id='sceneCopy'>Copy link</button><button id='sceneForum'>Share in the forum…</button></div><div id='sceneForumBox'></div>";
   document.getElementById("sceneCopy").onclick = e => { (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(() => e.target.textContent = "Copied ✓", () => prompt("Copy:", link)); };
   document.getElementById("sceneForum").onclick = () => forumComposer(title, link);
@@ -4419,12 +4439,14 @@ function forumComposer(title, link){
   };
 }
 document.getElementById("sceneSave").addEventListener("click", () => saveScene(false));
+document.getElementById("sceneSaveNew").addEventListener("click", () => saveScene(false, true));
 
 /* ── opening one ── */
 async function openScene(id){
   subEl.textContent = "Opening the saved scene…";
   let d = null;
-  try { d = await (await fetch(VR_DATASETS.microns.backend + "?vrScene=" + encodeURIComponent(id) + "&ds=ujump")).json(); }
+  /* &_= so no cache between here and the server can hand back the version from before an update */
+  try { d = await (await fetch(VR_DATASETS.microns.backend + "?vrScene=" + encodeURIComponent(id) + "&ds=ujump&_=" + Date.now(), { cache: "no-store" })).json(); }
   catch (e){ d = { ok: false, error: "could not reach the server" }; }
   if (!d || !d.ok || !d.scene){ subEl.textContent = "That scene could not be opened: " + ((d && d.error) || "no answer"); return; }
   let sc; try { sc = typeof d.scene === "string" ? JSON.parse(d.scene) : d.scene; } catch (e){ subEl.textContent = "That scene could not be read."; return; }
@@ -4434,8 +4456,10 @@ async function openScene(id){
     if (VR_DATASETS[sd] && VR_DATASETS[sd] !== DSX && !/[#&]ds=/.test(location.hash)){
       location.hash = location.hash.replace(/^#?/, "#") + "&ds=" + encodeURIComponent(sd); location.reload(); return; } }
   SCENE.title = d.title || ""; document.getElementById("sceneTitle").value = SCENE.title;
+  SCENE.mine = myScenes().includes(id); SCENE.author = d.authorName || ""; sceneButtons();
   document.getElementById("sceneOut").innerHTML = "Scene <b>" + esc(d.title || "") + "</b> by " + esc(d.authorName || "somebody")
-    + " · " + esc(String(d.updatedAt || d.timestamp || "").slice(0, 10)) + ". Saving again makes " + (credOk() ? "" : "(once signed in) ") + "your own copy unless it is yours.";
+    + " · " + esc(String(d.updatedAt || d.timestamp || "").slice(0, 10)) + (SCENE.mine ? ". Yours: 💾 Update scene keeps the link (everybody sees the new version); ＋ Save as new makes a new link."
+                 : ". 💾 saves " + (credOk() ? "" : "(once signed in) ") + "your own copy with its own link, unless it is yours.");
   CELLS = prepCells(sc.cells || []);
   RBOX.list = Array.isArray(sc.boxes) ? sc.boxes : []; RBOX.on = sc.boxesOn !== false;
   CELLS.forEach(c => { c.colour = c.typeColour = colourFor(c.label); });
@@ -4520,7 +4544,15 @@ async function applyScene(sc){
      everything it needs is in (the cells above; the block and vessels it uses, read first). A browser only
      goes full screen from a click, so a button offers that -- pressing it restarts the film full screen.
      &play=0 opens such a scene without playing it. */
-  if (sc.timeline && tlCount() && !renderer.xr.isPresenting && !/[#&]play=0/.test(location.hash)) sceneAutoplay();
+  /* 2026-10-24 (Søren: "When you share a scene with others that has a timeline with animations, the timeline should not
+     show and the scene should be paused until you click play. The okay button should be large and on the middle of the
+     screen and should not be clickable until everything is loaded."): somebody else's scene opens as a film, paused,
+     with one big ▶ in the middle that wakes up when everything is in. Your own opens for editing: the timeline shown,
+     paused at the start. */
+  if (sc.timeline && tlCount() && !renderer.xr.isPresenting && !/[#&]play=0/.test(location.hash)){
+    if (SCENE.mine && !/[#&]play=1/.test(location.hash)){ setTimeline(true); tlSeek(0); }
+    else sceneAutoplay();
+  }
   else if (/[#&]play=1/.test(location.hash)) ctxNote.textContent = "This scene has no timeline to play — it opened as it was saved.";
   SCENE.pending = null;
   applyLook(); renderList();
@@ -8500,6 +8532,7 @@ function menuRows(){
                   act2: () => setSize(stage.scale.x / FIT_SCALE / 1.5) });
       if (INPUT.mode === "hands") rows.push({ label: "Bring the palette here", act: floatMenu });
       rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : ""), act: () => saveScene(true) });
+      if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
@@ -14669,33 +14702,48 @@ function tlApplyPeelAt(t){
 /* Before a recording starts: the first block it needs, read now rather than in the middle of a take. */
 
 async function sceneAutoplay(){
-  setTimeline(true); tlSeek(0);
-  ctxNote.textContent = "Getting the film ready…";
-  try { await tlPrepBlock(); } catch (e){}
-  for (let k = 0; k < 300 && (tlWaiting() || CELLS.some(c => c.status === "waiting…")); k++) await new Promise(r => setTimeout(r, 100));
+  setTimeline(true); tlStop(); tlSeek(0);
   panel.style.display = "none"; show.style.display = "block";
   TLD.bar.style.display = "none"; TL.viewer = true;               // the editor strip stays out of the film
-  tlSeek(0); tlPlay();
   let ov = document.getElementById("fsOffer");
   if (!ov){
     ov = document.createElement("div"); ov.id = "fsOffer";
-    ov.style.cssText = "position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:30;display:flex;gap:8px;align-items:center;padding:8px 12px;border-radius:10px;background:rgba(13,17,23,.85);border:1px solid #30363d;color:#e6edf3;font:14px system-ui,sans-serif";
-    ov.innerHTML = '<button id="fsGo" class="on" style="font-size:15px;padding:6px 14px">⛶ Watch in full screen</button><button id="fsEdit" title="Show the timeline editor and the panel">Edit</button><button id="fsX" title="Hide this">✕</button>';
+    ov.style.cssText = "position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(5,8,12,.55);font:15px system-ui,sans-serif;color:#e6edf3";
+    ov.innerHTML = '<div style="text-align:center;max-width:min(560px,calc(100vw - 32px));padding:28px 26px;border-radius:16px;background:rgba(13,17,23,.92);border:1px solid #30363d;box-shadow:0 12px 40px rgba(0,0,0,.5)">'
+      + '<div id="fsTitle" style="font-size:20px;font-weight:600;margin-bottom:4px"></div><div id="fsBy" style="color:#8b949e;margin-bottom:22px"></div>'
+      + '<button id="fsGo" disabled style="font:600 26px system-ui,sans-serif;padding:18px 54px;border-radius:999px;border:0;background:#238636;color:#fff;cursor:pointer;min-width:240px">▶ Play</button>'
+      + '<div id="fsWait" style="margin-top:14px;color:#8b949e;min-height:20px"></div>'
+      + '<label style="display:inline-flex;gap:6px;align-items:center;margin-top:10px;color:#c9d1d9;font-size:13px"><input type="checkbox" id="fsFull" checked> in full screen</label>'
+      + '<div style="margin-top:14px"><button id="fsEdit" style="font:13px system-ui;background:none;border:0;color:#8b949e;text-decoration:underline;cursor:pointer">Look around and edit instead</button></div></div>';
     document.body.appendChild(ov);
-    const hide = () => { ov.style.display = "none"; };
     document.getElementById("fsGo").onclick = async () => {
-      hide();
-      try { const el = document.documentElement; await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : Promise.reject()); }
-      catch (e){ ctxNote.textContent = "This browser does not allow full screen here — the film plays in the window."; }
+      const go = document.getElementById("fsGo"); if (go.disabled) return;
+      ov.style.display = "none";
+      if (document.getElementById("fsFull").checked){
+        try { const el = document.documentElement; await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : Promise.reject()); }
+        catch (e){ ctxNote.textContent = "This browser does not allow full screen here — the film plays in the window."; }
+      }
       tlStop(); tlSeek(0); tlPlay();
+      ctxNote.textContent = "▶ Playing “" + (SCENE.title || "the scene") + "”.";
     };
-    document.getElementById("fsEdit").onclick = () => { hide(); TL.viewer = false; TLD.bar.style.display = ""; panel.style.display = "block"; show.style.display = "none"; };
-    document.getElementById("fsX").onclick = hide;
-    /* gone by itself after 12 s if nobody wants it */
-    setTimeout(() => { if (ov.style.display !== "none" && TL.playing) ov.style.opacity = "0.35"; }, 12000);
+    document.getElementById("fsEdit").onclick = () => { ov.style.display = "none"; tlStop(); TL.viewer = false; TLD.bar.style.display = ""; panel.style.display = "block"; show.style.display = "none"; };
   }
-  ov.style.display = "flex"; ov.style.opacity = "1";
-  ctxNote.textContent = "▶ Playing “" + (SCENE.title || "the scene") + "”.";
+  document.getElementById("fsTitle").textContent = SCENE.title || "A scene";
+  document.getElementById("fsBy").textContent = (SCENE.author ? "by " + SCENE.author + " · " : "") + Math.round(TL.dur || 0) + " s";
+  const go = document.getElementById("fsGo"), wait = document.getElementById("fsWait");
+  go.disabled = true; go.style.opacity = "0.35"; go.style.cursor = "wait";
+  ov.style.display = "flex";
+  /* NOT CLICKABLE UNTIL EVERYTHING IS IN: the cells' meshes, then what the film will need later (the EM block it peels,
+     the vessels and the flow model, read now and hidden where a view says so), then nothing still loading. */
+  const left = () => CELLS.filter(c => c.status === "waiting…" || c.status === "fetching mesh…" || c.status === "reading its tracings…").length;
+  for (let k = 0; k < 1200 && left(); k++){ wait.textContent = "Loading the cells… " + (CELLS.length - left()) + " of " + CELLS.length; await new Promise(r => setTimeout(r, 100)); }
+  wait.textContent = "Loading what the film needs…";
+  try { await tlPrepBlock(); } catch (e){}
+  for (let k = 0; k < 600 && tlWaiting(); k++){ wait.textContent = "Loading what the film needs…"; await new Promise(r => setTimeout(r, 100)); }
+  tlSeek(0);
+  go.disabled = false; go.style.opacity = "1"; go.style.cursor = "pointer";
+  wait.textContent = "Ready.";
+  ctxNote.textContent = "Ready: press ▶ Play.";
 }
 async function tlPrepBlock(){
   const k = tlPeelKeys().find(x => x.blk);
