@@ -4491,6 +4491,15 @@ async function openScene(id){
   try { if (u.phys){ setTemp(u.phys.T); setIcp(u.phys.icp); } if (u.wbc){ WBC.teach = u.wbc.teach === true; if (u.wbc.on) setWbc("on", true); if (u.wbc.ad) setWbc("ad", true); if (u.wbc.ly6g) setWbc("ly6g", true); } } catch (e){ console.warn("[vr] temperature / ICP / white cells", e); }
   try { if (u.pvs){ setPvsW(u.pvs.w || 1); if (u.pvs.mode && u.pvs.mode !== document.getElementById("pvsSel").value){ document.getElementById("pvsSel").value = u.pvs.mode; buildPvs(); } } } catch (e){ console.warn("[vr] perivascular settings", e); }
   SCENE.pending = sc;
+  /* A FILM OPENS AS ITS FIRST VIEW (2026-10-24, Søren: "when I load the scene, even though I have tried to turn off the
+     layers and ... remove the recorded movie from where it was not actively playing, it starts out by showing those").
+     Everything was right once the cells were in -- the first view key then decides -- but while they loaded, the page
+     showed its defaults (layers on) and the recording's screen. The first view key's look is now applied before the
+     cells are read (and its detail is the one they are read at); what needs the cells (vessels, blood, selection) waits
+     for the key to be applied again afterwards. The recording draws nothing until the scene is in. */
+  { const fv = sc.timeline && sc.timeline.keys && (sc.timeline.keys.view || []).slice().sort((a, b) => a.t - b.t)[0];
+    if (fv && fv.v){ const v = Object.assign({}, fv.v); ["vessels", "rbc", "nv", "vcol", "sel"].forEach(k => delete v[k]);
+      try { tlApplyView(v); } catch (e){ console.warn("[vr] first view", e); } } }
   renderList(); updateLabel();
   await loadAll();
   applyScene(sc);
@@ -5564,7 +5573,9 @@ function raApplyGlow(on){
     }
     /* v95: the recorded movie as a "what if" -- a drug or the stroke's hypoxia (section 30) dims a cell's
        recorded activity by how much it could still fire; the data themselves are untouched */
-    u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) * recGate(c) : (RA.dim && c.raRoot ? -1 : 0);
+    /* not dimmed outside the film's recorded-activity keys either (2026-10-24: the cells shown by a view before the
+       recording starts were dimmed to nothing as "not imaged", and looked as if they never loaded) */
+    u.value = !on ? (RA.on && RA.dim && RA.meta && !e && c.raRoot && !raOutside() ? -1 : 0) : e ? raGlowOf(e, raValue(c, RA.t)) * recGate(c) : (RA.dim && c.raRoot ? -1 : 0);
   }
 }
 /* Is a timeline running a "recorded activity" effect now? */
@@ -5817,7 +5828,7 @@ function raScreenPlace(){
   RA.scr.lookAt(cp.x, p.y, cp.z);
 }
 function raScreenFrame(){
-  const want = RA.on && RA.screen && RA.meta && (RA.meta.movie || RA.meta.movie_webm) && !raOutside();
+  const want = RA.on && RA.screen && RA.meta && (RA.meta.movie || RA.meta.movie_webm) && !raOutside() && !(typeof SCENE !== "undefined" && SCENE.pending);
   if (!want){
     if (RA.scr) RA.scr.visible = false; if (RA.cap) RA.cap.visible = false;
     if (RA.video && !RA.video.paused) RA.video.pause();
@@ -15001,7 +15012,11 @@ async function tlPrepBlock(){
    · Nothing loads in the middle of a film: before recording, the vessels and the flow model the film will
      need are read (the vessels are then hidden, not thrown away, where a view key says "off"), and while
      anything is still loading the film holds -- no frame is written and no time passes. */
-function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length))); }
+/* Cells being re-read at another detail hold a RECORDING (no frame may miss them) and the start of a shared film, but not
+   a film played live: it plays on and the cells come in as they arrive (2026-10-24, Søren: "the timeline play stopped
+   when it was supposed to load the lower resolution cells"). */
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy
+  || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length) && (TL.rec || REC.on || !TL.playing))); }
 function tlVessels(want){
   const sel = document.getElementById("vascSel");
   if (want === "off"){
