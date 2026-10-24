@@ -9985,6 +9985,11 @@ function tlFrame(dt){
 }
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
+  /* A FRESH RUN (2026-10-24, Søren: "the cell is spiking even though that should not be active"): spikes, potentials and
+     synaptic events left from the last run went on into the replay. Played from before the film's first stimulus, the
+     activity starts clean. */
+  { const first = TL.keys.stim.length ? Math.min(...TL.keys.stim.map(k => k.t)) : Infinity;
+    if (TL.t <= first + 1e-3) try { resetActivity(); } catch (e){} }
   tlStateReset();
   if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepCells().catch(e => console.warn("[vr] film cells", e)).then(() => tlPrepVessels()).catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
@@ -10259,7 +10264,9 @@ function tlAdd(lane, o){
   tlSave(); tlSync();
 }
 function tlSeek(t){
-  TL.t = Math.max(0, Math.min(TL.dur, t)); TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
+  TL.t = Math.max(0, Math.min(TL.dur, t));
+  /* a jump in time leaves no spike of another moment running */
+  if (TL.keys.stim.length) try { resetActivity(); } catch (e){} TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
   /* each part on its own: one that fails must not leave the camera and the rest where they were */
   for (const f of [() => tlApplyViewAt(TL.t), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t)])
     try { f(); } catch (e){ console.warn("[vr] timeline seek:", e); }
@@ -11919,6 +11926,13 @@ function bpFrame(sdt){
   }
 }
 /* ── every frame ── */
+/* The blood is drawn only with its vessels -- or on a ride, which needs no vessel surface. Run in stkFrame and again
+   right before the picture is drawn, so nothing built in between shows for a frame (2026-10-24: "the blood cells are
+   blinking even though they are not active yet"). */
+function bloodVis(){
+  const show = !!(RIDE.on || (VASC.mesh && VASC.mesh.visible && !VASC.tlOff));
+  for (const o of [STK.rbcMesh, STK.rbcPara, STK.rbcBullet, STK.sphGrp, STK.plugGrp, STK.colGrp, STK.clotGrp, WBC.mesh]) if (o && o.visible !== show) o.visible = show;
+}
 function stkFrame(sdt){
   if (!STK.on) return;
   /* NOTHING OF THE BLOOD WITHOUT ITS VESSELS (2026-10-23, Søren: "Even though I had not yet come to the view on the
@@ -11926,8 +11940,7 @@ function stkFrame(sdt){
      A timeline that solves the flow ahead of time hides only the vessel surface in its vessel-free views
      (VASC.tlOff), so the red and white cells, the sphincter rings, the jams, the collaterals and the clots were left
      floating in empty space. They now show only while the vessels do. */
-  { const show = !!(VASC.mesh && VASC.mesh.visible && !VASC.tlOff);
-    for (const o of [STK.rbcMesh, STK.rbcPara, STK.rbcBullet, STK.sphGrp, STK.plugGrp, STK.colGrp, STK.clotGrp, WBC.mesh]) if (o && o.visible !== show) o.visible = show; }
+  bloodVis();
   STK.t += sdt; STK._sdt = sdt;
   /* autoregulation: the arterioles move towards their target with a ~6 s lag */
   if (Math.abs(STK.k - STK.kSolved) > 0.004) STK.dirty = true;
@@ -14760,7 +14773,7 @@ renderer.setAnimationLoop(() => {
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
   if (VASC.mesh && !VPART.busy && VASC.mesh.userData.vpartKey !== vpartKey() + "|" + VASC.mesh.geometry.uuid && (!vpartAll() || VASC.mesh.userData.vpartKey)) vpartApply();
-  filmCards();
+  filmCards(); try { if (STK.on) bloodVis(); } catch (e){}
   if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
@@ -15254,7 +15267,7 @@ function tlRbc(v){
 async function tlPrepVessels(){
   const vs = TL.keys.view.map(k => k.v || {});
   const mode = (vs.find(v => v.vessels && v.vessels !== "off") || {}).vessels;
-  if ((!mode || !DS_HAS.vasc) && TL.keys.fx.some(k => k.kind === "ride") && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow for the ride…"; await setStroke(true, { quiet: true }); }
+  if ((!mode || !DS_HAS.vasc) && TL.keys.fx.some(k => k.kind === "ride") && DS_HAS.flow && !STK.on){ ctxNote.textContent = "Solving the blood flow for the ride…"; await setStroke(true, { quiet: true, rbc: false }); }   // no cells drawn until a view or the ride asks
   if (!mode || !DS_HAS.vasc) return;
   const sel = document.getElementById("vascSel");
   if (!VASC.mesh || sel.value !== mode){ ctxNote.textContent = "Reading the vessels before recording…"; sel.value = mode; VASC.tlOff = false; await buildVessels(); }
