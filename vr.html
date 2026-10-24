@@ -9681,7 +9681,10 @@ function tlCaptureView(){
            /* the CSF tracer is part of what a view shows (2026-10-24, Søren: "the CSF tracer does not disappear when I
               restart the timeline"); a key made before it was kept counts as "off" */
            csf: !!(typeof CSFT !== "undefined" && CSFT.on),
-           vpart: Object.assign({}, VPART.on) };
+           vpart: Object.assign({}, VPART.on),
+           /* the perivascular space too (2026-10-24, Søren: "I tried to add the perivascular space and it added it to all
+              the views"); a key made before it was kept counts as "off", like the CSF tracer */
+           pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w } };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
@@ -9708,7 +9711,21 @@ function tlApplyView(v){
   if (v.vcol && v.vcol !== (NV.colour ? (NV.colourSrc === "flow" ? "flow" : "order") : "one") && DS_HAS.vasc) setVesselColour(v.vcol);
   if (v.rbc != null && v.rbc !== !!(STK.on && STK.rbc) && DS_HAS.flow) tlRbc(v.rbc);
   if (v.vpart && JSON.stringify(v.vpart) !== JSON.stringify(VPART.on)) setVpart(Object.assign({ pa: true, pen: true, cap: true, av: true, pv: true, unk: true }, v.vpart));
-  if (!!v.csf !== CSFT.on && DS_HAS.flow && !(v.csf && CSFT.starting)){ if (v.csf){ CSFT.starting = true; Promise.resolve(setCsf(true)).finally(() => { CSFT.starting = false; }); } else setCsf(false); }
+  /* The CSF tracer takes seconds to start (the vessel network, the cortical layers). A view without it reached in that
+     time used to find it still "off" and leave it, so it came on in the wrong view; and one that failed to start said
+     so only in the status line. The view now sets what it wants, and the start checks that again when it is done. */
+  if (DS_HAS.flow){
+    CSFT.want = !!v.csf;
+    if (CSFT.want && !CSFT.on && !CSFT.starting){ CSFT.starting = true; Promise.resolve(setCsf(true)).catch(e => console.warn("[vr] CSF tracer:", e)).finally(() => {
+      CSFT.starting = false;
+      if (!CSFT.want && CSFT.on) setCsf(false);
+      else if (CSFT.want && !CSFT.on) console.warn("[vr] CSF tracer could not start in this view:", ctxNote.textContent);
+    }); }
+    else if (!CSFT.want && CSFT.on) setCsf(false);
+  }
+  { const pm = (v.pvs && v.pvs.mode) || "off", sel = document.getElementById("pvsSel");
+    if (v.pvs && v.pvs.w && v.pvs.w !== PVS.w) setPvsW(v.pvs.w);
+    if (DS_HAS.pvs && pm !== sel.value){ sel.value = pm; buildPvs(); } }
   if (v.v1 && v.v1 !== V1COL.mode) setV1Col(v.v1);
   if (v.areas !== AREAS.on) setAreas(v.areas);
   if (v.skel && v.skel !== SKEL.mode) setSkel(v.skel);
