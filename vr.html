@@ -310,6 +310,10 @@
       <option value="0.55">See-through: strong (55 %)</option>
     </select>
     <button id="resetBtn" title="Put the collection back in front of you">Reset view</button>
+    <select id="orbitSel" title="What a drag turns you around: the picked cell (its nucleus; the whole collection when none is picked), or your own eye, to look around from where you are">
+      <option value="cell">Orbit: around the picked cell</option>
+      <option value="self">Orbit: around me (look around)</option>
+    </select>
     <select id="colourSel" title="Colour the cells by their type, or by excitatory (amber) / inhibitory (lavender) / non-neuronal (green)">
       <option value="type">Colour: by type</option>
       <option value="ei">Colour: excitatory / inhibitory</option>
@@ -7964,7 +7968,7 @@ function applyLook(){
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
   if (typeof LOD !== "undefined") lodCheck();
 }
-function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); } catch (e){} }
+function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); if (ORBIT.mode === "cell") orbitAim(); } catch (e){} }
 
 /* ── DETAIL FOR WHAT IS SHOWN (2026-10-24, Søren: "If you have selected a single cell out of many and then press full
    resolution, it starts loading all of the cells in full resolution. I want it so that you can just load the full
@@ -8798,6 +8802,54 @@ function flyFrame(dt){
   else { camera.position.lerpVectors(FLY.from, FLY.to, k); controls.target.lerpVectors(FLY.fromT, FLY.toT, k); }
   if (FLY.t >= 1) FLY.on = false;
 }
+/* ── WHAT THE MOUSE ORBITS (2026-10-24, Søren: "It seems like the camera is only orbiting around itself and not around
+   the selected object. Both should be options.") OrbitControls turns about controls.target, and nothing ever put the
+   target on the picked cell: flying in, or walking with W A S D (which carries the target along), left it beside the
+   camera, so a drag turned the view about the eye. Now:
+     · around the picked cell (default): the target glides to the picked cell's nucleus (its mesh centre without one;
+       the collection's centre when nothing is picked) when you pick a cell, choose this mode, or stop walking;
+     · around me: the target sits 1 cm in front of your eye, so a drag looks around from where you stand, and the
+       wheel moves you forward and back instead of zooming onto a point. */
+const ORBIT = { mode: "cell", anim: null };
+try { if (localStorage.getItem("vr_orbit_mode") === "self") ORBIT.mode = "self"; } catch (e){}
+document.getElementById("orbitSel").value = ORBIT.mode;
+function orbitPoint(){
+  const c = CELLS[SELECTED];
+  const p = c ? nucCentreOf(c) : (CELL_BOX && !CELL_BOX.isEmpty() ? CELL_BOX.getCenter(new THREE.Vector3()) : null);
+  return p ? content.localToWorld(p.clone()) : null;
+}
+function orbitAim(){
+  if (renderer.xr.isPresenting || (typeof TL !== "undefined" && TL.playing) || (typeof RIDE !== "undefined" && RIDE.on)) return;
+  if (ORBIT.mode === "self"){ const d = new THREE.Vector3(); camera.getWorldDirection(d); ORBIT.anim = null; controls.target.copy(camera.position).addScaledVector(d, 0.01); return; }
+  const p = orbitPoint(); if (!p) return;
+  ORBIT.anim = { from: controls.target.clone(), to: p, t: 0 };
+}
+function orbitFrame(dt){
+  const A = ORBIT.anim; if (!A) return;
+  A.t = Math.min(1, A.t + dt / 0.45); const u = A.t * A.t * (3 - 2 * A.t);
+  controls.target.lerpVectors(A.from, A.to, u); if (A.t >= 1) ORBIT.anim = null;
+}
+function setOrbit(m){
+  ORBIT.mode = m === "self" ? "self" : "cell"; document.getElementById("orbitSel").value = ORBIT.mode;
+  controls.enableZoom = ORBIT.mode !== "self";
+  try { localStorage.setItem("vr_orbit_mode", ORBIT.mode); } catch (e){}
+  orbitAim();
+  ctxNote.textContent = ORBIT.mode === "self" ? "Orbit: around you — drag to look around, wheel to move forward and back." : "Orbit: around the picked cell" + (CELLS[SELECTED] ? " (" + shortName(CELLS[SELECTED]) + ")" : " — none picked, so around the collection") + ".";
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("orbitSel").addEventListener("change", e => setOrbit(e.target.value));
+controls.enableZoom = ORBIT.mode !== "self";
+/* around me: the wheel walks */
+renderer.domElement.addEventListener("wheel", e => {
+  if (ORBIT.mode !== "self" || renderer.xr.isPresenting) return;
+  e.preventDefault();
+  const d = new THREE.Vector3(); camera.getWorldDirection(d);
+  const coll = TABLE_SIZE * stage.scale.x / FIT_SCALE, step = -Math.sign(e.deltaY) * coll * 0.04;
+  camera.position.addScaledVector(d, step); controls.target.addScaledVector(d, step); USER_MOVED = true;
+}, { passive: false });
+/* around me: whatever moved the eye (a fly, a walk), the pivot is the eye again before the next drag */
+renderer.domElement.addEventListener("pointerdown", e => { if (e.button === 0 && ORBIT.mode === "self") orbitAim(); });
+
 /* Right click, without dragging. */
 let _rdown = null;
 renderer.domElement.addEventListener("pointerdown", e => { if (e.button === 2) _rdown = [e.clientX, e.clientY]; });
@@ -8834,7 +8886,7 @@ addEventListener("keydown", e => {
 });
 addEventListener("keyup", e => {
   const k = KEY_CODE[e.code]; if (k) KEYS.delete(k);
-  if (![..."wasdqe"].some(x => KEYS.has(x))) KEYS.held = 0;
+  if (![..."wasdqe"].some(x => KEYS.has(x))){ if (KEYS.held && ORBIT.mode === "cell") orbitAim(); KEYS.held = 0; }
   if (e.key === "Shift") KEYS.delete("shift");
   if (e.key === "Alt" || e.key === "AltGraph"){ KEYS.delete("alt"); if (!typing()) e.preventDefault(); }   // no menu bar on release
 });
@@ -14359,7 +14411,7 @@ renderer.setAnimationLoop(() => {
   const dt = recDt(Math.min(clock.getDelta(), 0.1));        // while a movie is built: at most one movie frame
   flyFrame(dt); recFrame(dt);
   if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
-  else { if (!TL.playing) keysFrame(dt); controls.update(); tlFrame(dt); }
+  else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
   placeLabel();
   cutFrame();
   scaleBarFrame();
@@ -14944,7 +14996,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
