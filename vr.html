@@ -9657,6 +9657,7 @@ function capCard(k, H){
 }
 function capFrame(W, H){
   const live = new Set();
+  if (domeActive()){ CAPS.forEach(c => { c.mesh.visible = false; }); return; }   // on the dome they are drawn ON the dome (domeHud)
   if (typeof TL !== "undefined" && TL.open && TL.keys.cap.length){
     const bot = !REC.on ? (TL.height || 0) * (H / Math.max(1, innerHeight)) : 0;
     const pos = { top: 0, middle: 0, bottom: 0 };
@@ -9692,7 +9693,7 @@ function renderLogo(){
   let xr = W; { const g = document.getElementById("recGuide");
     if (g && g.style.display !== "none" && !REC.on){ const d = recDims(); if (d){ const fw = Math.min(W, H * d[0] / d[1]); xr = (W + fw) / 2; } } }
   LOGO.mesh.scale.set(w, h, 1); LOGO.mesh.position.set(xr - m - w / 2, H - m - h / 2, 0);
-  if (domeActive()){ const R = Math.min(W, H) / 2 * 0.82; LOGO.mesh.position.set(W / 2 + R * Math.sin(0.55), H / 2 - R * Math.cos(0.55), 0); }   // inside the circle, front right
+  LOGO.mesh.visible = !domeActive();          // on the dome the logo is drawn on the dome itself (domeHud)
   if (STIM.plots) edgePlots(W, H);
   fxFrame(W, H); capFrame(W, H);
   const ac = renderer.autoClear; renderer.autoClear = false;
@@ -13267,7 +13268,9 @@ function domeRender(target){
   DOME.cam.near = camera.near; DOME.cam.far = camera.far;
   for (const c of DOME.cam.children){ c.near = camera.near; c.far = camera.far; c.updateProjectionMatrix(); }
   DOME.cam.position.setFromMatrixPosition(camera.matrixWorld); DOME.cam.updateMatrixWorld();
+  const hud = domeHud();
   DOME.cam.update(renderer, scene);
+  for (const m of hud) m.visible = false;
   const u = DOME.mat.uniforms;
   u.env.value = DOME.rt.texture; u.rot.value.setFromMatrix4(camera.matrixWorld);
   u.tilt.value = (+((document.getElementById("domeTilt") || {}).value) || 0) * Math.PI / 180;
@@ -13275,6 +13278,71 @@ function domeRender(target){
   u.sc.value.set(W > H ? W / H : 1, H > W ? H / W : 1);
   renderer.setRenderTarget(target || null);
   renderer.render(DOME.scene, DOME.ocam);
+}
+/* CAPTIONS AND LOGO ON THE DOME ITSELF (2026-10-25, Søren: "In the dome version with 35 degrees up, the text is way too
+   big and placed on top of the animation without being bend to the dome ... also the logo should be in the top right
+   corner, not next to the animation"). They were pasted flat on the finished dome master, at a size meant for a flat
+   screen. Now each is a strip of a cone around the dome's zenith -- a band along a line of latitude -- drawn into the
+   cube with the scene, so the fisheye bends it exactly as the dome will, and it reads level for the audience.
+   · Placed by the view direction (the tilt): "middle" captions on it, "bottom" ones ~20° below it (never below 8° above
+     the horizon), "top" ones ~25° above it; the logo ~22° above and ~38° to the right of it -- the top right of what
+     the audience is looking at, not the top-right corner of the square file (which a planetarium does not project).
+   · Sizes are angles: a medium caption line is 3° high (xs 1.8°, s 2.4°, l 4°, xl 5.5°), the logo 4.5°. */
+const DOME_CAP_DEG = { xs: 1.8, s: 2.4, m: 3, l: 4, xl: 5.5 };
+const DOME_HUD = { logo: null, basis: new THREE.Matrix4(), q: new THREE.Quaternion(), wq: new THREE.Quaternion(), wp: new THREE.Vector3() };
+function domeBand(mesh, tex, aspect, hDeg, elevDeg, azDeg){
+  /* a band of the sphere of radius D around the camera: latitude elevDeg (its centre), hDeg high, centred at azDeg */
+  const D = 2, e = elevDeg * Math.PI / 180, h = hDeg * Math.PI / 180, wArc = h * aspect, rc = D * Math.cos(e);
+  const th = Math.min(Math.PI * 1.9, wArc / Math.max(0.05, Math.cos(e))), key = [aspect.toFixed(4), hDeg.toFixed(3), elevDeg.toFixed(3)].join("|");
+  if (!mesh){ mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    mesh.frustumCulled = false; mesh.renderOrder = 999; scene.add(mesh); }
+  if (mesh.userData.key !== key){
+    mesh.userData.key = key; mesh.geometry.dispose();
+    const nx = Math.max(8, Math.ceil(th / 0.03)), ny = 4, pos = [], uv = [], idx = [];
+    for (let j = 0; j <= ny; j++){
+      const ee = e - h / 2 + h * j / ny, r = D * Math.cos(ee), y = D * Math.sin(ee);
+      for (let i = 0; i <= nx; i++){
+        const t = -th / 2 + th * i / nx;           // t > 0: to the audience's right
+        pos.push(r * Math.sin(t), y, -r * Math.cos(t)); uv.push(i / nx, j / ny);
+      }
+    }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++){ const a = j * (nx + 1) + i, b = a + nx + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    mesh.geometry = new THREE.BufferGeometry(); mesh.geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    mesh.geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); mesh.geometry.setIndex(idx);
+  }
+  if (mesh.material.map !== tex){ mesh.material.map = tex; mesh.material.needsUpdate = true; }
+  /* the band's own frame: y = the dome's zenith, -z = the dome's front, turned azDeg to the right */
+  mesh.position.copy(DOME_HUD.wp); mesh.quaternion.copy(DOME_HUD.wq).multiply(_dhq.setFromAxisAngle(_dhy, -azDeg * Math.PI / 180));
+  mesh.visible = true; mesh.updateMatrixWorld(true);
+  return mesh;
+}
+const _dhq = new THREE.Quaternion(), _dhy = new THREE.Vector3(0, 1, 0);
+function domeHud(){
+  const out = [], tiltDeg = +((document.getElementById("domeTilt") || {}).value) || 0, tilt = tiltDeg * Math.PI / 180;
+  /* the dome frame in camera space: Y' = zenith Z, -Z' = the front Fr (as in the dome shader) */
+  const Zc = new THREE.Vector3(0, Math.sin(tilt), -Math.cos(tilt)), Fr = new THREE.Vector3(0, -Math.cos(tilt), -Math.sin(tilt));
+  const Zb = Fr.clone().negate(), Xb = new THREE.Vector3().crossVectors(Zc, Zb).normalize();
+  DOME_HUD.basis.makeBasis(Xb, Zc, Zb); DOME_HUD.q.setFromRotationMatrix(DOME_HUD.basis);
+  camera.updateMatrixWorld(); camera.getWorldPosition(DOME_HUD.wp); camera.getWorldQuaternion(DOME_HUD.wq); DOME_HUD.wq.multiply(DOME_HUD.q);
+  const view = 90 - tiltDeg;                   // elevation of the view direction above the front horizon
+  /* the logo */
+  const lt = logoTexture(); if (lt){ DOME_HUD.logo = domeBand(DOME_HUD.logo, lt, LOGO.aspect || 3, 4.5, Math.min(84, view + 22), 38); out.push(DOME_HUD.logo); }
+  /* the captions */
+  CAPS.forEach(c => { if (c.dmesh) c.dmesh.visible = false; });
+  if (typeof TL !== "undefined" && TL.open && TL.keys.cap.length){
+    const stack = { top: 0, middle: 0, bottom: 0 };
+    for (const k of TL.keys.cap){
+      const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
+      const f = Math.min(1, a / 0.4, (k.dur - a) / 0.4);
+      const st = capStyleOf(k), c = capCard(k, 1600), px = Math.round(1600 * CAP_SIZES[st.size]), lh = Math.round(px * 1.3);
+      const hDeg = c.h / lh * DOME_CAP_DEG[st.size], pos = k.pos || "bottom";
+      const base = pos === "top" ? view + 25 : pos === "middle" ? view : Math.max(8 + hDeg / 2, view - 20);
+      const el = pos === "top" ? base - stack.top - hDeg / 2 : pos === "middle" ? base - stack.middle : base + stack.bottom;
+      stack[pos] += hDeg + 0.6;
+      c.dmesh = domeBand(c.dmesh, c.tex, c.w / c.h, hDeg, Math.min(86, el), 0); c.dmesh.material.opacity = f; out.push(c.dmesh);
+    }
+  }
+  return out;
 }
 function setDomePreview(v){
   DOME.preview = !!v; document.getElementById("domePrev").classList.toggle("on", DOME.preview);
