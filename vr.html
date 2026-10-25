@@ -9313,21 +9313,34 @@ async function startFrameRecorder(fps){
   }
   if (!cfg) return null;
   let M; try { M = await import("./core/vendor/mp4-muxer/mp4-muxer.js"); } catch (e){ console.warn("[vr] mp4-muxer:", e); return null; }
-  const target = new M.ArrayBufferTarget();
-  const muxer = new M.Muxer({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: "in-memory", firstTimestampBehavior: "offset" });
-  const v = { fps, kind, muxer, target, n: 0, clock: 0, next: 0, err: null };
-  v.enc = new VideoEncoder({ output: (chunk, meta) => { try { muxer.addVideoChunk(chunk, meta); } catch (e){ v.err = e; } }, error: e => { v.err = e; } });
+  /* STRAIGHT TO DISK (2026-10-25, Søren: a 128 s film at 4K/60 fps, "more than 700 mb", never arrived). The whole movie
+     was kept in memory and then copied once more into the download -- for a big film that is gigabytes. Where the
+     browser can (Chrome, Edge), the file chosen when the recording starts is written as the frames come, and only the
+     index is added at the end. Elsewhere, or if no file was chosen, it is kept in memory as before. */
+  const file = REC.file; REC.file = null;
+  let target, stream = null;
+  if (file){ try { stream = await file.createWritable(); target = new M.FileSystemWritableFileStreamTarget(stream); } catch (e){ console.warn("[vr] movie file:", e); stream = null; } }
+  if (!stream) target = new M.ArrayBufferTarget();
+  const muxer = new M.Muxer({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: stream ? false : "in-memory", firstTimestampBehavior: "offset" });
+  const v = { fps, kind, muxer, target, stream, name: file && file.name, n: 0, clock: 0, next: 0, err: null };
+  /* AN ENCODER THAT FAILS STOPS THE RECORDING THERE (2026-10-25: "Cannot call 'flush' on a closed codec" -- the encoder
+     had failed somewhere in the film and closed itself; the rest of the film was played without a single frame being
+     kept, and the real reason was hidden behind the flush error). Now the recording stops at once, the frames made so
+     far are saved, and the encoder's own message is shown. */
+  v.enc = new VideoEncoder({ output: (chunk, meta) => { try { muxer.addVideoChunk(chunk, meta); } catch (e){ if (!v.err) v.err = e; } },
+                             error: e => { if (!v.err) v.err = e; console.warn("[vr] video encoder:", e); setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); } });
   try { v.enc.configure(cfg); } catch (e){ return null; }
   return v;
 }
 /* Per drawn frame, after the overlay pass: encode when the movie clock has reached the next frame. */
 function recCapture(dt){
-  const v = REC.vf; if (!v || v.enc.state !== "configured") return;
+  const v = REC.vf; if (!v) return;
+  if (v.enc.state !== "configured"){ if (!v.err) v.err = new Error("the encoder closed (" + v.enc.state + ") at frame " + v.n); if (REC.vf === v) setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); return; }
   if (v.enc.encodeQueueSize > 6) return;                 // the encoder is behind: the animation waits too (see the loop)
   v.clock += dt;
   if (v.n > 0 && v.clock + 1e-6 < v.next) return;
   const f = new VideoFrame(renderer.domElement, { timestamp: Math.round(v.n * 1e6 / v.fps), duration: Math.round(1e6 / v.fps) });
-  try { v.enc.encode(f, { keyFrame: v.n % (v.fps * 2) === 0 }); } catch (e){ v.err = e; }
+  try { v.enc.encode(f, { keyFrame: v.n % (v.fps * 2) === 0 }); } catch (e){ if (!v.err) v.err = e; setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); }
   f.close();
   v.n++; v.next = v.n / v.fps;
 }
@@ -9344,6 +9357,13 @@ function recSaveBlob(blob, ext, note){
   a.href = url; a.download = recFileName(ext); document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   out.innerHTML = "Saved to your downloads: <b>" + esc(a.download) + "</b> (" + (blob.size / 1e6).toFixed(1) + " MB, " + ext.toUpperCase() + "). Nothing was uploaded." + (note || "");
+}
+/* Asked for at the click itself (the browser allows the save dialog only right after one): where the movie goes. */
+async function recPickFile(){
+  REC.file = null;
+  if (typeof showSaveFilePicker !== "function" || typeof VideoEncoder === "undefined" || renderer.xr.isPresenting) return;
+  try { REC.file = await showSaveFilePicker({ suggestedName: recFileName("mp4"), types: [{ description: "MP4 movie", accept: { "video/mp4": [".mp4"] } }] }); }
+  catch (e){ REC.file = null; if (e && e.name === "AbortError") REC.fileCancelled = true; }
 }
 async function startRecording(){
   const out = document.getElementById("recOut");
@@ -9398,12 +9418,18 @@ function stopRecording(){
     const v = REC.vf; REC.vf = null;
     const out = document.getElementById("recOut"); out.textContent = "Finishing the movie…";
     (async () => {
+      const failed = v.err;
       try {
-        await v.enc.flush(); v.muxer.finalize();
-        if (v.err) throw v.err;
-        recSaveBlob(new Blob([v.target.buffer], { type: "video/mp4" }), "mp4",
-          " " + v.n + " frames, " + (v.n / v.fps).toFixed(1) + " s at " + v.fps + " fps" + (v.kind === "vp9" ? " (VP9: plays in browsers and VLC; for PowerPoint, record in an up-to-date Chrome or Edge, which encode H.264)." : "."));
-      } catch (e){ out.textContent = "The movie could not be finished: " + (e.message || e); }
+        if (v.enc.state === "configured") await v.enc.flush();
+        v.muxer.finalize();
+        const info = " " + v.n + " frames, " + (v.n / v.fps).toFixed(1) + " s at " + v.fps + " fps" + (v.kind === "vp9" ? " (VP9: plays in browsers and VLC; for PowerPoint, record in an up-to-date Chrome or Edge, which encode H.264)." : ".");
+        const why = failed ? " <b>The recording stopped early</b>: the video encoder failed (" + esc(failed.message || String(failed)) + "). What was filmed until then is in the file. A lower size (2K or 1080p) or 30 fps usually avoids this." : "";
+        if (v.stream){ out.textContent = "Writing the end of the movie to disk…"; await v.stream.close(); out.innerHTML = "Saved: <b>" + esc(v.name || "the movie") + "</b>." + info + why; }
+        else { recSaveBlob(new Blob([v.target.buffer], { type: "video/mp4" }), "mp4", info); if (why) out.innerHTML += why; }
+      } catch (e){
+        out.innerHTML = "The movie could not be finished: " + esc(e.message || String(e)) + (failed && failed !== e ? " (the encoder had failed first: " + esc(failed.message || String(failed)) + ")" : "");
+        if (v.stream) try { await v.stream.close(); } catch (e2){}
+      }
       try { v.enc.close(); } catch (e){}
     })();
   } else { try { REC.rec.stop(); } catch (e){} }
@@ -9421,7 +9447,7 @@ function recFrame(dt){
   stage.quaternion.copy(_qs).multiply(sp.q0);
   if (sp.t >= sp.dur) stopRecording();
 }
-document.getElementById("recBtn").addEventListener("click", () => REC.on ? stopRecording() : startRecording());
+document.getElementById("recBtn").addEventListener("click", async () => { if (REC.on) return stopRecording(); REC.fileCancelled = false; await recPickFile(); if (REC.fileCancelled) return; startRecording(); });
 renderer.xr.addEventListener("sessionstart", () => stopRecording());
 addEventListener("resize", () => { if (REC.on && REC.saved){ const s = document.getElementById("recSize").value; recSize(null); const d = recDims(); if (d) recSize(d); } });
 
@@ -10043,6 +10069,7 @@ function tlStop(ended){
 }
 async function tlRecord(){
   if (REC.on) return;
+  REC.fileCancelled = false; await recPickFile(); if (REC.fileCancelled) return;   // first, while the click still counts
   await tlPrepBlock();
   TL.t = 0; tlApplyViewAt(0); tlApplyCam(0);
   const mode = document.getElementById("recMode"); mode.value = "free";
