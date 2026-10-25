@@ -9808,7 +9808,10 @@ function tlApplyView(v){
   MENU.dirty = true;
 }
 function tlCaptureCam(){
-  return { p: camera.position.toArray(), tg: controls.target.toArray(),
+  /* with the camera's up direction when it is not the plain vertical (after an up/down orbit it is turned; dropped, the
+     new key rolled the view round -- 2026-10-25) */
+  const up = Math.abs(camera.up.y - 1) > 1e-4 ? { up: camera.up.toArray() } : {};
+  return { ...up, p: camera.position.toArray(), tg: controls.target.toArray(),
            sp: stage.position.toArray(), sq: stage.quaternion.toArray(), ss: stage.scale.x };
 }
 /* Catmull-Rom through the camera keys: position and target follow one smooth curve. */
@@ -9902,8 +9905,13 @@ function tlApplyCam(t){
        collection) the line from the camera to a target moving at another pace swung up and back down. Now the
        position follows its curve, the DIRECTION of view turns evenly from one key's to the next (a slerp), and the
        distance to the target changes evenly on a log scale; the target is put back from those. */
-    camera.up.set(0, 1, 0);
     const pos = P("p"), qb = tlLookQ(s.b), qc = tlLookQ(s.c), q = qb.slerp(qc, s.u);
+    /* NO JUMP AFTER AN ORBIT (2026-10-25, Søren: "the camera jumps because I had done a 90 degrees turn and then when I
+       put the new camera after the turn ... the camera view was different"). Between keys the camera's up was reset to
+       the vertical and the view re-aimed with lookAt; at the end of an up/down orbit the up is turned (looking down on
+       the target from above, "vertical" is undefined), so the first frame after the orbit snapped to another roll.
+       The up now turns with the slerped direction, so the camera leaves the orbit exactly as it was. */
+    camera.up.set(0, 1, 0).applyQuaternion(q);
     const db = Math.max(1e-6, _tc0.fromArray(s.b.p).distanceTo(_tc1.fromArray(s.b.tg))), dc = Math.max(1e-6, _tc0.fromArray(s.c.p).distanceTo(_tc1.fromArray(s.c.tg)));
     const dd = Math.exp(Math.log(db) + (Math.log(dc) - Math.log(db)) * s.u);
     camera.position.copy(pos); controls.target.copy(pos).addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(q), dd); stage.position.copy(P("sp"));
@@ -10509,7 +10517,7 @@ function tlEditor(){
   ed.innerHTML = h;
   const $e = id => ed.querySelector("#" + id);
   $e("tlKt").onchange = e => { k.t = Math.max(0, Math.min(TL.dur, +e.target.value || 0)); tlSort(); tlSave(); tlSync(); };
-  if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ Object.assign(k, tlCaptureCam()); tlOrbitPivot(k); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
+  if ($e("tlKset")) $e("tlKset").onclick = () => { if (k.lane === "cam"){ delete k.up; Object.assign(k, tlCaptureCam()); tlOrbitPivot(k); tlThumb(k); } else k.v = tlCaptureView(); tlSave(); tlSync(); };
   if (k.lane === "stim"){
     $e("tlKkind").onchange = e => { k.kind = e.target.value === "ca" ? "ca" : undefined; tlSave(); tlSync(); };
     $e("tlKcell").onchange = e => { const v = [...e.target.selectedOptions].map(o => +o.value); if (v.length){ k.cells = v; k.cell = v[0]; } tlSave(); tlDraw(); };
