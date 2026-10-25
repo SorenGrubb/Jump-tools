@@ -5639,7 +5639,12 @@ function raFrame(dt){
   raScreenFrame();
   if (dark){ if (RA.hud) RA.hud.visible = false; if (RA.plotSpr) RA.plotSpr.visible = false; return; }
   const now = performance.now();
-  if (!RA._hudAt || now - RA._hudAt > 150){ RA._hudAt = now; raHud(); if (RA.plot) raPlotDraw(); else if (RA.plotSpr) RA.plotSpr.visible = false; }
+  /* in a film with its cards off, the recording's plot goes with its card (2026-10-25, Søren: "the plot of recording
+     activity is blinking in the bottom of the screen, even though it is not supposed to show" -- it was redrawn, and so
+     shown, every 150 ms, and hidden again the next frame with its hidden card) */
+  const filmOff = typeof TL !== "undefined" && (TL.playing || (REC.on && TL.rec)) && !TL.cards;
+  if (filmOff){ if (RA.plotSpr) RA.plotSpr.visible = false; }
+  else if (!RA._hudAt || now - RA._hudAt > 150){ RA._hudAt = now; raHud(); if (RA.plot) raPlotDraw(); else if (RA.plotSpr) RA.plotSpr.visible = false; }
 }
 /* ── the clock card and the plot, under whatever cards are already there ── */
 function raHud(){
@@ -12729,7 +12734,10 @@ function rideFrame(dt){
   if (RIDE.spr){
     const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
     cam.matrixWorld.decompose(_qkp, _qkq, _qks); _qkf.set(0, -0.32, -1).normalize().applyQuaternion(_qkq);
-    RIDE.spr.position.copy(_qkp).addScaledVector(_qkf, 0.9); RIDE.spr.scale.set(0.42, 0.07, 1); RIDE.spr.visible = true;
+    RIDE.spr.position.copy(_qkp).addScaledVector(_qkf, 0.9); RIDE.spr.scale.set(0.42, 0.07, 1);
+    /* on the dome it is drawn on the dome (domeHud): a sprite turns with each cube face's camera and came out upside
+       down (2026-10-25, Søren: "The riding a cell text box is upside down in dome view") */
+    RIDE.spr.visible = !domeActive();
   }
 }
 document.getElementById("rideBtn").addEventListener("click", () => setRide(!RIDE.on));
@@ -13335,6 +13343,9 @@ function domeHud(){
   const view = 90 - tiltDeg;                   // elevation of the view direction above the front horizon
   /* the logo */
   const lt = logoTexture(); if (lt){ DOME_HUD.logo = domeBand(DOME_HUD.logo, lt, LOGO.aspect || 3, 4.5, Math.min(84, view + 22), 38); out.push(DOME_HUD.logo); }
+  /* the ride's card, under the view, level on the dome */
+  if (RIDE.dmesh) RIDE.dmesh.visible = false;
+  if (RIDE.on && RIDE.spr && RIDE.cv){ RIDE.dmesh = domeBand(RIDE.dmesh, RIDE.spr.material.map, RIDE.cv.width / RIDE.cv.height, 3.2, Math.max(9, view - 20), 0); out.push(RIDE.dmesh); }
   /* the captions */
   CAPS.forEach(c => { if (c.dmesh) c.dmesh.visible = false; });
   if (typeof TL !== "undefined" && TL.open && TL.keys.cap.length){
@@ -15039,6 +15050,10 @@ renderer.setAnimationLoop(() => {
   sprayFrame(dt); trwFrame();
   if (VASC.mesh && !VPART.busy && VASC.mesh.userData.vpartKey !== vpartKey() + "|" + VASC.mesh.geometry.uuid && (!vpartAll() || VASC.mesh.userData.vpartKey)) vpartApply();
   filmCards(); try { if (STK.on) bloodVis(); } catch (e){}
+  /* every frame, just before drawing (2026-10-25, Søren: blood cells and sphincters "showing in a brief moment in the
+     beginning of the video" again): the blood was hidden only by the flow model's own step, which does not run in
+     every frame -- the sphincter rings, jams and cells made while the film prepared were drawn before it next ran */
+  if (typeof bloodVis === "function") try { bloodVis(); } catch (e){}
   if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
@@ -15568,6 +15583,8 @@ async function tlPrepVessels(){
       await nvRecolour();
     } catch (e){ console.warn("[vr] vessel colour", e); }
   }
+  /* what was read for later views is hidden again at once if the view at the playhead does not show it */
+  TL.viewApplied = null; try { tlApplyViewAt(TL.t); } catch (e){} bloodVis();
 }
 function tlStateReset(){
   if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
