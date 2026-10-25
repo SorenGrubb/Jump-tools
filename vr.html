@@ -9330,7 +9330,7 @@ async function startFrameRecorder(fps){
   if (file){ try { stream = await file.createWritable(); target = new M.FileSystemWritableFileStreamTarget(stream); } catch (e){ console.warn("[vr] movie file:", e); stream = null; } }
   if (!stream) target = new M.ArrayBufferTarget();
   const muxer = new M.Muxer({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: stream ? false : "in-memory", firstTimestampBehavior: "offset" });
-  const v = { fps, kind, muxer, target, stream, name: file && file.name, n: 0, clock: 0, next: 0, err: null };
+  const v = { fps, kind, muxer, target, stream, name: file && file.name, n: 0, clock: 0, next: 0, err: null, W, H };
   /* AN ENCODER THAT FAILS STOPS THE RECORDING THERE (2026-10-25: "Cannot call 'flush' on a closed codec" -- the encoder
      had failed somewhere in the film and closed itself; the rest of the film was played without a single frame being
      kept, and the real reason was hidden behind the flush error). Now the recording stops at once, the frames made so
@@ -9345,6 +9345,11 @@ function recCapture(dt){
   const v = REC.vf; if (!v) return;
   if (v.enc.state !== "configured"){ if (!v.err) v.err = new Error("the encoder closed (" + v.enc.state + ") at frame " + v.n); if (REC.vf === v) setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); return; }
   if (v.enc.encodeQueueSize > 6) return;                 // the encoder is behind: the animation waits too (see the loop)
+  /* A FRAME OF ANOTHER SHAPE IS NOT FILMED (2026-10-25, Søren: one frame where "the dome view suddenly became slim").
+     If the picture is ever drawn at another size for a moment (the window resized, a screen or scaling change), the
+     encoder squeezes it into the movie's shape -- a round dome became a slim oval. Such a frame is left out (the film
+     waits for the next one at the right size), and the dissolve keeps only a snapshot of the right shape (fxFrame). */
+  if (renderer.domElement.width !== v.W || renderer.domElement.height !== v.H){ v.skipped = (v.skipped || 0) + 1; if (v.skipped === 1) console.warn("[vr] recording: a frame of " + renderer.domElement.width + "×" + renderer.domElement.height + " left out (movie " + v.W + "×" + v.H + ")"); return; }
   v.clock += dt;
   if (v.n > 0 && v.clock + 1e-6 < v.next) return;
   const f = new VideoFrame(renderer.domElement, { timestamp: Math.round(v.n * 1e6 / v.fps), duration: Math.round(1e6 / v.fps) });
@@ -9956,7 +9961,7 @@ function fxFrame(W, H){
   }
   const on = typeof TL !== "undefined" && TL.playing;
   const a = on && TLFX.rt && TLFX.dur > 0 ? 1 - (TL.t - TLFX.start) / TLFX.dur : 0;
-  TLFX.mesh.visible = a > 0 && a <= 1;
+  TLFX.mesh.visible = a > 0 && a <= 1 && !!TLFX.rt && Math.abs(TLFX.rt.width / TLFX.rt.height - renderer.domElement.width / renderer.domElement.height) < 0.01;
   if (TLFX.mesh.visible){ const mm = TLFX.mesh.material; if (mm.map !== TLFX.rt.texture){ mm.map = TLFX.rt.texture; mm.needsUpdate = true; } mm.opacity = a; TLFX.mesh.scale.set(W, H, 1); TLFX.mesh.position.set(W / 2, H / 2, 0); }
   let b = 0;
   if (on){
@@ -11882,7 +11887,7 @@ function stkRbcFrame(sdt){
     let k = o0; while (k < o1 - 2 && N.arc[k+1] < s) k++;
     let r = Math.max(1, Math.min(N.rad[N.cp[k]], N.rad[N.cp[k+1]]) * (FF ? FF[c] : 1));
     { const sp = STK.sph && STK.sph.get(c); if (sp && sp.rs && (sp.end === 0 ? s < sp.L : s > N.len[c] - sp.L)) r = Math.max(0.6, sp.rs); }
-    const v = Math.abs(Q[c]) / (Math.PI * r * r) * M[N.ccls[c]];
+    const v = RIDE.timed && RIDE.on && i === RIDE.idx && P === STK.parts ? 0 : Math.abs(Q[c]) / (Math.PI * r * r) * M[N.ccls[c]];   // a ride in the film is placed by the film's time (rideTimedPlace)
     s += v * sdt * (Q[c] >= 0 ? 1 : -1);
     let hops = 0;
     while ((s < 0 || s > N.len[c]) && hops < 20){
@@ -12546,13 +12551,21 @@ function ridePlan(){
      every vessel of the route must carry red cells at ≥ 100 µm/s in the arterioles and venules, ≥ 30 µm/s in the
      capillaries (resting capillary speeds are ~0.3–1 mm/s in mouse cortex), must not be stalled, jammed or dead, and the
      ride starts in a pial arteriole (a penetrating one only where the box has no pial arteriole that leads anywhere). */
-  const vel = c => { let r = 99; for (let k = N.off[c]; k < N.off[c+1]; k++) r = Math.min(r, N.rad[N.cp[k]]); r = Math.max(1, r * (STK.F ? STK.F[c] : 1)); return Math.abs(Q[c]) / (Math.PI * r * r); };
+  /* the speed through the chain as a whole: its mean radius (with the narrowest point the speed looked fine where a wide
+     stretch crawled -- 2026-10-25, Søren: "the RBC that i ride gets stuck every time"; a venular capillary at 8 µm/s) */
+  const vel = c => rideVel(c);
   const flows = c => !(STK.stall && STK.stall.has(c)) && !(typeof WBC !== "undefined" && WBC.stall && WBC.stall.has(c)) && !(STK.dead && STK.dead[c])
     && vel(c) >= (rk(c) <= 2 || rk(c) >= 11 ? 100 : 30);
   let seeds = []; for (let c = 0; c < N.nc; c++) if (rk(c) === 0 && full(c) && flows(c)) seeds.push(c);
   if (!seeds.length) for (let c = 0; c < N.nc; c++) if (rk(c) === 1 && full(c) && flows(c)) seeds.push(c);
   for (let k = seeds.length - 1; k > 0; k--){ const t = Math.floor(Math.random() * (k + 1)); [seeds[k], seeds[t]] = [seeds[t], seeds[k]]; }
   let best = null, bestSc = -1;
+  /* THE WHOLE WAY (2026-10-25, Søren: "I need to have a RBC ride from the pial arteriole through a penetrating arteriole
+     to the capillaries and out to the venules"). First only routes that go pial arteriole → penetrating arteriole →
+     capillaries → venules (a pial branch straight into the capillaries is not taken); only if the box has none, any. */
+  for (const strict of [true, false]){
+  if (strict && !seeds.some(c => rk(c) === 0)) continue;
+  best = null; bestSc = -1;
   for (const s0 of seeds.slice(0, 60)){
     const path = [s0], used = new Set([s0]); let budget = 4000, found = null;
     const st = { art: N.len[s0], capN: 0, cap: 0, ven: 0 };
@@ -12574,6 +12587,7 @@ function ridePlan(){
         const q = rk(d), L = N.len[d];
         if (q >= 11 && r < 11 && (st.capN < 6 || st.cap < 120 || st.art < 60)) continue;   // not into the veins before the bed
         if (q <= 2 && r >= 3) continue;                                                  // not back into an arteriole
+        if (strict && r === 0 && q > 1) continue;                                        // from the pia only down a penetrating arteriole
         const ph = q <= 2 ? "art" : q >= 11 ? "ven" : "cap";
         st[ph] += L; if (ph === "cap") st.capN++;
         used.add(d); path.push(d); dfs(d); path.pop(); used.delete(d);
@@ -12582,6 +12596,9 @@ function ridePlan(){
     };
     dfs(s0);
     if (found){ best = found; break; }
+  }
+  if (best && (!strict || best.some(c => rk(c) === 1) && rk(best[best.length - 1]) >= 11)){ if (strict) RIDE.strict = true; break; }
+  RIDE.strict = false;
   }
   if (!best) return null;
   /* the route as one polyline, resampled every 0.5 µm and smoothed over about the local radius */
@@ -12620,6 +12637,34 @@ function rideAt(A, out){
   const R = RIDE.route, x = Math.max(0, Math.min(R.n - 1.001, A / R.h)), k = Math.floor(x), f = x - k;
   return out.set(R.px[k] + (R.px[k+1] - R.px[k]) * f, R.py[k] + (R.py[k+1] - R.py[k]) * f, R.pz[k] + (R.pz[k+1] - R.pz[k]) * f);
 }
+function rideVel(c){
+  const N = STK.net, Q = STK.Q || STK.Q0; let rs = 0, n = 0;
+  for (let k = N.off[c]; k < N.off[c+1]; k++){ rs += N.rad[N.cp[k]]; n++; }
+  const r = Math.max(1, (n ? rs / n : 2) * (STK.F ? STK.F[c] : 1));
+  return Math.abs(Q[c]) / (Math.PI * r * r);
+}
+/* A RIDE IN THE FILM TAKES AS LONG AS ITS EFFECT (2026-10-25, Søren: "I need to have a RBC ride from the pial arteriole
+   through a penetrating arteriole to the capillaries and out to the venules in 30s"). The real trip takes a second or
+   two; the effect's length decides the pace. The clock is set so the whole route (each vessel at its own red-cell speed)
+   takes exactly that long, and the ridden cell is put on the route by the film's own time -- slower in the capillaries,
+   faster in the arterioles, as in the blood, never stuck, and always at the venules when the effect ends. The cells
+   around it run on the same clock. */
+function rideTime(k){
+  const R = RIDE.route, N = STK.net; if (!R || !k || !(k.dur > 0)) { RIDE.timed = null; return; }
+  const T = new Float64Array(R.c.length + 1);
+  for (let i = 0; i < R.c.length; i++) T[i + 1] = T[i] + N.len[R.c[i]] / Math.max(20, rideVel(R.c[i]));
+  RIDE.timed = { k, T, tot: T[R.c.length] };
+  setSimSpeed(Math.max(1e-4, Math.min(1, T[R.c.length] / k.dur)), "the ride takes " + Math.round(k.dur) + " s");
+}
+function rideTimedPlace(){
+  const D = RIDE.timed, R = RIDE.route, P = STK.parts, N = STK.net; if (!D || !R || !P || typeof TL === "undefined") return;
+  const u = Math.max(0, Math.min(0.9999, (TL.t - D.k.t) / D.k.dur)), tr = u * D.tot;
+  let i = 0; while (i < R.c.length - 1 && D.T[i + 1] < tr) i++;
+  const c = R.c[i], f = Math.max(0, Math.min(1, (tr - D.T[i]) / Math.max(1e-9, D.T[i + 1] - D.T[i])));
+  RIDE.ri = i; P.c[RIDE.idx] = c; P.s[RIDE.idx] = R.fw[i] ? f * N.len[c] : (1 - f) * N.len[c];
+  if (P.pool) P.pool[RIDE.idx] = N.kind[c] === 0 ? 1 : 0;
+  RIDE.respawn = false; RIDE.wdA = null;
+}
 function rideSeed(){
   const N = STK.net, P = STK.parts, Q = STK.Q || STK.Q0; if (!N || !P || !Q) return false;
   const R = ridePlan(); if (!R) return false;
@@ -12645,7 +12690,7 @@ async function setRide(v){
     if (renderer.xr.isPresenting){ _rdA.set(0, 0, -1).applyQuaternion(renderer.xr.getCamera().quaternion); RIDE.yaw0 = Math.atan2(-_rdA.x, -_rdA.z); } else RIDE.yaw0 = 0;
     setSimSpeed(1 / 100, "riding a red cell");
   } else if (RIDE.on){
-    RIDE.on = false;
+    RIDE.on = false; RIDE.timed = null;
     camera.up.set(0, 1, 0);
     const s = RIDE.saved; if (s){ stage.position.copy(s.sp); stage.quaternion.copy(s.sq); stage.scale.copy(s.ss); camera.position.copy(s.cp); controls.target.copy(s.ct); controls.enabled = s.en; controls.update(); }
     if (RIDE.spr) RIDE.spr.visible = false;
@@ -12659,12 +12704,13 @@ function rideFrame(dt){
   if (!STK.on || !STK.parts){ setRide(false); return; }
   /* …and if the ridden cell still stops (a stall or a clot forming under it, the flow changing), a new ride starts
      rather than standing still: less than 1 µm along the route in 3 s. */
-  if (!RIDE.respawn && RIDE.seen && RIDE.route){
+  if (!RIDE.respawn && RIDE.seen && RIDE.route && !RIDE.timed){
     const A0 = RIDE.route && STK.parts && RIDE.route.c[RIDE.ri] === STK.parts.c[RIDE.idx] ? RIDE.route.a0[RIDE.ri] + (RIDE.route.fw[RIDE.ri] ? STK.parts.s[RIDE.idx] : STK.net.len[RIDE.route.c[RIDE.ri]] - STK.parts.s[RIDE.idx]) : -1;
     const now = performance.now();      /* both clocks: ≥ 3 s on the wall AND ≥ 0.1 s of blood time (so a paused or very slow clock is not "stopped") */
     if (RIDE.wdA == null || Math.abs(A0 - RIDE.wdA) > 1){ RIDE.wdA = A0; RIDE.wdT = now; RIDE.wdS = STK.t; }
     else if (now - RIDE.wdT > 3000 && STK.t - RIDE.wdS > 0.1){ RIDE.wdA = null; RIDE.respawn = true; }
   }
+  if (RIDE.respawn && RIDE.timed) RIDE.respawn = false;
   if (RIDE.respawn){ RIDE.wdA = null; if (!rideSeed()){ RIDE.respawn = false; RIDE.route = null; } else ctxNote.textContent = "Ride: the end of this route — a new ride from another arteriole (" + RIDE.route.capN + " capillaries, " + Math.round(RIDE.route.L) + " µm)."; }
   if (!RIDE.seen) return;
   stage.scale.setScalar(RIDE.scale);
@@ -15602,7 +15648,7 @@ function tlStateFx(t){
     if (k.kind === "sleep" && (!sl || k.t > sl.t)) sl = k;
   }
   /* the clock first: the brain states' own suggestions must not win over the film's */
-  if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
+  if (TL.playing && clk && !RIDE.timed && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
   if (csd && TL.fxCsd !== csd.id){
     TL.fxCsd = csd.id; CSD.dir = csd.dir || "x-"; const d = document.getElementById("csdDir"); if (d) d.value = CSD.dir;
     if (csd.plot != null && csd.plot !== CSD.plot) setCsdPlot(csd.plot);
@@ -15623,12 +15669,13 @@ function tlStateFx(t){
     else if (TL.fxSleep !== sl.id && SL.mode !== st) slSetting("mode", st);
     TL.fxSleep = sl.id;
   } else if (TL.fxSleep){ TL.fxSleep = null; if (SL.on) setSleep(false); }
-  if (TL.playing && clk && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
+  if (TL.playing && clk && !RIDE.timed && Math.abs(SIM.speed - clk.v) > 1e-6) setSimSpeed(clk.v);
   /* RIDE A RED CELL (2026-10-24, Søren: "There should also be a ride a cell to add to the timeline"): while the effect
      runs and the film plays, the camera rides; when it ends the ride ends and the camera keys take over again. */
   if (ride && TL.playing){
-    if (!RIDE.on && !RIDE.tlStarting){ RIDE.tlStarting = true; Promise.resolve(setRide(true)).finally(() => { RIDE.tlStarting = false; if (RIDE.on) RIDE.tlFx = ride.id; }); }
-  } else if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
+    if (!RIDE.on && !RIDE.tlStarting){ RIDE.tlStarting = true; Promise.resolve(setRide(true)).finally(() => { RIDE.tlStarting = false; if (RIDE.on){ RIDE.tlFx = ride.id; rideTime(ride); } }); }
+    if (RIDE.on && RIDE.timed) rideTimedPlace();
+  } else if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; RIDE.timed = null; setRide(false); }
 }
 
 document.getElementById("blkSrc").addEventListener("change", blkSrcUI);
