@@ -9669,7 +9669,7 @@ function renderLogo(){
    Because the timeline runs on the same clock as the frame-by-frame recorder, a filmed timeline is
    exact: every key lands on its frame, whatever the computer did meanwhile.
    The timeline is saved with the scene (💾 Save scene) and kept in this browser between visits. */
-const TL = { hist: [], hpos: -1, snap: true, showPath: true, thumbs: new Map(), open: false, dur: 20, t: 0, playing: false, keys: { cam: [], view: [], stim: [], cap: [], fx: [] }, sel: null, viewApplied: null, drag: null, rec: false, uid: 1 };
+const TL = { hist: [], hpos: -1, snap: true, showPath: true, thumbs: new Map(), open: false, dur: 20, t: 0, playing: false, keys: { cam: [], view: [], stim: [], cap: [], fx: [] }, sel: null, multi: new Set(), viewApplied: null, drag: null, rec: false, uid: 1 };
 const TL_LANES = [["cam", "Camera", "#58a6ff"], ["view", "View", "#3fb950"], ["stim", "Stimulus", "#ffe11a"], ["cap", "Caption", "#e6edf3"], ["fx", "Effect", "#d2a8ff"]];
 function tlCount(){ return Object.values(TL.keys).reduce((a, L) => a + L.length, 0); }
 function tlKey(lane, o){ return Object.assign({ id: TL.uid++, lane }, o); }
@@ -10053,11 +10053,11 @@ async function tlRecord(){
 
 /* ── the timeline's extras (2026-10-16, Søren: "Do all of them") ──
    SNAP while dragging: to other keys and the playhead when within 0.15 s, else to half seconds. */
-function tlSnapT(key, t){
+function tlSnapT(key, t, moving){
   if (!TL.snap) return Math.round(t * 10) / 10;
   let best = Math.round(t * 2) / 2, bd = Math.abs(best - t) < 0.15 ? Math.abs(best - t) : 1e9;
   const cands = [TL.t];
-  for (const l in TL.keys) for (const k of TL.keys[l]) if (k !== key){ cands.push(k.t); if (k.dur) cands.push(k.t + k.dur); if (k.orb && k.orb.dur) cands.push(k.t + k.orb.dur); }
+  for (const l in TL.keys) for (const k of TL.keys[l]) if (k !== key && !(moving && moving.has(k))){ cands.push(k.t); if (k.dur) cands.push(k.t + k.dur); if (k.orb && k.orb.dur) cands.push(k.t + k.orb.dur); }
   for (const c of cands){ const d = Math.abs(c - t); if (d < 0.15 && d < bd){ bd = d; best = c; } }
   return Math.max(0, Math.min(TL.dur, Math.round((bd < 1e9 ? best : t) * 100) / 100));
 }
@@ -10245,17 +10245,53 @@ function tlBuild(){
   bar.querySelector("#tlClose").onclick = () => setTimeline(false);
   /* Mouse on the lanes: a key is picked and dragged; anywhere else scrubs. */
   const cv = TLD.cv;
+  /* SEVERAL KEYS AT ONCE (2026-10-25, Søren: "I would like that you can select multiple objects and move them
+     simultaneously by shift clicking and by selecting with the mouse"). Shift+click adds a key to the selection or takes
+     it out; dragging on an empty part of the lanes draws a box and selects every key it touches (with Shift: adds them);
+     dragging any selected key moves them all, keeping their spacing. The ruler still scrubs, a plain click on an empty
+     lane still jumps there, Delete removes all selected keys, Esc clears the selection. */
   cv.addEventListener("pointerdown", e => {
-    const hit = tlHit(e);
+    const hit = tlHit(e), r = cv.getBoundingClientRect(), y = e.clientY - r.top;
     cv.setPointerCapture(e.pointerId);
-    if (hit){ TL.sel = hit; TL.drag = { key: hit, dx: tlTimeAt(e) - hit.t }; }
-    else { TL.sel = null; TL.drag = { scrub: true }; tlStop(); tlSeek(tlTimeAt(e)); }
+    if (hit){
+      if (e.shiftKey){
+        if (TL.sel && !TL.multi.size) TL.multi.add(TL.sel);
+        if (TL.multi.has(hit)){ TL.multi.delete(hit); TL.sel = TL.sel === hit ? [...TL.multi].pop() || null : TL.sel; tlSync(); return; }
+        TL.multi.add(hit); TL.sel = hit;
+      } else if (!TL.multi.has(hit)){ TL.multi.clear(); TL.multi.add(hit); TL.sel = hit; }
+      else TL.sel = hit;
+      const grp = [...TL.multi];
+      TL.drag = { key: hit, dx: tlTimeAt(e) - hit.t, grp: grp.map(k => [k, k.t]), t0: hit.t,
+                  lo: -Math.min(...grp.map(k => k.t)), hi: TL.dur - Math.max(...grp.map(k => k.t + (k.lane === "fx" || k.lane === "cap" ? (k.dur || 0) : 0))) };
+    } else if (y < 20){ TL.sel = null; TL.multi.clear(); TL.drag = { scrub: true }; tlStop(); tlSeek(tlTimeAt(e)); }
+    else TL.drag = { box: { x0: e.clientX - r.left, y0: y, x1: e.clientX - r.left, y1: y, add: e.shiftKey, base: e.shiftKey ? new Set(TL.multi) : new Set() }, moved: false };
     tlSync();
   });
   cv.addEventListener("pointermove", e => {
     if (!TL.drag) return;
     if (TL.drag.scrub) tlSeek(tlTimeAt(e));
-    else { TL.drag.key.t = tlSnapT(TL.drag.key, Math.max(0, Math.min(TL.dur, tlTimeAt(e) - TL.drag.dx))); tlSort(); tlDraw(); tlEditor(); }
+    else if (TL.drag.box){
+      const b = TL.drag.box, r = cv.getBoundingClientRect(); b.x1 = e.clientX - r.left; b.y1 = e.clientY - r.top;
+      if (Math.abs(b.x1 - b.x0) + Math.abs(b.y1 - b.y0) > 4) TL.drag.moved = true;
+      if (!TL.drag.moved) return;
+      TL.multi = new Set(b.base);
+      const xa = Math.min(b.x0, b.x1), xb = Math.max(b.x0, b.x1), ya = Math.min(b.y0, b.y1), yb = Math.max(b.y0, b.y1);
+      TL_LANES.forEach(([lane], i) => {
+        const ly = 20 + i * 28; if (yb < ly || ya > ly + 26) return;
+        for (const k of TL.keys[lane]){
+          const kx0 = tlX(k.t, r.width), kx1 = lane === "fx" || lane === "cap" ? tlX(Math.min(TL.dur, k.t + (k.dur || 0)), r.width) : kx0;
+          if (kx1 + 7 >= xa && kx0 - 7 <= xb) TL.multi.add(k);
+        }
+      });
+      TL.sel = TL.multi.size ? [...TL.multi][TL.multi.size - 1] : null;
+      tlDraw();
+    } else {
+      const d = TL.drag; d.moving = new Set(d.grp.map(g => g[0]));
+      const want = tlSnapT(d.key, Math.max(0, Math.min(TL.dur, tlTimeAt(e) - d.dx)), d.moving);
+      const delta = Math.max(d.lo, Math.min(d.hi, want - d.t0));
+      for (const [k, t0] of d.grp) k.t = Math.round((t0 + delta) * 100) / 100;
+      tlSort(); tlDraw(); tlEditor();
+    }
   });
   /* Hovering a camera key shows what it sees. */
   cv.addEventListener("mousemove", e => {
@@ -10266,7 +10302,14 @@ function tlBuild(){
     th.style.left = Math.max(0, Math.min(br.width - 170, e.clientX - br.left - 80)) + "px";
   });
   cv.addEventListener("mouseleave", () => { bar.querySelector("#tlThumb").style.display = "none"; });
-  cv.addEventListener("pointerup", () => { if (TL.drag && TL.drag.key) tlSave(); TL.drag = null; });
+  cv.addEventListener("pointerup", e => {
+    const d = TL.drag; TL.drag = null;
+    if (d && d.key) tlSave();
+    if (d && d.box){
+      if (!d.moved){ if (!d.box.add){ TL.sel = null; TL.multi.clear(); } tlStop(); tlSeek(tlTimeAt(e)); }   // a plain click on an empty lane: jump there
+      tlSync();
+    }
+  });
   cv.addEventListener("dblclick", e => { const h = tlHit(e); if (h){ tlSeek(h.t); } });
   new ResizeObserver(() => tlDraw()).observe(bar);
 }
@@ -10333,7 +10376,7 @@ addEventListener("keydown", e => {
 });
 function tlEditor(){
   const k = TL.sel, ed = TLD.edit; if (!ed) return;
-  if (!k){ ed.innerHTML = '<span class="tlHint">Click a key to edit it · drag it to move it · drag the ruler to scrub · double-click a key to jump to it</span>'; return; }
+  if (!k){ ed.innerHTML = '<span class="tlHint">Click a key to edit it · drag it to move it · Shift+click or drag a box to select several and move them together · drag the ruler to scrub · double-click a key to jump to it</span>'; return; }
   const name = { cam: "◆ Camera key", view: "■ View key", stim: "⚡ Stimulus", cap: "T Caption", fx: "✦ Effect" }[k.lane];
   let h = `<b>${name}</b> at <input id="tlKt" type="number" min="0" step="0.1" value="${k.t.toFixed(1)}"> s`;
   if (k.lane === "cam"){
@@ -10478,7 +10521,10 @@ function tlEditor(){
   $e("tlKdel").onclick = () => tlDelete(k);
   $e("tlKdup").onclick = () => tlDuplicate(k);
 }
-function tlDelete(k){ TL.keys[k.lane] = TL.keys[k.lane].filter(x => x !== k); TL.sel = null; tlSave(); tlSync(); }
+function tlDelete(k){
+  const del = TL.multi.size > 1 && TL.multi.has(k) ? new Set(TL.multi) : new Set([k]);
+  for (const l in TL.keys) TL.keys[l] = TL.keys[l].filter(x => !del.has(x));
+  TL.sel = null; TL.multi.clear(); tlSave(); tlSync(); }
 function tlDraw(){
   if (!TL.open || !TLD.cv) return;
   const cv = TLD.cv, W = cv.clientWidth, H = 162, dpr = Math.min(2, devicePixelRatio || 1);
@@ -10493,7 +10539,7 @@ function tlDraw(){
     g.fillStyle = i % 2 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)"; g.fillRect(TL_X0, y, W - TL_X0 - 12, 26);
     g.fillStyle = col; g.font = "600 12px system-ui, sans-serif"; g.fillText(name, 8, y + 17);
     for (const k of TL.keys[lane]){
-      const x = tlX(k.t, W), sel = TL.sel === k, cy = y + 13;
+      const x = tlX(k.t, W), sel = TL.sel === k || TL.multi.has(k), cy = y + 13;
       g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
       if (lane === "fx"){
         const lab = { highlight: "✦ " + (CELLS[k.cell] ? shortName(CELLS[k.cell]) : "cell"), freeze: "⏸ freeze spikes", follow: "➜ follow the spike", electrodes: "📍 electrodes (" + ((k.el || []).length) + ")", synapses: k.show ? "● show synapses" : "○ hide synapses",
@@ -10547,6 +10593,9 @@ function tlDraw(){
   });
   /* camera path: a thin line joining the camera keys */
   const K = tlCamList(); if (K.length > 1){ g.strokeStyle = "rgba(88,166,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(tlX(K[0].t, W), 33); g.lineTo(tlX(K[K.length - 1].t, W), 33); g.stroke(); }
+  /* the selection box being drawn */
+  if (TL.drag && TL.drag.box && TL.drag.moved){ const b = TL.drag.box; g.save(); g.fillStyle = "rgba(88,166,255,0.12)"; g.strokeStyle = "rgba(88,166,255,0.8)"; g.lineWidth = 1; g.setLineDash([4, 3]);
+    g.fillRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0)); g.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0)); g.restore(); }
   /* playhead */
   const x = tlX(TL.t, W); g.strokeStyle = "#f85149"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, 2); g.lineTo(x, H); g.stroke();
   g.fillStyle = "#f85149"; g.beginPath(); g.moveTo(x - 5, 0); g.lineTo(x + 5, 0); g.lineTo(x, 7); g.closePath(); g.fill();
@@ -10600,7 +10649,7 @@ function tlLoad(o, fromHistory){
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
-  TL.sel = null; TL.viewApplied = null; tlSync(); tlPathBuild();
+  TL.sel = null; TL.multi.clear(); TL.viewApplied = null; tlSync(); tlPathBuild();
 }
 try { const o = JSON.parse(localStorage.getItem("vr_timeline") || "null"); if (o) tlLoad(o); } catch (e){}
 document.getElementById("tlBtn").addEventListener("click", () => setTimeline(!TL.open));
@@ -10610,6 +10659,7 @@ addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyY"){ e.preventDefault(); tlUndo(1); return; }
   if (e.code === "Space"){ e.preventDefault(); TL.playing ? tlStop() : tlPlay(); }
   else if ((e.code === "Delete" || e.code === "Backspace") && TL.sel){ e.preventDefault(); tlDelete(TL.sel); }
+  else if (e.code === "Escape" && TL.multi.size){ TL.multi.clear(); TL.sel = null; tlSync(); }
 });
 addEventListener("resize", () => { if (TL.open) tlSync(); });
 renderer.xr.addEventListener("sessionstart", () => { if (TL.open) setTimeline(false); });
