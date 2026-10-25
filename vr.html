@@ -9988,6 +9988,17 @@ function tlFrame(dt){
   /* HELD, AND SAYING WHY (2026-10-24, Søren: "It stalled after that" -- the cells were in, and the film stood still).
      A film waits while something it needs is loading; it now says what, and when played live (not recorded) it gives
      up waiting after 10 s and plays on, rather than standing still for ever on something that never finishes. */
+  /* NOT BEFORE IT IS ALL IN (2026-10-25, Søren: "it also starts playing before it is done loading"). From Play, the
+     film stands still until its preparation (the cells at their detail, the vessels, the flow, the colours, the movie)
+     and every cell still being read are done -- no 10 s give-up for that part (only a 3 min safety stop). The give-up
+     is for something that loads later, in the middle of the film. */
+  if (TL.starting){
+    const lodBusy = typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length);
+    TL.startHeld = (TL.startHeld || 0) + Math.max(dt, 0.016);
+    if (!(TL.prepBusy || lodBusy || tlWaiting())){ TL.starting = false; TL.heldFor = 0; ctxNote.textContent = "▶ Playing."; }
+    else if (TL.startHeld > 180){ TL.starting = false; console.warn("[vr] timeline: still preparing after 3 min — playing on"); }
+    else { ctxNote.textContent = "Preparing the film: " + tlWaitWhy() + "…"; tlDraw(); return; }
+  }
   if (tlWaiting()){
     TL.heldFor = (TL.heldFor || 0) + Math.max(dt, 0.016);
     const why = tlWaitWhy();
@@ -10018,6 +10029,7 @@ function tlPlay(){
   { const first = TL.keys.stim.length ? Math.min(...TL.keys.stim.map(k => k.t)) : Infinity;
     if (TL.t <= first + 1e-3) try { resetActivity(); } catch (e){} }
   tlStateReset();
+  if (!TL.rec){ TL.starting = true; TL.startHeld = 0; }
   if (!TL.rec && !TL.prepBusy){ TL.prepBusy = true; tlPrepCells().catch(e => console.warn("[vr] film cells", e)).then(() => tlPrepVessels()).then(() => tlPrepMovie()).catch(() => {}).finally(() => { TL.prepBusy = false; TL.viewApplied = null; }); }
   TL.playing = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null; TL.follow = null; controls.enabled = false;
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
@@ -10025,7 +10037,7 @@ function tlPlay(){
 function tlStop(ended){
   if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
-  TL.playing = false; TL.frozen = false; TL.follow = null; controls.enabled = true; controls.update();
+  TL.playing = false; TL.frozen = false; TL.follow = null; TL.starting = false; controls.enabled = true; controls.update();
   if (ended && TL.rec){ TL.rec = false; stopRecording(); }
   tlSync();
 }
@@ -12397,9 +12409,20 @@ function ridePlan(){
     fin.set(c, ok); return ok; };
   const outs = c => { const j = Q[c] >= 0 ? N.jb[c] : N.ja[c], o = [];
     for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){ const d = N.jc[t]; if (d === c) continue;
-      if (((N.ja[d] === j && Q[d] > 0.5) || (N.jb[d] === j && Q[d] < -0.5)) && full(d)) o.push(d); }
+      if (((N.ja[d] === j && Q[d] > 0.5) || (N.jb[d] === j && Q[d] < -0.5)) && full(d) && flows(d)) o.push(d); }
     return o; };
-  const seeds = []; for (let c = 0; c < N.nc; c++) if (rk(c) <= 1 && Math.abs(Q[c]) > 1 && full(c)) seeds.push(c);
+  /* ALWAYS A MOVING CELL, FROM A PIAL ARTERIOLE (2026-10-25, Søren: "The ride a cell sometimes rides a cell that is sick
+     and not moving. Can we make sure that it is always a cell that is moving and that starts in a pial arteriole?").
+     The seeds were any arteriole with a flow above 1 µm³/s -- in a wide pial artery that can be a red-cell speed of a few
+     µm/s -- and the route could go through a stalled capillary, a dead (hypoxic) one or one with next to no flow. Now
+     every vessel of the route must carry red cells at ≥ 100 µm/s in the arterioles and venules, ≥ 30 µm/s in the
+     capillaries (resting capillary speeds are ~0.3–1 mm/s in mouse cortex), must not be stalled, jammed or dead, and the
+     ride starts in a pial arteriole (a penetrating one only where the box has no pial arteriole that leads anywhere). */
+  const vel = c => { let r = 99; for (let k = N.off[c]; k < N.off[c+1]; k++) r = Math.min(r, N.rad[N.cp[k]]); r = Math.max(1, r * (STK.F ? STK.F[c] : 1)); return Math.abs(Q[c]) / (Math.PI * r * r); };
+  const flows = c => !(STK.stall && STK.stall.has(c)) && !(typeof WBC !== "undefined" && WBC.stall && WBC.stall.has(c)) && !(STK.dead && STK.dead[c])
+    && vel(c) >= (rk(c) <= 2 || rk(c) >= 11 ? 100 : 30);
+  let seeds = []; for (let c = 0; c < N.nc; c++) if (rk(c) === 0 && full(c) && flows(c)) seeds.push(c);
+  if (!seeds.length) for (let c = 0; c < N.nc; c++) if (rk(c) === 1 && full(c) && flows(c)) seeds.push(c);
   for (let k = seeds.length - 1; k > 0; k--){ const t = Math.floor(Math.random() * (k + 1)); [seeds[k], seeds[t]] = [seeds[t], seeds[k]]; }
   let best = null, bestSc = -1;
   for (const s0 of seeds.slice(0, 60)){
@@ -12506,7 +12529,15 @@ async function setRide(v){
 function rideFrame(dt){
   if (!RIDE.on) return;
   if (!STK.on || !STK.parts){ setRide(false); return; }
-  if (RIDE.respawn){ if (!rideSeed()){ RIDE.respawn = false; RIDE.route = null; } else ctxNote.textContent = "Ride: the end of this route — a new ride from another arteriole (" + RIDE.route.capN + " capillaries, " + Math.round(RIDE.route.L) + " µm)."; }
+  /* …and if the ridden cell still stops (a stall or a clot forming under it, the flow changing), a new ride starts
+     rather than standing still: less than 1 µm along the route in 3 s. */
+  if (!RIDE.respawn && RIDE.seen && RIDE.route){
+    const A0 = RIDE.route && STK.parts && RIDE.route.c[RIDE.ri] === STK.parts.c[RIDE.idx] ? RIDE.route.a0[RIDE.ri] + (RIDE.route.fw[RIDE.ri] ? STK.parts.s[RIDE.idx] : STK.net.len[RIDE.route.c[RIDE.ri]] - STK.parts.s[RIDE.idx]) : -1;
+    const now = performance.now();      /* both clocks: ≥ 3 s on the wall AND ≥ 0.1 s of blood time (so a paused or very slow clock is not "stopped") */
+    if (RIDE.wdA == null || Math.abs(A0 - RIDE.wdA) > 1){ RIDE.wdA = A0; RIDE.wdT = now; RIDE.wdS = STK.t; }
+    else if (now - RIDE.wdT > 3000 && STK.t - RIDE.wdS > 0.1){ RIDE.wdA = null; RIDE.respawn = true; }
+  }
+  if (RIDE.respawn){ RIDE.wdA = null; if (!rideSeed()){ RIDE.respawn = false; RIDE.route = null; } else ctxNote.textContent = "Ride: the end of this route — a new ride from another arteriole (" + RIDE.route.capN + " capillaries, " + Math.round(RIDE.route.L) + " µm)."; }
   if (!RIDE.seen) return;
   stage.scale.setScalar(RIDE.scale);
   /* 1. the eye on the smoothed route, the facing ~12 µm ahead along it */
