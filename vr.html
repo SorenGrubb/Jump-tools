@@ -6876,6 +6876,8 @@ function setVpart(k, v){
 document.querySelectorAll("[data-vpart]").forEach(el => el.addEventListener("change", () => setVpart(el.dataset.vpart, el.checked)));
 function setVesselColour(mode){
   if (mode === true || mode === "traced" || mode === "shih" || mode === "agree") mode = "order";   /* 2026-10-22: Søren -- only one colour or by order */
+  /* the flow panel's "colour vessels by" box says whether the flow colouring is the one in use */
+  if (typeof STK !== "undefined" && STK.on){ STK.colour = mode === "flow";      /* (before the model runs, the box keeps meaning "colour by flow when it starts") */ const cb = document.querySelector('[data-stk="colour"]'); if (cb) cb.checked = STK.colour; }
   NV.colour = mode === "order" || mode === "traced" || mode === "shih" || mode === "agree" || mode === "flow";
   if (NV.colour) NV.colourSrc = mode;
   const sel = document.getElementById("vcolSel"); if (sel && sel.value !== mode) sel.value = mode;
@@ -11421,6 +11423,7 @@ function stkO2(){
   const N = STK.net, Q = STK.Q, p = STK.p, nJ = N.nJ, nc = N.nc;
   const Si = STK.Si && STK.Si.length === nc ? STK.Si : (STK.Si = new Float32Array(nc)), So = STK.So && STK.So.length === nc ? STK.So : (STK.So = new Float32Array(nc));
   Si.fill(NaN); So.fill(NaN);
+  if (!STK.Sj || STK.Sj.length !== nJ) STK.Sj = new Float32Array(nJ); STK.Sj.fill(NaN);
   const order = []; for (let j = 0; j < nJ; j++) if (isFinite(p[j])) order.push(j);
   order.sort((a, b) => p[b] - p[a]);
   const St = stkS(STK_PT), QMIN = 1, H = STK.H;
@@ -11431,6 +11434,7 @@ function stkO2(){
       if (into && !isNaN(So[c])){ const w = Math.abs(Q[c]) * Math.max(0.02, H ? H[c] : 0.45); q += w; o += w * So[c]; }
     }
     const Sj = q > 0 ? o / q : !isNaN(N.bcP[j]) ? stkS(N.bcPO2[j]) : St;
+    if (q > 0 || !isNaN(N.bcP[j])) STK.Sj[j] = Sj;          /* kept for the capillaries that end in a gap (stkGridSources) */
     for (let t = N.jdeg[j]; t < N.jdeg[j+1]; t++){
       const c = N.jc[t], out = (N.ja[c] === j && Q[c] > QMIN) || (N.jb[c] === j && Q[c] < -QMIN);
       if (!out) continue;
@@ -11455,7 +11459,11 @@ function stkGridInit(){
   const W = 2, cx = c1[0] - c0[0] + 1 + 2 * W, cy = c1[1] - c0[1] + 1 + 2 * W, cz = c1[2] - c0[2] + 1 + 2 * W;
   let occ = new Uint8Array(cx * cy * cz);
   for (let c = 0; c < N.nc; c++){
-    if (!STK.inBox[c] || !STK.Q0 || Math.abs(STK.Q0[c]) < 2) continue;
+    if (!STK.inBox[c] || !STK.Q0) continue;
+    if (Math.abs(STK.Q0[c]) < 2){                           /* a capillary that ends in a gap supplies its tissue too (stkGridSources) */
+      const dA = N.jdeg[N.ja[c] + 1] - N.jdeg[N.ja[c]], dB = N.jdeg[N.jb[c] + 1] - N.jdeg[N.jb[c]];
+      if (N.kind[c] !== 0 || (dA === 1) === (dB === 1)) continue;
+    }
     for (let k = N.off[c]; k < N.off[c+1]; k++){
       const i = N.cp[k], X = Math.floor(N.pos[i*3] / S) - c0[0] + W, Y = Math.floor(N.pos[i*3+1] / S) - c0[1] + W, Z = Math.floor(N.pos[i*3+2] / S) - c0[2] + W;
       if (X >= 0 && Y >= 0 && Z >= 0 && X < cx && Y < cy && Z < cz) occ[(Z * cy + Y) * cx + X] = 1;
@@ -11479,6 +11487,25 @@ function stkGridSources(){
   const g = STK.grid, N = STK.net, Q = STK.Q; if (!g || !Q || !STK.Si) return;
   g.src.fill(NaN);
   const QMIN = 2;                                           // µm³/s: a clotted piece carries ~10⁻⁴ of its flow, a slow capillary hundreds
+  /* CAPILLARIES THAT END IN A GAP (2026-10-28, Søren: "The hypoxic pockets are numerous near the dataset borders, where
+     there are no vessels at least on one side and where the capillaries often terminating and therefore not flowing").
+     A capillary whose far end joins nothing is, nearly always, a capillary whose continuation the segmentation lost:
+     no flow can be solved through it, but the blood in it is real. It is given the oxygen of the junction it hangs
+     from, so its tissue is supplied as it is in the brain -- and if that junction loses its flow (a clot upstream),
+     so does the stub. */
+  const deg = j => N.jdeg[j + 1] - N.jdeg[j];
+  for (let c = 0; c < N.nc; c++){
+    if (!STK.inBox[c] || N.kind[c] !== 0 || Math.abs(Q[c]) >= QMIN) continue;
+    const ea = deg(N.ja[c]) === 1 && isNaN(N.bcP[N.ja[c]]), eb = deg(N.jb[c]) === 1 && isNaN(N.bcP[N.jb[c]]);
+    if (ea === eb) continue;                                // not a stub: both ends joined (a slow or clotted piece), or a loose piece
+    const S0 = STK.Sj[ea ? N.jb[c] : N.ja[c]]; if (isNaN(S0)) continue;
+    const P = stkP(S0);
+    for (let k = N.off[c]; k < N.off[c+1]; k++){
+      const i = N.cp[k], x = Math.floor((N.pos[i*3] - g.o.x) / g.h), y = Math.floor((N.pos[i*3+1] - g.o.y) / g.h), z = Math.floor((N.pos[i*3+2] - g.o.z) / g.h);
+      if (x < 0 || y < 0 || z < 0 || x >= g.nx || y >= g.ny || z >= g.nz) continue;
+      const v = (z * g.ny + y) * g.nx + x; if (!(g.src[v] >= P)) g.src[v] = P;
+    }
+  }
   for (let c = 0; c < N.nc; c++){
     if (!STK.inBox[c] || Math.abs(Q[c]) < QMIN || isNaN(STK.So[c])) continue;
     const L = Math.max(1e-6, N.len[c]), fw = Q[c] >= 0;
@@ -11503,7 +11530,31 @@ async function stkGridSolve(){
     do {
       g.again = false;
       stkGridSources();
-      const { nx, ny, nz, src, valid, act } = g, P = g.Pss, c = STK.lam * g.h * g.h * physMet(), sxy = nx * ny;
+      /* THE EDGE OF THE DATA IS NOT THE EDGE OF THE BLOOD SUPPLY (2026-10-28, Søren: hypoxic pockets "numerous near the
+         dataset borders, where there are no vessels at least on one side"). Tissue nearer to a face of the box than to
+         any perfused vessel in it may well be fed by a vessel just outside, which the data do not show -- so it is not
+         modelled (no consumption, no pockets, like tissue beyond the vessels' coverage). Decided once, on the resting
+         state's vessels, so a clot cannot move the line. */
+      if (!g.edgeDone){
+        g.edgeDone = true;
+        const { nx, ny, nz } = g, sxy = nx * ny, d = new Int16Array(g.n).fill(32767), q = new Int32Array(g.n);
+        let qh = 0, qt = 0;
+        for (let v = 0; v < g.n; v++) if (!isNaN(g.src[v])){ d[v] = 0; q[qt++] = v; }
+        while (qh < qt){
+          const v = q[qh++], x = v % nx, y = Math.floor(v / nx) % ny, z = Math.floor(v / sxy), dv = d[v] + 1;
+          if (x > 0 && d[v-1] > dv){ d[v-1] = dv; q[qt++] = v - 1; } if (x < nx - 1 && d[v+1] > dv){ d[v+1] = dv; q[qt++] = v + 1; }
+          if (y > 0 && d[v-nx] > dv){ d[v-nx] = dv; q[qt++] = v - nx; } if (y < ny - 1 && d[v+nx] > dv){ d[v+nx] = dv; q[qt++] = v + nx; }
+          if (z > 0 && d[v-sxy] > dv){ d[v-sxy] = dv; q[qt++] = v - sxy; } if (z < nz - 1 && d[v+sxy] > dv){ d[v+sxy] = dv; q[qt++] = v + sxy; }
+        }
+        let cut = 0;
+        for (let v = 0; v < g.n; v++){
+          if (!g.valid[v]) continue;
+          const x = v % nx, y = Math.floor(v / nx) % ny, z = Math.floor(v / sxy), df = Math.min(x, y, z, nx - 1 - x, ny - 1 - y, nz - 1 - z) + 1;
+          if (df < d[v]){ g.valid[v] = 0; cut++; }
+        }
+        g.edgeCut = cut;
+      }
+      const { nx, ny, nz, src, valid, act } = g, P = g.Pss, c = STK.lam * g.h * g.h * physMet(), sxy = nx * ny, R = g.ref || 25;
       for (let v = 0; v < g.n; v++) if (!isNaN(src[v])) P[v] = src[v];
       for (let it = 0; it < 360; it++){
         for (let par = 0; par < 2; par++){
@@ -11511,10 +11562,10 @@ async function stkGridSolve(){
             let x = (y + z + par) & 1, v = (z * ny + y) * nx + x;
             for (; x < nx; x += 2, v += 2){
               if (!isNaN(src[v])){ P[v] = src[v]; continue; }
-              let s = 0, m = 0;
-              if (x > 0){ s += P[v-1]; m++; } if (x < nx - 1){ s += P[v+1]; m++; }
-              if (y > 0){ s += P[v-nx]; m++; } if (y < ny - 1){ s += P[v+nx]; m++; }
-              if (z > 0){ s += P[v-sxy]; m++; } if (z < nz - 1){ s += P[v+sxy]; m++; }
+              /* the faces of the box are not walls (2026-10-28, see stkGridSolve): a missing neighbour is tissue
+                 outside, at the box's own resting PO2 */
+              const s = (x > 0 ? P[v-1] : R) + (x < nx - 1 ? P[v+1] : R) + (y > 0 ? P[v-nx] : R) + (y < ny - 1 ? P[v+nx] : R)
+                      + (z > 0 ? P[v-sxy] : R) + (z < nz - 1 ? P[v+sxy] : R), m = 6;
               const po = P[v], nw = (s - (valid[v] ? c * (0.45 + 0.55 * act[v]) * po / (po + 1) : 0)) / m;
               P[v] = Math.max(0, po + 1.5 * (nw - po));
             }
@@ -11523,6 +11574,13 @@ async function stkGridSolve(){
         if ((it % 30) === 29) await new Promise(r => setTimeout(r, 0));
       }
       if (!g.ok){ g.Pd.set(P); g.ok = true; }
+      /* the resting PO2 the faces are held at: the median of the well-supplied interior (more than 3 grid steps from
+         any face) in the first solve, and solved once more with it -- the box's own value, not one taken from outside */
+      if (!g.ref){
+        const a = [];
+        for (let z = 3; z < nz - 3; z++) for (let y = 3; y < ny - 3; y++) for (let x = 3; x < nx - 3; x++){ const v = (z * ny + y) * nx + x; if (valid[v] && isNaN(src[v])) a.push(P[v]); }
+        a.sort((p1, p2) => p1 - p2); g.ref = a.length > 20 ? Math.max(5, a[a.length >> 1]) : 25; g.again = true;
+      }
     } while (g.again);
   } catch (e){ console.warn("[vr] stroke O2:", e); }
   g.busy = false;
@@ -12316,7 +12374,10 @@ function stkSetting(k, v){
   if (k === "collat" || k === "pialEq") stkUpdate();
   if (k === "rbc"){ v ? stkRbcBuild() : stkRbcClear(); bloodSync(); for (const id of ["nvRbc", "mapRbc"]){ const nb = document.getElementById(id); if (nb) nb.checked = !!v; } }
   if (k === "colour"){ if (v){ STK.prevColour = NV.colour ? NV.colourSrc : "one"; setVesselColour("flow"); } else setVesselColour(STK.prevColour && STK.prevColour !== "flow" ? STK.prevColour : "one"); }
-  if (k === "cmode"){ if (!STK.colour) stkSetting("colour", true); else stkRecolour(); }
+  /* picking what to colour by turns the flow colouring ON, whatever else coloured the vessels last (2026-10-28, Søren:
+     "I haven't seen this color vessels by working" -- the box was ticked, but the vessels were coloured by order from
+     the Map tab or a view key, and stkRecolour only paints when the flow colouring is the one in use) */
+  if (k === "cmode"){ if (!STK.colour || !NV.colour || NV.colourSrc !== "flow") stkSetting("colour", true); else stkRecolour(); }
   if (k === "hyp" || k === "hypThr") stkPockets();
   if (k === "showSph") stkSphDraw();
   if (k === "stalls"){ STK.dirty = true; if (!v){ STK.stall && STK.stall.clear(); stkStallDraw(); } }
