@@ -657,6 +657,7 @@
   <div class="ctl">
     <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
     <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
+    <label title="With Hear spikes on: a faint heartbeat and breathing of the mouse, at the model's own heart rate and breathing phase (they slow down with the clock). Needs the vascular regulation or blood-flow model running. Also in films made from the timeline." style="font-size:12px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="sndBody" checked> heartbeat &amp; breathing</label>
   </div>
   <div id="physBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div style="font-size:12px;margin-bottom:4px"><b>Brain temperature &amp; intracranial pressure</b> <span style="color:var(--mut)">(MODEL, for teaching)</span></div>
@@ -9320,6 +9321,45 @@ function recButton(){
    plays at the right speed and smoothly. The frames are put into a real MP4 (H.264 where the browser
    can encode it, which PowerPoint plays; VP9 otherwise) by mp4-muxer (MIT, core/vendor/mp4-muxer).
    Browsers without WebCodecs fall back to the old MediaRecorder way. */
+/* THE FILM'S SOUND (2026-10-28, Søren: "it would be nice if the spike sound was also present in the timeline video").
+   A film is drawn frame by frame, slower than real time, so the sound cannot be taken from the speakers: it is BUILT,
+   sample by sample, on the film's own clock. Each click, heartbeat and breath the viewer plays is also written into a
+   ring of samples at its film time (the frame being drawn + its offset), panned by where it is relative to the camera
+   and as loud as it is live; each encoded frame takes its 1/fps of samples from the ring. AAC in the MP4 (PowerPoint
+   plays it), Opus where the browser cannot encode AAC. Only with Hear spikes on when the recording starts. */
+const AUD = { v: null };
+const AUD_SR = 48000, AUD_N = 1 << 18, AUD_M = AUD_N - 1;
+function audAdd(kind, off, g){
+  const v = AUD.v, A = v && v.aud; if (!A || !REC.on) return;
+  const buf = kind === "e" ? A.bE : kind === "i" ? A.bI : A.bH;
+  let i0 = Math.round((v.n / v.fps + off) * AUD_SR); if (i0 < A.pos) i0 = A.pos;
+  if (i0 + buf.length - A.pos >= AUD_N) return;                            // further ahead than the ring holds
+  for (let i = 0; i < buf.length; i++){ const k = (i0 + i) & AUD_M; A.L[k] += buf[i] * g[0] * 0.8; A.R[k] += buf[i] * g[1] * 0.8; }
+}
+function audBreath(g){ const A = AUD.v && AUD.v.aud; if (A) A.breath = g; }
+function audFrame(v){
+  const A = v.aud; if (!A || A.enc.state !== "configured") return;
+  const s0 = Math.round(v.n * AUD_SR / v.fps), s1 = Math.round((v.n + 1) * AUD_SR / v.fps), n = s1 - s0; if (n <= 0) return;
+  A.pos = Math.max(A.pos, s0);
+  const d = new Float32Array(n * 2), g0 = A.gPrev || 0, g1 = A.breath || 0;
+  for (let i = 0; i < n; i++){
+    /* the breath: white noise through a two-pole band (~350–1000 Hz), the same sound as the live band-pass */
+    const w = Math.random() * 2 - 1; A.lp += 0.12 * (w - A.lp); A.hp = 0.955 * (A.hp + A.lp - A.lpPrev); A.lpPrev = A.lp;
+    const b = A.hp * (g0 + (g1 - g0) * i / n) * 2.2, k = (s0 + i) & AUD_M;
+    d[i] = Math.max(-1, Math.min(1, A.L[k] + b)); d[n + i] = Math.max(-1, Math.min(1, A.R[k] + b)); A.L[k] = 0; A.R[k] = 0;
+  }
+  A.gPrev = g1; A.pos = s1;
+  try { const ad = new AudioData({ format: "f32-planar", sampleRate: AUD_SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(s0 * 1e6 / AUD_SR), data: d }); A.enc.encode(ad); ad.close(); }
+  catch (e){ console.warn("[vr] film sound:", e); }
+}
+async function audConfig(){
+  if (!SPK.snd || typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return null;
+  for (const [codec, mux] of [["mp4a.40.2", "aac"], ["opus", "opus"]]){
+    const c = { codec, sampleRate: AUD_SR, numberOfChannels: 2, bitrate: 160000 };
+    try { const r = await AudioEncoder.isConfigSupported(c); if (r && r.supported) return { cfg: c, mux }; } catch (e){}
+  }
+  return null;
+}
 async function startFrameRecorder(fps){
   if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") return null;
   const W = renderer.domElement.width, H = renderer.domElement.height;
@@ -9343,7 +9383,9 @@ async function startFrameRecorder(fps){
   let target, stream = null;
   if (file){ try { stream = await file.createWritable(); target = new M.FileSystemWritableFileStreamTarget(stream); } catch (e){ console.warn("[vr] movie file:", e); stream = null; } }
   if (!stream) target = new M.ArrayBufferTarget();
-  const muxer = new M.Muxer({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: stream ? false : "in-memory", firstTimestampBehavior: "offset" });
+  const ac = await audConfig();
+  const muxer = new M.Muxer(Object.assign({ target, video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: stream ? false : "in-memory", firstTimestampBehavior: "offset" },
+                                          ac ? { audio: { codec: ac.mux, sampleRate: AUD_SR, numberOfChannels: 2 } } : {}));
   const v = { fps, kind, muxer, target, stream, name: file && file.name, n: 0, clock: 0, next: 0, err: null, W, H };
   /* AN ENCODER THAT FAILS STOPS THE RECORDING THERE (2026-10-25: "Cannot call 'flush' on a closed codec" -- the encoder
      had failed somewhere in the film and closed itself; the rest of the film was played without a single frame being
@@ -9352,6 +9394,15 @@ async function startFrameRecorder(fps){
   v.enc = new VideoEncoder({ output: (chunk, meta) => { try { muxer.addVideoChunk(chunk, meta); } catch (e){ if (!v.err) v.err = e; } },
                              error: e => { if (!v.err) v.err = e; console.warn("[vr] video encoder:", e); setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); } });
   try { v.enc.configure(cfg); } catch (e){ return null; }
+  if (ac){
+    try {
+      const enc = new AudioEncoder({ output: (chunk, meta) => { try { muxer.addAudioChunk(chunk, meta); } catch (e){ console.warn("[vr] film sound:", e); } }, error: e => console.warn("[vr] film sound encoder:", e) });
+      enc.configure(ac.cfg);
+      v.aud = { enc, mux: ac.mux, L: new Float32Array(AUD_N), R: new Float32Array(AUD_N), pos: 0, breath: 0, gPrev: 0, lp: 0, lpPrev: 0, hp: 0,
+                bE: sndClick(AUD_SR, 1400, 0.0011, 0.008), bI: sndClick(AUD_SR, 3000, 0.0006, 0.005), bH: sndHeart(AUD_SR) };
+    } catch (e){ console.warn("[vr] film sound off:", e); v.aud = null; }
+  }
+  AUD.v = v;
   return v;
 }
 /* Per drawn frame, after the overlay pass: encode when the movie clock has reached the next frame. */
@@ -9367,6 +9418,7 @@ function recCapture(dt){
   v.clock += dt;
   if (v.n > 0 && v.clock + 1e-6 < v.next) return;
   const f = new VideoFrame(renderer.domElement, { timestamp: Math.round(v.n * 1e6 / v.fps), duration: Math.round(1e6 / v.fps) });
+  try { audFrame(v); } catch (e){ console.warn("[vr] film sound:", e); }
   try { v.enc.encode(f, { keyFrame: v.n % (v.fps * 2) === 0 }); } catch (e){ if (!v.err) v.err = e; setTimeout(() => { if (REC.vf === v) stopRecording(); }, 0); }
   f.close();
   v.n++; v.next = v.n / v.fps;
@@ -9448,6 +9500,8 @@ function stopRecording(){
       const failed = v.err;
       try {
         if (v.enc.state === "configured") await v.enc.flush();
+        if (v.aud && v.aud.enc.state === "configured") try { await v.aud.enc.flush(); } catch (e){ console.warn("[vr] film sound:", e); }
+        AUD.v = null;
         v.muxer.finalize();
         const info = " " + v.n + " frames, " + (v.n / v.fps).toFixed(1) + " s at " + v.fps + " fps" + (v.kind === "vp9" ? " (VP9: plays in browsers and VLC; for PowerPoint, record in an up-to-date Chrome or Edge, which encode H.264)." : ".");
         const why = failed ? " <b>The recording stopped early</b>: the video encoder failed (" + esc(failed.message || String(failed)) + "). What was filmed until then is in the file. A lower size (2K or 1080p) or 30 fps usually avoids this." : "";
@@ -12452,17 +12506,56 @@ document.getElementById("stkCol").addEventListener("change", e => stkFromPanel("
    vessel beats with the heartbeat, strongly on an arteriole, weakly on a capillary, hardly on a venule
    (the same pulsatility as the red cells: Santisakultarm et al. 2012). Riding a red cell, both hands
    feel the beat of the vessel it is in. */
-const SPK = { snd: false, hap: false, ctx: null, master: null, bufE: null, bufI: null, cnt: new Map(), raT: null, lastHap: [0, 0], ph: 0, q: [] };
+const SPK = { snd: false, hap: false, body: true, hph: null, ctx: null, master: null, bufE: null, bufI: null, cnt: new Map(), raT: null, lastHap: [0, 0], ph: 0, q: [] };
+/* The sounds as plain samples, so the live sound (Web Audio) and the film's sound track (AUD, section 15) are the same. */
+function sndClick(sr, f, tau, len){ const n = Math.round(sr * len), d = new Float32Array(n);
+  for (let i = 0; i < n; i++){ const t = i / sr; d[i] = (Math.sin(2 * Math.PI * f * t) * 0.8 + (Math.random() * 2 - 1) * 0.25) * Math.exp(-t / tau) * Math.min(1, t / 0.0002); }
+  return d; }
+/* THE HEART AND THE BREATH, FAINTLY (2026-10-28, Søren: "The heartbeat and breathing of the mouse could also be faint
+   sounds"). A beat is a soft low "lub-dub" (two thumps, ~55 and ~70 Hz, 0.11 s apart); a breath is filtered noise that
+   swells as the mouse breathes in and, more faintly, out. Both follow the model's own clock and phases -- the same heart
+   rate and breathing phase that move the vessels -- so they slow down with the clock, and are dropped when the clock
+   makes them faster than can be heard as separate beats. */
+function sndHeart(sr){ const n = Math.round(sr * 0.32), d = new Float32Array(n);
+  for (let i = 0; i < n; i++){ const t = i / sr, a = t < 0.11 ? Math.sin(2 * Math.PI * 55 * t) * Math.exp(-t / 0.035) : 0, t2 = t - 0.11;
+    d[i] = (a + (t2 >= 0 ? 0.6 * Math.sin(2 * Math.PI * 70 * t2) * Math.exp(-t2 / 0.03) : 0)) * Math.min(1, t / 0.004); }
+  return d; }
 function spkAudioInit(){
   if (SPK.ctx) return true;
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
   const ctx = SPK.ctx = new AC(), sr = ctx.sampleRate;
-  const mk = (f, tau, len) => { const n = Math.round(sr * len), b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
-    for (let i = 0; i < n; i++){ const t = i / sr; d[i] = (Math.sin(2 * Math.PI * f * t) * 0.8 + (Math.random() * 2 - 1) * 0.25) * Math.exp(-t / tau) * Math.min(1, t / 0.0002); }
-    return b; };
-  SPK.bufE = mk(1400, 0.0011, 0.008); SPK.bufI = mk(3000, 0.0006, 0.005);
+  const mk = d => { const b = ctx.createBuffer(1, d.length, sr); b.copyToChannel(d, 0); return b; };
+  SPK.bufE = mk(sndClick(sr, 1400, 0.0011, 0.008)); SPK.bufI = mk(sndClick(sr, 3000, 0.0006, 0.005)); SPK.bufH = mk(sndHeart(sr));
   SPK.master = ctx.createGain(); SPK.master.gain.value = 0.8; SPK.master.connect(ctx.destination);
+  /* the breath: looped noise through a band-pass, its loudness set every frame */
+  const nb = ctx.createBuffer(1, sr * 2, sr), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(); src.buffer = nb; src.loop = true;
+  const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 650; bp.Q.value = 0.8;
+  SPK.breathG = ctx.createGain(); SPK.breathG.gain.value = 0; src.connect(bp); bp.connect(SPK.breathG); SPK.breathG.connect(SPK.master); src.start();
   return true;
+}
+/* how loud a spike at distance d is. In the headset you stand among the cells (0.12 m reference); on a screen the camera
+   stands back from what it looks at, and the clicks were then too faint to hear (2026-10-28, Søren: "I don't hear the
+   spikes when listening on my headphones while not in VR") -- there the reference is the distance to what you look at. */
+function spkRef(){ return renderer.xr.isPresenting ? 0.12 : Math.max(0.12, camera.position.distanceTo(controls.target) * 0.6); }
+function spkGains(w){
+  const ref = spkRef(), cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  const p = w.clone().applyMatrix4(cam.matrixWorldInverse), d = Math.max(1e-6, p.length());
+  const g = ref / (ref + 1.1 * (Math.max(d, ref) - ref)), a = (Math.max(-1, Math.min(1, p.x / d)) + 1) / 2;
+  return [g * Math.cos(a * Math.PI / 2), g * Math.sin(a * Math.PI / 2)];
+}
+function spkBody(){
+  if (!SPK.body || !(NV.on || STK.on)) { if (SPK.breathG) SPK.breathG.gain.setTargetAtTime(0, SPK.ctx.currentTime, 0.05); SPK.hph = null; return; }
+  const pr = NV_PRESET[NV.preset], hr = pr.hr, eff = Math.max(1e-6, SIM.paused ? 0 : (SIM.eff || SIM.speed)), ph = (SIM.t * hr) % 1;
+  if (NV.pulse && SPK.hph != null && ph < SPK.hph && hr * eff < 14){            // a beat (heard as beats up to ~14 a second)
+    const s = SPK.ctx.createBufferSource(), gn = SPK.ctx.createGain(); s.buffer = SPK.bufH; gn.gain.value = 0.35; s.connect(gn); gn.connect(SPK.master); s.start();
+    audAdd("heart", 0, [0.35, 0.35]);
+  }
+  SPK.hph = ph;
+  const bf = (NV.rrNow || pr.rr || 3) * eff, bph = ((AP_UNI.nvRPh ? AP_UNI.nvRPh.value : 0) / 6.2831853 % 1 + 1) % 1;
+  const env = bph < 0.4 ? Math.sin(Math.PI * bph / 0.4) ** 2 : 0.35 * Math.sin(Math.PI * (bph - 0.4) / 0.6) ** 2;
+  const g = NV.resp && bf < 8 && !SIM.paused ? 0.06 * env : 0;
+  SPK.breathG.gain.setTargetAtTime(g, SPK.ctx.currentTime, 0.03); audBreath(g);
 }
 const _qkp = new THREE.Vector3(), _qkq = new THREE.Quaternion(), _qks = new THREE.Vector3(), _qkf = new THREE.Vector3(), _qku = new THREE.Vector3();
 function spkListener(){
@@ -12474,9 +12567,10 @@ function spkListener(){
   return _qkp;
 }
 function spkClick(p, inh, when){
+  audAdd(inh ? "i" : "e", when || 0, spkGains(p));
   const ctx = SPK.ctx, s = ctx.createBufferSource(), pn = ctx.createPanner();
   s.buffer = inh ? SPK.bufI : SPK.bufE;
-  pn.panningModel = "HRTF"; pn.distanceModel = "inverse"; pn.refDistance = 0.12; pn.rolloffFactor = 1.1; pn.maxDistance = 50;
+  pn.panningModel = "HRTF"; pn.distanceModel = "inverse"; pn.refDistance = spkRef(); pn.rolloffFactor = 1.1; pn.maxDistance = 50;
   if (pn.positionX){ pn.positionX.value = p.x; pn.positionY.value = p.y; pn.positionZ.value = p.z; } else pn.setPosition(p.x, p.y, p.z);
   s.connect(pn); pn.connect(SPK.master); s.start(ctx.currentTime + (when || 0));
 }
@@ -12508,6 +12602,7 @@ function spkHaptic(h, a, ms){
 }
 function spkFrame(){
   if (!SPK.snd && !SPK.hap){ SPK.cnt.clear(); SPK.raT = null; return; }
+  if (SPK.snd && SPK.ctx) try { spkBody(); } catch (e){ console.warn("[vr] body sound:", e); }
   const sp = spkCollect();
   const xr = renderer.xr.isPresenting;
   if (sp.length){
@@ -12567,6 +12662,7 @@ function setSpkHaptic(v){
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 document.getElementById("sndBtn").addEventListener("click", () => setSpkSound(!SPK.snd));
+document.getElementById("sndBody").addEventListener("change", e => { SPK.body = e.target.checked; });
 document.getElementById("hapBtn").addEventListener("click", () => setSpkHaptic(!SPK.hap));
 
 /* ── 32. RIDE A RED BLOOD CELL ───────────────────────────────────────────────────────────  2026-10-22
