@@ -164,6 +164,8 @@ try{var _t=localStorage.getItem("ujump_theme");
  .seed-open{font-weight:600;text-decoration:none;color:var(--accent)}
  .seed-open:hover{text-decoration:underline}
  .seedrow button{padding:4px 9px;font-size:12.5px}
+ .seed-btns{display:flex;gap:6px;justify-content:flex-end}
+ .vrx-btn.vrb-in{border-color:var(--ok, #3fb950);color:var(--ok, #3fb950)}
  #find-random button{padding:5px 10px;font-size:13px}
  #find-random .hint{font-size:12px}
  @media(max-width:640px){.seedrow{grid-template-columns:1fr auto}}
@@ -5202,6 +5204,7 @@ UJ.app = (function(){
       +     "<button class='idbtn' id='found-vol' title='Enclosed volume, computed from the "
       +       "triangle geometry — costs a mesh fetch, so it is a click rather than automatic'>"
       +       "Compute volume</button>"
+      +     "<button class='idbtn vrx-btn' id='found-vr'>+ VR</button>"
       +   "</div>"
       +   "<div class='idrow'><span class='k'>first fragment</span>"
       +     "<span class='idval' title='click to copy' data-c='" + esc(segs[0] || "")
@@ -5490,6 +5493,7 @@ UJ.app = (function(){
     root.querySelector("#found-3d").addEventListener("click", function(){
       UJ.mesh3d.show(asCell, root.querySelector(".mesh3d-host"));
     });
+    vrWire(root.querySelector("#found-vr"), row, segs);
     /* The community's name for it if there is one, else the published label -- the same
        precedence every other reading of "what is this cell" on this page uses, so a volume is
        bucketed under the same type the panel above it is showing. */
@@ -5952,8 +5956,35 @@ UJ.app = (function(){
       + " fragment" + (n === 1 ? "" : "s") + "</span>"
       + "<span class='hint'>" + esc(r.annotator || "—")
       + (b && b.builtBy && added > 0 ? " · " + esc(b.builtBy) : "") + "</span>"
-      + "<button class='seed-add' data-key='" + esc(r.key) + "'>Add fragments</button>"
+      /* one grid child for both buttons, so the five columns line up with the nucleus rows (see .seedrow>.chips) */
+      + "<span class='seed-btns'><button class='vrx-btn seed-vr' data-key='" + esc(r.key) + "'>+ VR</button>"
+      + "<button class='seed-add' data-key='" + esc(r.key) + "'>Add fragments</button></span>"
       + "</div>";
+  }
+  /* "+ VR" FOR AN ASSEMBLED CELL (2026-10-28, Søren: "Why is there no +VR button for xJump in the cell identity
+     panel?"). core/vrbasket.js puts its button beside a tool's mesh download, which carries ONE root id; a cb2 cell
+     is all its fragments. So the card and the neighbour rows have their own: the first fragment as the cell's id and
+     the rest as its extras -- the shape vr.html already draws as one cell (core/mesh.js, the legacy branch with
+     cb2's own vertex matrix). The same segments the card counts and "Show in 3D" draws. */
+  function vrLabel(row){ return cap(settledHere(row.key) || headlineOf(row) || row.label || "Cell") + " (" + row.name + ")"; }
+  function vrPaint(btn, segs){
+    var inB = !!(UJ.vrbasket && segs.length && UJ.vrbasket.has(String(segs[0])));
+    btn.textContent = inB ? "✓ In VR" : "+ VR";
+    btn.title = inB ? "In your VR collection — click to take it out"
+                    : "Add this cell (all " + segs.length + " fragments) to your VR collection, to see several cells together in 3D or a headset";
+    btn.classList.toggle("vrb-in", inB);
+  }
+  function vrWire(btn, row, segs){
+    if (!btn) return;
+    segs = (segs || []).map(String).filter(Boolean);
+    if (!UJ.vrbasket || !segs.length){ btn.style.display = "none"; return; }
+    vrPaint(btn, segs);
+    btn.addEventListener("click", function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      if (UJ.vrbasket.has(segs[0])) UJ.vrbasket.remove(segs[0]);
+      else UJ.vrbasket.add({ ds: "xjump", root: segs[0], nuc: "", extra: segs.slice(1), label: vrLabel(row), t: Date.now() });
+      vrPaint(btn, segs);
+    });
   }
 
   /* ══ ORGANELLES ═══════════════════════════════════════════════════════════════════════════
@@ -8024,6 +8055,7 @@ UJ.app = (function(){
       });
       return;
     }
+    { var bb = builtOn(r.key); vrWire(root.querySelector(".seed-vr"), r, bb ? allSegs(bb) : X.seedSegments(r)); }
     root.querySelector(".seed-open").addEventListener("click", function(e){
       e.preventDefault();
       /* Centred on the SOMA, which is the whole point of having resolved the coordinate frame:

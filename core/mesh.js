@@ -167,6 +167,9 @@ UJ.mesh=(()=>{
   let infoLoaded=false;
   async function loadInfo(){
     if(infoLoaded)return;
+    /* A dataset known to be legacy needs no info file (cb2 in the VR viewer, 2026-10-28): the page
+       says so in UJ.cfg.mesh.forceLegacy. */
+    if(CFG.forceLegacy){ CFG.legacy=true; CFG.unsharded=false; infoLoaded=true; return; }
     /* Two ways to reach the info file, same pair the shard reads already use. The direct
        storage.googleapis.com path is fine when the bucket sends CORS headers; when it does not,
        fetch REJECTS (it does not return !res.ok), which used to abort the whole download before
@@ -503,7 +506,25 @@ UJ.mesh=(()=>{
     for(let k=0;k<idx.length;k++)if(idx[k]>=nv)throw new Error("index "+idx[k]+" out of range for "+nv+" vertices");
     return {verts,idx};
   }
-  async function fetchLegacyMesh(rootIdStr,onProgress,forceRecheck){
+  /* TWO OPT-IN SETTINGS FOR cb2 (χJump's cells in the VR viewer, 2026-10-28, Søren: "Why is there no +VR button for
+     xJump"). Both are read only when the page sets them, so πJump's legacy meshes are untouched.
+     · legacyVertexToNm: cb2's fragments are not in nm xyz but scaled and in z,y,x order; this is the 3×3 matrix χJump's
+       own renderer uses (UJ.cfg.volume.meshVertexToNm in xjump.html), applied to each fragment as it is decoded, so
+       everything after -- the simplification grid, the µm conversion -- sees nanometres as it does for pinky100.
+     · legacyLightGridNm: the "light" detail (forceCoarsestLod) of a dataset with no LODs -- the same vertex
+       clustering as the size guard below, at this grid from the start. */
+  function legacyToNm(d){
+    const M=CFG.legacyVertexToNm; if(!M)return d;
+    const v=d.verts,o=new Float32Array(v.length);
+    for(let i=0;i<v.length;i+=3){const a=v[i],b=v[i+1],c=v[i+2];
+      o[i]=M[0][0]*a+M[0][1]*b+M[0][2]*c; o[i+1]=M[1][0]*a+M[1][1]*b+M[1][2]*c; o[i+2]=M[2][0]*a+M[2][1]*b+M[2][2]*c;}
+    /* a matrix with an odd number of axis swaps turns the surface inside out: keep the triangles facing outwards */
+    const det=M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])-M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])+M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
+    let idx=d.idx;
+    if(det<0){idx=new Uint32Array(d.idx);for(let t=0;t+2<idx.length;t+=3){const x=idx[t+1];idx[t+1]=idx[t+2];idx[t+2]=x;}}
+    return {verts:o,idx};
+  }
+  async function fetchLegacyMesh(rootIdStr,onProgress,forceRecheck,light){
     if(!forceRecheck&&isRootKnownNotFound(rootIdStr)){
       const err=new Error("root ID "+rootIdStr+" is cached as having no mesh in this dataset (an earlier lookup found none) — skipped the network check. Shift-click to force a fresh check.");
       err.meshCached=true;throw err;
@@ -527,7 +548,7 @@ UJ.mesh=(()=>{
     if(!frags.length)throw new Error("mesh manifest for "+rootIdStr+" lists no fragments");
     onProgress&&onProgress(0.05,frags.length+" fragments…");
     const parts=new Array(frags.length);
-    let done=0,bytes=0,failed=0,grid=0,rawVerts=0;
+    let done=0,bytes=0,failed=0,grid=(light&&CFG.legacyLightGridNm)?CFG.legacyLightGridNm:0,rawVerts=0;
     /* Crossing the budget sets (or doubles) the grid and brings everything already in memory to
        the new size, so the finished surface is uniform rather than fine where it started and
        coarse where it ran out of room. Synchronous on purpose: several fetches are in flight, and
@@ -549,7 +570,7 @@ UJ.mesh=(()=>{
         " ("+frags.length+" fragments, still arriving). At this size it is a large merged segment "+
         "rather than one cell — open it in Neuroglancer, which streams instead of downloading.");
       let d=null;
-      try{ d=decodeLegacyFragment(u8); }catch(e){ failed++; }
+      try{ d=legacyToNm(decodeLegacyFragment(u8)); }catch(e){ failed++; }
       if(d){
         rawVerts+=d.verts.length/3;
         if(!grid&&bytes>LEGACY_SIMPLIFY_ABOVE){parts[i]=d;coarsen();}
@@ -739,7 +760,7 @@ UJ.mesh=(()=>{
        so it branches out before any of that -- right after loadInfo(), which is what decides
        which layout this dataset uses. */
     await loadInfo();
-    if(CFG.legacy)return await fetchLegacyMesh(rootIdStr,onProgress,forceRecheck);
+    if(CFG.legacy)return await fetchLegacyMesh(rootIdStr,onProgress,forceRecheck,forceCoarsestLod);
     const rootId=BigInt(rootIdStr);
     onProgress&&onProgress(0,"reading manifest…");
     const info=await findManifest(rootId,forceRecheck);

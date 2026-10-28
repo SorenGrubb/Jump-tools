@@ -39,7 +39,11 @@ UJ.vrbasket = (function(){
   /* TOOLS WHOSE CELLS ARE TRACINGS (2026-10-17). λJump has no segmentation and χJump's meshes are
      its own renderer's, so there is no mesh button to put "+ VR" beside. The pill is always there
      instead and opens the viewer on every cell traced in this dataset (vr.html#ds=…&traced=1). */
-  var TRACED_ONLY = { ljump: 1, xjump: 1 };
+  var TRACED_ONLY = { ljump: 1 };
+  /* χJump's cells became meshes in the viewer (2026-10-28, Søren: "Why is there no +VR button for xJump in the cell
+     identity panel?"): its cell card has its own "+ VR" (a cell is many fragments, which no .meshdl button carries),
+     and the tray keeps a way to the traced cells too. */
+  var TRACED_TOO = { xjump: 1 };
   function tracedOnly(){ return !!TRACED_ONLY[ds()]; }
   function tracedLink(){
     var base = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
@@ -312,7 +316,8 @@ UJ.vrbasket = (function(){
     }
     var h = "<h4>VR collection</h4>" +
             "<div class='vrb-acts top'><button class='vrb-go' data-act='open'>Open VR viewer</button>" +
-            "<button data-act='copy'>Copy headset link</button><button data-act='clear'>Clear</button></div>";
+            "<button data-act='copy'>Copy headset link</button><button data-act='clear'>Clear</button>" +
+            (TRACED_TOO[ds()] ? "<button data-act='traced' title='Every cell traced in this dataset, in the viewer'>Traced cells</button>" : "") + "</div>";
     h += groupsHtml(list);
     if (list.length > SOFT_MAX)
       h += "<div class='vrb-note vrb-warn'>More than " + SOFT_MAX + " cells may be too heavy for a standalone Quest 2.</div>";

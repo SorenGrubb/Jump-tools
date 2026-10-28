@@ -1232,9 +1232,19 @@ window.VR_DATASETS = {
     em: "precomputed://s3://open-neurodata/lee/lee16/image",
     res: [4, 4, 40]
   },
+  /* χJump's ASSEMBLED CELLS (2026-10-28, Søren: "Why is there no +VR button for xJump in the cell identity panel?").
+     cb2's legacy fragment meshes are read by core/mesh.js after all: forceLegacy (no info file needed),
+     legacyVertexToNm (χJump's own matrix, UJ.cfg.volume.meshVertexToNm -- the one true copy, see xjump.html) and a
+     coarser grid for the "light" detail, since these meshes have no LODs. A cell is its first fragment + the rest
+     as extras, exactly as "+ VR" in χJump stores it. tracedOnly stays: with nothing collected, the viewer still
+     brings in the traced cells. */
   xjump: {
     label: "cb2 — mouse cerebellum",
-    mesh: null, tracedOnly: true,
+    mesh: { notFoundKey: "xjump_vr_mesh_notfound_v1", forceLegacy: true,
+            meshBase: "https://bossdb-open-data.s3.amazonaws.com/mesh/nguyen_thomas2022/cb2/mesh/",
+            meshBaseAlt: "https://bossdb-open-data.s3.amazonaws.com/mesh/nguyen_thomas2022/cb2/mesh/", meshBaseAltQuery: "",
+            legacyVertexToNm: [[0, 0, 1e9], [0, 1e9, 0], [1e9, 0, 0]], legacyLightGridNm: 400 },
+    tracedOnly: true,
     backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
     backendDs: "xjump", tracingDs: "xjump",
     /* 4 nm chunks are 26 MB each; χJump's pad skips them too. */
@@ -1791,7 +1801,9 @@ async function loadOneInner(c, token, light){
     const mesh = new THREE.Mesh(g, cellMaterial(cellTint(c, c.colour)));
     mesh.userData.cell = c.i;
     content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
-    c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
+    if (ds.mesh && ds.mesh.forceLegacy) c.status = (c.tris / 1000).toFixed(1) + "k triangles · " + (geo.fragmentCount || 1) + " of " + (1 + extras.length) + " fragments have a mesh"
+             + (geo.simplified ? " · simplified (light detail)" : "");      /* χJump: cb2 has no LODs; its cells are many fragments */
+    else c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
              + (extras.length ? " · + " + extras.length + " proposed root ID" + (extras.length > 1 ? "s" : "") : "")
              + (geo.mainUnavailable ? " (main root ID has no mesh; drawn from the proposed one)" : "")
              + (c.meshRoot ? " · drawn from the root ID at its nucleus (" + c.meshRoot + ")" + (c.root ? "; " + c.root + " is not in the seg_m1300 snapshot" : "") : "")
