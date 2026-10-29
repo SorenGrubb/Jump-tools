@@ -4446,6 +4446,7 @@ async function saveScene(fromVR, asNew){
   if (!d || !d.ok){ out.textContent = "Not saved: " + ((d && d.error) || "no answer") + (d && /unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : ""); return; }
   const wasId = SCENE.id;
   SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title; rememberMyScene(d.sceneId); sceneButtons();
+  try { if (typeof TL !== "undefined") localStorage.setItem(tlStoreKey(), JSON.stringify(tlData())); } catch (e){}   // the draft follows the scene's (new) id
   history.replaceState(null, "", "#scene=" + d.sceneId);
   const link = sceneLink(d.sceneId);
   const what = d.updated ? "Updated — the same link; everybody who opens it now sees this version"
@@ -10341,11 +10342,13 @@ function tlBuild(){
       <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="600" step="1" value="20"> s</label>
       <label class="tlLab" title="Fade in from black at the start and out to black at the end, in seconds (0 = none). Shown only while playing and in the movie.">Black in <input id="tlFin" type="number" min="0" max="10" step="0.5" value="0"> out <input id="tlFout" type="number" min="0" max="10" step="0.5" value="0"> s</label>
       <button id="tlRec" title="Film the timeline from start to end with the recorder's size, shape and frame rate">⏺ Film it</button>
+      <button id="tlLib" title="Timelines saved on your profile: save this one (named after its scene -- also from somebody else's scene), or use one you saved here, on these cells">📚 My timelines</button>
       <button id="tlClear" title="Remove every key">Clear</button>
       <button id="tlClose" title="Close the timeline">✕</button>
     </div>
     <div class="tlRow tlEdit" id="tlEdit"></div>
-    <canvas id="tlCv" height="162"></canvas><div id="tlThumb"></div>`;
+    <canvas id="tlCv" height="162"></canvas><div id="tlThumb"></div>
+    <div id="tlLibBox" style="display:none;position:absolute;right:12px;bottom:100%;margin-bottom:6px;width:min(420px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:rgba(22,27,34,.97);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;z-index:6"></div>`;
   document.body.appendChild(bar);
   Object.assign(TLD, { bar, cv: bar.querySelector("#tlCv"), edit: bar.querySelector("#tlEdit"), time: bar.querySelector("#tlTime"), now: bar.querySelector("#tlNow"), len: bar.querySelector("#tlLen"), play: bar.querySelector("#tlPlay") });
   { const num = v => +String(v).replace(",", ".");
@@ -10382,6 +10385,7 @@ function tlBuild(){
   bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
   bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(600, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
   bar.querySelector("#tlRec").onclick = () => tlRecord();
+  bar.querySelector("#tlLib").onclick = () => { const b = bar.querySelector("#tlLibBox"); if (b.style.display === "none"){ b.style.display = ""; tlLibOpen(); } else b.style.display = "none"; };
   bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.sel = null; tlSave(); tlSync(); };
   bar.querySelector("#tlClose").onclick = () => setTimeline(false);
   /* Mouse on the lanes: a key is picked and dragged; anywhere else scrubs. */
@@ -10782,16 +10786,104 @@ function setTimeline(v){
 /* Kept in this browser between visits, and in saved scenes. */
 function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) } }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
+/* ONE TIMELINE PER SCENE (2026-10-29, Søren: "when I open a new VR instance and go to timeline, it has remembered the
+   timeline I did for another scene ... the timeline should be individual for the scenes and saved with the scene").
+   The draft kept in the browser (so a reload loses nothing) was one key for every collection. It is now kept per scene
+   (#scene=ID; the saved scene's own timeline still arrives with the scene) or, before a scene is saved, per set of cells
+   in the link -- so a new collection starts with an empty timeline. */
+function tlStoreKey(){
+  if (typeof SCENE !== "undefined" && SCENE.id) return "vr_timeline_scene_" + SCENE.id;
+  const m = location.hash.match(/[#&]c=([^&]*)/), c = m ? m[1] : "basket";
+  let h = 2166136261; for (let i = 0; i < c.length; i++){ h ^= c.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return "vr_timeline_c_" + (h >>> 0).toString(36);
+}
+/* ── TIMELINES ON YOUR PROFILE (2026-10-29) ──────────────────────────────────────────────────────────────────────
+   Søren: "It would be neat if each user could save a timeline on their profile and then they can use it on another cell
+   or in another scene. The timeline setting should then be named after the scene they made it in" -- "You should also
+   be able to save a timeline from a scene that somebody else made to you own profile, so that you can use and adapt
+   each other's timelines." Kept by the backend (VRScenes.gs, type "vr_timeline"), under the verified sign-in.
+   · Save: the timeline as it is now, named after its scene (editable); from somebody else's scene it says whose.
+   · Use: replaces this collection's timeline with a copy. Camera keys carry over as they are (every collection is
+     centred the same way); what names a cell by its place in the list -- a stimulus, a highlight, a focus, an orbit's
+     cell, a view's hidden cells and picked cell -- is kept only where that cell exists here, else left out and said. */
+function tlLibTitle(){
+  const t = (document.getElementById("sceneTitle").value || "").trim() || SCENE.title || "";
+  return (t || (CELLS.length + " cells")) + (SCENE.id && !SCENE.mine && SCENE.author ? " (from " + SCENE.author + ")" : "");
+}
+async function tlLibPost(body){
+  const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                                               body: JSON.stringify(Object.assign({ type: "vr_timeline", credential: CRED }, body)) });
+  const d = JSON.parse(await r.text()); if (!d || !d.ok) throw new Error((d && d.error) || "no answer");
+  return d;
+}
+async function tlLibOpen(){
+  const box = document.getElementById("tlLibBox"); if (!box) return;
+  if (!credOk()){
+    box.innerHTML = "<b>My timelines</b><div class='help' style='margin:6px 0'>Sign in with Google to keep timelines on your profile.</div><div id='tlLibSign'></div>";
+    try { signInUI("tlLibSign"); } catch (e){}
+    return;
+  }
+  box.innerHTML = "<b>My timelines</b>"
+    + "<div style='display:flex;gap:6px;margin:8px 0'><input id='tlLibName' value='" + esc(tlLibTitle()) + "' style='flex:1;font:13px system-ui;padding:4px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px'>"
+    + "<button id='tlLibSave'" + (tlCount() ? "" : " disabled title='This timeline has no keys yet'") + ">Save this timeline</button></div>"
+    + "<div id='tlLibMsg' class='help'></div><div id='tlLibList' class='help'>Reading your timelines…</div>";
+  document.getElementById("tlLibSave").onclick = async () => {
+    const msg = document.getElementById("tlLibMsg"); msg.textContent = "Saving…";
+    try {
+      await tlLibPost({ action: "save", title: document.getElementById("tlLibName").value.trim() || tlLibTitle(), timeline: JSON.stringify(tlData()),
+                        sourceSceneId: SCENE.id || "", sourceTitle: SCENE.title || "", sourceAuthor: SCENE.id && !SCENE.mine ? (SCENE.author || "") : "",      /* said only when it is somebody else's */
+                        dur: Math.round(TL.dur), keys: tlCount() });
+      msg.textContent = "Saved to your profile."; tlLibList();
+    } catch (e){ msg.textContent = "Not saved: " + (e.message || e) + (/unknown|type/i.test(String(e.message)) ? " (is the new VRScenes.gs deployed?)" : ""); }
+  };
+  tlLibList();
+}
+async function tlLibList(){
+  const el = document.getElementById("tlLibList"); if (!el) return;
+  let d; try { d = await tlLibPost({ action: "list" }); } catch (e){ el.textContent = "Could not read your timelines: " + (e.message || e); return; }
+  if (!d.timelines.length){ el.textContent = "Nothing saved yet."; return; }
+  el.innerHTML = d.timelines.map(t => "<div style='display:flex;gap:6px;align-items:center;padding:5px 0;border-top:1px solid var(--line)'>"
+    + "<div style='flex:1;min-width:0'><b style='color:var(--fg)'>" + esc(t.title) + "</b><br><small>" + Math.round(t.dur) + " s · " + t.keys + " keys"
+    + (t.sourceAuthor ? " · from " + esc(t.sourceAuthor) + "'s scene" : "") + " · " + esc(String(t.timestamp).slice(0, 10)) + "</small></div>"
+    + "<button data-tluse='" + esc(t.timelineId) + "'>Use here</button><button data-tldel='" + esc(t.timelineId) + "' title='Delete from your profile'>✕</button></div>").join("");
+  el.querySelectorAll("[data-tluse]").forEach(b => b.onclick = async () => {
+    if (tlCount() && !confirm("Replace this timeline (" + tlCount() + " keys) with the saved one? (Undo brings it back.)")) return;
+    const msg = document.getElementById("tlLibMsg"); msg.textContent = "Reading…";
+    try { const g = await tlLibPost({ action: "get", timelineId: b.dataset.tluse }); msg.textContent = tlAdopt(JSON.parse(g.timeline), g.title); }
+    catch (e){ msg.textContent = "Could not use it: " + (e.message || e); }
+  });
+  el.querySelectorAll("[data-tldel]").forEach(b => b.onclick = async () => {
+    if (!confirm("Delete this timeline from your profile?")) return;
+    try { await tlLibPost({ action: "delete", timelineId: b.dataset.tldel }); tlLibList(); } catch (e){ document.getElementById("tlLibMsg").textContent = "Not deleted: " + (e.message || e); }
+  });
+}
+function tlAdopt(o, title){
+  const n = CELLS.length, ok = i => i != null && i >= 0 && i < n; let dropped = 0;
+  const K = o.keys || {};
+  (K.view || []).forEach(k => { const v = k.v || {};
+    if (Array.isArray(v.hidden) && v.hidden.length !== n) delete v.hidden;
+    if (Array.isArray(v.glassCells) && v.glassCells.length !== n) delete v.glassCells;
+    if (v.sel != null && v.sel >= n) v.sel = -1; });
+  K.stim = (K.stim || []).filter(k => { const cs = tlStimCells(k).filter(ok); if (!cs.length){ dropped++; return false; } if (Array.isArray(k.cells)) k.cells = cs; k.cell = cs[0]; return true; });
+  K.fx = (K.fx || []).filter(k => {
+    if (k.cell != null && !ok(k.cell)){ dropped++; return false; }
+    if (k.cell2 != null && !ok(k.cell2)) delete k.cell2;
+    if (Array.isArray(k.el)) k.el = k.el.filter(e => ok(e.cell));
+    return true; });
+  (K.cam || []).forEach(k => { if (k.orb && k.orb.cell != null && !ok(k.orb.cell)) delete k.orb.cell; });
+  tlLoad(o, true); tlSave(); tlSync(); TL.viewApplied = null; tlSeek(0);      /* as a step of the history: Undo brings the old timeline back */
+  return "Using “" + title + "”" + (dropped ? " — " + dropped + " key" + (dropped > 1 ? "s" : "") + " that named a cell not in this collection were left out" : "") + ". Adjust it and save the scene.";
+}
 function tlSave(){
   const j = JSON.stringify(tlData());
   if (TL.hist[TL.hpos] !== j){ TL.hist = TL.hist.slice(0, TL.hpos + 1); TL.hist.push(j); if (TL.hist.length > 200) TL.hist.shift(); TL.hpos = TL.hist.length - 1; }
-  try { localStorage.setItem("vr_timeline", j); } catch (e){}
+  try { localStorage.setItem(tlStoreKey(), j); } catch (e){}
   tlPathBuild();
 }
 function tlUndo(d){
   const i = TL.hpos + d; if (i < 0 || i >= TL.hist.length) return;
   TL.hpos = i; tlLoad(JSON.parse(TL.hist[i]), true);
-  try { localStorage.setItem("vr_timeline", TL.hist[i]); } catch (e){}
+  try { localStorage.setItem(tlStoreKey(), TL.hist[i]); } catch (e){}
 }
 function tlLoad(o, fromHistory){
   if (!o || !o.keys) return;
@@ -10802,7 +10894,7 @@ function tlLoad(o, fromHistory){
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
   TL.sel = null; TL.multi.clear(); TL.viewApplied = null; tlSync(); tlPathBuild();
 }
-try { const o = JSON.parse(localStorage.getItem("vr_timeline") || "null"); if (o) tlLoad(o); } catch (e){}
+try { const o = JSON.parse(localStorage.getItem(tlStoreKey()) || "null"); if (o) tlLoad(o); } catch (e){}
 document.getElementById("tlBtn").addEventListener("click", () => setTimeline(!TL.open));
 addEventListener("keydown", e => {
   if (!TL.open || e.target.closest && e.target.closest("input, select, textarea")) return;
