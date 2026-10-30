@@ -6422,6 +6422,45 @@ function padSegSay(msg, bad){
   el.textContent = msg || "";
   el.style.color = bad ? "var(--bad)" : "";
 }
+/* ── THE MODEL'S SUGGESTIONS ─────────────────────────────────────────────────────  2026-10-30
+   core/organelleml.js does the work; the pad only asks after each finished section and repaints
+   when the answer comes back. Not awaited by padDraw: a section must never wait for a guess. */
+function padAiAvailable(){
+  return !!(UJ.organelleml && UJ.organelleml.available());
+}
+function padAiTickSync(){
+  var box = document.getElementById("tracePadAi");
+  if (!box) return;
+  var ok = padAiAvailable();
+  var lab = (box.closest && box.closest("label")) || box;
+  var say = document.getElementById("tracePadAiSay");
+  lab.style.display = ok ? "" : "none";
+  if (say) say.style.display = ok ? "" : "none";
+  if (!ok) box.checked = false;
+  else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
+}
+function padAiOn(){
+  var b = document.getElementById("tracePadAi");
+  return !!(b && b.checked && padAiAvailable());
+}
+function padAiSay(msg, bad){
+  const el = document.getElementById("tracePadAiSay");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = bad ? "var(--bad)" : "";
+}
+async function padAiRun(){
+  if (!padAiOn() || !PAD_VIEW) return;
+  const view = PAD_VIEW;
+  try {
+    const marks = await UJ.organelleml.run(view, { say: function(m){ padAiSay(m); } });
+    if (marks == null || view !== PAD_VIEW || !padAiOn()) return;
+    padPaint();
+    padAiSay(UJ.organelleml.summary());
+  } catch (e){
+    padAiSay(String(e && e.message || e), true);
+  }
+}
 async function padSegOverlay(){
   const box = document.getElementById("tracePadSeg");
   if (!box || !box.checked){ padSegSay(""); return null; }
@@ -6620,6 +6659,7 @@ async function padDraw(){
     padCapture();
     padPaint();
     padRings();
+    padAiRun();
     padSay(UJ.tracepad.count(PAD).rings + " contour(s) kept, "
       + (PAD.pending.length ? PAD.pending.length + " vertices on this one \u2014 click the ring to close it"
                             : "click each vertex round the cell")
@@ -6698,6 +6738,8 @@ function padPaint(){
   if (PAD_BASE_READY) g.drawImage(PAD_BASE, 0, 0);
   if (!PAD_VIEW) return;
   const px = function(t){ return PAD_VIEW.pxAt(t); };
+  /* The model's marks UNDER the contours: what you draw is the answer, what it guessed is a hint. */
+  if (typeof padAiOn === "function" && padAiOn()) UJ.organelleml.paint(g, PAD_VIEW, PAD.z);
   /* Contours already closed on THIS section, then the one being drawn.
 
      ONE PATH PER STRUCTURE, FILLED EVEN-ODD, since 2026-09-19 (Søren: *"If I draw one contour
@@ -7346,6 +7388,16 @@ function wirePad(){
   /* A full redraw rather than a paint on top: the overlay has to be under the captured base (see
      padSegOverlay), and turning it OFF has to get the clean section back, which only a redraw can
      do. The EM chunks are cached, so this is a repaint, not a refetch. */
+  const pai = document.getElementById("tracePadAi");
+  if (pai){
+    pai.checked = padAiAvailable() && UJ.organelleml.on();
+    padAiTickSync();
+    pai.addEventListener("change", function(){
+      UJ.organelleml.setOn(pai.checked);
+      padAiSay(pai.checked ? "\u2026" : "");
+      if (pai.checked) padAiRun(); else padPaint();
+    });
+  }
   const ps = document.getElementById("tracePadSeg");
   if (ps) ps.addEventListener("change", function(){
     padSegSay(ps.checked ? "Reading the segmentation…" : "");
@@ -7925,6 +7977,11 @@ function tracingCardHtml(){
     "     written over by whatever happens next -- so whatever the overlay had said about itself was gone",
     "     before he could read it. What the segmentation did belongs beside its own tick. -->",
     "<span class=\"hint\" id=\"tracePadSegSay\" style=\"flex:1 1 100%\"></span>",
+    "<!-- THE MODEL'S GUESSES.  2026-10-30. Søren: \"I imagine that you open an em window and then the",
+    "     organelles are identified and shown with an annotation, so that people new to EM could get",
+    "     an idea of what is what.\" core/organelleml.js; hidden where no model is set up. -->",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Marks what a model trained on the community's own organelle reports and tracings thinks is on this section, with its confidence. It runs in your browser; nothing is sent anywhere. Suggestions, not answers -- the model has only learned what people have marked so far.\"><input type=\"checkbox\" id=\"tracePadAi\"> suggest organelles (AI)</label>",
+    "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- A DECODER THE BROWSER DOES NOT HAVE.  2026-10-03. Eyewire II\'s retina serves its finest",
     "     three levels as JPEG XL; Chrome cannot read them, so the pad opens at its 128 nm jpeg level",
     "     where a lysosome is four pixels across. Hidden on every volume that does not need it --",
@@ -8231,6 +8288,10 @@ function padTrimForHost(el){
      have a segmentation, and datasetChanged() shows it again. 2026-09-21, found live. */
   if (!seg && tracingCfg().scope) padSegTickSync();
   else if (!seg) drop("tracePadSeg", "tracePadSegSay");   // its own status line goes with it
+  /* No model for this dataset (yet), no tick: hidden, and shown the moment the probe for
+     model.json comes back yes. Hidden rather than dropped, because the answer arrives later. */
+  padAiTickSync();
+  if (UJ.organelleml) UJ.organelleml.whenAvailable().then(function(){ padAiTickSync(); });
   var mesh = null;
   try { mesh = (UJ && UJ.cfg && UJ.cfg.mesh) || null; } catch (_e){ mesh = null; }
   if (!(mesh && (mesh.meshBase || mesh.meshBaseAlt))){

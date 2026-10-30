@@ -632,6 +632,11 @@ function ujVrPointsSay(el, msg, bad){
 <!-- The card's store. BEFORE the card, because the card asks for it on load and a store
      that is not there yet means a first read answered from localStorage. 2026-10-05. -->
 <script src="core/kvstore.js"></script>
+<!-- THE PAD'S ORGANELLE SUGGESTIONS, 2026-10-30 -- core/organelleml.js. The model is two static
+     files in models/organelles/minnie65/ (model.onnx, model.json), trained in Colab by
+     organelle_ml_train.ipynb; until they are uploaded the pad shows no tick at all. -->
+<script src="core/organelleml.js"></script>
+<script>UJ.organelleml.configure({ base: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>
 <script src="core/ontology.js"></script>
 <!-- Bulk organelle annotation, extracted from this file on 2026-09-21. After ontology.js, whose

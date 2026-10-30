@@ -1,0 +1,72 @@
+{
+ "format": "ujump-organelle-model-1",
+ "dataset": "minnie65",
+ "onnx": "model.onnx",
+ "nm": 16,
+ "stride": 8,
+ "nmsNm": 300,
+ "inputMultiple": 8,
+ "mean": 130.4186254806646,
+ "std": 13.440262705089058,
+ "classes": [
+  "background",
+  "lysosome",
+  "cilium",
+  "centriole",
+  "nucleoplasmic_reticulum_2"
+ ],
+ "thresholds": {
+  "lysosome": 0.5,
+  "cilium": 0.95,
+  "centriole": 0.5,
+  "nucleoplasmic_reticulum_2": 0.95
+ },
+ "show": [
+  "lysosome"
+ ],
+ "examples": {
+  "background": 3477,
+  "lysosome": 2549,
+  "cilium": 750,
+  "centriole": 174,
+  "nucleoplasmic_reticulum_2": 25
+ },
+ "validation": [
+  {
+   "organelle": "lysosome",
+   "validation_examples": 384,
+   "threshold": 0.5,
+   "precision": 0.99,
+   "recall": 0.94,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "cilium",
+   "validation_examples": 171,
+   "threshold": 0.95,
+   "precision": 0.73,
+   "recall": 0.06,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "centriole",
+   "validation_examples": 32,
+   "threshold": 0.5,
+   "precision": 0.93,
+   "recall": 0.78,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "nucleoplasmic_reticulum_2",
+   "validation_examples": 0,
+   "threshold": 0.95,
+   "precision": null,
+   "recall": null,
+   "shown_on_pad": "too few to judge"
+  }
+ ],
+ "validationMeanF1": 0.601,
+ "trained": "2026-10-30",
+ "source": "organelle_ml_train.ipynb",
+ "note": "2026-10-30: centriole and cilium hidden by hand -- on whole windows they marked pale cytoplasm and folds everywhere (check_windows.png). Retrain with hard negatives before showing them."
+}

@@ -530,7 +530,14 @@ UJ.emtiles = (function(){
         return [(v[0] - x0) * zoom, (v[1] - y0) * zoom];
       },
       /* How many canvas pixels one tool voxel is, for hit-testing a vertex in tool coordinates. */
-      pxPerToolVoxel: CFG.res[0] / scale.resolution[0] * zoom
+      pxPerToolVoxel: CFG.res[0] / scale.resolution[0] * zoom,
+      /* ── THE PLANE ITSELF, BEFORE ANY WINDOW ─────────────────────────────────  2026-10-30
+         For core/organelleml.js, which has to see what the data says rather than what the
+         contrast made of it: a model trained on raw values and shown a stretched picture is being
+         shown a different microscope. `raw` is vw x vh voxels of THIS scale, x fastest, starting
+         at scale voxel (x0, y0); `seen` marks the ones a chunk actually filled. Kept, not copied:
+         nothing writes to them after this call returns. */
+      raw: raw, seen: seen, x0: x0, y0: y0, resNm: scale.resolution.slice()
     };
     return view;
   }
