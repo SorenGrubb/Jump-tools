@@ -1836,7 +1836,10 @@ function showCell(i, distNm, fromHistory){
          own header records ηJump as the one tool that carried the CLASS and not the attribute --
          it closes over c3Id(i) in the click handler instead -- so the selector never matched and
          no 3D button appeared. `seg` IS c3Id(i), from the same line, so the two cannot differ. */
-      '<button class="idbtn meshdl" data-root="'+seg+'" title="Download this cell’s 3D model as a .glb, decoded in your browser from H01’s Draco meshes. No sign-in needed. Shift-click to re-check the network if a previous attempt found no mesh." style="padding:1px 8px;margin-left:6px;font-size:11px;vertical-align:middle">⬇ 3D model</button>'
+      /* data-nucid: the cell body id, which ηJump files its proposed segments under -- "+ VR" carries it, so the VR
+         viewer's "Add missing parts" can save onto this cell (2026-10-29: without it the viewer had nothing to file them
+         under, and "Add them all to the cell" did nothing) */
+      '<button class="idbtn meshdl" data-root="'+seg+'" data-nucid="'+String(HSB[i])+'" title="Download this cell’s 3D model as a .glb, decoded in your browser from H01’s Draco meshes. No sign-in needed. Shift-click to re-check the network if a previous attempt found no mesh." style="padding:1px 8px;margin-left:6px;font-size:11px;vertical-align:middle">⬇ 3D model</button>'
      +'<button class="idbtn pptxdl" title="Download a PowerPoint slide with this cell as a live 3D model, labelled with its type, layer and coordinates. Built entirely in your browser." style="padding:1px 8px;margin-left:4px;font-size:11px;vertical-align:middle">⬇ PowerPoint</button>'
      +'<button class="idbtn meshvol" title="Computes whole-cell volume from the decoded mesh geometry — the c3 segment ID(s) above, NOT the precomputed soma figure at the top of this panel (that one is the cell_bodies ID, a different ID space; see its own tooltip). Automatically combines any community-proposed c3 IDs from the panel below, so re-running this after proposing a new one recalculates using all of them. An estimate: small gaps at fragment boundaries in the raw mesh aren’t corrected for." style="padding:1px 8px;margin-left:4px;font-size:11px;vertical-align:middle">&#8776; Compute volume</button>');
   h+='<div id="meshvolResult" class="hint" style="margin-top:2px"></div>';

@@ -657,7 +657,7 @@
   <div class="ctl">
     <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
     <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
-    <label title="With Hear spikes on: a faint heartbeat and breathing of the mouse, at the model's own heart rate and breathing phase (they slow down with the clock). Needs the vascular regulation or blood-flow model running. Also in films made from the timeline." style="font-size:12px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="sndBody" checked> heartbeat &amp; breathing</label>
+    <label id="sndBodyRow" title="With Hear spikes on: a faint heartbeat and breathing of the mouse, at the model's own heart rate and breathing phase (they slow down with the clock). Needs the vascular regulation or blood-flow model running. Also in films made from the timeline." style="font-size:12px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="sndBody" checked> heartbeat &amp; breathing</label>
   </div>
   <div id="physBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div style="font-size:12px;margin-bottom:4px"><b>Brain temperature &amp; intracranial pressure</b> <span style="color:var(--mut)">(MODEL, for teaching)</span></div>
@@ -982,7 +982,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#drugRow"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -1246,6 +1246,14 @@ window.VR_DATASETS = {
             meshBaseAlt: "https://bossdb-open-data.s3.amazonaws.com/mesh/nguyen_thomas2022/cb2/mesh/", meshBaseAltQuery: "",
             legacyVertexToNm: [[0, 0, 1e9], [0, 1e9, 0], [1e9, 0, 0]], legacyLightGridNm: 400 },
     tracedOnly: true,
+    /* THE FLAT SEGMENTATION, for "Add missing parts" (2026-10-29, Søren: "Why does it say this in xJump?" -- "this dataset
+       has no flat segmentation to read"). It has one; it is just displaced: its info file is not readable from a page (the
+       mesh store's describes the same volume) and it sits 1,216 sections below the EM -- exactly how χJump's own tracing
+       pad reads it (xjump.html, sources()). A cell here is χJump's assembled cell (its key in `nuc`, from "+ VR"), and the
+       parts added are saved the χJump way: xjump_cell_add on that cell, not a root-ID proposal on a nucleus. */
+    seg: "precomputed://https://bossdb-open-data.s3.amazonaws.com/nguyen_thomas2022/cb2/seg",
+    segInfo: "https://bossdb-open-data.s3.amazonaws.com/mesh/nguyen_thomas2022/cb2",
+    segOffsetNm: [0, 0, -1216 * 40], cellAdd: "xjump_cell_add", volumeId: "cb2",
     backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
     backendDs: "xjump", tracingDs: "xjump",
     /* 4 nm chunks are 26 MB each; χJump's pad skips them too. */
@@ -13716,8 +13724,8 @@ async function setFix(v){
   if (!FIX.on){ fixClear(); return; }
   FIX.c = c; FIX.added = []; FIX.mip = 2; FIX.dz = 0; FIX.pan = [0, 0];
   const ds = fixDs();
-  if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
-  if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res });
+  if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
+  if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
   if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
   FIX.centre = emCentreUm();                                  // the picked cell's nucleus (else its mesh)
   document.getElementById("fixTitle").textContent = "Add missing parts — " + shortName(c);
@@ -13879,6 +13887,10 @@ function fixAsk(){
   t.innerHTML = nuc ? "Add all " + FIX.added.length + " root ID" + (FIX.added.length > 1 ? "s" : "") + " to <b>" + esc(shortName(c)) + "</b> (nucleus " + nuc + ")? They are saved for everyone, as root-ID proposals for this cell in µJump (signed with your Google account), and drawn with the cell from now on."
                     : "This cell has no nucleus id, and proposals are filed by nucleus, so they cannot be saved. You can still look at them here.";
   document.getElementById("fixSave").disabled = !nuc;
+  /* not a green button that does nothing (2026-10-29, Søren in ηJump: "I tried clicking done and then add them all to
+     the cell, nothing happened") -- with nothing to file the parts under, there is no button to press */
+  document.getElementById("fixSave").style.display = nuc ? "" : "none";
+  if (nuc && fixDs().cellAdd) t.innerHTML = "Add all " + FIX.added.length + " fragment" + (FIX.added.length > 1 ? "s" : "") + " to <b>" + esc(shortName(c)) + "</b> (cell " + esc(nuc) + ")? They are added to the cell for everyone, as in χJump (signed with your Google account).";
   if (nuc && !credOk()) signInUI("fixSignin");
 }
 async function fixSave(){
@@ -13888,7 +13900,18 @@ async function fixSave(){
   if (FIX.saving) return; FIX.saving = true; FIX.pending = false;
   const url = ds.backend + (ds.backendDs ? "?ds=" + encodeURIComponent(ds.backendDs) : "");
   let ok = 0; const bad = [];
-  for (const a of FIX.added){
+  if (ds.cellAdd){                                          /* χJump: all the parts in one request, onto the assembled cell */
+    out.textContent = "Saving " + FIX.added.length + " fragment" + (FIX.added.length > 1 ? "s" : "") + "…";
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ type: ds.cellAdd, credential: CRED, cellKey: String(c.nuc), segments: FIX.added.map(a => String(a.root)),
+                               ds: ds.backendDs, volume: ds.volumeId || "", timestamp: new Date().toISOString() }) });
+      const d = JSON.parse(await r.text());
+      if (d.ok === false) FIX.added.forEach(a => bad.push(a.root + ": " + (d.error || "refused")));
+      else FIX.added.forEach(a => { ok++; a.saved = true; });
+    } catch (e){ FIX.added.forEach(a => bad.push(a.root + ": could not reach the server")); }
+  }
+  else for (const a of FIX.added){
     out.textContent = "Saving " + (ok + bad.length + 1) + " of " + FIX.added.length + "…";
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -14024,8 +14047,8 @@ async function setTrace(v){
   if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
   const canSeg = !!(ds.seg && UJ.segread && UJ.segread.configured && UJ.segpaint && UJ.segpaint.configured);
   if (canSeg) try {
-    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
-    if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res });
+    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
+    if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
   } catch (e){}
   document.getElementById("trwSegRow").style.display = canSeg ? "" : "none";
   TRW.centre = emCentreUm();
@@ -14801,7 +14824,7 @@ async function segTouching(){
   const p0 = nucCentreOf(c); if (!p0){ cnSay("Touching segments: the cell has no position yet."); return; }
   if (TS.busy) return; TS.busy = true;
   try {
-    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res });
+    if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
     const base = UJ.segread._httpBase(ds.seg), info = await UJ.segread._getInfo(base);
     const fineZ = info.scales[0].resolution[2], usable = info.scales.filter(s => s.resolution[2] === fineZ);
     const sc = usable.find(s => s.resolution[0] >= 60) || usable[usable.length - 1];

@@ -5982,7 +5982,8 @@ UJ.app = (function(){
     btn.addEventListener("click", function(ev){
       ev.preventDefault(); ev.stopPropagation();
       if (UJ.vrbasket.has(segs[0])) UJ.vrbasket.remove(segs[0]);
-      else UJ.vrbasket.add({ ds: "xjump", root: segs[0], nuc: "", extra: segs.slice(1), label: vrLabel(row), t: Date.now() });
+      /* the cell's KEY rides in `nuc`, as on χJump's tracing pad, so the viewer's "Add missing parts" can save onto it */
+      else UJ.vrbasket.add({ ds: "xjump", root: segs[0], nuc: String(row.key || ""), extra: segs.slice(1), label: vrLabel(row), t: Date.now() });
       vrPaint(btn, segs);
     });
   }
