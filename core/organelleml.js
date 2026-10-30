@@ -298,6 +298,9 @@ UJ.organelleml = (function(){
       for (var i = 0; i < g.length; i++) for (var j = 0; j < g[i].kinds.length; j++)
         if (g[i].kinds[j].value === k) return g[i].kinds[j].label;
     } catch (_e){}
+    /* Two answers the pad gives that are not organelles (2026-10-30). */
+    if (k === ARTIFACT) return "Imaging artifact";
+    if (k === NOT_ORGANELLE) return "not an organelle";
     return String(k).replace(/_/g, " ");
   }
   /* ── CORRECTIONS ───────────────────────────────────────────────────────────────  2026-10-30
@@ -309,6 +312,11 @@ UJ.organelleml = (function(){
      Each: { t:[x,y,z], k: what it really is, was: what the model said or "", p, verdict }. */
   var CORR = [];
   var NOT_ORGANELLE = "not_an_organelle";
+  /* A FOLD, A KNIFE MARK, DIRT, A CRACK IN THE RESIN -- Søren, 2026-10-30: "We should be able to
+     label artifacts, so that they will be recognized as not being organelles." Its own kind rather
+     than "not an organelle": once there are enough, the model learns artifacts as a class of their
+     own -- worth showing a beginner too -- and until then the notebook counts them as background. */
+  var ARTIFACT = "imaging_artifact";
   function same(a, b){ return a[0] === b[0] && a[1] === b[1] && a[2] === b[2]; }
   function markAt(view, px, py, z, radius){
     var r = radius || 14, best = null, bd = r * r;
@@ -363,6 +371,7 @@ UJ.organelleml = (function(){
       ring(g, q, "#ffffff", true);
       text(g, q, c.verdict === "ok" ? "\u2713 " + nameOf(c.k)
               : c.verdict === "no" ? "\u2717 not an organelle"
+              : c.k === ARTIFACT ? "\u26a0 imaging artifact"
               : "\u2192 " + nameOf(c.k), "#ffffff");
       n++;
     });
@@ -383,6 +392,6 @@ UJ.organelleml = (function(){
   return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
            markAt: markAt, correct: correct, corrections: corrections, nameOf: nameOf,
-           NOT_ORGANELLE: NOT_ORGANELLE,
+           NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT,
            _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
 })();

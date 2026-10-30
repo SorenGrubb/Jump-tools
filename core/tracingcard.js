@@ -6455,8 +6455,9 @@ function padAiSay(msg, bad){
    Søren: *"Can we train it just by it guessing and then instead of saying yes or no, I can tell it
    exactly what it is and that trains it?"* With "correct it" ticked, a click on the pad opens a
    small form instead of dropping a vertex: on one of the model's marks it asks whether the mark is
-   right, what it really is, or whether nothing is there; anywhere else it asks what the missed
-   organelle is. The answer goes out as an ordinary organelle_location report -- no new backend
+   right, what it really is, whether nothing is there, or whether it is an imaging artifact (fold,
+   knife mark, dirt -- kind "imaging_artifact"); anywhere else it asks what the missed organelle or
+   artifact is. The answer goes out as an ordinary organelle_location report -- no new backend
    type, since `kind` is free text there -- with NO nucleus id (a correction is about a place, not a
    claim about a cell, so it never touches the Master cell list), path "ai-correction" and source
    "ai_correction". "Nothing there" is kind "not_an_organelle", which the training notebook reads as
@@ -6504,6 +6505,9 @@ function padAiFixOpen(e){
     + (was ? "<div style=\"display:flex;gap:6px;margin-bottom:8px\">"
         + "<button class=\"idbtn\" data-v=\"ok\">\u2713 Right</button>"
         + "<button class=\"idbtn\" data-v=\"no\">\u2717 Not an organelle</button></div>" : "")
+    /* An artifact on its own button, on a mark or off one: folds and knife marks are what the model
+       most often mistakes for a lysosome, and naming them is how it learns not to. */
+    + "<div style=\"margin-bottom:8px\"><button class=\"idbtn\" data-v=\"artifact\" title=\"A fold, knife mark, crack, dirt or stain -- something from making the sample, not the cell\">\u26a0 Imaging artifact (fold, knife mark, dirt)</button></div>"
     + "<div style=\"display:flex;gap:6px;align-items:center\"><span>" + (was ? "It is:" : "It is:") + "</span>"
     + "<select style=\"flex:1 1 auto;min-width:0\">" + padAiFixOptions(was || "mitochondria") + "</select>"
     + "<button class=\"idbtn\" data-v=\"kind\">Save</button></div>"
@@ -6518,6 +6522,7 @@ function padAiFixOpen(e){
     if (v === "cancel"){ padAiFixClose(); return; }
     if (v === "ok") padAiFixSend(t, was, "ok", was, p);
     else if (v === "no") padAiFixSend(t, UJ.organelleml.NOT_ORGANELLE, "no", was, p);
+    else if (v === "artifact") padAiFixSend(t, UJ.organelleml.ARTIFACT, "kind", was, p);
     else {
       var k = pop.querySelector("select").value;
       padAiFixSend(t, k, k === was ? "ok" : "kind", was, p);

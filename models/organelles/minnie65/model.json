@@ -6,80 +6,103 @@
  "stride": 8,
  "nmsNm": 300,
  "inputMultiple": 8,
- "mean": 130.17830052906757,
- "std": 13.604594307999813,
+ "mean": 130.4838933967604,
+ "std": 13.511064538630624,
  "classes": [
   "background",
   "lysosome",
-  "centriole",
   "mitochondria",
+  "centriole",
   "cilium",
-  "myelin_sheath"
+  "myelin_sheath",
+  "golgi",
+  "er_smooth"
  ],
  "thresholds": {
   "lysosome": 0.5,
-  "centriole": 0.5,
   "mitochondria": 0.5,
-  "cilium": 0.95,
-  "myelin_sheath": 0.5
+  "centriole": 0.975,
+  "cilium": 0.55,
+  "myelin_sheath": 0.5,
+  "golgi": 0.5,
+  "er_smooth": 0.5
  },
  "show": [
   "lysosome",
   "mitochondria",
-  "myelin_sheath"
+  "myelin_sheath",
+  "golgi",
+  "er_smooth"
  ],
  "examples": {
-  "background": 9115,
-  "lysosome": 2618,
-  "centriole": 178,
-  "mitochondria": 171,
+  "background": 9469,
+  "lysosome": 2653,
+  "mitochondria": 369,
+  "centriole": 230,
   "cilium": 147,
-  "myelin_sheath": 28
+  "myelin_sheath": 47,
+  "golgi": 39,
+  "er_smooth": 36
  },
  "validation": [
   {
    "organelle": "lysosome",
-   "validation_examples": 679,
+   "validation_examples": 402,
    "threshold": 0.5,
-   "precision": 0.99,
-   "recall": 0.99,
-   "shown_on_pad": "yes"
-  },
-  {
-   "organelle": "centriole",
-   "validation_examples": 40,
-   "threshold": 0.5,
-   "precision": 0.75,
-   "recall": 0.75,
+   "precision": 0.98,
+   "recall": 0.97,
    "shown_on_pad": "yes"
   },
   {
    "organelle": "mitochondria",
-   "validation_examples": 80,
+   "validation_examples": 171,
    "threshold": 0.5,
-   "precision": 0.88,
-   "recall": 0.85,
+   "precision": 0.93,
+   "recall": 0.89,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "centriole",
+   "validation_examples": 51,
+   "threshold": 0.5,
+   "precision": 1.0,
+   "recall": 0.98,
    "shown_on_pad": "yes"
   },
   {
    "organelle": "cilium",
-   "validation_examples": 22,
-   "threshold": 0.95,
-   "precision": null,
-   "recall": null,
-   "shown_on_pad": "no (never 70% precise)"
+   "validation_examples": 17,
+   "threshold": 0.5,
+   "precision": 1.0,
+   "recall": 0.06,
+   "shown_on_pad": "yes"
   },
   {
    "organelle": "myelin_sheath",
-   "validation_examples": 16,
+   "validation_examples": 24,
    "threshold": 0.5,
-   "precision": 0.75,
-   "recall": 0.38,
+   "precision": 0.86,
+   "recall": 0.79,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "golgi",
+   "validation_examples": 20,
+   "threshold": 0.5,
+   "precision": 1.0,
+   "recall": 0.2,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "er_smooth",
+   "validation_examples": 20,
+   "threshold": 0.5,
+   "precision": 0.7,
+   "recall": 0.35,
    "shown_on_pad": "yes"
   }
  ],
- "validationMeanF1": 0.633,
+ "validationMeanF1": 0.681,
  "trained": "2026-10-30",
- "source": "organelle_ml_train.ipynb",
- "note": "2026-10-30: centriole hidden by hand -- on whole windows it marked pale cytoplasm and folds (check_windows.png). v6 of the notebook decides centriole/cilium on whole windows."
+ "source": "organelle_ml_train.ipynb"
 }
