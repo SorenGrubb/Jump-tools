@@ -1151,6 +1151,8 @@ window.VR_DATASETS = {
     /* No nucleus volume: H01's cell bodies are c3 segments, not a nucleus segmentation. */
     backend: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
     backendDs: "hjump", tracingDs: "hjump", extraSegType: "c3",
+    /* H01 has no nucleus table: a cell is its CELL BODY ID, which ηJump files proposed segments under (2026-10-30) */
+    cellIdName: "cell body ID", toolName: "ηJump",
     em: "precomputed://gs://h01-release/data/20210601/4nm_raw",
     seg: "precomputed://gs://h01-release/data/20210601/c3",
     /* This bucket answers browsers only through the JSON API (core/segread.js useJsonApi). */
@@ -2209,12 +2211,51 @@ document.getElementById("vascSel").addEventListener("change", buildVessels);
    ±5 µm usually re-reads nothing and redraws in well under a second. */
 const EM = { mesh: null, centre: null, size: "wide", loading: false, token: 0 };
 const EM_LEVEL = { wide: { mip: 4, px: 512 }, close: { mip: 3, px: 512 } };
+/* Where a cell's body is when it has no nucleus mesh (ηJump/H01, χJump, …): the 20 µm box holding
+   the most membrane area. The soma packs far more surface into such a box than any stretch of
+   dendrite or axon, while the bounding-box centre of a whole neuron is often in empty neuropil. */
+function somaCentreOf(c){
+  const g = c && c.mesh && c.mesh.geometry;
+  if (!g || !g.attributes.position) return null;
+  if (c._soma && c._somaG === g) return c._soma.clone();
+  const P = g.attributes.position.array, I = g.index ? g.index.array : null;
+  const nT = I ? I.length / 3 : P.length / 9, B = 4, H = new Map();
+  const step = Math.max(1, Math.floor(nT / 400000));
+  const key = (x, y, z) => x + "," + y + "," + z;
+  for (let t = 0; t < nT; t += step){
+    const a = I ? I[3*t] : 3*t, b = I ? I[3*t+1] : 3*t+1, d = I ? I[3*t+2] : 3*t+2;
+    const ax = P[3*a], ay = P[3*a+1], az = P[3*a+2];
+    const ux = P[3*b]-ax, uy = P[3*b+1]-ay, uz = P[3*b+2]-az, vx = P[3*d]-ax, vy = P[3*d+1]-ay, vz = P[3*d+2]-az;
+    const cx = uy*vz-uz*vy, cy = uz*vx-ux*vz, cz = ux*vy-uy*vx, ar = 0.5 * Math.sqrt(cx*cx + cy*cy + cz*cz);
+    const mx = (ax + P[3*b] + P[3*d]) / 3, my = (ay + P[3*b+1] + P[3*d+1]) / 3, mz = (az + P[3*b+2] + P[3*d+2]) / 3;
+    const k = key(Math.floor(mx / B), Math.floor(my / B), Math.floor(mz / B));
+    let e = H.get(k); if (!e){ e = [0, 0, 0, 0]; H.set(k, e); }
+    e[0] += ar; e[1] += ar * mx; e[2] += ar * my; e[3] += ar * mz;
+  }
+  let best = null, bestA = -1;
+  for (const k of H.keys()){
+    const [x, y, z] = k.split(",").map(Number); let a = 0;
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++){
+      const e = H.get(key(x+dx, y+dy, z+dz)); if (e) a += e[0];
+    }
+    if (a > bestA){ bestA = a; best = [x, y, z]; }
+  }
+  if (!best) return null;
+  let A = 0, sx = 0, sy = 0, sz = 0;
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++){
+    const e = H.get(key(best[0]+dx, best[1]+dy, best[2]+dz)); if (e){ A += e[0]; sx += e[1]; sy += e[2]; sz += e[3]; }
+  }
+  c._soma = new THREE.Vector3(sx / A, sy / A, sz / A); c._somaG = g;
+  return c._soma.clone();
+}
 function emCentreUm(){
   const c = CELLS[SELECTED];
-  const g = c && ((c.nucMesh && c.nucMesh.geometry) || (c.mesh && c.mesh.geometry));
-  if (g){ g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3()).toArray(); }
+  if (c && c.nucMesh && c.nucMesh.geometry){ const g = c.nucMesh.geometry; g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3()).toArray(); }
+  const s = somaCentreOf(c); if (s) return s.toArray();
   return CELL_BOX ? CELL_BOX.getCenter(new THREE.Vector3()).toArray() : null;
 }
+/* The "⌖" buttons say what they go back to. */
+function homeLabel(c){ return c && c.nucMesh ? "⌖ nucleus" : "⌖ cell body"; }
 function emPlaceholder(text){
   const cv = document.createElement("canvas"); cv.width = 512; cv.height = 512;
   const g = cv.getContext("2d"); g.fillStyle = "#161b22"; g.fillRect(0, 0, 512, 512);
@@ -2772,8 +2813,8 @@ async function nucTile(ds, k){
   return NUC.tiles[k] || [];
 }
 function nucCentreOf(c){
-  const g = c && ((c.nucMesh && c.nucMesh.geometry) || (c.mesh && c.mesh.geometry));
-  if (!g) return null; g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3());
+  if (c && c.nucMesh && c.nucMesh.geometry){ const g = c.nucMesh.geometry; g.computeBoundingBox(); return g.boundingBox.getCenter(new THREE.Vector3()); }
+  return somaCentreOf(c);
 }
 async function addNeighbours(k, only, what){
   what = what || "neighbour";
@@ -13711,7 +13752,7 @@ function fixIdsNow(c){ return [c.root, ...(c.extraUsed || c.extra || [])].filter
 function fixCell(){ return CELLS[SELECTED] || null; }
 function fixInfo(){
   const c = fixCell(), el = document.getElementById("fixInfo"); if (!el) return;
-  el.textContent = !DSX.seg ? "this dataset has no flat segmentation to read" : c ? "for " + shortName(c) + (c.nuc && c.nuc !== "0" ? "" : " (no nucleus id: can be explored, not saved)") : "pick a cell first";
+  el.textContent = !DSX.seg ? "this dataset has no flat segmentation to read" : c ? "for " + shortName(c) + (c.nuc && c.nuc !== "0" ? "" : " (no " + (fixDs().cellIdName || "nucleus id") + ": can be explored, not saved — add the cell to VR again from its tool)") : "pick a cell first";
 }
 async function setFix(v){
   const c = fixCell();
@@ -13727,7 +13768,8 @@ async function setFix(v){
   if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
   if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
   if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
-  FIX.centre = emCentreUm();                                  // the picked cell's nucleus (else its mesh)
+  FIX.centre = emCentreUm();                                  // the picked cell's nucleus (else its cell body)
+  { const h = document.getElementById("fixHome"); h.textContent = homeLabel(c); h.title = "Back to the cell's " + homeLabel(c).slice(2); }
   document.getElementById("fixTitle").textContent = "Add missing parts — " + shortName(c);
   document.getElementById("fixAsk").style.display = "none";
   fixList(); await fixDraw();
@@ -13884,8 +13926,8 @@ function fixAsk(){
   if (!FIX.added.length){ t.textContent = "Nothing was added. Close the window?"; document.getElementById("fixSave").style.display = "none"; return; }
   document.getElementById("fixSave").style.display = "";
   const nuc = c.nuc && c.nuc !== "0" ? c.nuc : null;
-  t.innerHTML = nuc ? "Add all " + FIX.added.length + " root ID" + (FIX.added.length > 1 ? "s" : "") + " to <b>" + esc(shortName(c)) + "</b> (nucleus " + nuc + ")? They are saved for everyone, as root-ID proposals for this cell in µJump (signed with your Google account), and drawn with the cell from now on."
-                    : "This cell has no nucleus id, and proposals are filed by nucleus, so they cannot be saved. You can still look at them here.";
+  t.innerHTML = nuc ? "Add all " + FIX.added.length + " root ID" + (FIX.added.length > 1 ? "s" : "") + " to <b>" + esc(shortName(c)) + "</b> (" + (fixDs().cellIdName || "nucleus") + " " + nuc + ")? They are saved for everyone, as root-ID proposals for this cell in " + (fixDs().toolName || "µJump") + " (signed with your Google account), and drawn with the cell from now on."
+                    : "This cell came into the viewer without its " + (fixDs().cellIdName || "nucleus id") + ", which the parts are filed under, so they cannot be saved from here. Add the cell to VR again from " + (fixDs().toolName || "its tool") + " (the cell card's “+ VR”), open the collection again, and add the parts there. You can still look at them here.";
   document.getElementById("fixSave").disabled = !nuc;
   /* not a green button that does nothing (2026-10-29, Søren in ηJump: "I tried clicking done and then add them all to
      the cell, nothing happened") -- with nothing to file the parts under, there is no button to press */
@@ -14043,6 +14085,7 @@ async function setTrace(v){
   document.getElementById("trwWin").style.display = TRW.on && !renderer.xr.isPresenting ? "" : "none";
   if (!TRW.on){ const had = TRW.items.some(i => i.saved); trwClear(); if (had) trwRefreshShown(); return; }
   TRW.c = c; TRW.items = []; TRW.cur = null; TRW.pend = null; TRW.mip = 1; TRW.dz = 0; TRW.pan = [0, 0];
+  { const h = document.getElementById("trwHome"); if (h){ h.textContent = homeLabel(c); h.title = "Back to the cell's " + homeLabel(c).slice(2); } }
   const ds = trwDs();
   if (!UJ.emtiles.configured()) UJ.emtiles.configure({ em: ds.em, res: ds.res, skipScales: ds.emSkip || [] });
   const canSeg = !!(ds.seg && UJ.segread && UJ.segread.configured && UJ.segpaint && UJ.segpaint.configured);

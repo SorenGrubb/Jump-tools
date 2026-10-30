@@ -331,8 +331,18 @@ UJ.vrbasket = (function(){
   }
 
   /* ── the buttons ────────────────────────────────────────────────────────── */
+  /* A CELL ADDED BEFORE ITS TOOL SENT ITS ID (2026-10-30, Søren in ηJump: the VR viewer could not save the parts he
+     added "because the cell does not have a nucleus ID" -- ηJump's "+ VR" had not carried the cell body ID yet). When a
+     cell already in the collection is shown again and its button now carries the id, the entry gets it. */
+  function fillNuc(root, nucid){
+    if (!root || !nucid) return;
+    var list = load(), k = keyOf(ds(), root), ch = false;
+    list.forEach(function(e){ if (keyOf(e.ds, e.root) === k && !e.nuc){ e.nuc = String(nucid); ch = true; } });
+    if (ch) save(list);
+  }
   function paint(b){
     var inB = has(b.getAttribute("data-root"));
+    if (inB && b.__vrbDl) fillNuc(b.getAttribute("data-root"), b.__vrbDl.getAttribute("data-nucid"));
     b.textContent = inB ? "✓ In VR" : "+ VR";
     b.title = inB ? "In your VR collection — click to remove"
                   : "Add this cell to your VR collection, to view several cells together in 3D / VR";
