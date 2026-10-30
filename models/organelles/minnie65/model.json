@@ -6,70 +6,78 @@
  "stride": 8,
  "nmsNm": 300,
  "inputMultiple": 8,
- "mean": 130.94478515381252,
- "std": 13.086373878902062,
+ "mean": 130.9721154824088,
+ "std": 12.818022508129209,
  "classes": [
   "background",
   "lysosome",
   "mitochondria",
   "centriole",
   "cilium",
-  "golgi",
   "myelin_sheath",
+  "golgi",
   "er_smooth",
+  "nuclear_pore",
+  "chromatin",
   "glia_limitans",
-  "nuclear_pore"
+  "synapse"
  ],
  "thresholds": {
   "lysosome": 0.5,
   "mitochondria": 0.5,
   "centriole": 0.95,
-  "cilium": 0.7,
-  "golgi": 0.5,
+  "cilium": 0.85,
   "myelin_sheath": 0.5,
+  "golgi": 0.5,
   "er_smooth": 0.5,
+  "nuclear_pore": 0.95,
+  "chromatin": 0.5,
   "glia_limitans": 0.95,
-  "nuclear_pore": 0.95
+  "synapse": 0.5
  },
  "show": [
   "lysosome",
   "mitochondria",
+  "myelin_sheath",
   "golgi",
   "er_smooth",
-  "myelin_sheath"
+  "chromatin",
+  "synapse"
  ],
  "examples": {
-  "background": 9794,
-  "lysosome": 2681,
-  "mitochondria": 543,
+  "background": 10272,
+  "lysosome": 2686,
+  "mitochondria": 792,
   "centriole": 230,
   "cilium": 147,
-  "golgi": 69,
-  "myelin_sheath": 64,
-  "er_smooth": 52,
+  "myelin_sheath": 149,
+  "golgi": 101,
+  "er_smooth": 62,
+  "nuclear_pore": 42,
+  "chromatin": 40,
   "glia_limitans": 30,
-  "nuclear_pore": 27
+  "synapse": 27
  },
  "validation": [
   {
    "organelle": "lysosome",
-   "validation_examples": 561,
+   "validation_examples": 628,
    "threshold": 0.5,
-   "precision": 0.98,
-   "recall": 0.96,
+   "precision": 0.96,
+   "recall": 0.95,
    "shown_on_pad": "yes"
   },
   {
    "organelle": "mitochondria",
-   "validation_examples": 22,
+   "validation_examples": 220,
    "threshold": 0.5,
-   "precision": 0.88,
-   "recall": 1.0,
+   "precision": 0.86,
+   "recall": 0.95,
    "shown_on_pad": "yes"
   },
   {
    "organelle": "centriole",
-   "validation_examples": 43,
+   "validation_examples": 50,
    "threshold": 0.5,
    "precision": 1.0,
    "recall": 1.0,
@@ -77,43 +85,35 @@
   },
   {
    "organelle": "cilium",
-   "validation_examples": 55,
+   "validation_examples": 43,
+   "threshold": 0.95,
+   "precision": null,
+   "recall": null,
+   "shown_on_pad": "no (never 70% precise)"
+  },
+  {
+   "organelle": "myelin_sheath",
+   "validation_examples": 27,
    "threshold": 0.5,
-   "precision": 1.0,
-   "recall": 0.04,
+   "precision": 0.87,
+   "recall": 0.74,
    "shown_on_pad": "yes"
   },
   {
    "organelle": "golgi",
-   "validation_examples": 11,
+   "validation_examples": 40,
    "threshold": 0.5,
-   "precision": 0.88,
-   "recall": 0.64,
+   "precision": 0.81,
+   "recall": 0.88,
    "shown_on_pad": "yes"
-  },
-  {
-   "organelle": "myelin_sheath",
-   "validation_examples": 3,
-   "threshold": 0.5,
-   "precision": 0.75,
-   "recall": 1.0,
-   "shown_on_pad": "too few to judge"
   },
   {
    "organelle": "er_smooth",
-   "validation_examples": 5,
+   "validation_examples": 25,
    "threshold": 0.5,
-   "precision": 1.0,
-   "recall": 0.8,
+   "precision": 0.86,
+   "recall": 0.24,
    "shown_on_pad": "yes"
-  },
-  {
-   "organelle": "glia_limitans",
-   "validation_examples": 0,
-   "threshold": 0.95,
-   "precision": null,
-   "recall": null,
-   "shown_on_pad": "too few to judge"
   },
   {
    "organelle": "nuclear_pore",
@@ -122,10 +122,33 @@
    "precision": null,
    "recall": null,
    "shown_on_pad": "too few to judge"
+  },
+  {
+   "organelle": "chromatin",
+   "validation_examples": 17,
+   "threshold": 0.5,
+   "precision": 0.75,
+   "recall": 0.18,
+   "shown_on_pad": "yes"
+  },
+  {
+   "organelle": "glia_limitans",
+   "validation_examples": 2,
+   "threshold": 0.95,
+   "precision": null,
+   "recall": null,
+   "shown_on_pad": "too few to judge"
+  },
+  {
+   "organelle": "synapse",
+   "validation_examples": 8,
+   "threshold": 0.5,
+   "precision": 0.88,
+   "recall": 0.88,
+   "shown_on_pad": "yes"
   }
  ],
- "validationMeanF1": 0.598,
+ "validationMeanF1": 0.613,
  "trained": "2026-10-30",
- "source": "organelle_ml_train.ipynb",
- "note": "2026-10-30: myelin_sheath added to show by hand -- only 3 held-out examples in this split (0.75 precision); the previous model held out 24 (0.86 / 0.79) and Soren judged it working."
+ "source": "organelle_ml_train.ipynb"
 }
