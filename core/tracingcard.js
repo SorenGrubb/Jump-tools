@@ -6436,6 +6436,9 @@ function padAiTickSync(){
   var say = document.getElementById("tracePadAiSay");
   lab.style.display = ok ? "" : "none";
   if (say) say.style.display = ok ? "" : "none";
+  var dkb = document.getElementById("tracePadAiDark");
+  if (dkb){ var dl = (dkb.closest && dkb.closest("label")) || dkb; dl.style.display = ok ? "" : "none";
+            dkb.checked = ok && UJ.organelleml.dark(); }
   var fx = document.getElementById("tracePadAiFix");
   if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
   if (!ok) box.checked = false;
@@ -7496,6 +7499,15 @@ function wirePad(){
       if (ev === "pointerup") padAiFixOpen(e);
     }, true);
   });
+  const pad_dk = document.getElementById("tracePadAiDark");
+  if (pad_dk) pad_dk.addEventListener("change", function(){
+    UJ.organelleml.setDark(pad_dk.checked);
+    if (pad_dk.checked){
+      const ai = document.getElementById("tracePadAi");
+      if (ai && !ai.checked){ ai.checked = true; ai.dispatchEvent(new Event("change")); return; }
+    }
+    padPaint(); padAiRun();
+  });
   const paf = document.getElementById("tracePadAiFix");
   if (paf) paf.addEventListener("change", function(){
     padAiFixClose();
@@ -8099,6 +8111,7 @@ function tracingCardHtml(){
     "     organelles are identified and shown with an annotation, so that people new to EM could get",
     "     an idea of what is what.\" core/organelleml.js; hidden where no model is set up. -->",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Marks what a model trained on the community's own organelle reports and tracings thinks is on this section, with its confidence. It runs in your browser; nothing is sent anywhere. Suggestions, not answers -- the model has only learned what people have marked so far.\"><input type=\"checkbox\" id=\"tracePadAi\"> suggest organelles (AI)</label>",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"For dark cells -- endothelial cells, dark microglia, a pericyte -- where the model sees nothing: every voxel is measured against its own 2 um surroundings before the model looks, so a dark cytoplasm lands on the grey the model knows. Leave it off in ordinary tissue.\"><input type=\"checkbox\" id=\"tracePadAiDark\"> dark-cell mode</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- A DECODER THE BROWSER DOES NOT HAVE.  2026-10-03. Eyewire II\'s retina serves its finest",

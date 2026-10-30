@@ -343,6 +343,10 @@ const ORGANELLE_GROUPS=[
     {value:"ask_expert",label:"What the… is this? (ask an expert)",short:"flagged: ask expert",vector:false}
   ]},
   {label:"Nucleus",kinds:[
+    /* nuclear_envelope and plasma_membrane added 2026-10-30 (Søren: "We need some more organelles:
+       Plasma membrane and Nuclear envelope") -- for the pad's organelle suggestions, which learn
+       whatever kinds people mark. */
+    {value:"nuclear_envelope",label:"Nuclear envelope",short:"nuclear envelope",vector:false},
     {value:"nucleolus",label:"Nucleolus",short:"nucleolus",vector:false},
     {value:"chromatin",label:"Chromatin",short:"chromatin",vector:false},
     {value:"nuclear_pore",label:"Nuclear pore",short:"nuclear pore",vector:false},
@@ -416,6 +420,7 @@ const ORGANELLE_GROUPS=[
     {value:"corpora_amylacea",label:"Corpora amylacea",short:"corpora amylacea",vector:false}
   ]},
   {label:"Surface & membrane specializations",kinds:[
+    {value:"plasma_membrane",label:"Plasma membrane",short:"plasma membrane",vector:false},
     {value:"microvillus",label:"Microvillus",short:"microvillus",vector:false},
     {value:"glycocalyx",label:"Glycocalyx",short:"glycocalyx",vector:false},
     {value:"myelin_sheath",label:"Myelin sheath",short:"myelin sheath",vector:false}

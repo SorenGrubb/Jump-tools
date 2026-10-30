@@ -144,7 +144,7 @@ const M4 = [[10,20,30],[11,21,31],[12,22,32],[13,23,33]];
        so an unscoped count is however many selects the form happens to have. */
     const rowSel = body.querySelector(".organ-row-kind");
     ok("...and opens the real form", body.style.display !== "none" && !!rowSel
-       && rowSel.querySelectorAll("option").length === 61
+       && rowSel.querySelectorAll("option").length === 63
        && rowSel.querySelectorAll("optgroup").length === 13,
        rowSel ? rowSel.querySelectorAll("option").length + " kinds in "
                 + rowSel.querySelectorAll("optgroup").length + " groups" : "no row select");
@@ -376,7 +376,7 @@ const M4 = [[10,20,30],[11,21,31],[12,22,32],[13,23,33]];
     await sleep(80);
     const hRowSel = nb.querySelector(".organ-row-kind");
     ok("...opening the same 61-kind form", nb.style.display !== "none" && !!hRowSel
-       && hRowSel.querySelectorAll("option").length === 61,
+       && hRowSel.querySelectorAll("option").length === 63,
        (hRowSel ? hRowSel.querySelectorAll("option").length : 0) + " kinds"
        + "  <- the ontology is shared even though the form markup is hJump's own");
     /* READ OFF THE RENDERED FORM, not off w.ID_CTX. hjump.html declares it with `let` at script

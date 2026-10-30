@@ -158,14 +158,60 @@ UJ.organelleml = (function(){
   }
 
   /* Normalise, pad to the network's multiple, and say where the padding is. */
-  function tensorData(pl, m){
+  /* ── DARK-CELL MODE ────────────────────────────────────────────────────────────  2026-10-30
+     Søren: *"what do we do about cells like endothelial cells that are much darker? It does not
+     recognize anything in them. Can we make a separate mode for dark cells?"*
+
+     A dark cell is the same organelles on a lower, flatter grey, and a model that learned its
+     greys in ordinary neuropil sees nothing there. So in this mode every voxel is measured against
+     its own 2 um neighbourhood (a box of round(1000 / nm) voxels each way, clipped at the edges)
+     before the model sees it: v' = (v - local mean) * (model std / local std) + model mean. A dark
+     cytoplasm lands on the grey the model knows, with its organelles standing out by as much as
+     they do from their own surroundings. The notebook (v9 on) trains on the same transform for a
+     quarter of its crops, so the model has seen tissue that looks like this; organelle_ml_train's
+     flatten() is this function, line for line. Off by default: in ordinary tissue the raw plane is
+     what the model was mostly trained on. */
+  var LS_DARK = "ujump_organelleml_dark_v1";
+  function dark(){ try { return localStorage.getItem(LS_DARK) === "1"; } catch (_e){ return false; } }
+  function setDark(v){ try { localStorage.setItem(LS_DARK, v ? "1" : "0"); } catch (_e){} LAST = null; }
+  function flatten(raw, seen, w, h, R, mean, sd){
+    var W1 = w + 1, S = new Float64Array(W1 * (h + 1)), Q = new Float64Array(W1 * (h + 1)), N = new Float64Array(W1 * (h + 1));
+    for (var y = 0; y < h; y++){
+      var rs = 0, rq = 0, rn = 0;
+      for (var x = 0; x < w; x++){
+        var o = y * w + x;
+        if (seen[o]){ var v = raw[o]; rs += v; rq += v * v; rn += 1; }
+        var i = (y + 1) * W1 + x + 1;
+        S[i] = S[i - W1] + rs; Q[i] = Q[i - W1] + rq; N[i] = N[i - W1] + rn;
+      }
+    }
+    var out = new Float32Array(w * h);
+    for (var y2 = 0; y2 < h; y2++){
+      var a0 = Math.max(0, y2 - R), a1 = Math.min(h, y2 + R + 1);
+      for (var x2 = 0; x2 < w; x2++){
+        var o2 = y2 * w + x2;
+        if (!seen[o2]){ out[o2] = mean; continue; }
+        var b0 = Math.max(0, x2 - R), b1 = Math.min(w, x2 + R + 1);
+        var i11 = a1 * W1 + b1, i01 = a0 * W1 + b1, i10 = a1 * W1 + b0, i00 = a0 * W1 + b0;
+        var n = N[i11] - N[i01] - N[i10] + N[i00];
+        var su = S[i11] - S[i01] - S[i10] + S[i00], sq = Q[i11] - Q[i01] - Q[i10] + Q[i00];
+        var lm = su / n, lsd = Math.sqrt(Math.max(0, sq / n - lm * lm));
+        var v2 = (raw[o2] - lm) * (sd / Math.max(lsd, 4)) + mean;
+        out[o2] = v2 < 0 ? 0 : v2 > 255 ? 255 : v2;
+      }
+    }
+    return out;
+  }
+
+  function tensorData(pl, m, darkMode){
     var mult = m.inputMultiple || 16;
     var W = Math.ceil(pl.w / mult) * mult, H = Math.ceil(pl.h / mult) * mult;
     var d = new Float32Array(W * H), mean = m.mean, sd = m.std || 1;
+    var src = darkMode ? flatten(pl.raw, pl.seen, pl.w, pl.h, (m.flatR || Math.round(1000 / (m.nm || 16))), mean, sd) : pl.raw;
     for (var y = 0; y < pl.h; y++){
       for (var x = 0; x < pl.w; x++){
         var o = y * pl.w + x;
-        d[y * W + x] = pl.seen[o] ? (pl.raw[o] - mean) / sd : 0;
+        d[y * W + x] = pl.seen[o] ? (src[o] - mean) / sd : 0;
       }
     }
     return { data: d, W: W, H: H };
@@ -258,12 +304,13 @@ UJ.organelleml = (function(){
       await load(say);
       if (my !== TOKEN) return null;
       var m = META;
-      var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm].join(":");
+      var dk = dark();
+      var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm, dk ? "dark" : ""].join(":");
       if (LAST && LAST.key === key) return LAST.marks;
       say("looking for organelles…");
       var pl = await planeFor(view, m.nm);
       if (my !== TOKEN) return null;
-      var td = tensorData(pl, m);
+      var td = tensorData(pl, m, dk);
       var ort = window.ort;
       var feeds = {};
       feeds[SESSION.inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
@@ -274,7 +321,7 @@ UJ.organelleml = (function(){
       var found = peaks(o.data, C, h, w, m, pl).map(function(k){
         return { k: k.k, p: k.p, t: toTool(pl, k.px, k.py, view.z) };
       });
-      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP };
+      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk };
       return found;
     });
     QUEUE = p.catch(function(){});
@@ -385,13 +432,13 @@ UJ.organelleml = (function(){
     var parts = Object.keys(by).sort(function(a, b){ return by[b] - by[a]; })
       .map(function(k){ return by[k] + "× " + nameOf(k).toLowerCase(); });
     return (parts.length ? parts.join(", ") : "nothing above the thresholds here")
-      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + ")"
+      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + (LAST.dark ? ", dark-cell mode" : "") + ")"
       + (CORR.length ? " · " + CORR.length + " correction" + (CORR.length > 1 ? "s" : "") + " sent this visit" : "");
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
            markAt: markAt, correct: correct, corrections: corrections, nameOf: nameOf,
-           NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT,
+           NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
            _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
 })();

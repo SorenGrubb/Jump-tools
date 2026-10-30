@@ -259,7 +259,7 @@ const PANEL = `(function(open){
     ok(got.kind && got.link && got.go && got.note,
        "everything it needs is still inside it, under the same ids the wiring uses",
        [got.kind, got.link, got.go, got.note].join("/"));
-    ok(got.options === 61, "...including the whole kind list", got.options);
+    ok(got.options === 63, "...including the whole kind list", got.options);
     ok(got.secondOpen === false,
        "...and it is shut the next time too — this one does not remember", got.secondOpen);
   }
