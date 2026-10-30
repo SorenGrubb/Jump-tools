@@ -6436,6 +6436,8 @@ function padAiTickSync(){
   var say = document.getElementById("tracePadAiSay");
   lab.style.display = ok ? "" : "none";
   if (say) say.style.display = ok ? "" : "none";
+  var fx = document.getElementById("tracePadAiFix");
+  if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
   if (!ok) box.checked = false;
   else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
 }
@@ -6449,7 +6451,97 @@ function padAiSay(msg, bad){
   el.textContent = msg || "";
   el.style.color = bad ? "var(--bad)" : "";
 }
+/* ── CORRECTING THE MODEL ─────────────────────────────────────────────────────  2026-10-30
+   Søren: *"Can we train it just by it guessing and then instead of saying yes or no, I can tell it
+   exactly what it is and that trains it?"* With "correct it" ticked, a click on the pad opens a
+   small form instead of dropping a vertex: on one of the model's marks it asks whether the mark is
+   right, what it really is, or whether nothing is there; anywhere else it asks what the missed
+   organelle is. The answer goes out as an ordinary organelle_location report -- no new backend
+   type, since `kind` is free text there -- with NO nucleus id (a correction is about a place, not a
+   claim about a cell, so it never touches the Master cell list), path "ai-correction" and source
+   "ai_correction". "Nothing there" is kind "not_an_organelle", which the training notebook reads as
+   background. */
+function padAiFixMode(){
+  var b = document.getElementById("tracePadAiFix");
+  return !!(b && b.checked && padAiOn());
+}
+function padAiFixClose(){
+  var p = document.getElementById("tracePadAiFixPop");
+  if (p && p.parentNode) p.parentNode.removeChild(p);
+}
+function padAiFixOptions(sel){
+  var g = window.ORGANELLE_GROUPS || [], h = "";
+  g.forEach(function(gr){
+    var opts = gr.kinds.filter(function(k){ return k.value !== "ask_expert"; });
+    if (!opts.length) return;
+    h += "<optgroup label=\"" + escHtml(gr.label) + "\">" + opts.map(function(k){
+      return "<option value=\"" + escHtml(k.value) + "\"" + (k.value === sel ? " selected" : "") + ">"
+        + escHtml(k.label) + "</option>"; }).join("") + "</optgroup>";
+  });
+  return h;
+}
+function padAiFixOpen(e){
+  padAiFixClose();
+  if (!PAD_VIEW || !PAD) return;
+  var px = e.offsetX, py = e.offsetY;
+  var mk = UJ.organelleml.markAt(PAD_VIEW, px, py, PAD.z);
+  var t = mk ? mk.t.slice() : PAD_VIEW.toolAt(px, py).slice();
+  t[2] = PAD.z;
+  /* A mark you already answered carries what the MODEL said in .was; a raw mark carries it in .k. */
+  var was = mk ? (mk.verdict ? (mk.was || "") : mk.k) : "";
+  var p = mk && mk.p != null ? mk.p : null;
+  var nm = function(k){ return UJ.organelleml.nameOf(k); };
+  var pop = document.createElement("div");
+  pop.id = "tracePadAiFixPop";
+  var L = Math.min(e.clientX + 12, window.innerWidth - 300), T = Math.min(e.clientY + 12, window.innerHeight - 170);
+  pop.style.cssText = "position:fixed;left:" + Math.max(4, L) + "px;top:" + Math.max(4, T) + "px;z-index:9999;"
+    + "background:var(--panel,#161b22);color:var(--ink,#e6edf3);border:1px solid var(--line,#30363d);"
+    + "border-radius:8px;padding:10px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.45);width:280px";
+  pop.innerHTML =
+      "<div style=\"margin-bottom:8px\">" + (was
+        ? "The model said <b>" + escHtml(nm(was)) + "</b>" + (p != null ? " (" + Math.round(p * 100) + "%)" : "") + "."
+        : "Nothing is marked here. What is it?") + "</div>"
+    + (was ? "<div style=\"display:flex;gap:6px;margin-bottom:8px\">"
+        + "<button class=\"idbtn\" data-v=\"ok\">\u2713 Right</button>"
+        + "<button class=\"idbtn\" data-v=\"no\">\u2717 Not an organelle</button></div>" : "")
+    + "<div style=\"display:flex;gap:6px;align-items:center\"><span>" + (was ? "It is:" : "It is:") + "</span>"
+    + "<select style=\"flex:1 1 auto;min-width:0\">" + padAiFixOptions(was || "mitochondria") + "</select>"
+    + "<button class=\"idbtn\" data-v=\"kind\">Save</button></div>"
+    + "<div style=\"margin-top:8px;display:flex;justify-content:space-between;align-items:center\">"
+    + "<span class=\"hint\">Saved for the next training.</span>"
+    + "<button class=\"idbtn\" data-v=\"cancel\">Cancel</button></div>";
+  document.body.appendChild(pop);
+  pop.addEventListener("click", function(ev){
+    var b = ev.target.closest && ev.target.closest("button[data-v]");
+    if (!b) return;
+    var v = b.getAttribute("data-v");
+    if (v === "cancel"){ padAiFixClose(); return; }
+    if (v === "ok") padAiFixSend(t, was, "ok", was, p);
+    else if (v === "no") padAiFixSend(t, UJ.organelleml.NOT_ORGANELLE, "no", was, p);
+    else {
+      var k = pop.querySelector("select").value;
+      padAiFixSend(t, k, k === was ? "ok" : "kind", was, p);
+    }
+  });
+}
+function padAiFixSend(t, kind, verdict, was, p){
+  var m = UJ.organelleml.meta() || {};
+  var payload = { type: "organelle_location", timestamp: new Date().toISOString(),
+    nucleusId: "", rootId: "", coord: "",
+    groupId: "aifix_" + Date.now().toString(36), subIndex: 1, subCount: 1,
+    kind: kind, pointA: t[0] + "," + t[1] + "," + t[2], pointB: "", identified: "",
+    path: "ai-correction", source: "ai_correction",
+    comment: (was ? "model said " + was + (p != null ? " " + Math.round(p * 100) + "%" : "") : "missed by the model")
+      + " · model trained " + (m.trained || "?") };
+  var sent = (typeof postReport === "function") ? postReport(payload, "Thank you \u2014 saved for the next training round.") : false;
+  if (!sent){ padAiSay("Not saved \u2014 sign in with Google (top right), then click it again.", true); return; }
+  UJ.organelleml.correct({ t: t, k: kind, was: was, p: p, verdict: verdict });
+  padAiFixClose();
+  padPaint();
+  padAiSay(UJ.organelleml.summary());
+}
 async function padAiRun(){
+  padAiFixClose();                 // a form about the last section has nothing to say about this one
   if (!padAiOn() || !PAD_VIEW) return;
   const view = PAD_VIEW;
   try {
@@ -7388,6 +7480,27 @@ function wirePad(){
   /* A full redraw rather than a paint on top: the overlay has to be under the captured base (see
      padSegOverlay), and turning it OFF has to get the clean section back, which only a redraw can
      do. The EM chunks are cached, so this is a repaint, not a refetch. */
+  /* CORRECT MODE TAKES THE CLICK. Listened for on the pad's parent in the CAPTURE phase, so it is
+     heard before the pad's own handlers and can stop them: a click that opens the form must not
+     also drop a vertex. Only the left button, and only while the tick is on. */
+  const fixHost = cv.parentElement || cv;
+  ["pointerdown", "pointerup", "click", "dblclick"].forEach(function(ev){
+    fixHost.addEventListener(ev, function(e){
+      if (e.target !== cv || !padAiFixMode() || e.button !== 0) return;
+      e.stopImmediatePropagation(); e.preventDefault();
+      if (ev === "pointerup") padAiFixOpen(e);
+    }, true);
+  });
+  const paf = document.getElementById("tracePadAiFix");
+  if (paf) paf.addEventListener("change", function(){
+    padAiFixClose();
+    if (paf.checked){
+      const ai = document.getElementById("tracePadAi");
+      if (ai && !ai.checked){ ai.checked = true; ai.dispatchEvent(new Event("change")); }
+      padAiSay("Correcting: click a mark to say what it is, or click an organelle the model missed. "
+        + "Clicks do not draw until you turn this off.");
+    } else padAiSay(UJ.organelleml.summary());
+  });
   const pai = document.getElementById("tracePadAi");
   if (pai){
     pai.checked = padAiAvailable() && UJ.organelleml.on();
@@ -7981,6 +8094,7 @@ function tracingCardHtml(){
     "     organelles are identified and shown with an annotation, so that people new to EM could get",
     "     an idea of what is what.\" core/organelleml.js; hidden where no model is set up. -->",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Marks what a model trained on the community's own organelle reports and tracings thinks is on this section, with its confidence. It runs in your browser; nothing is sent anywhere. Suggestions, not answers -- the model has only learned what people have marked so far.\"><input type=\"checkbox\" id=\"tracePadAi\"> suggest organelles (AI)</label>",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- A DECODER THE BROWSER DOES NOT HAVE.  2026-10-03. Eyewire II\'s retina serves its finest",
     "     three levels as JPEG XL; Chrome cannot read them, so the pad opens at its 128 nm jpeg level",

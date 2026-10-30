@@ -300,22 +300,70 @@ UJ.organelleml = (function(){
     } catch (_e){}
     return String(k).replace(/_/g, " ");
   }
+  /* ── CORRECTIONS ───────────────────────────────────────────────────────────────  2026-10-30
+     Søren: *"Can we train it just by it guessing and then instead of saying yes or no, I can tell
+     it exactly what it is and that trains it?"* A correction is kept here for this page's life (so
+     it stays drawn when you come back to the section) and sent by the pad as an ordinary organelle
+     report; the notebook reads it at the next training. `verdict` is "ok" (the mark was right),
+     "no" (nothing there: kind "not_an_organelle") or "kind" (it is something else, or a missed one).
+     Each: { t:[x,y,z], k: what it really is, was: what the model said or "", p, verdict }. */
+  var CORR = [];
+  var NOT_ORGANELLE = "not_an_organelle";
+  function same(a, b){ return a[0] === b[0] && a[1] === b[1] && a[2] === b[2]; }
+  function markAt(view, px, py, z, radius){
+    var r = radius || 14, best = null, bd = r * r;
+    var all = (LAST && LAST.z === z ? LAST.marks : []).concat(CORR.filter(function(c){ return c.t[2] === z; }));
+    all.forEach(function(mk){
+      var q = view.pxAt(mk.t), d = (q[0] - px) * (q[0] - px) + (q[1] - py) * (q[1] - py);
+      if (d <= bd){ bd = d; best = mk; }
+    });
+    return best;
+  }
+  function correct(c){
+    CORR = CORR.filter(function(o){ return !same(o.t, c.t); });
+    CORR.push(c);
+    return CORR.length;
+  }
+  function corrections(){ return CORR.slice(); }
+
+  function ring(g, q, col, dashed){
+    g.beginPath(); g.arc(q[0], q[1], 7, 0, 6.2832);
+    g.setLineDash([]); g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
+    if (dashed) g.setLineDash([3, 2]);
+    g.lineWidth = 1.6; g.strokeStyle = col; g.stroke(); g.setLineDash([]);
+  }
+  function text(g, q, label, col){
+    g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.8)"; g.strokeText(label, q[0] + 10, q[1]);
+    g.fillStyle = col; g.fillText(label, q[0] + 10, q[1]);
+  }
+  function inView(q, view){ return !(q[0] < -10 || q[1] < -10 || q[0] > view.w + 10 || q[1] > view.h + 10); }
   function paint(g, view, z){
-    if (!LAST || !LAST.marks || !view || LAST.z !== z) return 0;
-    var n = 0;
+    if (!view) return 0;
+    var n = 0, mine = CORR.filter(function(c){ return c.t[2] === z; });
     g.save();
     g.font = "600 11px system-ui, sans-serif";
     g.textBaseline = "middle";
-    LAST.marks.forEach(function(mk){
-      var q = view.pxAt(mk.t);
-      if (q[0] < -10 || q[1] < -10 || q[0] > view.w + 10 || q[1] > view.h + 10) return;
-      var col = colourOf(mk.k);
-      g.beginPath(); g.arc(q[0], q[1], 7, 0, 6.2832);
-      g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
-      g.lineWidth = 1.6; g.strokeStyle = col; g.stroke();
-      var label = nameOf(mk.k) + " " + Math.round(mk.p * 100) + "%";
-      g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.8)"; g.strokeText(label, q[0] + 10, q[1]);
-      g.fillStyle = col; g.fillText(label, q[0] + 10, q[1]);
+    if (LAST && LAST.marks && LAST.z === z){
+      LAST.marks.forEach(function(mk){
+        /* A corrected mark is drawn as its correction, below, not twice. */
+        if (mine.some(function(c){ return same(c.t, mk.t); })) return;
+        var q = view.pxAt(mk.t);
+        if (!inView(q, view)) return;
+        var col = colourOf(mk.k);
+        ring(g, q, col, false);
+        text(g, q, nameOf(mk.k) + " " + Math.round(mk.p * 100) + "%", col);
+        n++;
+      });
+    }
+    /* YOUR ANSWERS, in white with a dashed ring, so what you said and what it guessed never look
+       alike: ✓ name (it was right), ✗ not an organelle, → name (it is something else, or a miss). */
+    mine.forEach(function(c){
+      var q = view.pxAt(c.t);
+      if (!inView(q, view)) return;
+      ring(g, q, "#ffffff", true);
+      text(g, q, c.verdict === "ok" ? "\u2713 " + nameOf(c.k)
+              : c.verdict === "no" ? "\u2717 not an organelle"
+              : "\u2192 " + nameOf(c.k), "#ffffff");
       n++;
     });
     g.restore();
@@ -328,10 +376,13 @@ UJ.organelleml = (function(){
     var parts = Object.keys(by).sort(function(a, b){ return by[b] - by[a]; })
       .map(function(k){ return by[k] + "× " + nameOf(k).toLowerCase(); });
     return (parts.length ? parts.join(", ") : "nothing above the thresholds here")
-      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + ")";
+      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + ")"
+      + (CORR.length ? " · " + CORR.length + " correction" + (CORR.length > 1 ? "s" : "") + " sent this visit" : "");
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
+           markAt: markAt, correct: correct, corrections: corrections, nameOf: nameOf,
+           NOT_ORGANELLE: NOT_ORGANELLE,
            _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
 })();
