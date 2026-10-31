@@ -1,0 +1,33 @@
+{
+ "format": "ujump-organelle-outline-1",
+ "dataset": "minnie65",
+ "onnx": "seg.onnx",
+ "nm": 8,
+ "crop": 256,
+ "norm": "crop",
+ "threshold": 0.5,
+ "kinds": [
+  "lysosome",
+  "mitochondria"
+ ],
+ "validation": [
+  {
+   "src": "minnie65 lysosome",
+   "held_out": 378,
+   "mean_IoU": 0.777,
+   "median_IoU": 0.855
+  },
+  {
+   "src": "pinky mitochondria",
+   "held_out": 745,
+   "mean_IoU": 0.603,
+   "median_IoU": 0.678
+  }
+ ],
+ "trained": "2026-10-31T20:39",
+ "trainedOn": {
+  "minnie65 lysosome": 2014,
+  "pinky mitochondria": 2750
+ },
+ "source": "organelle_outline_train.ipynb"
+}
