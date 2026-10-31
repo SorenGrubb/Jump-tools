@@ -637,6 +637,10 @@ function ujVrPointsSay(el, msg, bad){
      organelle_ml_train.ipynb; until they are uploaded the pad shows no tick at all. -->
 <script src="core/organelleml.js"></script>
 <script>UJ.organelleml.configure({ base: "models/organelles/minnie65/" });</script>
+<!-- AI OUTLINES, 2026-10-31 -- core/organelleseg.js; seg.onnx + seg.json beside the suggestion model,
+     trained by organelle_outline_train.ipynb. No files, no tick. -->
+<script src="core/organelleseg.js"></script>
+<script>UJ.organelleseg.configure({ base: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>
 <script src="core/ontology.js"></script>
 <!-- Bulk organelle annotation, extracted from this file on 2026-09-21. After ontology.js, whose

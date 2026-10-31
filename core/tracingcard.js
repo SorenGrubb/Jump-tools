@@ -6465,6 +6465,71 @@ function padAiSay(msg, bad){
    claim about a cell, so it never touches the Master cell list), path "ai-correction" and source
    "ai_correction". "Nothing there" is kind "not_an_organelle", which the training notebook reads as
    background. */
+/* ── AI OUTLINES ──────────────────────────────────────────────────────────────────  2026-10-31
+   core/organelleseg.js does the work. A click in outline mode becomes a contour of the structure
+   being drawn (PAD.inst) on this section -- the same object a hand-drawn ring is, so everything the
+   pad already does to rings (drag, delete, undo, volume, publish) applies unchanged. */
+var PAD_AI_LAST = null;           // { z, points } -- what Follow carries on from
+function padAiOutAvailable(){ return !!(UJ.organelleseg && UJ.organelleseg.available()); }
+function padAiOutMode(){
+  var b = document.getElementById("tracePadAiOut");
+  return !!(b && b.checked && padAiOutAvailable());
+}
+function padAiOutSay(msg, bad){
+  var el = document.getElementById("tracePadAiOutSay");
+  if (!el) return;
+  el.textContent = msg || ""; el.style.color = bad ? "var(--bad)" : "";
+}
+function padAiOutTickSync(){
+  var ok = padAiOutAvailable();
+  ["tracePadAiOut", "tracePadAiFollowBack", "tracePadAiFollowOn", "tracePadAiOutSay"].forEach(function(id){
+    var el = document.getElementById(id); if (!el) return;
+    var lab = (el.tagName === "INPUT" && el.closest && el.closest("label")) || el;
+    lab.style.display = ok ? "" : "none";
+  });
+  var b = document.getElementById("tracePadAiOut"); if (b && !ok) b.checked = false;
+}
+async function padAiOutlineAt(e){
+  if (!PAD_VIEW || !PAD) return;
+  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z;
+  padAiOutSay("Outlining\u2026");
+  try {
+    var o = await UJ.organelleseg.outline([t[0], t[1]], z);
+    if (!o){ padAiOutSay("No lysosome or mitochondrion found under that click \u2014 click nearer its middle, or draw it by hand.", true); return; }
+    PAD.rings.push({ z: z, inst: PAD.inst || 0, points: o.points });
+    PAD_AI_LAST = { z: z, points: o.points };
+    padPaint(); padRings();
+    padAiOutSay("Outlined: " + (o.areaNm2 / 1e6).toFixed(3) + " \u00b5m\u00b2, " + o.points.length + " points. Drag points to fix it, Undo to take it back, or follow \u25b6 to carry it on.");
+  } catch (err){
+    padAiOutSay(String(err && err.message || err), true);
+  }
+}
+async function padAiFollow(dir){
+  if (!PAD) return;
+  /* From the last AI outline -- or, if there is none, from the last contour of this structure on
+     this section, so a hand-drawn first ring can be followed too. */
+  var from = PAD_AI_LAST;
+  if (!from){
+    var mine = PAD.rings.filter(function(r){ return r.z === PAD.z && (r.inst || 0) === (PAD.inst || 0); });
+    if (mine.length) from = { z: PAD.z, points: mine[mine.length - 1].points };
+  }
+  if (!from){ padAiOutSay("Click an organelle first (AI outline on), or draw one contour, then follow it.", true); return; }
+  var step = Math.max(1, parseInt((document.getElementById("tracePadStep") || {}).value, 10) || 1);
+  padAiOutSay("Following\u2026");
+  try {
+    var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
+      function(k, z){ padAiOutSay("Following\u2026 " + k + " section" + (k > 1 ? "s" : "") + " (z " + z + ")"); });
+    got.forEach(function(g){ PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points }); });
+    if (got.length) PAD_AI_LAST = got[got.length - 1];
+    padPaint(); padRings();
+    padAiOutSay(got.length
+      ? "Added " + got.length + " contour" + (got.length > 1 ? "s" : "") + " (z " + got[0].z + "\u2013" + got[got.length - 1].z
+        + "). Step through them with , and . to check; follow again to go further."
+      : "Stopped at once: the next section's outline did not look like the same organelle. Step there and click it, or draw it.");
+  } catch (err){
+    padAiOutSay(String(err && err.message || err), true);
+  }
+}
 function padAiFixMode(){
   var b = document.getElementById("tracePadAiFix");
   return !!(b && b.checked && padAiOn());
@@ -7541,9 +7606,11 @@ function wirePad(){
   const fixHost = cv.parentElement || cv;
   ["pointerdown", "pointerup", "click", "dblclick"].forEach(function(ev){
     fixHost.addEventListener(ev, function(e){
-      if (e.target !== cv || !padAiFixMode() || e.button !== 0) return;
+      if (e.target !== cv || e.button !== 0) return;
+      var fix = padAiFixMode(), out = !fix && padAiOutMode();
+      if (!fix && !out) return;
       e.stopImmediatePropagation(); e.preventDefault();
-      if (ev === "pointerup") padAiFixOpen(e);
+      if (ev === "pointerup"){ if (fix) padAiFixOpen(e); else padAiOutlineAt(e); }
     }, true);
   });
   const pad_dk = document.getElementById("tracePadAiDark");
@@ -7555,9 +7622,21 @@ function wirePad(){
     }
     padPaint(); padAiRun();
   });
+  const pao = document.getElementById("tracePadAiOut");
+  if (pao) pao.addEventListener("change", function(){
+    if (pao.checked){
+      const fx = document.getElementById("tracePadAiFix");
+      if (fx && fx.checked){ fx.checked = false; padAiFixClose(); }
+      padAiOutSay("Click a lysosome or a mitochondrion near its middle. Clicks do not draw by hand until you turn this off.");
+    } else padAiOutSay("");
+  });
+  const pfb = document.getElementById("tracePadAiFollowBack"), pfo = document.getElementById("tracePadAiFollowOn");
+  if (pfb) pfb.addEventListener("click", function(){ padAiFollow(-1); });
+  if (pfo) pfo.addEventListener("click", function(){ padAiFollow(1); });
   const paf = document.getElementById("tracePadAiFix");
   if (paf) paf.addEventListener("change", function(){
     padAiFixClose();
+    if (paf.checked && pao && pao.checked){ pao.checked = false; padAiOutSay(""); }
     if (paf.checked){
       const ai = document.getElementById("tracePadAi");
       if (ai && !ai.checked){ ai.checked = true; ai.dispatchEvent(new Event("change")); }
@@ -8161,6 +8240,12 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"For dark cells -- endothelial cells, dark microglia, a pericyte -- where the model sees nothing: every voxel is measured against its own 2 um surroundings before the model looks, so a dark cytoplasm lands on the grey the model knows. Leave it off in ordinary tissue.\"><input type=\"checkbox\" id=\"tracePadAiDark\"> dark-cell mode</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
+    "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
+    "     start with those 2?\" (lysosomes, mitochondria). core/organelleseg.js; hidden until seg.json exists. -->",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on a lysosome or a mitochondrion draws its outline on this section, as ordinary contour points in the structure you are drawing: drag, delete or add points as usual. Then Follow carries it through the next sections, one step (the step box) at a time, until the organelle ends. Turn it off to draw or pan by hand.\"><input type=\"checkbox\" id=\"tracePadAiOut\"> AI outline (click an organelle)</label>",
+    "<button class=\"idbtn\" id=\"tracePadAiFollowBack\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline backwards, up to 10 steps, until the organelle ends\">&#9664; follow</button>",
+    "<button class=\"idbtn\" id=\"tracePadAiFollowOn\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline forwards, up to 10 steps, until the organelle ends\">follow &#9654;</button>",
+    "<span class=\"hint\" id=\"tracePadAiOutSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- A DECODER THE BROWSER DOES NOT HAVE.  2026-10-03. Eyewire II\'s retina serves its finest",
     "     three levels as JPEG XL; Chrome cannot read them, so the pad opens at its 128 nm jpeg level",
     "     where a lysosome is four pixels across. Hidden on every volume that does not need it --",
@@ -8471,6 +8556,8 @@ function padTrimForHost(el){
      model.json comes back yes. Hidden rather than dropped, because the answer arrives later. */
   padAiTickSync();
   if (UJ.organelleml) UJ.organelleml.whenAvailable().then(function(){ padAiTickSync(); });
+  padAiOutTickSync();
+  if (UJ.organelleseg) UJ.organelleseg.whenAvailable().then(function(){ padAiOutTickSync(); });
   var mesh = null;
   try { mesh = (UJ && UJ.cfg && UJ.cfg.mesh) || null; } catch (_e){ mesh = null; }
   if (!(mesh && (mesh.meshBase || mesh.meshBaseAlt))){
