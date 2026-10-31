@@ -6484,11 +6484,58 @@ function padAiFixOptions(sel){
   });
   return h;
 }
+function padAiFixPop(e, html){
+  var pop = document.createElement("div");
+  pop.id = "tracePadAiFixPop";
+  var L = Math.min(e.clientX + 12, window.innerWidth - 300), T = Math.min(e.clientY + 12, window.innerHeight - 170);
+  pop.style.cssText = "position:fixed;left:" + Math.max(4, L) + "px;top:" + Math.max(4, T) + "px;z-index:9999;"
+    + "background:var(--panel,#161b22);color:var(--ink,#e6edf3);border:1px solid var(--line,#30363d);"
+    + "border-radius:8px;padding:10px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.45);width:280px";
+  pop.innerHTML = html;
+  document.body.appendChild(pop);
+  return pop;
+}
+/* ONE OF YOUR OWN ANSWERS, clicked: undo it, or change it. 2026-10-31. */
+function padAiFixMine(e, c){
+  var nm = function(k){ return UJ.organelleml.nameOf(k); };
+  var said = c.verdict === "ok" ? "\u2713 " + nm(c.k) : c.verdict === "no" ? "\u2717 not an organelle" : "\u2192 " + nm(c.k);
+  var pop = padAiFixPop(e,
+      "<div style=\"margin-bottom:8px\">Your answer here: <b>" + escHtml(said) + "</b></div>"
+    + "<div style=\"margin-bottom:8px\"><button class=\"idbtn\" data-v=\"undo\">\u21a9 Undo this answer</button></div>"
+    + "<div style=\"display:flex;gap:6px;align-items:center\"><span>Change to:</span>"
+    + "<select style=\"flex:1 1 auto;min-width:0\"><option value=\"" + UJ.organelleml.NOT_ORGANELLE + "\">Not an organelle</option>"
+    + "<option value=\"" + UJ.organelleml.ARTIFACT + "\">Imaging artifact</option>" + padAiFixOptions(c.k) + "</select>"
+    + "<button class=\"idbtn\" data-v=\"change\">Save</button></div>"
+    + "<div style=\"margin-top:8px;text-align:right\"><button class=\"idbtn\" data-v=\"cancel\">Cancel</button></div>");
+  pop.addEventListener("click", function(ev){
+    var b = ev.target.closest && ev.target.closest("button[data-v]");
+    if (!b) return;
+    var v = b.getAttribute("data-v");
+    if (v === "cancel"){ padAiFixClose(); return; }
+    if (!padAiFixRetract(c)) return;
+    if (v === "change"){
+      var k = pop.querySelector("select").value;
+      padAiFixSend(c.t, k, k === UJ.organelleml.NOT_ORGANELLE ? "no" : (k === c.was ? "ok" : "kind"), c.was || "", c.p);
+    } else { padAiFixClose(); padPaint(); padAiSay("Answer undone. " + UJ.organelleml.summary()); }
+  });
+}
+function padAiFixRetract(c){
+  var payload = { type: "organelle_location", timestamp: new Date().toISOString(),
+    nucleusId: "", rootId: "", coord: "",
+    groupId: "aifix_" + Date.now().toString(36), subIndex: 1, subCount: 1,
+    kind: "retract:" + c.k, pointA: c.t[0] + "," + c.t[1] + "," + c.t[2], pointB: "", identified: "",
+    path: "ai-correction", source: "ai_correction", comment: "undoes an earlier answer at this voxel" };
+  var sent = (typeof postReport === "function") ? postReport(payload, "Undone \u2014 the training will leave that answer out.") : false;
+  if (!sent){ padAiSay("Not undone \u2014 sign in with Google (top right), then try again.", true); return false; }
+  UJ.organelleml.uncorrect(c.t);
+  return true;
+}
 function padAiFixOpen(e){
   padAiFixClose();
   if (!PAD_VIEW || !PAD) return;
   var px = e.offsetX, py = e.offsetY;
   var mk = UJ.organelleml.markAt(PAD_VIEW, px, py, PAD.z);
+  if (mk && mk.verdict){ padAiFixMine(e, mk); return; }
   var t = mk ? mk.t.slice() : PAD_VIEW.toolAt(px, py).slice();
   t[2] = PAD.z;
   /* A mark you already answered carries what the MODEL said in .was; a raw mark carries it in .k. */

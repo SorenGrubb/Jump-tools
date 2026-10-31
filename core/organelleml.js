@@ -357,7 +357,13 @@ UJ.organelleml = (function(){
      report; the notebook reads it at the next training. `verdict` is "ok" (the mark was right),
      "no" (nothing there: kind "not_an_organelle") or "kind" (it is something else, or a missed one).
      Each: { t:[x,y,z], k: what it really is, was: what the model said or "", p, verdict }. */
-  var CORR = [];
+  /* KEPT IN THIS BROWSER (2026-10-31): Søren put an artifact where there was none and could not take
+     it back. Your answers are remembered here across visits so they are drawn again -- and so a
+     wrong one can be clicked and undone. Only this browser's own answers; nothing is read back from
+     the server, and a clear of site data forgets them (the reports themselves stay). */
+  var LS_CORR = "ujump_organelleml_corr_v1";
+  var CORR = (function(){ try { return JSON.parse(localStorage.getItem(LS_CORR) || "[]") || []; } catch (_e){ return []; } })();
+  function keep(){ try { localStorage.setItem(LS_CORR, JSON.stringify(CORR.slice(-2000))); } catch (_e){} }
   var NOT_ORGANELLE = "not_an_organelle";
   /* A FOLD, A KNIFE MARK, DIRT, A CRACK IN THE RESIN -- Søren, 2026-10-30: "We should be able to
      label artifacts, so that they will be recognized as not being organelles." Its own kind rather
@@ -376,8 +382,17 @@ UJ.organelleml = (function(){
   }
   function correct(c){
     CORR = CORR.filter(function(o){ return !same(o.t, c.t); });
-    CORR.push(c);
+    c.at = c.at || Date.now();
+    CORR.push(c); keep();
     return CORR.length;
+  }
+  /* UNDO: the answer leaves this browser's list. What reaches the training is a RETRACTION, sent by
+     the pad as kind "retract:<kind>" at the same voxel -- the notebook removes one report of that
+     kind at that exact place per retraction, so answering, undoing and answering again counts once. */
+  function uncorrect(t){
+    var n = CORR.length;
+    CORR = CORR.filter(function(o){ return !same(o.t, t); }); keep();
+    return n !== CORR.length;
   }
   function corrections(){ return CORR.slice(); }
 
@@ -433,12 +448,12 @@ UJ.organelleml = (function(){
       .map(function(k){ return by[k] + "× " + nameOf(k).toLowerCase(); });
     return (parts.length ? parts.join(", ") : "nothing above the thresholds here")
       + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + (LAST.dark ? ", dark-cell mode" : "") + ")"
-      + (CORR.length ? " · " + CORR.length + " correction" + (CORR.length > 1 ? "s" : "") + " sent this visit" : "");
+      + (CORR.length ? " · " + CORR.length + " answer" + (CORR.length > 1 ? "s" : "") + " of yours (click one to undo or change it)" : "");
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
-           markAt: markAt, correct: correct, corrections: corrections, nameOf: nameOf,
+           markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
            NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
            _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
 })();
