@@ -2003,6 +2003,23 @@ for at least one second</div>
     <div id="meshContactStatsArea"></div>
   </div>
 
+  <!-- 2026-10-31. Søren: "could we make a live-updating graph in the stats that says how well the
+       different organelles are identified?" Two halves, because there are two honest answers: what
+       the model scored on tissue it never saw (changes when a model is published), and what people
+       said on the pad about its marks (changes with every answer). -->
+  <div class="card wide" id="aiCard">
+    <h2>Organelle suggestions (AI) &mdash; how well each organelle is recognised</h2>
+    <p class="sub">The tracing pad's &ldquo;suggest organelles&rdquo; model, scored on tissue it was never trained on: <b>precision</b> = of its marks, how many were right; <b>recall</b> = of the organelles people marked there, how many it found. Faded bars are organelles not yet shown on the pad. Updates whenever a new model is published. <span id="aiModelNote"></span></p>
+    <div class="plot tall" id="plotAiQuality"></div>
+    <div id="aiHistoryWrap" style="display:none">
+      <p class="sub" style="margin-top:14px">Recall per organelle, model by model &mdash; does it get better as people correct it?</p>
+      <div class="plot" id="plotAiHistory"></div>
+    </div>
+    <p class="sub" style="margin-top:14px">What people said on the pad about the model's marks &mdash; <b>LIVE</b>. Per organelle the model named: &#10003; right, &#10007; wrong (nothing there, an artifact, or another organelle); and per organelle people named: missed by the model. Undone answers are left out.
+      <label style="margin-left:8px;text-transform:none;color:var(--ink)"><input type="checkbox" id="aiLiveCurrent" style="width:auto;margin:0 4px 0 0">only answers about the current model</label></p>
+    <div class="plot tall" id="plotAiLive"></div>
+  </div>
+
   <div class="card wide">
     <h2>Cumulative community reports over time</h2>
     <p class="sub">Every report type (identifications, discrepancies, merged-nucleus splits, organelle reports, root-ID proposals/votes, computed volumes), cumulative by day. Computed volumes start hidden &mdash; click them in the legend to stack them in. LIVE.</p>
@@ -3400,12 +3417,119 @@ async function fetchLiveData(){
     meshContactStats=(d&&d.pairs)||[];
   }catch(e){console.warn("[dashboard] meshContactTypeStats fetch failed",e);}
 
-  return {live,computedVolumes,reportsDaily,connectivity,connSamples,meshContactStats};
+  /* The organelle model's own report card and the pad's answers -- see renderAiCharts. Both are
+     best-effort: no model yet, or an old backend, simply leaves those charts saying so. */
+  let aiModel=null, aiHistory=[], aiAnswers=[];
+  try{const r=await fetch("models/organelles/minnie65/model.json",{cache:"no-cache"});if(r.ok)aiModel=await r.json();}catch(e){}
+  try{const r=await fetch("models/organelles/minnie65/history.json",{cache:"no-cache"});if(r.ok)aiHistory=await r.json();}catch(e){}
+  try{const r=await fetch(REPORT_ENDPOINT+"?allOrganelles=1");const d=await r.json();
+      aiAnswers=((d&&d.organelles)||[]).filter(o=>o.path==="ai-correction");}catch(e){}
+  return {live,computedVolumes,reportsDaily,connectivity,connSamples,meshContactStats,aiModel,aiHistory,aiAnswers};
 }
 
 /* Renders every live-fed chart from an already-fetched (or cached) data bundle -- no network
    calls in here, so this is safe/instant to call from the cache path. */
 let _lastLiveBundle=null;
+/* ── THE ORGANELLE MODEL'S REPORT CARD ──────────────────────────────────────────  2026-10-31 */
+function aiName(k){
+  try{
+    const g=window.ORGANELLE_GROUPS||[];
+    for(const gr of g)for(const kk of gr.kinds)if(kk.value===k)return kk.label;
+  }catch(e){}
+  if(k==="imaging_artifact")return "Imaging artifact";
+  if(k==="not_an_organelle")return "Not an organelle";
+  return String(k||"").replace(/_/g," ");
+}
+/* The pad's answers, tallied. An answer's comment says what the model had said ("model said
+   lysosome 93% · model trained 2026-10-30") or "missed by the model"; an undo is kind
+   "retract:<kind>" at the same voxel and removes one such answer, exactly as the training notebook
+   does, so this chart and the next training agree on what was said. */
+function aiTally(answers,onlyTrained){
+  const live=[], undo=[];
+  answers.forEach(a=>{ if(String(a.kind).indexOf("retract:")===0)undo.push(a); else live.push(a); });
+  undo.forEach(u=>{
+    const k=u.kind.slice(8), i=live.findIndex(a=>a.kind===k&&a.pointA===u.pointA);
+    if(i>=0)live.splice(i,1);
+  });
+  const said={}, missed={};
+  live.forEach(a=>{
+    const c=String(a.comment||"");
+    const tr=(c.match(/model trained (\S+)/)||[])[1]||"";
+    if(onlyTrained&&tr!==onlyTrained)return;
+    const m=c.match(/model said (\S+)/);
+    if(m){
+      const k=m[1];
+      said[k]=said[k]||{right:0,wrong:0};
+      if(a.kind===k)said[k].right++; else said[k].wrong++;
+    } else if(/missed by the model/.test(c)&&a.kind!=="not_an_organelle"){
+      missed[a.kind]=(missed[a.kind]||0)+1;
+    }
+  });
+  return {said,missed,n:live.length};
+}
+function renderAiCharts(d){
+  const q=document.getElementById("plotAiQuality"), lv=document.getElementById("plotAiLive");
+  if(!q||!lv)return;
+  const m=d.aiModel, c=liveThemeColors();
+  /* 1. Held-out precision and recall, current model. */
+  if(!m||!m.validation){
+    q.innerHTML="<div class='placeholder'>No organelle model has been published yet.</div>";
+  } else {
+    const rows=m.validation.filter(r=>r.organelle);
+    const names=rows.map(r=>aiName(r.organelle));
+    const shown=rows.map(r=>(m.show||[]).indexOf(r.organelle)>=0);
+    const op=shown.map(s=>s?1:0.3);
+    const hov=rows.map((r,i)=>"<b>"+aiName(r.organelle)+"</b><br>"+(r.validation_examples||0)+" held-out examples"
+      +"<br>"+(shown[i]?"shown on the pad":"not shown: "+String(r.shown_on_pad||""))+"<extra></extra>");
+    Plotly.newPlot(q.id,[
+      {type:"bar",name:"precision",x:names,y:rows.map(r=>r.precision==null?0:r.precision),marker:{color:"#4c9be8",opacity:op},
+       hovertemplate:"precision %{y:.2f}<br>"+"%{customdata}",customdata:hov},
+      {type:"bar",name:"recall",x:names,y:rows.map(r=>r.recall==null?0:r.recall),marker:{color:"#e8a54c",opacity:op},
+       hovertemplate:"recall %{y:.2f}<br>"+"%{customdata}",customdata:hov}
+    ],Object.assign({},baseLayout(),{barmode:"group",showlegend:true,legend:{orientation:"h",y:1.12},
+      yaxis:Object.assign({},baseLayout().yaxis,{range:[0,1.05],title:"on held-out tissue"})}),PLOTLY_CFG);
+    const note=document.getElementById("aiModelNote");
+    if(note)note.textContent="Current model: trained "+(m.trained||"?")+", "+Math.max(0,(m.classes||[]).length-1)+" organelle types learned, "+(m.show||[]).length+" shown on the pad, mean F1 "+(m.validationMeanF1!=null?m.validationMeanF1:"?")+".";
+  }
+  /* 2. History, when the notebook has written more than one model's numbers. */
+  const hw=document.getElementById("aiHistoryWrap"), H=Array.isArray(d.aiHistory)?d.aiHistory:[];
+  if(hw&&H.length>=2){
+    hw.style.display="";
+    const kinds=[...new Set(H.flatMap(h=>(h.validation||[]).map(r=>r.organelle)))];
+    /* One evenly spaced step per model, not a time axis: models come in bursts, and on a time axis
+       a night's gap would squeeze an evening's five runs into one corner. */
+    const xs=H.map((h,i)=>"model "+(i+1)+"<br>"+String(h.trained||"").replace("T"," "));
+    const traces=kinds.map(k=>({type:"scatter",mode:"lines+markers",name:aiName(k),x:xs,
+      y:H.map(h=>{const r=(h.validation||[]).find(v=>v.organelle===k);return r&&r.recall!=null?r.recall:null;}),
+      connectgaps:false,line:{color:colorFor(aiName(k)),width:2}}));
+    Plotly.newPlot("plotAiHistory",traces,Object.assign({},baseLayout(),{showlegend:true,legend:{orientation:"h",y:1.15,font:{size:10}},
+      xaxis:Object.assign({},baseLayout().xaxis,{type:"category",tickangle:0}),
+      margin:Object.assign({},baseLayout().margin,{t:70,b:60}),
+      yaxis:Object.assign({},baseLayout().yaxis,{range:[0,1.05],title:"recall"})}),PLOTLY_CFG);
+  } else if(hw) hw.style.display="none";
+  /* 3. LIVE: the pad's answers. */
+  const only=document.getElementById("aiLiveCurrent");
+  const T=aiTally(d.aiAnswers||[],only&&only.checked&&m?String(m.trained||""):"");
+  const kinds=[...new Set(Object.keys(T.said).concat(Object.keys(T.missed)))]
+    .sort((a,b)=>{const ta=(T.said[a]?T.said[a].right+T.said[a].wrong:0)+(T.missed[a]||0),
+                        tb=(T.said[b]?T.said[b].right+T.said[b].wrong:0)+(T.missed[b]||0);return tb-ta;});
+  if(!kinds.length){
+    lv.innerHTML="<div class='placeholder'>No answers on the pad yet"+((d.aiAnswers||[]).length?" for this model":"")
+      +" &mdash; tick &ldquo;correct it&rdquo; on the tracing pad and click a mark.</div>";
+    return;
+  }
+  const names=kinds.map(aiName);
+  const right=kinds.map(k=>T.said[k]?T.said[k].right:0), wrong=kinds.map(k=>T.said[k]?T.said[k].wrong:0);
+  const miss=kinds.map(k=>T.missed[k]||0);
+  const agree=kinds.map((k,i)=>(right[i]+wrong[i])?Math.round(100*right[i]/(right[i]+wrong[i]))+"% of its marks right":"no marks answered");
+  Plotly.newPlot(lv.id,[
+    {type:"bar",name:"\u2713 right",x:names,y:right,marker:{color:"#3fb950"},customdata:agree,hovertemplate:"%{y} right<br>%{customdata}<extra></extra>"},
+    {type:"bar",name:"\u2717 wrong",x:names,y:wrong,marker:{color:"#f85149"},customdata:agree,hovertemplate:"%{y} wrong<br>%{customdata}<extra></extra>"},
+    {type:"bar",name:"missed by the model",x:names,y:miss,marker:{color:c.mut||"#8b949e"},hovertemplate:"%{y} missed<extra></extra>"}
+  ],Object.assign({},baseLayout(),{barmode:"stack",showlegend:true,legend:{orientation:"h",y:1.12},
+    yaxis:Object.assign({},baseLayout().yaxis,{title:"answers on the pad"})}),PLOTLY_CFG);
+}
+
 function applyLiveData(d){
   /* KEPT, so the Excel export below hands out exactly what the charts were drawn from rather than
      taking a second fetch that could disagree with what is on screen. */
@@ -3421,6 +3545,7 @@ function applyLiveData(d){
   renderConnectivity(d.connectivity);
   renderSynapseIO(d.connSamples);
   renderMeshContactStats(d.meshContactStats);
+  try{renderAiCharts(d);}catch(e){console.warn("[dashboard] organelle model charts",e);}
 }
 
 /* force=true (the Refresh button) always hits the network, no matter how fresh the cache is.
@@ -3454,6 +3579,8 @@ async function loadLiveData(force){
 setupVolumeCategoryPicker();
 loadLiveData(false);
 document.getElementById("refreshBtn").addEventListener("click",function(){loadLiveData(true);});
+(function(){const b=document.getElementById("aiLiveCurrent");
+  if(b)b.addEventListener("change",function(){if(_lastLiveBundle)try{renderAiCharts(_lastLiveBundle);}catch(e){}});})();
 
 }
 </script>
