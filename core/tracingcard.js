@@ -6489,45 +6489,88 @@ function padAiOutTickSync(){
   });
   var b = document.getElementById("tracePadAiOut"); if (b && !ok) b.checked = false;
 }
+/* This structure's rings on one section. */
+function padAiMine(z){
+  return PAD.rings.filter(function(r){ return r.z === z && (r.inst || 0) === (PAD.inst || 0); });
+}
 async function padAiOutlineAt(e){
   if (!PAD_VIEW || !PAD) return;
-  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z;
-  padAiOutSay("Outlining\u2026");
+  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z, add = !!e.shiftKey;
+  padAiOutSay(add ? "Adding that part\u2026" : "Outlining\u2026");
   try {
     var o = await UJ.organelleseg.outline([t[0], t[1]], z);
     if (!o){ padAiOutSay("No lysosome or mitochondrion found under that click \u2014 click nearer its middle, or draw it by hand.", true); return; }
+    var mine = padAiMine(z);
+    if (add && mine.length){
+      /* SHIFT+CLICK ADDS THE PART IT MISSED (2026-11-01). The new outline and this structure's
+         rings on this section are merged: pieces that touch become one ring. */
+      var merged = UJ.organelleseg.union(mine.map(function(r){ return r.points; }).concat([o.points]), 2);
+      PAD.rings = PAD.rings.filter(function(r){ return mine.indexOf(r) < 0; });
+      merged.forEach(function(P){ PAD.rings.push({ z: z, inst: PAD.inst || 0, points: P }); });
+      PAD_AI_LAST = { z: z, points: merged.reduce(function(a, b){ return UJ.organelleseg._area(b) > UJ.organelleseg._area(a) ? b : a; }) };
+      padPaint(); padRings();
+      padAiOutSay("Added: this section now has " + merged.length + " contour" + (merged.length > 1 ? "s" : "")
+        + " for this structure (touching parts are merged into one).");
+      return;
+    }
+    /* ONE OUTLINE PER PLACE (2026-11-01): a click inside a ring this structure already has here
+       REPLACES that ring instead of laying a second one on top of it. */
+    var hit = mine.filter(function(r){ return UJ.organelleseg.inside([t[0], t[1]], r.points)
+                                             || UJ.organelleseg.inside(UJ.organelleseg.centroid(r.points), o.points); });
+    if (hit.length) PAD.rings = PAD.rings.filter(function(r){ return hit.indexOf(r) < 0; });
     PAD.rings.push({ z: z, inst: PAD.inst || 0, points: o.points });
     PAD_AI_LAST = { z: z, points: o.points };
     padPaint(); padRings();
-    padAiOutSay("Outlined: " + (o.areaNm2 / 1e6).toFixed(3) + " \u00b5m\u00b2, " + o.points.length + " points. Drag points to fix it, Undo to take it back, or follow \u25b6 to carry it on.");
+    padAiOutSay((hit.length ? "Replaced the outline here: " : "Outlined: ") + (o.areaNm2 / 1e6).toFixed(3) + " \u00b5m\u00b2, " + o.points.length
+      + " points. Shift+click a missed part to add it, alt+drag to edit points, or follow \u25b6.");
   } catch (err){
     padAiOutSay(String(err && err.message || err), true);
   }
 }
+var PAD_AI_FOLLOWING = false;
 async function padAiFollow(dir){
   if (!PAD) return;
+  /* ONE FOLLOW AT A TIME: a second press while one runs used to start a second chain over the same
+     sections. */
+  if (PAD_AI_FOLLOWING){ padAiOutSay("Already following \u2014 wait for it to finish."); return; }
   /* From the last AI outline -- or, if there is none, from the last contour of this structure on
      this section, so a hand-drawn first ring can be followed too. */
   var from = PAD_AI_LAST;
   if (!from){
-    var mine = PAD.rings.filter(function(r){ return r.z === PAD.z && (r.inst || 0) === (PAD.inst || 0); });
+    var mine = padAiMine(PAD.z);
     if (mine.length) from = { z: PAD.z, points: mine[mine.length - 1].points };
   }
   if (!from){ padAiOutSay("Click an organelle first (AI outline on), or draw one contour, then follow it.", true); return; }
   var step = Math.max(1, parseInt((document.getElementById("tracePadStep") || {}).value, 10) || 1);
+  PAD_AI_FOLLOWING = true;
+  ["tracePadAiFollowBack", "tracePadAiFollowOn"].forEach(function(id){ var b = document.getElementById(id); if (b) b.disabled = true; });
   padAiOutSay("Following\u2026");
   try {
+    /* Sections this structure already has a ring on are stepped over and followed on from, never
+       outlined twice; one missing or odd section in between is interpolated. */
+    var existing = function(z){
+      var r = padAiMine(z);
+      return r.length ? r.reduce(function(a, b){ return UJ.organelleseg._area(b.points) > UJ.organelleseg._area(a.points) ? b : a; }).points : null;
+    };
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
-      function(k, z){ padAiOutSay("Following\u2026 " + k + " section" + (k > 1 ? "s" : "") + " (z " + z + ")"); });
+      function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
+      { existing: existing, gap: 1 });
     got.forEach(function(g){ PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points }); });
     if (got.length) PAD_AI_LAST = got[got.length - 1];
     padPaint(); padRings();
+    var interp = got.filter(function(g){ return g.interpolated; }).map(function(g){ return g.z; });
+    var moved = got.filter(function(g){ return g.insteadOf != null; }).map(function(g){ return "z " + g.z + " instead of " + g.insteadOf; });
     padAiOutSay(got.length
-      ? "Added " + got.length + " contour" + (got.length > 1 ? "s" : "") + " (z " + got[0].z + "\u2013" + got[got.length - 1].z
-        + "). Step through them with , and . to check; follow again to go further."
-      : "Stopped at once: the next section's outline did not look like the same organelle. Step there and click it, or draw it.");
+      ? "Added " + got.length + " contour" + (got.length > 1 ? "s" : "") + " (z " + got[0].z + "\u2013" + got[got.length - 1].z + ")"
+        + (interp.length ? "; interpolated over a missing section at z " + interp.join(", ") : "")
+        + (moved.length ? "; used the neighbouring section where the planned one failed (" + moved.join(", ") + ")" : "")
+        + ". Step through with , and . to check; follow again to go further."
+      : "Nothing new: the next sections either already have this structure, or did not look like the same organelle. Step there and click it, or draw it.");
   } catch (err){
     padAiOutSay(String(err && err.message || err), true);
+  } finally {
+    PAD_AI_FOLLOWING = false;
+    ["tracePadAiFollowBack", "tracePadAiFollowOn"].forEach(function(id){ var b = document.getElementById(id); if (b) b.disabled = false; });
   }
 }
 function padAiFixMode(){
@@ -7604,9 +7647,16 @@ function wirePad(){
      heard before the pad's own handlers and can stop them: a click that opens the form must not
      also drop a vertex. Only the left button, and only while the tick is on. */
   const fixHost = cv.parentElement || cv;
+  /* ALT HANDS THE CLICK BACK TO THE PAD (2026-11-01, Søren: "holding the alt button while
+     click-dragging should disable the AI while you do it so you can quickly edit an ai outline").
+     The whole gesture goes through once it starts with alt held -- its pointerup and click too,
+     even if alt is let go first -- or the pad would be left holding a drag that never ended. */
+  var padAiPass = false;
   ["pointerdown", "pointerup", "click", "dblclick"].forEach(function(ev){
     fixHost.addEventListener(ev, function(e){
       if (e.target !== cv || e.button !== 0) return;
+      if (ev === "pointerdown") padAiPass = !!e.altKey;
+      if (padAiPass || e.altKey){ if (ev === "click" || ev === "dblclick") padAiPass = false; return; }
       var fix = padAiFixMode(), out = !fix && padAiOutMode();
       if (!fix && !out) return;
       e.stopImmediatePropagation(); e.preventDefault();
@@ -8242,7 +8292,7 @@ function tracingCardHtml(){
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
     "     start with those 2?\" (lysosomes, mitochondria). core/organelleseg.js; hidden until seg.json exists. -->",
-    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on a lysosome or a mitochondrion draws its outline on this section, as ordinary contour points in the structure you are drawing: drag, delete or add points as usual. Then Follow carries it through the next sections, one step (the step box) at a time, until the organelle ends. Turn it off to draw or pan by hand.\"><input type=\"checkbox\" id=\"tracePadAiOut\"> AI outline (click an organelle)</label>",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on a lysosome or a mitochondrion draws its outline on this section, as ordinary contour points in the structure you are drawing. Shift+click a part it missed to add it. Hold alt to drag points or edit by hand without turning this off. Clicking inside an outline that is already there replaces it. Then Follow carries it through the next sections, one step (the step box) at a time, skipping sections that already have it and bridging one missing section, until the organelle ends.\"><input type=\"checkbox\" id=\"tracePadAiOut\"> AI outline (click an organelle)</label>",
     "<button class=\"idbtn\" id=\"tracePadAiFollowBack\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline backwards, up to 10 steps, until the organelle ends\">&#9664; follow</button>",
     "<button class=\"idbtn\" id=\"tracePadAiFollowOn\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline forwards, up to 10 steps, until the organelle ends\">follow &#9654;</button>",
     "<span class=\"hint\" id=\"tracePadAiOutSay\" style=\"flex:1 1 100%\"></span>",

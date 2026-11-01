@@ -218,25 +218,171 @@ UJ.organelleseg = (function(){
     return p;
   }
 
-  /* ── FOLLOW IT THROUGH THE SECTIONS ───────────────────────────────────────────────────────── */
-  async function follow(points, z, dir, n, step, onEach){
-    var tr = toolRes(), got = [], prev = points;
+  /* ── POLYGON TOOLS (2026-11-01) ───────────────────────────────────────────────────────────── */
+  /* Is a point inside a polygon (even-odd)? */
+  function inside(pt, poly){
+    var x = pt[0], y = pt[1], c = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++){
+      var a = poly[i], b = poly[j];
+      if (((a[1] > y) !== (b[1] > y)) && (x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+    }
+    return c;
+  }
+  /* UNION of polygons: drawn onto one grid (scanline, even-odd per polygon, OR across them) at
+     `cell` tool voxels per pixel, then every connected piece traced back to a ring. Two outlines
+     that touch become one; two that do not stay two. Holes are not kept. */
+  function union(polys, cell){
+    cell = cell || 2;
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    polys.forEach(function(P){ P.forEach(function(p){
+      if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }); });
+    x0 -= 3 * cell; y0 -= 3 * cell;
+    var W = Math.ceil((x1 - x0) / cell) + 4, H = Math.ceil((y1 - y0) / cell) + 4;
+    var m = new Uint8Array(W * H);
+    polys.forEach(function(P){
+      var row = new Uint8Array(W);
+      for (var r = 0; r < H; r++){
+        var y = y0 + (r + 0.5) * cell, xs = [];
+        for (var i = 0, j = P.length - 1; i < P.length; j = i++){
+          var a = P[i], b = P[j];
+          if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+        }
+        xs.sort(function(u, v){ return u - v; });
+        row.fill(0);
+        for (var k = 0; k + 1 < xs.length; k += 2){
+          var c0 = Math.max(0, Math.ceil((xs[k] - x0) / cell - 0.5)), c1 = Math.min(W - 1, Math.floor((xs[k + 1] - x0) / cell - 0.5));
+          for (var c = c0; c <= c1; c++) row[c] = 1;
+        }
+        for (var c2 = 0; c2 < W; c2++) if (row[c2]) m[r * W + c2] = 1;
+      }
+    });
+    /* each piece */
+    var seen = new Uint8Array(W * H), out = [];
+    for (var s0 = 0; s0 < W * H; s0++){
+      if (!m[s0] || seen[s0]) continue;
+      var comp = new Uint8Array(W * H), st = [s0], n = 0; seen[s0] = 1;
+      while (st.length){
+        var q = st.pop(), qy = (q / W) | 0, qx = q - qy * W; comp[q] = 1; n++;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++){
+          var y2 = qy + dy, x2 = qx + dx;
+          if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H) continue;
+          var q2 = y2 * W + x2;
+          if (m[q2] && !seen[q2]){ seen[q2] = 1; st.push(q2); }
+        }
+      }
+      if (n < 4) continue;
+      var ring = rdp(trace(comp, W, H), 0.7).map(function(p){ return [x0 + (p[0] + 0.5) * cell, y0 + (p[1] + 0.5) * cell]; });
+      if (ring.length >= 3) out.push(ring);
+    }
+    return out;
+  }
+  /* A ring between two rings: both resampled to N points by length, started at their rightmost
+     point, run the same way round, and averaged point by point -- the section a missing slice
+     would most likely have shown. */
+  function resample(P, N){
+    var L = [0];
+    for (var i = 1; i <= P.length; i++){ var a = P[i - 1], b = P[i % P.length]; L.push(L[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+    var tot = L[P.length], out = [], j = 0;
+    for (var k = 0; k < N; k++){
+      var t = tot * k / N;
+      while (j < P.length - 1 && L[j + 1] < t) j++;
+      var a2 = P[j], b2 = P[(j + 1) % P.length], f = (t - L[j]) / Math.max(1e-9, L[j + 1] - L[j]);
+      out.push([a2[0] + f * (b2[0] - a2[0]), a2[1] + f * (b2[1] - a2[1])]);
+    }
+    return out;
+  }
+  function signedArea(P){
+    var s = 0;
+    for (var i = 0, j = P.length - 1; i < P.length; j = i++) s += P[j][0] * P[i][1] - P[i][0] * P[j][1];
+    return s / 2;
+  }
+  function between(A, B, f){
+    var N = 64;
+    if (signedArea(A) * signedArea(B) < 0) B = B.slice().reverse();
+    var ra = resample(A, N), rb = resample(B, N);
+    var start = function(R){ var bi = 0; R.forEach(function(p, i){ if (p[0] > R[bi][0]) bi = i; }); return bi; };
+    var sa = start(ra), sb = start(rb);
+    var out = [];
+    for (var k = 0; k < N; k++){
+      var p = ra[(sa + k) % N], q = rb[(sb + k) % N];
+      out.push([p[0] + f * (q[0] - p[0]), p[1] + f * (q[1] - p[1])]);
+    }
+    return rdp(out, 0.7);              // open: its two ends are neighbours, so nothing is lost
+  }
+
+  /* ── FOLLOW IT THROUGH THE SECTIONS ───────────────────────────────────────────────────────────
+     opts.existing(z) -> points | null: a ring this structure already has there. Such a section is
+     NOT outlined again -- it is stepped over and followed on from (2026-11-01, Søren: two outlines
+     on one section "wastes data and is difficult to remove").
+
+     WHEN THE SECTION IT LANDS ON FAILS (no outline there, or one that does not look like the same
+     organelle) -- 2026-11-01, Søren: following every 5th section, "there is one missing exactly at
+     one of the every 5th slice":
+       1. THE NEAREST GOOD NEIGHBOUR FIRST: the sections 1, then 2, ... away from it, up to half a
+          step either way (never back past where it came from). A missing EM section is almost
+          always a single one, so the one next to it is real tissue -- a real outline beats an
+          invented one. It is kept at its own z (the volume and the 3D model take any spacing), and
+          the stepping carries on from the planned grid, so the cadence is not lost.
+       2. Only when no neighbour fits, or the step is 1 and there is no neighbour to try: the next
+          planned section, and an outline INTERPOLATED for the failed one between its two
+          neighbours, marked { interpolated: true }.
+       3. Two failures in a row end it. */
+  async function follow(points, z, dir, n, step, onEach, opts){
+    opts = opts || {};
+    var tr = toolRes(), got = [], prev = points, prevZ = z, gridZ = z;
     var prevArea = area(points) * tr[0] * tr[1];
-    for (var k = 1; k <= n; k++){
-      var zz = z + dir * step * k, c = centroid(prev);
-      var o = await outline(c, zz);
-      if (!o) break;
-      var a = o.areaNm2, c2 = centroid(o.points);
+    var fits = function(o, from, fromArea){
+      if (!o) return false;
+      if (o.existing) return true;                 // what is already drawn there is the answer
+      var c = centroid(from), c2 = centroid(o.points);
       var jump = Math.hypot((c2[0] - c[0]) * tr[0], (c2[1] - c[1]) * tr[1]);
-      if (a < prevArea / 3 || a > prevArea * 3 || jump > Math.max(300, Math.sqrt(prevArea))) break;
-      got.push({ z: zz, points: o.points });
-      if (onEach) try { onEach(got.length, zz); } catch (_e){}
-      prev = o.points; prevArea = a;
+      return !(o.areaNm2 < fromArea / 3 || o.areaNm2 > fromArea * 3 || jump > Math.max(300, Math.sqrt(fromArea)));
+    };
+    var have = function(zz){
+      var ex = opts.existing ? opts.existing(zz) : null;
+      return ex ? { points: ex, areaNm2: area(ex) * tr[0] * tr[1], existing: true } : null;
+    };
+    var take = function(o, zz){
+      if (!o.existing) got.push({ z: zz, points: o.points });
+      prev = o.points; prevZ = zz; prevArea = o.areaNm2;
+    };
+    for (var k = 1; k <= n; k++){
+      var zz = gridZ + dir * step;
+      gridZ = zz;
+      var o = have(zz) || await outline(centroid(prev), zz);
+      if (fits(o, prev, prevArea)){ take(o, zz); }
+      else {
+        var done = false;
+        /* 1. the nearest good neighbour, within half a step, never behind where it came from */
+        for (var d = 1; d <= Math.floor(step / 2) && !done; d++){
+          for (var sgn = 1; sgn >= -1 && !done; sgn -= 2){
+            var zn = zz + sgn * d * dir;
+            if ((zn - prevZ) * dir <= 0) continue;
+            var on = have(zn) || await outline(centroid(prev), zn);
+            if (fits(on, prev, prevArea)){
+              take(on, zn); done = true;
+              if (!on.existing) got[got.length - 1].insteadOf = zz;    // for the status line
+            }
+          }
+        }
+        /* 2. the next planned section, and the failed one interpolated */
+        if (!done && k < n){
+          var z2 = zz + dir * step;
+          var o2 = have(z2) || await outline(centroid(prev), z2);
+          if (fits(o2, prev, prevArea)){
+            got.push({ z: zz, points: between(prev, o2.points, (zz - prevZ) / (z2 - prevZ)), interpolated: true });
+            take(o2, z2); gridZ = z2; k++; done = true;
+          }
+        }
+        if (!done) break;                          // 3. two failures in a row
+      }
+      if (onEach) try { onEach(got.length, prevZ); } catch (_e){}
     }
     return got;
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable,
-           outline: outline, follow: follow, meta: function(){ return META; },
+           outline: outline, follow: follow, union: union, inside: inside, between: between,
+           centroid: centroid, meta: function(){ return META; },
            _trace: trace, _rdp: rdp, _clicked: clicked, _area: area };
 })();
