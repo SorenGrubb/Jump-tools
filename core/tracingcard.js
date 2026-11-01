@@ -2654,7 +2654,7 @@ function tracingKeep(){
      with its id attached, so nothing is stranded. */
   if (PAD){
     PAD.rings = []; PAD.pending = []; PAD.stroke = null; PAD.inst = 0;
-    PAD_INST_KIND = {}; PAD_INST_COLOUR = {};
+    PAD_INST_KIND = {}; PAD_INST_COLOUR = {}; padHistReset();
     try { padPaint(); padRings(); } catch (_e){}
   }
   PAD_EDIT_ID = ""; TRACING_BASE_ID = ""; PAD_EDIT_IDS = {};
@@ -4842,6 +4842,7 @@ function draftResumeFrom(d){
              points: (r.points || []).map(function(p){ return [Math.round(p[0]), Math.round(p[1])]; }) };
   });
   PAD.pending = (d.pending || []).map(function(p){ return [Math.round(p[0]), Math.round(p[1])]; });
+  padHistReset();
   PAD.z = Math.round(d.z || (PAD.rings[0] && PAD.rings[0].z) || 0);
   PAD_CENTRE = (d.centre && d.centre.length === 3) ? d.centre.slice() : [0, 0, PAD.z];
   PAD_CENTRE[2] = PAD.z;
@@ -5371,7 +5372,7 @@ async function tracingOpenCellShared(sids, btn){
       PAD_INST_KIND[String(k)] = Object.assign({ value: v },
         tracingWhatOf(v, v === "__other" ? String(x.st.name || x.t.name || "").replace(/\s+\d+$/, "") : ""));
     });
-    PAD.inst = 0;
+    PAD.inst = 0; padHistReset();
     PAD.z = PAD.rings[0].z;
     const p0 = PAD.rings[0].points;
     let cx = 0, cy = 0;
@@ -6536,25 +6537,110 @@ async function padAiOutlineAt(e){
    One tool at a time, so a phone has every gesture a keyboard has:
      hand    the pad's own clicks (the same as alt with the AI on)
      ai      AI outline              aiadd   AI outline, ADD PART (the same as shift+click)
-     fix     correct the AI's marks  delring tap a contour to delete it (ctrl/cmd + right-click)
-   and one action: clearz  wipe every contour on this section, to trace it again (undo brings it back).
-   (2026-11-01, Søren: "I'm not sure what the backspace does, I can't get it to delete any points. I
-   think it should delete a whole tracing in the current slice, so that you can redo the AI
-   tracing." ⌫ was "delete point"; single points stay on right-click for a mouse.)
+     fix     correct the AI's marks  delring tap a contour (or inside it) to delete that one contour
+   and one switch: sub  ⌫ -- freehand strokes cut away from the contour instead of adding to it.
+   (2026-11-01, Søren: "X should delete only the tracing you click when it is activated. The
+   backspace button should be combined with the freehand drawing to subtract from the tracing when
+   you draw, in the same way freehand drawing without backspace should add to the drawing.")
    The ticks under the pad stay, for a keyboard; the two always agree. */
 var PAD_TOOL = "hand";
-var PAD_CLEARED = null;           // { z, rings } -- what ⌫ took off a section, for Undo
-function padClearSection(){
+var PAD_SUB = false;              // ⌫ on: a freehand stroke subtracts
+/* ── UNDO THAT UNDOES THE LAST CHANGE ─────────────────────────────────────────────  2026-11-01
+   Søren: "if I change something and press undo, it just deletes the whole tracing without just
+   undoing." The pad's own undo only knew "last vertex, else last contour". Now the contours are
+   noted before every gesture on the pad and every panel action, and after every change; Undo goes
+   back to the last noted state that differs from now -- a dragged point, an added part, a cut, a
+   follow, a deleted contour. A contour still being clicked point by point loses its last point,
+   as before. */
+var PAD_HIST = [];
+function padHistSnap(){ return PAD ? JSON.stringify(PAD.rings) : "[]"; }
+function padHistNote(){
   if (!PAD) return;
-  var gone = PAD.rings.filter(function(r){ return r.z === PAD.z; });
-  if (!gone.length && !PAD.pending.length){ padSay("Nothing traced on this section (z " + PAD.z + ").", true); return; }
-  if (gone.length) PAD_CLEARED = { z: PAD.z, rings: gone };
-  UJ.tracepad.clearSection(PAD);
-  if (PAD_AI_LAST && (gone.indexOf(PAD_AI_LAST.ring) >= 0 || PAD_AI_LAST.z === PAD.z)) PAD_AI_LAST = null;
-  padPaint(); padRings();
-  padSay("Cleared z " + PAD.z + ": " + gone.length + " contour" + (gone.length === 1 ? "" : "s")
-    + " removed. Trace it again (\u2728 AI outline, or draw); \u21b6 Undo brings them back.");
+  var s = padHistSnap();
+  if (PAD_HIST[PAD_HIST.length - 1] !== s){ PAD_HIST.push(s); if (PAD_HIST.length > 200) PAD_HIST.shift(); }
 }
+function padHistReset(){ PAD_HIST = []; }
+function padHistUndo(){
+  if (!PAD) return false;
+  var now = padHistSnap();
+  while (PAD_HIST.length && PAD_HIST[PAD_HIST.length - 1] === now) PAD_HIST.pop();
+  if (!PAD_HIST.length) return false;
+  PAD.rings = JSON.parse(PAD_HIST[PAD_HIST.length - 1]);
+  PAD_AI_LAST = null;
+  return true;
+}
+/* ── FREEHAND ADDS, AND WITH ⌫ IT CUTS ──────────────────────────────────────────  2026-11-01
+   After a freehand stroke has become a contour: without ⌫, a stroke that overlaps contours of the
+   same structure on this section is merged into them (a stroke on its own stays a new contour);
+   with ⌫, the stroke is cut out of every contour it overlaps on this section and is not kept. */
+function padStrokeBool(){
+  var S = UJ.organelleseg;
+  if (!PAD || !PAD.rings.length) return "";
+  var stroke = PAD.rings[PAD.rings.length - 1];
+  if (!S || !S.union){
+    if (PAD_SUB){ PAD.rings.pop(); return "nobool"; }
+    return "";
+  }
+  var inst = stroke.inst || 0, z = stroke.z;
+  /* the grid: fine for an organelle, ~400 cells across for a whole cell, so it stays quick */
+  var box = function(P){ var b = [Infinity, Infinity, -Infinity, -Infinity];
+    P.forEach(function(p){ b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); }); return b; };
+  var cellOf = function(list){ var e = 0; list.forEach(function(P){ var b = box(P); e = Math.max(e, b[2] - b[0], b[3] - b[1]); }); return Math.max(1, e / 400); };
+  var sb = box(stroke.points);
+  var touches = function(r){
+    var b = box(r.points);
+    if (b[0] > sb[2] + 2 || b[2] < sb[0] - 2 || b[1] > sb[3] + 2 || b[3] < sb[1] - 2) return false;
+    return S.union([r.points, stroke.points], cellOf([r.points, stroke.points])).length === 1;
+  };
+  var others = PAD.rings.slice(0, -1);
+  if (PAD_SUB){
+    PAD.rings.pop();
+    var hit = others.filter(function(r){ return r.z === z && touches(r); });
+    if (!hit.length) return "subnone";
+    var out = [], before = 0, after = 0;
+    PAD.rings.forEach(function(r){
+      if (hit.indexOf(r) < 0){ out.push(r); return; }
+      before += Math.abs(S._area(r.points));
+      S.subtract([r.points], [stroke.points], cellOf([r.points])).forEach(function(pts){
+        if (pts.length >= 3 && Math.abs(S._area(pts)) >= 4){ after += Math.abs(S._area(pts)); out.push(Object.assign({}, r, { points: pts })); }
+      });
+    });
+    if (after >= 0.98 * before) return "subhole";      // wholly inside: a hole, which a contour cannot hold
+    PAD.rings = out;
+    return "sub";
+  }
+  var same = others.filter(function(r){ return r.z === z && (r.inst || 0) === inst && touches(r); });
+  if (!same.length) return "";
+  var keep = PAD.rings.filter(function(r){ return r !== stroke && same.indexOf(r) < 0; });
+  var polys = same.map(function(r){ return r.points; }).concat([stroke.points]);
+  var pieces = S.union(polys, cellOf(polys));
+  pieces.forEach(function(pts){ keep.push(Object.assign({}, same[0], { points: pts })); });
+  PAD.rings = keep;
+  return "add";
+}
+function padSubSet(on){
+  PAD_SUB = !!on;
+  if (PAD_SUB){
+    if (PAD_TOOL !== "hand") padCpSetTool("hand");
+    var pen = document.getElementById("tracePadPen");
+    if (pen && !pen.checked){ pen.checked = true; pen.dispatchEvent(new Event("change")); }
+    padSay("Cut: draw freehand over the part of a contour that should not be there \u2014 it is cut away. Tap \u232b again to draw (add) instead.");
+  } else padSay("Freehand adds again: a stroke that overlaps a contour of this structure is merged into it.");
+  padCpSync();
+}
+(function(){
+  /* organelleseg.js holds the polygon union; pages without the AI outline load it here, quietly --
+     once the page has loaded, so a page that loads it itself (after this file) is never given two. */
+  var me = document.currentScript && document.currentScript.src;
+  if (!me) return;
+  window.addEventListener("load", function(){ try {
+    if (window.UJ && UJ.organelleseg) return;
+    var el = document.createElement("script");
+    el.src = me.replace(/tracingcard\.js(\?.*)?$/, "organelleseg.js");
+    el.async = true;
+    document.head.appendChild(el);
+  } catch (_e){} });
+})();
 function padCpEl(k){ return document.querySelector('#tracePadCp [data-cp="' + k + '"]'); }
 function padCpTick(id, v){
   var b = document.getElementById(id);
@@ -6562,11 +6648,12 @@ function padCpTick(id, v){
 }
 function padCpSetTool(t){
   PAD_TOOL = t;
+  if (t !== "hand" && PAD_SUB){ PAD_SUB = false; }
   padCpTick("tracePadAiOut", t === "ai" || t === "aiadd");
   padCpTick("tracePadAiFix", t === "fix");
   if (t === "aiadd") padAiOutSay("Add part: tap the part the outline missed.");
   if (t === "delpt") padSay("Delete point: tap a point to remove it.");
-  if (t === "delring") padSay("Delete contour: tap a contour to remove the whole of it.");
+  if (t === "delring") padSay("Delete contour: tap a contour, or inside it, to remove that one contour.");
   padCpSync();
 }
 function padCpSync(){
@@ -6583,7 +6670,7 @@ function padCpSync(){
                      l = b.closest && b.closest("label"); return !l || l.style.display !== "none"; })(),
                pen: !!document.getElementById("tracePadPen") };
   var active = { hand: PAD_TOOL === "hand", ai: PAD_TOOL === "ai", aiadd: PAD_TOOL === "aiadd", fix: PAD_TOOL === "fix",
-                 delpt: PAD_TOOL === "delpt", delring: PAD_TOOL === "delring",
+                 delpt: PAD_TOOL === "delpt", delring: PAD_TOOL === "delring", clearz: PAD_SUB,
                  pen: on("tracePadPen"), suggest: on("tracePadAi"), dark: on("tracePadAiDark"), seg: on("tracePadSeg"),
                  help: box.dataset.caps === "1" };
   [].slice.call(box.querySelectorAll("[data-cp]")).forEach(function(b){
@@ -7280,6 +7367,7 @@ function padRings(){
   try { tracingPasteGhostsSync(); } catch (_e){}
   /* The preview and the draft both follow the contours from here: this is called after every close,
      every delete and every reload of a section, which is every way the set of rings can change. */
+  try { padHistNote(); } catch (_e){}
   pad3DSoon();
   draftSoon();
   padVolume();
@@ -7739,12 +7827,10 @@ function wirePad(){
     padDraw();
   });
   document.getElementById("tracePadUndo").addEventListener("click", function(){
-    /* After ⌫: once nothing new is left on the section to undo, Undo puts the cleared contours back. */
-    if (PAD_CLEARED && PAD_CLEARED.z === PAD.z && !PAD.pending.length && !PAD.rings.some(function(r){ return r.z === PAD.z; })){
-      PAD.rings = PAD.rings.concat(PAD_CLEARED.rings); PAD_CLEARED = null;
-      padPaint(); padRings(); padSay("The cleared contours are back."); return;
-    }
-    UJ.tracepad.undo(PAD); padPaint(); padRings(); padSay("Undone.");
+    /* A contour being clicked point by point: its last point. Otherwise: the last change. */
+    if (PAD.pending.length){ UJ.tracepad.undo(PAD); padPaint(); padRings(); padSay("Last point taken back."); return; }
+    if (padHistUndo()){ padPaint(); padRings(); padSay("Undone: back to before the last change."); return; }
+    padSay("Nothing left to undo.", true);
   });
   document.getElementById("tracePadClose").addEventListener("click", function(){
     document.getElementById("tracePadWrap").style.display = "none";
@@ -7807,6 +7893,8 @@ function wirePad(){
      The whole gesture goes through once it starts with alt held -- its pointerup and click too,
      even if alt is let go first -- or the pad would be left holding a drag that never ended. */
   var padAiPass = false;
+  fixHost.addEventListener("pointerdown", function(e){ if (e.target === cv) padHistNote(); }, true);
+  cv.addEventListener("contextmenu", function(){ padHistNote(); }, true);
   ["pointerdown", "pointerup", "click", "dblclick"].forEach(function(ev){
     fixHost.addEventListener(ev, function(e){
       if (e.target !== cv || e.button !== 0) return;
@@ -7854,10 +7942,11 @@ function wirePad(){
       if (!b) return;
       const k = b.getAttribute("data-cp"), click = function(id){ const el = document.getElementById(id); if (el) el.click(); };
       const flip = function(id){ const el = document.getElementById(id); if (el){ el.checked = !el.checked; el.dispatchEvent(new Event("change")); } };
+      if (["undo", "help", "zoomin", "zoomout", "zup", "zdown"].indexOf(k) < 0) padHistNote();
       if (["hand", "ai", "aiadd", "fix", "delpt", "delring"].indexOf(k) >= 0) padCpSetTool(PAD_TOOL === k && k !== "hand" ? "hand" : k);
       else if (k === "pen") flip("tracePadPen");
       else if (k === "undo") click("tracePadUndo");
-      else if (k === "clearz") padClearSection();
+      else if (k === "clearz") padSubSet(!PAD_SUB);
       else if (k === "followback") padAiFollow(-1);
       else if (k === "followon") padAiFollow(1);
       else if (k === "zup") click("tracePadPrev");
@@ -7959,7 +8048,7 @@ function wirePad(){
        thing to draw. */
     /* NOT WITH ALT (2026-09-22): alt carries on a contour, and the end of a lifted stroke is a
        vertex -- grabbing it would drag the end instead of drawing from it. */
-    if (!e.shiftKey && !e.altKey){
+    if (!e.shiftKey && !e.altKey && !PAD_SUB){
       const t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
       dragging = UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel);
     } else dragging = null;
@@ -8055,6 +8144,16 @@ function wirePad(){
       }
       if (what === "ring"){
         const n = PAD.rings[PAD.rings.length - 1].points.length;
+        const how = padStrokeBool();
+        if (how){
+          padPaint(); padRings();
+          padSay(how === "add" ? "Added to the contour \u2014 the stroke and the contour it overlaps are one now. Undo takes it back."
+            : how === "sub" ? "Cut away from the contour. Undo takes it back; tap \u232b to go back to adding."
+            : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
+            : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
+            : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how === "subnone" || how === "subhole" || how === "nobool");
+          return;
+        }
         padPaint(); padRings();
         padSay("Contour drawn — " + n + " points kept from the stroke. Drag any of them to "
           + "correct it, or step a section with , or . and draw the next one.");
@@ -8066,7 +8165,7 @@ function wirePad(){
     if (dragging){
       const wasDrag = moved;
       dragging = null;
-      if (wasDrag){ padPaint(); pad3DSoon(); draftSoon();
+      if (wasDrag){ padPaint(); pad3DSoon(); draftSoon(); padHistNote();
         /* Named for the machine reading it: "right-click" is not a gesture a Mac trackpad has. */
         padSay("Point moved. " + PAD_RIGHT.charAt(0).toUpperCase() + PAD_RIGHT.slice(1)
         + " a point to delete it, or a line to put a new point in the middle of it."); return; }
@@ -8171,8 +8270,18 @@ function wirePad(){
     const k = PAD_VIEW.pxPerToolVoxel;
     /* A point of it or a line of it: either is a way of pointing at the contour you mean, and
        asking somebody to hit a vertex exactly when the whole thing is about to go is pedantry. */
-    const hit = UJ.tracepad.hitVertex(PAD, t[0], t[1], k)
+    let hit = UJ.tracepad.hitVertex(PAD, t[0], t[1], k)
              || UJ.tracepad.hitEdge(PAD, t[0], t[1], k);
+    /* or inside it: the smallest contour on this section around the tap (2026-11-01) */
+    if (!hit){
+      let best = -1, bestA = Infinity;
+      PAD.rings.forEach(function(r, i){
+        if (r.z !== PAD.z || !padPtIn(t, r.points)) return;
+        let a2 = 0; for (let q = 0, j = r.points.length - 1; q < r.points.length; j = q++) a2 += (r.points[j][0] + r.points[q][0]) * (r.points[j][1] - r.points[q][1]);
+        if (Math.abs(a2) < bestA){ bestA = Math.abs(a2); best = i; }
+      });
+      if (best >= 0) hit = { ring: best };
+    }
     if (!hit){
       padSay(PAD_MOD + "+click a point or a line of the contour you want to remove \u2014 there is "
         + "nothing under the pointer.", true);
@@ -8184,6 +8293,14 @@ function wirePad(){
     padSay(pending
       ? "The contour you were drawing is gone. Undo cannot bring it back \u2014 start it again."
       : "Contour removed, all of it. " + UJ.tracepad.count(PAD).rings + " left.");
+  }
+  function padPtIn(p, poly){
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++){
+      const a = poly[i], b = poly[j];
+      if (((a[1] > p[1]) !== (b[1] > p[1])) && (p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+    }
+    return c;
   }
   function padInsertAt(e){
     if (!PAD_VIEW) return;
@@ -8545,7 +8662,7 @@ function tracingCardHtml(){
     "<button type=\"button\" class=\"padcp\" data-cp=\"pen\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Freehand pen: draw round the organelle with a finger or pen\" aria-label=\"pen\"><span>&#9997;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">pen</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"ai\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI outline: tap a lysosome or a mitochondrion to outline it\" aria-label=\"AI outline\"><span>&#10024;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">AI outline</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"aiadd\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI add part: tap a part the AI outline missed to add it (shift+click)\" aria-label=\"add part\"><span>&#8853;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">add part</span></button>",
-    "<button type=\"button\" class=\"padcp\" data-cp=\"clearz\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Clear this section: remove its contours so you can trace it again (Undo brings them back)\" aria-label=\"clear section\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">clear z</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"clearz\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Cut: while this is on, a freehand stroke cuts away from the contours it overlaps (off: a stroke adds to them)\" aria-label=\"cut\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">cut</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"delring\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete contour: tap a contour to remove it (Ctrl/Cmd+right-click)\" aria-label=\"del contour\"><span>&#10006;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del contour</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"fix\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Correct the AI: tap a suggestion to say what it really is\" aria-label=\"correct\"><span>&#10003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">correct</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",

@@ -209,31 +209,69 @@ UJ.organelleseg = (function(){
       if (px.length < 4 || area(px) < 0.3 * comp.n) return null;
       var tr = toolRes(), sc = 0;
       for (var q = 0; q < prob.length; q++) if (comp.mask[q]) sc += prob[q];
-      /* ── HOW MUCH OF IT IS AN IMAGING ARTIFACT ──────────────────────────  2026-11-01
+      /* ── IS AN IMAGING ARTIFACT ACROSS IT ───────────────────────────────  2026-11-01
          Søren: "the same system as a missing slice should apply if there is an imaging artefact
-         that overlaps with the organelle." Over the outline's box and 100 nm round it: the share
-         of voxels that are not tissue -- unread (a missing chunk), near-black (a fold, a knife
-         mark: raw below seg.json artifactDark, 15 by default) or near-white (a crack, resin:
-         above artifactBright, 240). Follow treats a section as it treats a missing one when that
-         share passes 3%, or when there are at least as many bad voxels as the outline is wide --
-         a thin fold or knife line straight across the organelle is a small share of the box. */
+         that overlaps with the organelle", and then: "The knife cutting is often much longer,
+         often relatively straight and often consistently dark compared to organelles, could this
+         be used to distinguish it from e.g. myelin or lysosome inclusions?"
+         Two tests, over the outline's box and 100 nm round it:
+           - unread voxels (a missing chunk) passing 3% of the box: always an artifact;
+           - a STREAK through the box: a connected run of near-black (below seg.json artifactDark,
+             15) or near-white (above artifactBright, 240) voxels anywhere in the crop that is long
+             (artifactLineNm, 600 nm), straight and thin (length/width >= artifactElong, 6).
+             Length and width come from the run's spread along and across its main axis (a uniform
+             bar of length L has variance L^2/12). A lysosome inclusion is short; myelin curves
+             round its axon, so its spread across is large -- neither passes. */
       var bx0 = m.crop, by0 = m.crop, bx1 = -1, by1 = -1;
       for (var q2 = 0; q2 < comp.mask.length; q2++) if (comp.mask[q2]){
         var qx = q2 % m.crop, qy = (q2 / m.crop) | 0;
         if (qx < bx0) bx0 = qx; if (qx > bx1) bx1 = qx; if (qy < by0) by0 = qy; if (qy > by1) by1 = qy;
       }
       var mg = Math.round(100 / pl.res[0]), dark = m.artifactDark == null ? 15 : m.artifactDark,
-          bright = m.artifactBright == null ? 240 : m.artifactBright, bad = 0, all = 0;
-      for (var yy = Math.max(0, by0 - mg); yy <= Math.min(m.crop - 1, by1 + mg); yy++)
-        for (var xx = Math.max(0, bx0 - mg); xx <= Math.min(m.crop - 1, bx1 + mg); xx++){
-          var oo = yy * pl.w + xx; all++;
-          if (yy >= pl.h || xx >= pl.w || !pl.seen[oo] || pl.raw[oo] < dark || pl.raw[oo] > bright) bad++;
+          bright = m.artifactBright == null ? 240 : m.artifactBright,
+          lineNm = m.artifactLineNm == null ? 600 : m.artifactLineNm,
+          elong = m.artifactElong == null ? 6 : m.artifactElong;
+      var X0 = Math.max(0, bx0 - mg), X1 = Math.min(m.crop - 1, bx1 + mg), Y0 = Math.max(0, by0 - mg), Y1 = Math.min(m.crop - 1, by1 + mg);
+      var unseen = 0, all = 0;
+      for (var yy = Y0; yy <= Y1; yy++) for (var xx = X0; xx <= X1; xx++){
+        all++;
+        if (yy >= pl.h || xx >= pl.w || !pl.seen[yy * pl.w + xx]) unseen++;
+      }
+      var C = m.crop, odd = new Uint8Array(C * C), lab = new Uint8Array(C * C), streak = null;
+      for (var yq = 0; yq < Math.min(C, pl.h); yq++) for (var xq = 0; xq < Math.min(C, pl.w); xq++){
+        var o3 = yq * pl.w + xq;
+        if (pl.seen[o3] && (pl.raw[o3] < dark || pl.raw[o3] > bright)) odd[yq * C + xq] = 1;
+      }
+      for (var s0 = 0; s0 < C * C && !streak; s0++){
+        if (!odd[s0] || lab[s0]) continue;
+        var st = [s0], pts = [], hits = false; lab[s0] = 1;
+        while (st.length){
+          var q3 = st.pop(), y3 = (q3 / C) | 0, x3 = q3 - y3 * C; pts.push(x3, y3);
+          if (x3 >= X0 && x3 <= X1 && y3 >= Y0 && y3 <= Y1) hits = true;
+          for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++){
+            var y4 = y3 + dy, x4 = x3 + dx;
+            if (x4 < 0 || y4 < 0 || x4 >= C || y4 >= C) continue;
+            var q4 = y4 * C + x4;
+            if (odd[q4] && !lab[q4]){ lab[q4] = 1; st.push(q4); }
+          }
         }
+        var n3 = pts.length / 2;
+        if (!hits || n3 * pl.res[0] < lineNm) continue;       // even a 1-voxel-wide line that long has this many
+        var mx = 0, my = 0; for (var i3 = 0; i3 < pts.length; i3 += 2){ mx += pts[i3]; my += pts[i3 + 1]; }
+        mx /= n3; my /= n3;
+        var sxx = 0, syy = 0, sxy = 0;
+        for (var i4 = 0; i4 < pts.length; i4 += 2){ var ux = pts[i4] - mx, uy = pts[i4 + 1] - my; sxx += ux * ux; syy += uy * uy; sxy += ux * uy; }
+        sxx /= n3; syy /= n3; sxy /= n3;
+        var tr2 = sxx + syy, dt = Math.sqrt(Math.max(0, (sxx - syy) * (sxx - syy) / 4 + sxy * sxy));
+        var len = Math.sqrt(12 * (tr2 / 2 + dt)), wid = Math.sqrt(12 * Math.max(0, tr2 / 2 - dt)) || 1;
+        if (len * pl.res[0] >= lineNm && len / Math.max(1, wid) >= elong)
+          streak = { lengthNm: Math.round(len * pl.res[0]), widthNm: Math.round(Math.max(1, wid) * pl.res[0]) };
+      }
       return {
         points: px.map(function(a){ return [(pl.x0 + a[0] + 0.5) * pl.res[0] / tr[0], (pl.y0 + a[1] + 0.5) * pl.res[1] / tr[1]]; }),
         areaNm2: comp.n * pl.res[0] * pl.res[1], score: sc / comp.n, ep: EP,
-        artifact: all ? bad / all : 0,
-        artifactLine: bad >= Math.max(8, Math.min(bx1 - bx0 + 1, by1 - by0 + 1))
+        artifact: all ? unseen / all : 0,
+        artifactLine: !!streak, streak: streak
       };
     });
     QUEUE = p.catch(function(){});
@@ -252,16 +290,20 @@ UJ.organelleseg = (function(){
   }
   /* UNION of polygons: drawn onto one grid (scanline, even-odd per polygon, OR across them) at
      `cell` tool voxels per pixel, then every connected piece traced back to a ring. Two outlines
-     that touch become one; two that do not stay two. Holes are not kept. */
-  function union(polys, cell){
+     that touch become one; two that do not stay two. Holes are not kept.
+     SUBTRACT (2026-11-01, Søren: "The backspace button should be combined with the freehand drawing
+     to subtract from the tracing when you draw"): the same grid, with every `minus` polygon cleared
+     from it before the pieces are traced. A cut straight through leaves two pieces. */
+  function union(polys, cell, minus){
     cell = cell || 2;
+    minus = minus || [];
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     polys.forEach(function(P){ P.forEach(function(p){
       if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }); });
     x0 -= 3 * cell; y0 -= 3 * cell;
     var W = Math.ceil((x1 - x0) / cell) + 4, H = Math.ceil((y1 - y0) / cell) + 4;
     var m = new Uint8Array(W * H);
-    polys.forEach(function(P){
+    var paint = function(P, v){
       var row = new Uint8Array(W);
       for (var r = 0; r < H; r++){
         var y = y0 + (r + 0.5) * cell, xs = [];
@@ -275,9 +317,11 @@ UJ.organelleseg = (function(){
           var c0 = Math.max(0, Math.ceil((xs[k] - x0) / cell - 0.5)), c1 = Math.min(W - 1, Math.floor((xs[k + 1] - x0) / cell - 0.5));
           for (var c = c0; c <= c1; c++) row[c] = 1;
         }
-        for (var c2 = 0; c2 < W; c2++) if (row[c2]) m[r * W + c2] = 1;
+        for (var c2 = 0; c2 < W; c2++) if (row[c2]) m[r * W + c2] = v;
       }
-    });
+    };
+    polys.forEach(function(P){ paint(P, 1); });
+    minus.forEach(function(P){ paint(P, 0); });
     /* each piece */
     var seen = new Uint8Array(W * H), out = [];
     for (var s0 = 0; s0 < W * H; s0++){
@@ -409,7 +453,8 @@ UJ.organelleseg = (function(){
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable,
-           outline: outline, follow: follow, union: union, inside: inside, between: between,
+           outline: outline, follow: follow, union: union,
+           subtract: function(polys, minus, cell){ return union(polys, cell, minus); }, inside: inside, between: between,
            centroid: centroid, meta: function(){ return META; },
            _trace: trace, _rdp: rdp, _clicked: clicked, _area: area };
 })();
