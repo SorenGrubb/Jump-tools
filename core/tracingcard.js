@@ -6633,8 +6633,10 @@ function padAiApplyKinds(){
   var kinds = insts.map(function(i){ return Object.keys(by[i]).sort(function(a, b){ return by[i][b] - by[i][a]; })[0]; });
   insts.forEach(function(i, n){
     var o = opt(kinds[n]);
+    /* `value` too: the per-structure rows choose their select by it, and without it they fell back
+       to the box -- "Whole cell" -- which is what Søren saw on 2026-11-01. */
     if (o && !(PAD_INST_KIND[i] && PAD_INST_KIND[i].kind && PAD_INST_KIND[i].kind !== "cell"))
-      PAD_INST_KIND[i] = { kind: kinds[n], name: o.textContent };
+      PAD_INST_KIND[i] = { value: kinds[n], kind: kinds[n], name: o.textContent };
   });
   var same = kinds.every(function(k){ return k === kinds[0]; });
   if (sel && same && opt(kinds[0]) && (sel.value === "__cell" || sel.value === "__other" || sel.value === "")){

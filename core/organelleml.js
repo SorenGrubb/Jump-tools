@@ -321,7 +321,9 @@ UJ.organelleml = (function(){
       var found = peaks(o.data, C, h, w, m, pl).map(function(k){
         return { k: k.k, p: k.p, t: toTool(pl, k.px, k.py, view.z) };
       });
-      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk };
+      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk,
+               /* the raw scores too, for kindOf(): what an outline is, even where no mark was drawn */
+               grid: { logits: o.data, C: C, h: h, w: w, st: m.stride || 8, x0: pl.x0, y0: pl.y0, res: pl.res } };
       return found;
     });
     QUEUE = p.catch(function(){});
@@ -464,9 +466,36 @@ UJ.organelleml = (function(){
     var inside = cand.filter(function(m){ return inPoly(m.t, points); });
     if (!inside.length) inside = cand.filter(function(m){
       return Math.hypot((m.t[0] - cx) * tres[0], (m.t[1] - cy) * tres[1]) <= 300; });
-    if (!inside.length) return null;
-    inside.sort(function(a, b){ return b.p - a.p; });
-    return { k: inside[0].k, p: inside[0].p };
+    if (inside.length){
+      inside.sort(function(a, b){ return b.p - a.p; });
+      return { k: inside[0].k, p: inside[0].p };
+    }
+    /* NO MARK THERE -- under a threshold, or merged into a neighbour's mark. The scores themselves:
+       every block whose centre falls inside the outline, class probabilities averaged, and the
+       best class other than background and artifact, among those the pad shows, if it averages
+       at least 0.3 (2026-11-01: "it still shows whole cell mesh as default"). */
+    var G = LAST && LAST.grid, M = META;
+    if (!G || !M || LAST.z !== z) return null;
+    var n = G.h * G.w, sum = new Float64Array(G.C), cnt = 0;
+    for (var yy = 0; yy < G.h; yy++) for (var xx = 0; xx < G.w; xx++){
+      var px = xx * G.st + G.st / 2, py = yy * G.st + G.st / 2;
+      var tp = [(G.x0 + px) * G.res[0] / tres[0], (G.y0 + py) * G.res[1] / tres[1]];
+      if (!inPoly(tp, points)) continue;
+      var c = yy * G.w + xx, mx = -1e30, k2, sm = 0;
+      for (k2 = 0; k2 < G.C; k2++) if (G.logits[k2 * n + c] > mx) mx = G.logits[k2 * n + c];
+      var e = new Float64Array(G.C);
+      for (k2 = 0; k2 < G.C; k2++){ e[k2] = Math.exp(G.logits[k2 * n + c] - mx); sm += e[k2]; }
+      for (k2 = 0; k2 < G.C; k2++) sum[k2] += e[k2] / sm;
+      cnt++;
+    }
+    if (!cnt) return null;
+    var bk = -1, bp = 0;
+    for (var k3 = 1; k3 < G.C; k3++){
+      var name = M.classes[k3];
+      if (name === ARTIFACT || (M.show && M.show.indexOf(name) < 0)) continue;
+      if (sum[k3] / cnt > bp){ bp = sum[k3] / cnt; bk = k3; }
+    }
+    return (bk > 0 && bp >= 0.3) ? { k: M.classes[bk], p: bp } : null;
   }
   function summary(){
     if (!LAST) return "";
