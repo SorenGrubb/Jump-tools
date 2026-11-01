@@ -6492,6 +6492,10 @@ function padAiOutTickSync(){
   var b = document.getElementById("tracePadAiOut"); if (b && !ok) b.checked = false;
   try { padCpSync(); } catch (_e){}
 }
+/* The OTHER structures' rings on one section: an AI outline is never drawn over them (2026-11-01). */
+function padAiOthers(z){
+  return PAD.rings.filter(function(r){ return r.z === z && (r.inst || 0) !== (PAD.inst || 0); }).map(function(r){ return r.points; });
+}
 /* This structure's rings on one section. */
 function padAiMine(z){
   return PAD.rings.filter(function(r){ return r.z === z && (r.inst || 0) === (PAD.inst || 0); });
@@ -6501,7 +6505,12 @@ async function padAiOutlineAt(e){
   var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z, add = !!e.shiftKey || PAD_TOOL === "aiadd";
   padAiOutSay(add ? "Adding that part\u2026" : "Outlining\u2026");
   try {
+    var others = padAiOthers(z);
+    if (others.some(function(P){ return UJ.organelleseg.inside([t[0], t[1]], P); })){
+      padAiOutSay("That spot is already traced as another structure. Pick that structure in the list to change it, or click outside it.", true); return;
+    }
     var o = await UJ.organelleseg.outline([t[0], t[1]], z);
+    if (o && UJ.organelleseg.clip) o = UJ.organelleseg.clip(o, others, [t[0], t[1]]);
     if (!o){ padAiOutSay("No lysosome or mitochondrion found under that click \u2014 click nearer its middle, or draw it by hand.", true); return; }
     var mine = padAiMine(z);
     if (add && mine.length){
@@ -6528,7 +6537,7 @@ async function padAiOutlineAt(e){
     padPaint(); padRings();
     padAiTagKind(ring);
     padAiOutSay((hit.length ? "Replaced the outline here: " : "Outlined: ") + (o.areaNm2 / 1e6).toFixed(3) + " \u00b5m\u00b2, " + o.points.length
-      + " points. Shift+click a missed part to add it, alt+drag to edit points, or follow \u25b6.");
+      + " points" + (o.clipped ? ", kept off the structure already traced next to it" : "") + ". Shift+click a missed part to add it, alt+drag to edit points, or follow \u25b6.");
   } catch (err){
     padAiOutSay(String(err && err.message || err), true);
   }
@@ -6619,13 +6628,11 @@ function padStrokeBool(){
   return "add";
 }
 function padSubSet(on){
+  if (PAD_TOOL !== "pen") padCpSetTool("pen");
   PAD_SUB = !!on;
   if (PAD_SUB){
-    if (PAD_TOOL !== "hand") padCpSetTool("hand");
-    var pen = document.getElementById("tracePadPen");
-    if (pen && !pen.checked){ pen.checked = true; pen.dispatchEvent(new Event("change")); }
-    padSay("Cut: draw freehand over the part of a contour that should not be there \u2014 it is cut away. Tap \u232b again to draw (add) instead.");
-  } else padSay("Freehand adds again: a stroke that overlaps a contour of this structure is merged into it.");
+    padSay("Cut: draw over the part of a contour that should not be there \u2014 it is cut away. Tap \u270d to add again.");
+  } else padSay("Freehand: draw round a part to add it \u2014 a stroke that overlaps a contour of this structure joins it.");
   padCpSync();
 }
 (function(){
@@ -6646,9 +6653,16 @@ function padCpTick(id, v){
   var b = document.getElementById(id);
   if (b && b.checked !== v){ b.checked = v; b.dispatchEvent(new Event("change")); }
 }
+/* ✎ and ✍ ARE TOOLS TOO (2026-11-01, Søren: "The freehand still does not add to a tracing, it just
+   pulls the point you click on when you click and drag. That should only be when you have the manual
+   annotation selected. The manual tracing seems to be on, even when you click freehand, why?").
+   ✎ hand: clicks place points, drags move them. ✍ pen: every drag draws, and the stroke is added to
+   the contour it overlaps; with ⌫ it is cut from it instead. The "draw freehand" tick is the pen. */
 function padCpSetTool(t){
   PAD_TOOL = t;
-  if (t !== "hand" && PAD_SUB){ PAD_SUB = false; }
+  PAD_SUB = false;
+  if (t === "hand") padCpTick("tracePadPen", false);
+  if (t === "pen") padCpTick("tracePadPen", true);
   padCpTick("tracePadAiOut", t === "ai" || t === "aiadd");
   padCpTick("tracePadAiFix", t === "fix");
   if (t === "aiadd") padAiOutSay("Add part: tap the part the outline missed.");
@@ -6663,7 +6677,10 @@ function padCpSync(){
   /* the ticks may have been changed by hand: the tool follows them */
   if (on("tracePadAiFix")) PAD_TOOL = "fix";
   else if (on("tracePadAiOut")){ if (PAD_TOOL !== "aiadd") PAD_TOOL = "ai"; }
-  else if (PAD_TOOL === "ai" || PAD_TOOL === "aiadd" || PAD_TOOL === "fix") PAD_TOOL = "hand";
+  else if (PAD_TOOL === "ai" || PAD_TOOL === "aiadd" || PAD_TOOL === "fix") PAD_TOOL = on("tracePadPen") ? "pen" : "hand";
+  /* the pen tick changed by hand, or by a pen touching the glass */
+  if (PAD_TOOL === "hand" && on("tracePadPen")) PAD_TOOL = "pen";
+  if (PAD_TOOL === "pen" && !on("tracePadPen")){ PAD_TOOL = "hand"; PAD_SUB = false; }
   var seg = padAiOutAvailable(), sug = padAiAvailable();
   var show = { ai: seg, aiadd: seg, followback: seg, followon: seg, fix: sug, suggest: sug, dark: sug,
                seg: !!document.getElementById("tracePadSeg") && (function(){ var b = document.getElementById("tracePadSeg"),
@@ -6671,7 +6688,7 @@ function padCpSync(){
                pen: !!document.getElementById("tracePadPen") };
   var active = { hand: PAD_TOOL === "hand", ai: PAD_TOOL === "ai", aiadd: PAD_TOOL === "aiadd", fix: PAD_TOOL === "fix",
                  delpt: PAD_TOOL === "delpt", delring: PAD_TOOL === "delring", clearz: PAD_SUB,
-                 pen: on("tracePadPen"), suggest: on("tracePadAi"), dark: on("tracePadAiDark"), seg: on("tracePadSeg"),
+                 pen: PAD_TOOL === "pen" && !PAD_SUB, suggest: on("tracePadAi"), dark: on("tracePadAiDark"), seg: on("tracePadSeg"),
                  help: box.dataset.caps === "1" };
   [].slice.call(box.querySelectorAll("[data-cp]")).forEach(function(b){
     var k = b.getAttribute("data-cp");
@@ -6774,7 +6791,7 @@ async function padAiFollow(dir){
     };
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
       function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
-      { existing: existing, gap: 1,
+      { existing: existing, gap: 1, avoid: padAiOthers,
         /* Your own "imaging artifact" answers count: one on this section inside the organelle, or
            within 100 nm of its edge, makes the section a missing one. */
         artifactAt: function(z, pts){
@@ -7944,7 +7961,7 @@ function wirePad(){
       const flip = function(id){ const el = document.getElementById(id); if (el){ el.checked = !el.checked; el.dispatchEvent(new Event("change")); } };
       if (["undo", "help", "zoomin", "zoomout", "zup", "zdown"].indexOf(k) < 0) padHistNote();
       if (["hand", "ai", "aiadd", "fix", "delpt", "delring"].indexOf(k) >= 0) padCpSetTool(PAD_TOOL === k && k !== "hand" ? "hand" : k);
-      else if (k === "pen") flip("tracePadPen");
+      else if (k === "pen"){ if (PAD_TOOL === "pen" && !PAD_SUB) padCpSetTool("hand"); else { padCpSetTool("pen"); padSubSet(false); } }
       else if (k === "undo") click("tracePadUndo");
       else if (k === "clearz") padSubSet(!PAD_SUB);
       else if (k === "followback") padAiFollow(-1);
@@ -7970,11 +7987,22 @@ function wirePad(){
   if (pfb) pfb.addEventListener("click", function(){ padAiFollow(-1); });
   if (pfo) pfo.addEventListener("click", function(){ padAiFollow(1); });
   const paf = document.getElementById("tracePadAiFix");
+  /* 2026-11-01, Søren: "I tried to add the organelles with the checkmark, but they are not removed
+     again when I unclicked it." ✓ switches the suggestions on so there is something to correct; when
+     it did, switching ✓ off switches them off again, marks and answers with them. */
+  let fixTurnedAiOn = false;
   if (paf) paf.addEventListener("change", function(){
     padAiFixClose();
     if (paf.checked && pao && pao.checked){ pao.checked = false; padAiOutSay(""); }
+    if (!paf.checked && fixTurnedAiOn){
+      fixTurnedAiOn = false;
+      const ai0 = document.getElementById("tracePadAi");
+      if (ai0 && ai0.checked){ ai0.checked = false; ai0.dispatchEvent(new Event("change")); }
+      return;
+    }
     if (paf.checked){
       const ai = document.getElementById("tracePadAi");
+      fixTurnedAiOn = !!(ai && !ai.checked);
       if (ai && !ai.checked){ ai.checked = true; ai.dispatchEvent(new Event("change")); }
       padAiSay("Correcting: click a mark to say what it is, or click an organelle the model missed. "
         + "Clicks do not draw until you turn this off.");
@@ -8048,7 +8076,7 @@ function wirePad(){
        thing to draw. */
     /* NOT WITH ALT (2026-09-22): alt carries on a contour, and the end of a lifted stroke is a
        vertex -- grabbing it would drag the end instead of drawing from it. */
-    if (!e.shiftKey && !e.altKey && !PAD_SUB){
+    if (!e.shiftKey && !e.altKey && !drawFreehand()){
       const t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
       dragging = UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel);
     } else dragging = null;

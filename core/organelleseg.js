@@ -321,7 +321,19 @@ UJ.organelleseg = (function(){
       }
     };
     polys.forEach(function(P){ paint(P, 1); });
-    minus.forEach(function(P){ paint(P, 0); });
+    if (minus.length){
+      /* what is cut away is cut with a pixel to spare, so the edge left behind does not sit on it */
+      var keep = m; m = new Uint8Array(W * H);
+      minus.forEach(function(P){ paint(P, 1); });
+      var cut = m; m = keep;
+      for (var r2 = 0; r2 < H; r2++) for (var c3 = 0; c3 < W; c3++){
+        if (!m[r2 * W + c3]) continue;
+        for (var dy2 = -1; dy2 <= 1 && m[r2 * W + c3]; dy2++) for (var dx2 = -1; dx2 <= 1; dx2++){
+          var yy2 = r2 + dy2, xx2 = c3 + dx2;
+          if (yy2 >= 0 && xx2 >= 0 && yy2 < H && xx2 < W && cut[yy2 * W + xx2]){ m[r2 * W + c3] = 0; break; }
+        }
+      }
+    }
     /* each piece */
     var seen = new Uint8Array(W * H), out = [];
     for (var s0 = 0; s0 < W * H; s0++){
@@ -393,6 +405,33 @@ UJ.organelleseg = (function(){
           planned section, and an outline INTERPOLATED for the failed one between its two
           neighbours, marked { interpolated: true }.
        3. Two failures in a row end it. */
+  /* ── NOT ON TOP OF SOMETHING ALREADY TRACED ───────────────────────────────  2026-11-01
+     Søren: "If the organelles lie really close and one of the organelles have been traced, then the
+     automatic tracing with either AI button or forward or backward button should not be able to
+     overlap with that structure." An outline is cut back to where the `avoid` polygons are not; of
+     what is left, the piece holding `near` (else the one nearest it) is kept. Nothing left: null. */
+  function clip(o, avoid, near){
+    if (!o || !avoid || !avoid.length) return o;
+    var bb = function(P){ var b = [Infinity, Infinity, -Infinity, -Infinity];
+      P.forEach(function(p){ b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); }); return b; };
+    var ob = bb(o.points);
+    var near2 = avoid.filter(function(P){ var b = bb(P); return !(b[0] > ob[2] || b[2] < ob[0] || b[1] > ob[3] || b[3] < ob[1]); });
+    if (!near2.length) return o;
+    var cell = Math.max(1, Math.max(ob[2] - ob[0], ob[3] - ob[1]) / 300);
+    var pieces = union([o.points], cell, near2).filter(function(P){ return P.length >= 3; });
+    if (!pieces.length) return null;
+    var a0 = Math.abs(area(o.points)), a1 = pieces.reduce(function(s, P){ return s + Math.abs(area(P)); }, 0);
+    if (a1 >= 0.995 * a0 && pieces.length === 1) return o;     // only touched: keep the original edge
+    var pick = null;
+    if (near) pick = pieces.filter(function(P){ return inside(near, P); })[0] || null;
+    if (!pick) pick = pieces.reduce(function(a, b){
+      var ca = centroid(a), cb = centroid(b), p = near || ca;
+      return Math.hypot(cb[0] - p[0], cb[1] - p[1]) < Math.hypot(ca[0] - p[0], ca[1] - p[1]) ? b : a; });
+    var tr = toolRes();
+    var out = {}; for (var k in o) out[k] = o[k];
+    out.points = pick; out.areaNm2 = Math.abs(area(pick)) * tr[0] * tr[1]; out.clipped = true;
+    return out;
+  }
   async function follow(points, z, dir, n, step, onEach, opts){
     opts = opts || {};
     var tr = toolRes(), got = [], prev = points, prevZ = z, gridZ = z;
@@ -413,6 +452,11 @@ UJ.organelleseg = (function(){
       var ex = opts.existing ? opts.existing(zz) : null;
       return ex ? { points: ex, areaNm2: area(ex) * tr[0] * tr[1], existing: true } : null;
     };
+    /* opts.avoid(z) -> polygons of OTHER structures already traced on z: never drawn over */
+    var look = async function(zz){
+      var o = await outline(centroid(prev), zz);
+      return opts.avoid ? clip(o, opts.avoid(zz), centroid(prev)) : o;
+    };
     var take = function(o, zz){
       if (!o.existing) got.push({ z: zz, points: o.points });
       prev = o.points; prevZ = zz; prevArea = o.areaNm2;
@@ -420,7 +464,7 @@ UJ.organelleseg = (function(){
     for (var k = 1; k <= n; k++){
       var zz = gridZ + dir * step;
       gridZ = zz;
-      var o = have(zz) || await outline(centroid(prev), zz);
+      var o = have(zz) || await look(zz);
       if (fits(o, prev, prevArea, zz)){ take(o, zz); }
       else {
         var done = false;
@@ -429,7 +473,7 @@ UJ.organelleseg = (function(){
           for (var sgn = 1; sgn >= -1 && !done; sgn -= 2){
             var zn = zz + sgn * d * dir;
             if ((zn - prevZ) * dir <= 0) continue;
-            var on = have(zn) || await outline(centroid(prev), zn);
+            var on = have(zn) || await look(zn);
             if (fits(on, prev, prevArea, zn)){
               take(on, zn); done = true;
               if (!on.existing){ got[got.length - 1].insteadOf = zz; got[got.length - 1].why = why[zz] || ""; }
@@ -439,9 +483,11 @@ UJ.organelleseg = (function(){
         /* 2. the next planned section, and the failed one interpolated */
         if (!done && k < n){
           var z2 = zz + dir * step;
-          var o2 = have(z2) || await outline(centroid(prev), z2);
+          var o2 = have(z2) || await look(z2);
           if (fits(o2, prev, prevArea, z2)){
-            got.push({ z: zz, points: between(prev, o2.points, (zz - prevZ) / (z2 - prevZ)), interpolated: true, why: why[zz] || "" });
+            var mid = between(prev, o2.points, (zz - prevZ) / (z2 - prevZ));
+            if (opts.avoid){ var cm = clip({ points: mid }, opts.avoid(zz), centroid(mid)); if (cm) mid = cm.points; }
+            got.push({ z: zz, points: mid, interpolated: true, why: why[zz] || "" });
             take(o2, z2); gridZ = z2; k++; done = true;
           }
         }
@@ -453,7 +499,7 @@ UJ.organelleseg = (function(){
   }
 
   return { configure: configure, available: available, whenAvailable: whenAvailable,
-           outline: outline, follow: follow, union: union,
+           outline: outline, follow: follow, union: union, clip: clip,
            subtract: function(polys, minus, cell){ return union(polys, cell, minus); }, inside: inside, between: between,
            centroid: centroid, meta: function(){ return META; },
            _trace: trace, _rdp: rdp, _clicked: clicked, _area: area };
