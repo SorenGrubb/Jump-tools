@@ -202,6 +202,11 @@ UJ.chat = (function(){
     + '#ujc .m .n{font-weight:600;margin-right:4px}#ujc .m.me .n{color:#7ee787}#ujc .m.sys{color:#8b949e;font-size:12px}#ujc .m.hl{background:rgba(227,179,65,.18);border-radius:6px;padding:0 4px}'
     + '#ujc .m .at{color:#e3b341;font-weight:600}#ujc .m .at.me{background:#e3b341;color:#0d1117;border-radius:4px;padding:0 3px}'
     + '#ujc .m .x{float:right;color:#8b949e;cursor:pointer;font-size:11px;margin-left:6px;display:none}#ujc .m:hover .x{display:inline}'
+    + '#ujc .cimg{max-width:260px;max-height:200px;border-radius:6px;margin:4px 0 2px;cursor:zoom-in;display:block}'
+    + '#ujc .pend{display:none;align-items:center;gap:8px;padding:4px 8px;font-size:12px;color:#8b949e}#ujc .pend img{height:40px;border-radius:4px}#ujc .pend .x{cursor:pointer;margin-left:auto}'
+    + '#ujc .pic{background:transparent;border:1px solid #30363d;border-radius:8px;color:inherit;cursor:pointer;padding:0 8px}'
+    + '#ujc.drop{outline:2px dashed #3fb950;outline-offset:-4px}'
+    + '#ujc-big{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}#ujc-big img{max-width:95vw;max-height:95vh}'
     + '#ujc .scard{display:flex;gap:8px;align-items:center;border:1px solid #30363d;border-radius:8px;padding:6px;margin:4px 0 2px;max-width:340px;background:rgba(255,255,255,.03)}'
     + '#ujc .scard .simg{width:120px;height:72px;flex:none;border-radius:6px;background:#161b22;display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden}'
     + '#ujc .scard .simg img{width:100%;height:100%;object-fit:cover}'
@@ -225,8 +230,9 @@ UJ.chat = (function(){
     r.innerHTML = '<div class="hd"><button data-room="all">All tools</button><button data-room="' + THIS_ROOM + '">' + esc(toolName(TOOL)) + '</button><select class="dm" title="Direct messages"><option value="">#…</option></select>'
       + '<span class="sp"></span><button class="who" title="Who is here">👥 0</button><button class="me" title="Your name and flag">⚙</button><button class="mute" title="Mute: no pop-ups and no announcements (messages are still kept for you)">🔔</button><button class="big" title="Larger, solid window">⤢</button><button class="x" title="Close">✕</button></div>'
       + '<div class="ms"></div><div class="dd"></div><div class="pane"></div>'
-      + '<div class="in"><input placeholder="Message · / commands · @name highlights · #name direct" maxlength="1000"><button class="go" style="background:#238636;color:#fff;border:0;border-radius:8px;padding:0 10px">Send</button></div>';
-    document.body.appendChild(r); EL.root = r; EL.ms = r.querySelector(".ms"); EL.inp = r.querySelector("input"); EL.dd = r.querySelector(".dd"); EL.pane = r.querySelector(".pane");
+      + '<div class="pend"></div>'
+      + '<div class="in"><button class="pic" title="Add a picture — or paste one (Ctrl+V) or drop it here">🖼</button><input type="file" class="picf" accept="image/*" style="display:none"><input class="txt" placeholder="Message · / commands · @name highlights · #name direct" maxlength="1000"><button class="go" style="background:#238636;color:#fff;border:0;border-radius:8px;padding:0 10px">Send</button></div>';
+    document.body.appendChild(r); EL.root = r; EL.ms = r.querySelector(".ms"); EL.inp = r.querySelector("input.txt"); EL.dd = r.querySelector(".dd"); EL.pane = r.querySelector(".pane");
     var t = document.createElement("div"); t.id = "ujc-toast"; document.body.appendChild(t); EL.toast = t;
     l.addEventListener("click", function(){ setOpen(!ST.open); });
     r.querySelector(".x").addEventListener("click", function(){ setOpen(false); });
@@ -237,6 +243,23 @@ UJ.chat = (function(){
     r.querySelectorAll("[data-room]").forEach(function(b){ b.addEventListener("click", function(){ setRoom(b.dataset.room); }); });
     r.querySelector(".dm").addEventListener("change", function(e){ if (e.target.value) setRoom(e.target.value); });
     r.querySelector(".go").addEventListener("click", submit);
+    /* PICTURES (2026-11-01): pasted into the box, dropped on the window, or picked with 🖼 */
+    EL.pend = r.querySelector(".pend");
+    var pf = r.querySelector(".picf");
+    r.querySelector(".pic").addEventListener("click", function(){ pf.click(); });
+    pf.addEventListener("change", function(){ if (pf.files && pf.files[0]) attachPic(pf.files[0]); pf.value = ""; });
+    EL.inp.addEventListener("paste", function(e){
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) if (items[i].kind === "file" && /^image\//.test(items[i].type)){
+        e.preventDefault(); attachPic(items[i].getAsFile()); return; }
+    });
+    r.addEventListener("dragover", function(e){ if (e.dataTransfer && [].slice.call(e.dataTransfer.types || []).indexOf("Files") >= 0){ e.preventDefault(); r.classList.add("drop"); } });
+    r.addEventListener("dragleave", function(){ r.classList.remove("drop"); });
+    r.addEventListener("drop", function(e){
+      r.classList.remove("drop");
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f && /^image\//.test(f.type)){ e.preventDefault(); attachPic(f); }
+    });
     EL.inp.addEventListener("keydown", onKey);
     EL.inp.addEventListener("input", suggest);
     r.classList.toggle("big", ST.big);
@@ -337,6 +360,8 @@ UJ.chat = (function(){
     if (m.kind === "scene" && m.data && m.data.url && !scenes.length) out += ' <span class="chip" data-href="' + esc(m.data.url) + '" title="Open the scene">🎬 ' + esc(m.data.title || "scene") + "</span>";
     if (m.kind === "cell" && m.data && m.data.url) out += ' <span class="chip" data-href="' + esc(m.data.url) + '">📍 ' + esc(m.data.label || "cell") + "</span>";
     if (scenes.length) out += scenes.map(sceneCard).join("");
+    if (m.data && typeof m.data.img === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(m.data.img))
+      out += '<div><img class="cimg" src="' + m.data.img + '" alt="picture" title="Click to see it full size"></div>';
     return out;
   }
   function line(m){
@@ -383,6 +408,14 @@ UJ.chat = (function(){
   }
   function wire(el){
     try { fillSceneCards(el); } catch (_e){}
+    el.querySelectorAll("img.cimg").forEach(function(im){
+      im.onclick = function(){
+        var o = document.createElement("div"); o.id = "ujc-big";
+        o.innerHTML = '<img alt="picture">'; o.querySelector("img").src = im.src;
+        o.onclick = function(){ o.remove(); }; document.body.appendChild(o);
+      };
+      im.onload = function(){ if (EL.ms.scrollHeight - EL.ms.scrollTop - EL.ms.clientHeight < 400) scrollEnd(); };
+    });
     el.querySelectorAll("[data-href]").forEach(function(c){ c.onclick = function(){ window.open(c.dataset.href, "_blank", "noopener"); }; });
     el.querySelectorAll("[data-del]").forEach(function(c){ c.onclick = function(){ if (confirm("Delete this message?")) A.remove(ST.room.indexOf("dm_") === 0 ? ST.room : ST.room, c.dataset.del); }; });
     el.querySelectorAll("[data-vote]").forEach(function(b){ b.onclick = function(){ A.castVote(b.dataset.vote, b.dataset.v); }; });
@@ -512,8 +545,54 @@ UJ.chat = (function(){
     await A.send(room, msg);
     if (room.indexOf("dm_") === 0) A.touchDm(otherOf(room));
   }
+  /* ── PICTURES IN THE CHAT (2026-11-01, Søren: "can I also paste pictures in the chat?") ───────────
+     Shrunk in the browser before anything is sent -- at most 1280 px on the long side, JPEG, under
+     PIC_MAX characters as a data: URL (about 200 kB) -- and carried in the message itself as
+     data.img, so it needs no storage of its own: Firebase's free plan keeps it with the text and the
+     24-hour clean-up takes it away with the text. Shown as a thumbnail; a click opens it full size. */
+  var PIC_MAX = 280000, PEND = null;
+  function shrinkPic(file){
+    return new Promise(function(res, rej){
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function(){
+        URL.revokeObjectURL(url);
+        var side = 1280, q = 0.85, out = "";
+        for (var tries = 0; tries < 8; tries++){
+          var k = Math.min(1, side / Math.max(im.naturalWidth, im.naturalHeight));
+          var c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+          var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+          out = c.toDataURL("image/jpeg", q);
+          if (out.length <= PIC_MAX) return res({ img: out, w: c.width, h: c.height });
+          if (q > 0.6) q -= 0.12; else side = Math.round(side * 0.75);
+        }
+        rej(new Error("the picture is too big even when shrunk"));
+      };
+      im.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("that file is not a picture this browser can read")); };
+      im.src = url;
+    });
+  }
+  async function attachPic(file){
+    if (!file) return;
+    try {
+      PEND = await shrinkPic(file);
+      EL.pend.innerHTML = '<img src="' + PEND.img + '" alt=""><span>Picture ready — add a line and press Send.</span><span class="x" title="Remove">✕</span>';
+      EL.pend.style.display = "flex";
+      EL.pend.querySelector(".x").onclick = function(){ PEND = null; EL.pend.style.display = "none"; EL.pend.innerHTML = ""; };
+      EL.inp.focus();
+    } catch (e){ sys("Could not add the picture: " + (e && e.message || e)); }
+  }
   async function submit(){
-    var text = EL.inp.value.trim(); if (!text) return;
+    var text = EL.inp.value.trim();
+    if (PEND && (!text || text[0] !== "/")){
+      if (!ON){ sys(STATUS); return; }
+      var pic = PEND; PEND = null; EL.pend.style.display = "none"; EL.pend.innerHTML = "";
+      EL.inp.value = ""; hideDd();
+      try { await post({ text: text, kind: "pic", data: { img: pic.img, w: pic.w, h: pic.h } }); }
+      catch (e){ sys("The picture could not be sent: " + (e && e.message || e)); }
+      return;
+    }
+    if (!text) return;
     EL.inp.value = ""; hideDd();
     if (!ON){ sys(STATUS); return; }
     if (text[0] === "/") return command(text);
