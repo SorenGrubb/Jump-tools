@@ -173,6 +173,26 @@ UJ.organelleseg = (function(){
     }
     return pts.filter(function(_p, i){ return keep[i]; });
   }
+  /* ── FEWER POINTS (2026-11-01, Søren: "the AI makes many more points for the tracing than I do when
+     I trace. Dropping redundant points almost does nothing. Can we increase the amount of points
+     dropped?"). The traced edge is a pixel staircase, and RDP at 0.7 px kept every step: ~100 points
+     round a 400 nm lysosome. Now the staircase is smoothed first (a running mean over 5 points, round
+     the ring), then simplified so no point of the edge moves more than SIMPLIFY_NM (10 nm, or
+     seg.json simplifyNm) -- about a membrane's width, and coarser than the 8 nm pixels the model saw. */
+  var SIMPLIFY_NM = 10;
+  function simplifyRing(pts, unitNm){
+    var n = pts.length;
+    if (n < 8) return pts.slice();
+    var sm = [];
+    for (var i = 0; i < n; i++){
+      var sx = 0, sy = 0;
+      for (var k = -2; k <= 2; k++){ var q = pts[(i + k + n) % n]; sx += q[0]; sy += q[1]; }
+      sm.push([sx / 5, sy / 5]);
+    }
+    var nm = (META && META.simplifyNm) || SIMPLIFY_NM;
+    var out = rdp(sm, Math.max(0.7, nm / (unitNm || 1)));
+    return out.length >= 4 ? out : rdp(pts, 0.7);
+  }
   function area(pts){
     var s = 0;
     for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) s += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
@@ -184,6 +204,31 @@ UJ.organelleseg = (function(){
     return [sx / pts.length, sy / pts.length];
   }
 
+  /* ── ONE MODEL AT A TIME, AND A CRASH IS RECOVERED (2026-11-01) ───────────────────────────────
+     Søren saw "memory access out of bounds" after a long tracing session. The suggestion model and the
+     outline model share onnxruntime's one WebAssembly engine, and each had its own queue, so they
+     could run at the same time. Now every run takes its turn on one page-wide chain
+     (window.__ujOrtTurn), and a run that fails with an engine error drops the session, starts it
+     again and tries once more; failing again, it says to reload (the tracing draft survives that). */
+  function ortTurn(fn){
+    var prev = window.__ujOrtTurn || Promise.resolve();
+    var p = prev.then(fn, fn);
+    window.__ujOrtTurn = p.catch(function(){});
+    return p;
+  }
+  function engineError(e){ return /memory|out of bounds|abort|RuntimeError|wasm/i.test(String(e && e.message || e)); }
+  async function runSafe(feeds, reload){
+    try { return await ortTurn(function(){ return SESSION.run(feeds); }); }
+    catch (e){
+      if (!engineError(e)) throw e;
+      try { if (SESSION && SESSION.release) await SESSION.release(); } catch (_e){}
+      SESSION = null; LOADING = null;
+      await reload();
+      try { return await ortTurn(function(){ return SESSION.run(feeds); }); }
+      catch (e2){ throw new Error("The AI engine in this browser tab ran out of memory (" + String(e2 && e2.message || e2)
+        + "). Reload the page \u2014 your tracing is kept as a draft \u2014 and carry on."); }
+    }
+  }
   /* ── ONE OUTLINE ──────────────────────────────────────────────────────────────────────────── */
   function outline(xy, z){
     var p = QUEUE.then(async function(){
@@ -199,12 +244,12 @@ UJ.organelleseg = (function(){
         d[y * m.crop + x] = (y < pl.h && x < pl.w && pl.seen[o]) ? (pl.raw[o] - mean) / (sd + 1e-6) : 0;
       }
       var feeds = {}; feeds[SESSION.inputNames[0]] = new window.ort.Tensor("float32", d, [1, 1, m.crop, m.crop]);
-      var out = (await SESSION.run(feeds))[SESSION.outputNames[0]].data;
+      var out = (await runSafe(feeds, function(){ return load(); }))[SESSION.outputNames[0]].data;
       var prob = new Float32Array(out.length);
       for (var k = 0; k < out.length; k++) prob[k] = 1 / (1 + Math.exp(-out[k]));
       var comp = clicked(prob, m.crop, m.crop, m.threshold || 0.5);
       if (!comp || comp.n * pl.res[0] * pl.res[1] < 1e4) return null;   // under (100 nm)^2: noise, not an organelle
-      var px = rdp(trace(comp.mask, m.crop, m.crop), 0.7);
+      var px = simplifyRing(trace(comp.mask, m.crop, m.crop), pl.res[0]);
       /* A sliver -- a membrane line, a streak -- traces to a polygon with almost no inside. */
       if (px.length < 4 || area(px) < 0.3 * comp.n) return null;
       var tr = toolRes(), sc = 0;
@@ -349,7 +394,7 @@ UJ.organelleseg = (function(){
         }
       }
       if (n < 4) continue;
-      var ring = rdp(trace(comp, W, H), 0.7).map(function(p){ return [x0 + (p[0] + 0.5) * cell, y0 + (p[1] + 0.5) * cell]; });
+      var ring = simplifyRing(trace(comp, W, H), cell * toolRes()[0]).map(function(p){ return [x0 + (p[0] + 0.5) * cell, y0 + (p[1] + 0.5) * cell]; });
       if (ring.length >= 3) out.push(ring);
     }
     return out;
@@ -385,7 +430,7 @@ UJ.organelleseg = (function(){
       var p = ra[(sa + k) % N], q = rb[(sb + k) % N];
       out.push([p[0] + f * (q[0] - p[0]), p[1] + f * (q[1] - p[1])]);
     }
-    return rdp(out, 0.7);              // open: its two ends are neighbours, so nothing is lost
+    return rdp(out, Math.max(0.7, ((META && META.simplifyNm) || SIMPLIFY_NM) / toolRes()[0]));              // open: its two ends are neighbours, so nothing is lost
   }
 
   /* ── FOLLOW IT THROUGH THE SECTIONS ───────────────────────────────────────────────────────────

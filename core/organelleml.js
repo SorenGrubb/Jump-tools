@@ -295,6 +295,31 @@ UJ.organelleml = (function(){
 
   /* One run at a time: a second section asked for while the first is in the model waits, and a
      run whose answer arrives after a newer one was asked for is dropped. */
+  /* ── ONE MODEL AT A TIME, AND A CRASH IS RECOVERED (2026-11-01) ───────────────────────────────
+     Søren saw "memory access out of bounds" after a long tracing session. The suggestion model and the
+     outline model share onnxruntime's one WebAssembly engine, and each had its own queue, so they
+     could run at the same time. Now every run takes its turn on one page-wide chain
+     (window.__ujOrtTurn), and a run that fails with an engine error drops the session, starts it
+     again and tries once more; failing again, it says to reload (the tracing draft survives that). */
+  function ortTurn(fn){
+    var prev = window.__ujOrtTurn || Promise.resolve();
+    var p = prev.then(fn, fn);
+    window.__ujOrtTurn = p.catch(function(){});
+    return p;
+  }
+  function engineError(e){ return /memory|out of bounds|abort|RuntimeError|wasm/i.test(String(e && e.message || e)); }
+  async function runSafe(feeds, reload){
+    try { return await ortTurn(function(){ return SESSION.run(feeds); }); }
+    catch (e){
+      if (!engineError(e)) throw e;
+      try { if (SESSION && SESSION.release) await SESSION.release(); } catch (_e){}
+      SESSION = null; LOADING = null;
+      await reload();
+      try { return await ortTurn(function(){ return SESSION.run(feeds); }); }
+      catch (e2){ throw new Error("The AI engine in this browser tab ran out of memory (" + String(e2 && e2.message || e2)
+        + "). Reload the page \u2014 your tracing is kept as a draft \u2014 and carry on."); }
+    }
+  }
   function run(view, opts){
     opts = opts || {};
     var say = opts.say || function(){};
@@ -315,7 +340,7 @@ UJ.organelleml = (function(){
       var feeds = {};
       feeds[SESSION.inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
       var t0 = performance.now();
-      var res = await SESSION.run(feeds);
+      var res = await runSafe(feeds, function(){ return load(say); });
       var o = res[SESSION.outputNames[0]];
       var C = o.dims[1], h = o.dims[2], w = o.dims[3];
       var found = peaks(o.data, C, h, w, m, pl).map(function(k){
