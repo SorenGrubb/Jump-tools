@@ -3714,6 +3714,43 @@ function tracingShape3dSay(d3){
        + (d3.solidity3d !== null && d3.solidity3d !== undefined
             ? ", solidity " + shapeFmt(d3.solidity3d) : "") + ".";
 }
+/* ── FOLDED BY DEFAULT (2026-11-01, Søren: "This is too much text. We need to collapse it by
+   default. Also for unfinished tracings."). The volume-and-shape paragraphs become one summary line
+   -- how many structures and their total volume -- that opens to one line per structure (number,
+   volume, sections), each of which opens to the full paragraph. What is open stays open while the
+   pad redraws: the state is kept by key, because these lines are rebuilt after every change. */
+var VOL_OPEN = {}, DRAFT_FOLD_OPEN = false;
+function volShort(v){
+  if (!v) return "nothing yet";
+  if (!v.ok) return v.areaUm2 !== undefined ? volFmt(v.areaUm2) + " \u00b5m\u00b2 on one section" : "nothing yet";
+  return volFmt(v.volumeUm3) + " \u00b5m\u00b3 \u00b7 " + v.sections + " section" + (v.sections === 1 ? "" : "s");
+}
+function volFoldHtml(key, items){
+  var tot = 0, n = 0;
+  items.forEach(function(it){ if (it.v && it.v.ok){ tot += it.v.volumeUm3; n++; } });
+  var open = function(k){ return VOL_OPEN[k] ? " open" : ""; };
+  var head = items.length > 1
+    ? items.length + " structures" + (n ? " \u00b7 " + volFmt(tot) + " \u00b5m\u00b3 together" : "")
+    : "Volume " + volShort(items[0] && items[0].v);
+  return '<details class="volfold" data-k="' + key + '"' + open(key) + '><summary style="cursor:pointer">'
+    + escHtml(head) + ' <span class="hint">(volume and shape \u2014 click to show)</span></summary>'
+    + items.map(function(it, i){
+        var k = key + ":" + i;
+        var sw = it.colour ? '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;background:'
+                 + escHtml(it.colour) + '"></span>' : '';
+        return '<details class="volfold" data-k="' + k + '"' + open(k) + ' style="margin:2px 0 2px 12px">'
+          + '<summary style="cursor:pointer">' + sw + (it.label != null ? '<b>' + escHtml(String(it.label)) + '</b> \u2014 ' : '')
+          + escHtml(volShort(it.v)) + '</summary><div style="margin:2px 0 4px 14px">'
+          + escHtml(it.v ? tracingVolumeSay(it.v) : "nothing yet") + '</div></details>';
+      }).join("") + '</details>';
+}
+function volFoldWire(el){
+  if (!el || el.dataset.foldWired) return;
+  el.dataset.foldWired = "1";
+  el.addEventListener("toggle", function(ev){
+    var d = ev.target; if (d && d.dataset && d.dataset.k) VOL_OPEN[d.dataset.k] = d.open;
+  }, true);
+}
 function tracingVolumeSay(v){
   if (!v) return "";
   if (!v.ok){
@@ -3795,19 +3832,17 @@ function padVolume(){
   /* ONE LINE EACH once there are several. A single figure over two mitochondria is the volume of
      no object at all -- it is the sum of two, which is a number nobody asked for and which looks
      exactly like the answer somebody did ask for. */
+  volFoldWire(el);
   if (insts.length > 1){
-    el.innerHTML = insts.map(function(it){
-      const v = tracingVolumeOf(all.filter(function(r){ return (r.inst || 0) === it.inst; }));
-      return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
-        + 'margin-right:4px;background:' + escHtml(padInstColour(it.inst)) + '"></span>'
-        + '<b>' + (it.inst + 1) + '</b> — '
-        + escHtml(v ? tracingVolumeSay(v) : "nothing yet");
-    }).join("<br>");
+    el.innerHTML = volFoldHtml("pad", insts.map(function(it){
+      return { colour: padInstColour(it.inst), label: it.inst + 1,
+               v: tracingVolumeOf(all.filter(function(r){ return (r.inst || 0) === it.inst; })) };
+    }));
     try { padThinShow(); } catch (_e){}
     return null;
   }
   const v = tracingVolumeOf(all);
-  el.textContent = v ? tracingVolumeSay(v) : "";
+  el.innerHTML = v ? volFoldHtml("pad1", [{ colour: null, label: null, v: v }]) : "";
   /* padVolume runs after every close, every delete and every section change, which is every way
      the contours can change -- so the offer follows them without a hook of its own. */
   try { padThinShow(); } catch (_e){}
@@ -3974,17 +4009,16 @@ function tracingVolShow(){
   const insts = tracingEachInsts().filter(function(i){
     return rings.some(function(r){ return (r.inst || 0) === i; });
   });
+  volFoldWire(el);
   if (insts.length > 1){
-    el.innerHTML = insts.map(function(i){
-      const v = tracingVolumeOf(rings.filter(function(r){ return (r.inst || 0) === i; }));
-      return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
-        + 'margin-right:4px;background:' + escHtml(padInstColour(i)) + '"></span>'
-        + '<b>' + (i + 1) + '</b> \u2014 ' + escHtml(v ? tracingVolumeSay(v) : "nothing yet");
-    }).join("<br>");
+    el.innerHTML = volFoldHtml("found", insts.map(function(i){
+      return { colour: padInstColour(i), label: i + 1,
+               v: tracingVolumeOf(rings.filter(function(r){ return (r.inst || 0) === i; })) };
+    }));
     return null;
   }
   const v = tracingVolumeOf(rings);
-  el.textContent = v ? tracingVolumeSay(v) : "";
+  el.innerHTML = v ? volFoldHtml("found1", [{ colour: null, label: null, v: v }]) : "";
   return v;
 }
 /* The button lives and dies with the volume line, which is the other thing said about the size of
@@ -4751,9 +4785,13 @@ function draftRender(){
   const open = wrap && wrap.style.display !== "none";
   const here = TRACING_DRAFT_ID;
   bar.style.display = "";
-  bar.innerHTML = '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;'
+  /* FOLDED BY DEFAULT (2026-11-01): the heading is the summary; the one on the pad now is named in it */
+  const onPad = list.filter(function(d){ return d.id === here && open; })[0];
+  bar.innerHTML = '<details id="tracingDraftFold"' + (DRAFT_FOLD_OPEN ? ' open' : '') + '><summary style="cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:.05em;'
       + 'color:var(--mut);margin-bottom:6px">Unfinished tracings'
-      + (list.length > 1 ? " (" + list.length + ")" : "") + '</div>'
+      + (list.length > 1 ? " (" + list.length + ")" : "")
+      + (onPad ? ' <span style="text-transform:none;letter-spacing:0">\u00b7 on the pad now: ' + escHtml(onPad.title || "unfinished tracing") + '</span>' : '')
+      + '</summary>'
     + list.map(function(d){
         const zs = {};
         (d.rings || []).forEach(function(r){ zs[r.z] = 1; });
@@ -4787,7 +4825,9 @@ function draftRender(){
           + '<button type="button" class="hist-chip draftdrop" data-id="' + escHtml(d.id) + '">'
             + 'Discard</button>'
           + '</div>';
-      }).join("");
+      }).join("") + '</details>';
+  const fold = document.getElementById("tracingDraftFold");
+  if (fold) fold.addEventListener("toggle", function(){ DRAFT_FOLD_OPEN = fold.open; });
   [].slice.call(bar.querySelectorAll(".draftres")).forEach(function(b){
     b.addEventListener("click", function(){ draftResume(b.dataset.id); });
   });

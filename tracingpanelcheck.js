@@ -1783,7 +1783,8 @@ function link(annotations){
     ok(two.ringColours.length === 2 && two.ringColours[0] !== two.ringColours[1],
        "...and the contour chips wear the colour of the one they belong to",
        two.ringColours.join(" | "));
-    ok(/<br>/.test(two.vol) && (two.vol.match(/Volume/g) || []).length === 2,
+    /* 2026-11-01: folded -- one summary, then a line per structure that opens to its paragraph */
+    ok((two.vol.match(/class="volfold"/g) || []).length === 3 && (two.vol.match(/Volume/g) || []).length === 2,
        "...each with its own volume, not one number over both",
        two.vol.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 80));
     ok(two.posted.length === 2, "one press adds BOTH, as two submissions", two.posted.length);
