@@ -5883,6 +5883,37 @@ async function tracingSharedInViewer(sid, btn){
 
 /* EDIT TAKES YOU TO THE PAD (2026-11-01, Søren: "When you click the edit button and the pad opens
    the tracings in it, the screen should jump to the pad."). After layout, so the pad has its size. */
+/* ── ONLY THE SELECTED ORGANELLE IS EDITED (2026-11-01, Søren: "You should only be able to edit the
+   selected organelle, if you try to cut off some of the organelle you are editing and accidentally
+   include other organelles that were not intended, nothing should happen."). Cutting, adding, deleting
+   a contour, and moving, deleting or inserting a point all act on the structure picked under
+   "Drawing" (PAD.inst) and pass over the others. padOnlyMine() runs a pad lookup with the other
+   structures' rings moved off this section for its duration, so the ring indexes it answers with
+   are still indexes into PAD.rings. */
+/* ── A TYPE ALREADY GIVEN IS KEPT (2026-11-01 22:14, Søren: "The auto organelle detection misses the
+   mark and has changed previously determined organelles to new types that are wrong. It should not
+   change something that has already been specified by the user, only suggest when a new organelle is
+   being made."). A structure's type is the AI's to set only while nobody has given it one: no entry,
+   an entry the AI itself wrote (`ai`), or one merely copied from the box for a new structure
+   (`seeded`). A type picked in a row, or brought in with a tracing opened from the dataset or a
+   draft, carries neither flag and is never changed or re-guessed. */
+function padKindIsOpen(i){
+  var o = PAD_INST_KIND[String(i)];
+  return !o || !!o.ai || !!o.seeded;
+}
+function padOnlyMine(fn){
+  var hid = [];
+  if (PAD) PAD.rings.forEach(function(r){ if ((r.inst || 0) !== (PAD.inst || 0)){ hid.push([r, r.z]); r.z = NaN; } });
+  try { return fn(); } finally { hid.forEach(function(h){ h[0].z = h[1]; }); }
+}
+function padOtherAt(t){
+  /* the structure under the pointer that is NOT the selected one, for saying why nothing happened */
+  if (!PAD || !PAD_VIEW) return null;
+  var k = PAD_VIEW.pxPerToolVoxel, mineInst = PAD.inst || 0;
+  var v = UJ.tracepad.hitVertex(PAD, t[0], t[1], k) || UJ.tracepad.hitEdge(PAD, t[0], t[1], k);
+  var r = v && v.ring >= 0 ? PAD.rings[v.ring] : null;
+  return r && (r.inst || 0) !== mineInst ? (r.inst || 0) : null;
+}
 function padJumpTo(){
   setTimeout(function(){
     var w = document.getElementById("tracePadWrap");
@@ -6150,7 +6181,7 @@ function tracingEachAuto(gate){
   const w = tracingWhat(), what = document.getElementById("tracingWhat");
   insts.forEach(function(k){
     if (PAD_INST_KIND[String(k)]) return;
-    PAD_INST_KIND[String(k)] = { value: what ? what.value : "", kind: w.kind, name: w.name };
+    PAD_INST_KIND[String(k)] = { value: what ? what.value : "", kind: w.kind, name: w.name, seeded: true };
   });
   try { tracingEachRender(true); } catch (_e2){}
   const msg = "There are " + insts.length + " structures on the pad and one of them came from the "
@@ -6172,7 +6203,8 @@ function tracingSeedKinds(){
   insts.forEach(function(i){
     const k = String(i);
     if (differ && PAD_INST_KIND[k]) return;      // individually named already — leave it alone
-    PAD_INST_KIND[k] = { value: what ? what.value : "", kind: w.kind, name: w.name };
+    if (PAD_INST_KIND[k] && !padKindIsOpen(k)) return;   // a type somebody gave it stays (2026-11-01)
+    PAD_INST_KIND[k] = { value: what ? what.value : "", kind: w.kind, name: w.name, seeded: true };
   });
 }
 /* Rebuilt only when the SET of structures changes. padRings() calls this on every close, delete and
@@ -6232,7 +6264,9 @@ function tracingEachRender(force){
     if (sel.value === "__other"){ wrap.style.display = ""; nm.value = (own && own.name) || ""; }
     const store = function(byHand){
       /* `user`: picked by a person, so the AI's guess never overrules it (2026-11-01) */
-      PAD_INST_KIND[k] = Object.assign({ value: sel.value, user: !!(byHand || (PAD_INST_KIND[k] && PAD_INST_KIND[k].user)) },
+      var was = PAD_INST_KIND[k] || {};
+      PAD_INST_KIND[k] = Object.assign(byHand ? { value: sel.value, user: true }
+                                              : { value: sel.value, user: !!was.user, ai: !!was.ai, seeded: !!was.seeded },
                                        tracingWhatOf(sel.value, nm.value));
       padInstances(); pad3DSoon(); draftSoon();
     };
@@ -6251,7 +6285,8 @@ function tracingEachRender(force){
     /* Seeded, not stored: the row is showing a type, so that IS this structure's type from now on
        -- but silently, because a render is not an edit and should not schedule a draft save or a
        preview rebuild for each of five rows. */
-    PAD_INST_KIND[k] = Object.assign({ value: sel.value, user: !!(own && own.user), ai: !!(own && own.ai) }, tracingWhatOf(sel.value, nm.value));
+    PAD_INST_KIND[k] = Object.assign({ value: sel.value, user: !!(own && own.user), ai: !!(own && own.ai),
+                                       seeded: own ? !!own.seeded : true }, tracingWhatOf(sel.value, nm.value));
   });
 }
 function padInstColour(i){
@@ -6587,11 +6622,22 @@ function padHistNote(){
   }
 }
 var PAD_REDO_ALLOW = false;
-function padHistReset(){ PAD_HIST = []; PAD_REDO = []; PAD_AI_TRIED = {}; TRACING_WHAT_USER = false; }
+function padHistReset(){ PAD_HIST = []; PAD_REDO = []; PAD_AI_TRIED = {}; TRACING_WHAT_USER = false;
+  try { var w = document.getElementById("tracingWhat"); if (w) delete w.dataset.ai; } catch (_e){} }
 /* the type box picked by a person (a real, trusted change), not by the AI */
 var TRACING_WHAT_USER = false;
 document.addEventListener("change", function(ev){
-  if (ev.isTrusted && ev.target && ev.target.id === "tracingWhat") TRACING_WHAT_USER = true;
+  if (ev.isTrusted && ev.target && ev.target.id === "tracingWhat"){
+    TRACING_WHAT_USER = true; delete ev.target.dataset.ai;
+    /* the box, picked by hand, is the type of every structure that had none of its own */
+    try {
+      var each = document.getElementById("tracingEachOwn");
+      if (!(each && each.checked) && PAD) UJ.tracepad.instances(PAD).forEach(function(x){
+        var k = String(x.inst || 0);
+        if (padKindIsOpen(k)) PAD_INST_KIND[k] = Object.assign({ value: ev.target.value, user: true }, tracingWhat());
+      });
+    } catch (_e){}
+  }
 }, true);
 function padHistUndo(){
   if (!PAD) return false;
@@ -6637,8 +6683,8 @@ function padStrokeBool(){
   var others = PAD.rings.slice(0, -1);
   if (PAD_SUB){
     PAD.rings.pop();
-    var hit = others.filter(function(r){ return r.z === z && touches(r); });
-    if (!hit.length) return "subnone";
+    var hit = others.filter(function(r){ return r.z === z && (r.inst || 0) === inst && touches(r); });
+    if (!hit.length) return others.some(function(r){ return r.z === z && touches(r); }) ? "subother" : "subnone";
     var out = [], before = 0, after = 0;
     PAD.rings.forEach(function(r){
       if (hit.indexOf(r) < 0){ out.push(r); return; }
@@ -6751,7 +6797,7 @@ function padCpContext(e, ring){
   if (!PAD_VIEW || !PAD) return;
   if (!ring){
     var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
-    if (!UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel)){ padSay("Tap exactly on a point to delete it.", true); return; }
+    if (!padOnlyMine(function(){ return UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel); })){ padSay("Tap exactly on a point of the selected structure to delete it.", true); return; }
   }
   cv.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2,
     clientX: e.clientX, clientY: e.clientY, ctrlKey: !!ring, metaKey: !!ring }));
@@ -6812,6 +6858,7 @@ async function padAiNameMissing(){
   for (var i in by){
     var rs = by[i];
     if (rs.some(function(r){ return r.aiKind; })) continue;
+    if (!padKindIsOpen(i)) continue;                  // already given a type: not the AI's to guess
     if (PAD_AI_TRIED[i] === rs.length) continue;      // asked already with these contours: no name came back
     PAD_AI_TRIED[i] = rs.length;
     var big = rs.reduce(function(a, b){ return area(b.points) > area(a.points) ? b : a; });
@@ -6847,17 +6894,20 @@ function padAiApplyKinds(){
     var o = opt(kinds[n]);
     /* `value` too: the per-structure rows choose their select by it, and without it they fell back
        to the box -- "Whole cell" -- which is what Søren saw on 2026-11-01. */
-    if (o && !(PAD_INST_KIND[i] && PAD_INST_KIND[i].user))
+    if (o && padKindIsOpen(i))
       PAD_INST_KIND[i] = { value: kinds[n], kind: kinds[n], name: o.textContent, ai: true };
   });
+  /* what each structure WILL be filed as: its own kind where it has one, the AI's otherwise */
+  kinds = insts.map(function(i, n){ var o = PAD_INST_KIND[i]; return (o && o.value && !padKindIsOpen(i)) ? o.value : kinds[n]; });
   var same = kinds.every(function(k){ return k === kinds[0]; });
   if (!same){
     var each = document.getElementById("tracingEachOwn");
     if (each && !each.checked){ each.checked = true; }
     try { tracingEachRender(true); padInstances(); } catch (_e){}
   }
-  if (sel && same && opt(kinds[0]) && (!TRACING_WHAT_USER || sel.value === "__cell" || sel.value === "__other" || sel.value === "")){
-    sel.value = kinds[0]; sel.dispatchEvent(new Event("change"));
+  if (sel && same && opt(kinds[0]) && sel.value !== kinds[0] && insts.every(padKindIsOpen)
+      && (sel.dataset.ai === "1" || sel.value === "__cell" || sel.value === "__other" || sel.value === "")){
+    sel.value = kinds[0]; sel.dispatchEvent(new Event("change")); sel.dataset.ai = "1";
     return " Type set from the AI: " + opt(kinds[0]).textContent + " \u2014 change it below if it is something else.";
   }
   return "";
@@ -8233,7 +8283,7 @@ function wirePad(){
        vertex -- grabbing it would drag the end instead of drawing from it. */
     if (!e.shiftKey && !e.altKey && !drawFreehand()){
       const t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
-      dragging = UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel);
+      dragging = padOnlyMine(function(){ return UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel); });
     } else dragging = null;
     /* ── A PEN DRAWS.  2026-09-17 ──────────────────────────────────────────────────────────────
        Søren: *"Could we have an option to click and draw the mouse around a structure to mimic
@@ -8314,6 +8364,7 @@ function wirePad(){
         padSay(how === "sub" ? "Cut away from the contour. Undo takes it back."
           : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
           : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
+          : how === "subother" ? "Nothing cut: the stroke only crossed another structure \u2014 only the selected one (#" + ((PAD.inst || 0) + 1) + ") is changed. Pick the other under Drawing to cut it."
           : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how !== "sub");
       } else padPaint();
       return;
@@ -8351,8 +8402,9 @@ function wirePad(){
           padSay(how === "add" ? "Added to the contour \u2014 the stroke and the contour it overlaps are one now. Undo takes it back."
             : how === "sub" ? "Cut away from the contour. Undo takes it back; tap \u232b to go back to adding."
             : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
+          : how === "subother" ? "Nothing cut: the stroke only crossed another structure \u2014 only the selected one (#" + ((PAD.inst || 0) + 1) + ") is changed. Pick the other under Drawing to cut it."
             : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
-            : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how === "subnone" || how === "subhole" || how === "nobool");
+            : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how === "subnone" || how === "subhole" || how === "subother" || how === "nobool");
           return;
         }
         padPaint(); padRings();
@@ -8423,7 +8475,11 @@ function wirePad(){
     if (padErase(e)){ padEraseAt(e); return; }
     const t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
     const k = PAD_VIEW.pxPerToolVoxel;
-    const v = UJ.tracepad.hitVertex(PAD, t[0], t[1], k);
+    const v = padOnlyMine(function(){ return UJ.tracepad.hitVertex(PAD, t[0], t[1], k); });
+    if (!v && padOtherAt(t) != null){
+      padSay("That point belongs to #" + (padOtherAt(t) + 1) + " \u2014 only the selected structure (#" + ((PAD.inst || 0) + 1) + ") is edited. Pick it under Drawing first.", true);
+      return;
+    }
     if (v){
       const what = UJ.tracepad.deleteVertex(PAD, v);
       padPaint(); padRings();
@@ -8471,19 +8527,25 @@ function wirePad(){
     const k = PAD_VIEW.pxPerToolVoxel;
     /* A point of it or a line of it: either is a way of pointing at the contour you mean, and
        asking somebody to hit a vertex exactly when the whole thing is about to go is pedantry. */
-    let hit = UJ.tracepad.hitVertex(PAD, t[0], t[1], k)
-             || UJ.tracepad.hitEdge(PAD, t[0], t[1], k);
+    let hit = padOnlyMine(function(){ return UJ.tracepad.hitVertex(PAD, t[0], t[1], k)
+             || UJ.tracepad.hitEdge(PAD, t[0], t[1], k); });
     /* or inside it: the smallest contour on this section around the tap (2026-11-01) */
     if (!hit){
       let best = -1, bestA = Infinity;
       PAD.rings.forEach(function(r, i){
-        if (r.z !== PAD.z || !padPtIn(t, r.points)) return;
+        if (r.z !== PAD.z || (r.inst || 0) !== (PAD.inst || 0) || !padPtIn(t, r.points)) return;
         let a2 = 0; for (let q = 0, j = r.points.length - 1; q < r.points.length; j = q++) a2 += (r.points[j][0] + r.points[q][0]) * (r.points[j][1] - r.points[q][1]);
         if (Math.abs(a2) < bestA){ bestA = Math.abs(a2); best = i; }
       });
       if (best >= 0) hit = { ring: best };
     }
     if (!hit){
+      const oth = padOtherAt(t) != null ? padOtherAt(t)
+        : (PAD.rings.filter(function(r){ return r.z === PAD.z && (r.inst || 0) !== (PAD.inst || 0) && padPtIn(t, r.points); })[0] || {}).inst;
+      if (oth != null){
+        padSay("That contour belongs to #" + ((oth || 0) + 1) + " \u2014 only the selected structure (#" + ((PAD.inst || 0) + 1) + ") is edited. Pick it under Drawing first.", true);
+        return;
+      }
       padSay(PAD_MOD + "+click a point or a line of the contour you want to remove \u2014 there is "
         + "nothing under the pointer.", true);
       return;
@@ -8506,7 +8568,7 @@ function wirePad(){
   function padInsertAt(e){
     if (!PAD_VIEW) return;
     const t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
-    const edge = UJ.tracepad.hitEdge(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel);
+    const edge = padOnlyMine(function(){ return UJ.tracepad.hitEdge(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel); });
     if (!edge){ padSay("Nothing there to correct \u2014 " + PAD_RIGHT + " a point to delete it, or "
       + "a line to put a new point in it. " + PAD_MOD + "+click removes a whole contour.",
       true); return; }
