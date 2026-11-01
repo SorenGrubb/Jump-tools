@@ -7947,9 +7947,38 @@ function wirePad(){
       var fix = padAiFixMode(), out = !fix && padAiOutMode();
       if (!fix && !out) return;
       e.stopImmediatePropagation(); e.preventDefault();
+      /* A DRAG WITH THE AI TOOL DRAWS FREEHAND (2026-11-01, Søren: "If you click and drag with AI
+         tool, it should be freehand tool"). The stroke starts on press; on lifting, a stroke that
+         went further than a few pixels is added like ✍'s, and a click is still a click. */
+      if (out && ev === "pointerdown"){
+        padAiDrag = [e.offsetX, e.offsetY]; padAiDragFar = false;
+        const t0 = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
+        UJ.tracepad.startStroke(PAD, t0[0], t0[1]);
+        try { cv.setPointerCapture(e.pointerId); } catch (_e){}
+        return;
+      }
+      if (out && ev === "pointerup" && padAiDrag){
+        const far = padAiDragFar;      // anywhere along the way: a stroke round an organelle ends where it began
+        padAiDrag = null; padAiDragFar = false;
+        if (far && PAD.stroke){
+          const what = UJ.tracepad.endStroke(PAD, padTol(1.2));
+          if (what === "ring"){
+            const how = padStrokeBool();
+            padPaint(); padRings();
+            padSay(how === "add" ? "Drawn and added to the contour. Click (without dragging) for an AI outline again."
+              : "Contour drawn freehand. Click (without dragging) for an AI outline again.");
+          } else padPaint();
+          return;
+        }
+        PAD.stroke = null; padPaint();
+      }
       if (ev === "pointerup"){ if (fix) padAiFixOpen(e); else padAiOutlineAt(e); }
     }, true);
   });
+  var padAiDrag = null, padAiDragFar = false;
+  cv.addEventListener("pointermove", function(e){
+    if (padAiDrag && (Math.abs(e.offsetX - padAiDrag[0]) > 5 || Math.abs(e.offsetY - padAiDrag[1]) > 5)) padAiDragFar = true;
+  }, true);
   const pad_dk = document.getElementById("tracePadAiDark");
   if (pad_dk) pad_dk.addEventListener("change", function(){
     UJ.organelleml.setDark(pad_dk.checked);
