@@ -202,6 +202,11 @@ UJ.chat = (function(){
     + '#ujc .m .n{font-weight:600;margin-right:4px}#ujc .m.me .n{color:#7ee787}#ujc .m.sys{color:#8b949e;font-size:12px}#ujc .m.hl{background:rgba(227,179,65,.18);border-radius:6px;padding:0 4px}'
     + '#ujc .m .at{color:#e3b341;font-weight:600}#ujc .m .at.me{background:#e3b341;color:#0d1117;border-radius:4px;padding:0 3px}'
     + '#ujc .m .x{float:right;color:#8b949e;cursor:pointer;font-size:11px;margin-left:6px;display:none}#ujc .m:hover .x{display:inline}'
+    + '#ujc .scard{display:flex;gap:8px;align-items:center;border:1px solid #30363d;border-radius:8px;padding:6px;margin:4px 0 2px;max-width:340px;background:rgba(255,255,255,.03)}'
+    + '#ujc .scard .simg{width:120px;height:72px;flex:none;border-radius:6px;background:#161b22;display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden}'
+    + '#ujc .scard .simg img{width:100%;height:100%;object-fit:cover}'
+    + '#ujc .scard .sinfo{flex:1;min-width:0}#ujc .scard .stitle{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '#ujc .scard .smeta{color:#8b949e;font-size:12px;margin:2px 0 4px}'
     + '#ujc .chip{display:inline-block;border:1px solid #30363d;border-radius:10px;padding:0 7px;margin:0 2px;color:#79c0ff;cursor:pointer;background:rgba(56,139,253,.12)}'
     + '#ujc .vote{border:1px solid #30363d;border-radius:8px;padding:6px 8px;margin:3px 0;background:rgba(22,27,34,.9)}#ujc .vote button{margin:4px 4px 0 0;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:2px 8px;cursor:pointer}#ujc .vote button.mine{border-color:#2ea043;background:#238636}'
     + '#ujc .in{display:flex;gap:6px;padding:6px 8px;background:rgba(13,17,23,.85);position:relative}#ujc .in input{flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:6px 8px;font:13px \'Twemoji Country Flags\',system-ui}'
@@ -262,8 +267,66 @@ UJ.chat = (function(){
   function scrollEnd(){ EL.ms.scrollTop = EL.ms.scrollHeight; }
 
   /* a message's text: escaped, @names lit, coordinates and root ids as chips */
+  /* ── A VR SCENE LINK SHOWS ITS PREVIEW (2026-11-01, Søren: "Can we get it to show the scene in the
+     chatbox? Like the preview and a link?"). Any vr.html#scene=ID in a message -- typed, pasted, or
+     a scene message's own url -- becomes a small card under it: the picture saved with the scene,
+     its title, who made it and how many cells, and "Open in VR". Filled from ?vrScene=ID&meta=1, the
+     same small read core/forum.js uses for its cards, once per scene per page. The bare link is
+     taken out of the text, because the card carries it. */
+  var SCENE_META = {};
+  function sceneIdsIn(s){
+    var re = /vr\.html#scene=([a-z0-9]{6,16})/g, mm, out = [];
+    while ((mm = re.exec(String(s || "")))) if (out.indexOf(mm[1]) < 0) out.push(mm[1]);
+    return out;
+  }
+  function sceneCard(id){
+    var url = toolUrl("vr") + "#scene=" + id;
+    return '<div class="scard" data-scene="' + esc(id) + '"><div class="simg">🥽</div><div class="sinfo">'
+      + '<div class="stitle">VR scene</div><div class="smeta">reading…</div>'
+      + '<span class="chip" data-href="' + esc(url) + '">🥽 Open in VR</span></div></div>';
+  }
+  function backendUrl(){
+    return (window.UJ && UJ.cfg && UJ.cfg.backend && UJ.cfg.backend.endpoint) || window.UJ_CHAT_BACKEND || (typeof REPORT_ENDPOINT !== "undefined" ? REPORT_ENDPOINT : "");
+  }
+  function fillSceneCards(el){
+    var ep = backendUrl();
+    el.querySelectorAll(".scard").forEach(function(card){
+      var id = card.dataset.scene;
+      var paint = function(md){
+        if (!card.isConnected) return;
+        var meta = card.querySelector(".smeta");
+        if (!md || !md.ok){ meta.textContent = ep ? "this scene could not be found" : "open it to see it"; return; }
+        card.querySelector(".stitle").textContent = md.title || "VR scene";
+        meta.textContent = (md.authorName || "somebody") + " · " + (md.cells || 0) + " cell" + ((md.cells || 0) === 1 ? "" : "s");
+        if (md.story > 0 && !card.querySelector(".splay")){
+          var pl = document.createElement("span"); pl.className = "chip splay";
+          pl.dataset.href = toolUrl("vr") + "#scene=" + id + "&play=1";
+          pl.textContent = "▶ " + Math.round(md.story) + " s";
+          pl.onclick = function(){ window.open(pl.dataset.href, "_blank", "noopener"); };
+          card.querySelector(".sinfo").appendChild(pl);
+        }
+        if (md.preview && /^data:image\//.test(md.preview)){
+          var box = card.querySelector(".simg"), near = EL.ms && (EL.ms.scrollHeight - EL.ms.scrollTop - EL.ms.clientHeight < 60);
+          box.textContent = "";
+          var img = document.createElement("img"); img.alt = md.title || "VR scene"; img.src = md.preview;
+          img.onload = function(){ if (near) scrollEnd(); };
+          box.appendChild(img);
+        }
+      };
+      if (!ep){ paint(null); return; }
+      if (SCENE_META[id] && SCENE_META[id].then){ SCENE_META[id].then(paint); return; }
+      if (SCENE_META[id]){ paint(SCENE_META[id]); return; }
+      SCENE_META[id] = fetch(ep + "?vrScene=" + encodeURIComponent(id) + "&meta=1&ds=ujump")
+        .then(function(r){ return r.json(); }).catch(function(){ return null; })
+        .then(function(md){ SCENE_META[id] = md || { ok: false }; return SCENE_META[id]; });
+      SCENE_META[id].then(paint);
+    });
+  }
   function body(m){
     var s = String(m.text || "");
+    var scenes = sceneIdsIn(s).concat(m.kind === "scene" && m.data && m.data.url ? sceneIdsIn(m.data.url) : []);
+    scenes = scenes.filter(function(x, i){ return scenes.indexOf(x) === i; });
+    if (scenes.length) s = s.replace(/(?:https?:\/\/)?[^\s]*vr\.html#scene=[a-z0-9]{6,16}[^\s]*/g, "").trim();
     var out = esc(s);
     out = out.replace(/@([\p{L}\p{N}_.\-]{1,40})/gu, function(all, n){ var mine = ST.name && n.toLowerCase() === ST.name.replace(/\s+/g, "").toLowerCase(); return '<span class="at' + (mine ? " me" : "") + '">@' + n + "</span>"; });
     /* coordinates (three numbers) → open that cell in the tool the message came from */
@@ -271,8 +334,9 @@ UJ.chat = (function(){
       var t = m.tool && m.tool !== "vr" && m.tool !== "index" ? m.tool : "ujump";
       return pre + '<span class="chip" data-href="' + esc(toolUrl(t) + "?at=" + x + "," + y + "," + z) + '" title="Open this place in ' + esc(toolName(t)) + '">📍 ' + x + ", " + y + ", " + z + "</span>"; });
     out = out.replace(/(^|[\s(\[])(8646\d{14})(?=$|[\s)\].,;])/g, function(all, pre, id){ return pre + '<span class="chip" data-href="' + esc(toolUrl("vr") + "#c=microns~" + id + "~~Segment~") + '" title="Open this segment in the VR viewer">🧩 …' + id.slice(-5) + "</span>"; });
-    if (m.kind === "scene" && m.data && m.data.url) out += ' <span class="chip" data-href="' + esc(m.data.url) + '" title="Open the scene">🎬 ' + esc(m.data.title || "scene") + "</span>";
+    if (m.kind === "scene" && m.data && m.data.url && !scenes.length) out += ' <span class="chip" data-href="' + esc(m.data.url) + '" title="Open the scene">🎬 ' + esc(m.data.title || "scene") + "</span>";
     if (m.kind === "cell" && m.data && m.data.url) out += ' <span class="chip" data-href="' + esc(m.data.url) + '">📍 ' + esc(m.data.label || "cell") + "</span>";
+    if (scenes.length) out += scenes.map(sceneCard).join("");
     return out;
   }
   function line(m){
@@ -318,6 +382,7 @@ UJ.chat = (function(){
     }, 1500);
   }
   function wire(el){
+    try { fillSceneCards(el); } catch (_e){}
     el.querySelectorAll("[data-href]").forEach(function(c){ c.onclick = function(){ window.open(c.dataset.href, "_blank", "noopener"); }; });
     el.querySelectorAll("[data-del]").forEach(function(c){ c.onclick = function(){ if (confirm("Delete this message?")) A.remove(ST.room.indexOf("dm_") === 0 ? ST.room : ST.room, c.dataset.del); }; });
     el.querySelectorAll("[data-vote]").forEach(function(b){ b.onclick = function(){ A.castVote(b.dataset.vote, b.dataset.v); }; });
