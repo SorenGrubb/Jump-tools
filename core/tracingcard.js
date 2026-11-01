@@ -5380,6 +5380,7 @@ async function tracingOpenCellShared(sids, btn){
     PAD_CENTRE = [Math.round(cx / p0.length), Math.round(cy / p0.length), PAD.z];
     PAD_VIEW = null; PAD_BASE_READY = false;
     document.getElementById("tracePadWrap").style.display = "";
+    padJumpTo();
     PAD_EDIT_ID = PAD_EDIT_IDS["0"];
     TRACING_PENDING = { rings: UJ.tracepad.toRings(PAD), id: PAD_EDIT_ID };
     /* Each its own type: they are a lysosome AND a mitochondrion, not three of one thing. */
@@ -5880,6 +5881,14 @@ async function tracingSharedInViewer(sid, btn){
   }
 }
 
+/* EDIT TAKES YOU TO THE PAD (2026-11-01, Søren: "When you click the edit button and the pad opens
+   the tracings in it, the screen should jump to the pad."). After layout, so the pad has its size. */
+function padJumpTo(){
+  setTimeout(function(){
+    var w = document.getElementById("tracePadWrap");
+    if (w && w.style.display !== "none" && w.scrollIntoView) w.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 60);
+}
 async function tracingOpenShared(sid, btn){
   const label = btn ? btn.innerHTML : "";
   if (btn){ btn.disabled = true; btn.textContent = "opening…"; }
@@ -5909,6 +5918,7 @@ async function tracingOpenShared(sid, btn){
     PAD_CENTRE = [Math.round(cx / p0.length), Math.round(cy / p0.length), PAD.z];
     PAD_VIEW = null; PAD_BASE_READY = false;
     document.getElementById("tracePadWrap").style.display = "";
+    padJumpTo();
     padDraw();
 
     /* The identity travels with it, so adding a version does not quietly drop the cell type or the
@@ -6220,17 +6230,18 @@ function tracingEachRender(force){
     const want = (own && own.value) || what.value || "__cell";
     if ([].slice.call(sel.options).some(function(o){ return o.value === want; })) sel.value = want;
     if (sel.value === "__other"){ wrap.style.display = ""; nm.value = (own && own.name) || ""; }
-    const store = function(){
-      PAD_INST_KIND[k] = Object.assign({ value: sel.value },
+    const store = function(byHand){
+      /* `user`: picked by a person, so the AI's guess never overrules it (2026-11-01) */
+      PAD_INST_KIND[k] = Object.assign({ value: sel.value, user: !!(byHand || (PAD_INST_KIND[k] && PAD_INST_KIND[k].user)) },
                                        tracingWhatOf(sel.value, nm.value));
       padInstances(); pad3DSoon(); draftSoon();
     };
-    sel.addEventListener("change", function(){
+    sel.addEventListener("change", function(ev){
       wrap.style.display = (sel.value === "__other") ? "" : "none";
-      store();
+      store(ev && ev.isTrusted);
       if (sel.value === "__other") nm.focus();
     });
-    nm.addEventListener("input", store);
+    nm.addEventListener("input", function(ev){ store(ev && ev.isTrusted); });
     col.addEventListener("input", function(){
       PAD_INST_COLOUR[k] = col.value;
       /* Not a rebuild: everything that shows a colour is asked to repaint instead, so the picker
@@ -6240,7 +6251,7 @@ function tracingEachRender(force){
     /* Seeded, not stored: the row is showing a type, so that IS this structure's type from now on
        -- but silently, because a render is not an edit and should not schedule a draft save or a
        preview rebuild for each of five rows. */
-    PAD_INST_KIND[k] = Object.assign({ value: sel.value }, tracingWhatOf(sel.value, nm.value));
+    PAD_INST_KIND[k] = Object.assign({ value: sel.value, user: !!(own && own.user), ai: !!(own && own.ai) }, tracingWhatOf(sel.value, nm.value));
   });
 }
 function padInstColour(i){
@@ -6576,7 +6587,12 @@ function padHistNote(){
   }
 }
 var PAD_REDO_ALLOW = false;
-function padHistReset(){ PAD_HIST = []; PAD_REDO = []; PAD_AI_TRIED = {}; }
+function padHistReset(){ PAD_HIST = []; PAD_REDO = []; PAD_AI_TRIED = {}; TRACING_WHAT_USER = false; }
+/* the type box picked by a person (a real, trusted change), not by the AI */
+var TRACING_WHAT_USER = false;
+document.addEventListener("change", function(ev){
+  if (ev.isTrusted && ev.target && ev.target.id === "tracingWhat") TRACING_WHAT_USER = true;
+}, true);
 function padHistUndo(){
   if (!PAD) return false;
   var now = padHistSnap();
@@ -6821,15 +6837,26 @@ function padAiApplyKinds(){
   var sel = document.getElementById("tracingWhat");
   var opt = function(k){ return sel ? [].slice.call(sel.options).filter(function(o){ return o.value === k; })[0] : null; };
   var kinds = insts.map(function(i){ return Object.keys(by[i]).sort(function(a, b){ return by[i][b] - by[i][a]; })[0]; });
+  /* A TYPE INHERITED IS NOT A TYPE CHOSEN (20:45, Søren: "when I did a mitochondria as #15 after 14
+     lysosomes it called it a lysosome even before I started tracing and did not change it"). A new
+     structure's row starts from the box, which the AI had set to Lysosome, and that seeded type used
+     to count as decided. Now only a type a person picked (`user`) stands; anything else follows the
+     AI. And when the structures on the pad are of different kinds, the per-structure rows go on, so
+     one box cannot file a mitochondrion as a lysosome. */
   insts.forEach(function(i, n){
     var o = opt(kinds[n]);
     /* `value` too: the per-structure rows choose their select by it, and without it they fell back
        to the box -- "Whole cell" -- which is what Søren saw on 2026-11-01. */
-    if (o && !(PAD_INST_KIND[i] && PAD_INST_KIND[i].kind && PAD_INST_KIND[i].kind !== "cell"))
-      PAD_INST_KIND[i] = { value: kinds[n], kind: kinds[n], name: o.textContent };
+    if (o && !(PAD_INST_KIND[i] && PAD_INST_KIND[i].user))
+      PAD_INST_KIND[i] = { value: kinds[n], kind: kinds[n], name: o.textContent, ai: true };
   });
   var same = kinds.every(function(k){ return k === kinds[0]; });
-  if (sel && same && opt(kinds[0]) && (sel.value === "__cell" || sel.value === "__other" || sel.value === "")){
+  if (!same){
+    var each = document.getElementById("tracingEachOwn");
+    if (each && !each.checked){ each.checked = true; }
+    try { tracingEachRender(true); padInstances(); } catch (_e){}
+  }
+  if (sel && same && opt(kinds[0]) && (!TRACING_WHAT_USER || sel.value === "__cell" || sel.value === "__other" || sel.value === "")){
     sel.value = kinds[0]; sel.dispatchEvent(new Event("change"));
     return " Type set from the AI: " + opt(kinds[0]).textContent + " \u2014 change it below if it is something else.";
   }
@@ -7661,6 +7688,7 @@ function padOpen(){
     PAD_VIEW = null; PAD_BASE_READY = false;
     const n = UJ.tracepad.newInstance(PAD);          // the next free number, not the count
     document.getElementById("tracePadWrap").style.display = "";
+    padJumpTo();
     /* SAID WHEN THE PAD IS ACTUALLY SHOWING THE NEW PLACE, not before. padDraw is asynchronous and
        ends with a padSay of its own either way, so anything said here would be overwritten a moment
        later by "48 contour(s) kept" — or, if the EM could not be read, by an error this has no
