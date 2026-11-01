@@ -1978,6 +1978,15 @@ for at least one second</div>
   </div>
 
   <div class="card wide">
+    <h2>Organelle volume, by cell type or by organelle</h2>
+    <p class="sub" title="One dot per traced organelle: the volume worked out from its contours (Cavalieri, the same number the tracing card shows). The cell type is the cell's CURRENT identity, looked up from the nucleus the tracing was filed against, so correcting a cell moves its organelles with it. Tracings filed against no identified nucleus are left out and counted in the footnote.">LIVE, from the community&rsquo;s organelle tracings. Pick a cell type to compare its organelles, or an organelle to compare it across cell types:
+      <select class="picker" id="organVolMode"><option value="cell">a cell type</option><option value="organ">an organelle</option></select>
+      <select class="picker" id="organVolPick"></select>
+    </p>
+    <div class="plot" id="plotOrganelleVolume"></div>
+  </div>
+
+  <div class="card wide">
     <h2>5 nearest physical neighbours — composition by cell type</h2>
     <p class="sub" title="The SET of which 10 cells are geometrically nearest a given cell is fixed (positions don't change from a report), but which CELL TYPE each of those neighbours currently resolves to is looked up live every time -- so correcting a neighbour's identity moves it to its new bucket here immediately.">Which identified cell types most often appear among the 5 nearest physical neighbours of the selected type. Neighbour geometry is fixed; neighbour cell types are LIVE.
       <select class="picker" id="neighborTypePicker"></select>
@@ -3534,6 +3543,92 @@ function renderAiCharts(d){
     yaxis:Object.assign({},baseLayout().yaxis,{title:"answers on the pad"})}),PLOTLY_CFG);
 }
 
+/* ORGANELLE VOLUME (2026-11-01, Søren: "We should have an organelle volume graph in stats, where
+   you can select the cell type or organelle type. If you select a cell type, then it should show all
+   the different organelle volumes for that cell type, if you select organelle type it should compare
+   volume between cell types. The graphs should be similar to all the rest of the graphs with dots
+   and whiskers"). From the tracing index (?tracings=1, one call, kept): every organelle tracing with
+   a volume, its organelle kind, and the CURRENT type of the cell its nucleus id belongs to
+   (buildAllIdentities, the same identity every other chart here uses). Drawn with dotMedianChart. */
+let _organVolRows=null, _organVolSkipped=0, _organVolLoading=null;
+function organVolTypeByNucleus_(){
+  const m={};
+  if(typeof window.buildAllIdentities!=="function"||typeof NID==="undefined")return m;
+  for(const r of window.buildAllIdentities()){
+    if(r.space!=="N"||r.merged)continue;
+    const id=String(NID[r.i]);
+    if(!m[id])m[id]=typeof longName==="function"?longName(r.type):r.type;
+  }
+  return m;
+}
+async function loadOrganelleVolumes(force){
+  if(_organVolRows&&!force)return _organVolRows;
+  if(_organVolLoading&&!force)return _organVolLoading;
+  _organVolLoading=(async function(){
+    const r=await fetch(REPORT_ENDPOINT+"?tracings=1"+(typeof panelDsQS==="function"?panelDsQS():""));
+    const d=await r.json();
+    const list=(d&&d.tracings)||[], byNuc=organVolTypeByNucleus_(), rows=[];
+    let skipped=0;
+    list.forEach(function(t){
+      const k=String((t&&(t.instanceOf||t.kind))||"").toLowerCase();
+      if(!k||k==="cell"||k==="nucleus")return;
+      try{if(window.UJ&&UJ.tracing&&UJ.tracing.isVessel&&UJ.tracing.isVessel(k))return;}catch(_e){}
+      const v=parseFloat(String(t.volumeUm3==null?"":t.volumeUm3).replace(",","."));
+      if(!(v>0))return;
+      const c=(window.UJ&&UJ.tracing)?UJ.tracing.cellOf(t):{nuc:String(t.nucleusId||"")};
+      const type=c.nuc?byNuc[String(c.nuc)]:"";
+      if(!type||isUnclassifiedType(type)||isMergedBlobType(type)){skipped++;return;}
+      let organ=(window.UJ&&UJ.organelleml&&UJ.organelleml.nameOf)?UJ.organelleml.nameOf(k):"";
+      if(!organ||organ===k)organ=(window.UJ&&UJ.organelles&&UJ.organelles.labelOf)?UJ.organelles.labelOf(k):k;
+      organ=String(organ||k).replace(/_/g," ");organ=organ.charAt(0).toUpperCase()+organ.slice(1);
+      rows.push({cellType:type,organ:organ,v:v});
+    });
+    _organVolRows=rows;_organVolSkipped=skipped;_organVolLoading=null;
+    return rows;
+  })();
+  return _organVolLoading;
+}
+function organVolFillPick_(rows){
+  const mode=document.getElementById("organVolMode"),pick=document.getElementById("organVolPick");
+  if(!mode||!pick)return;
+  const key=mode.value==="organ"?"organ":"cellType", n={};
+  rows.forEach(r=>{n[r[key]]=(n[r[key]]||0)+1;});
+  const names=Object.keys(n).sort((a,b)=>n[b]-n[a]||a.localeCompare(b));
+  const was=pick.value;
+  pick.innerHTML=names.map(x=>"<option value=\""+x.replace(/"/g,"&quot;")+"\">"+x.replace(/</g,"&lt;")+" ("+n[x]+")</option>").join("");
+  if(names.indexOf(was)>=0)pick.value=was;
+}
+async function renderOrganelleVolumes(force){
+  const area=document.getElementById("plotOrganelleVolume");
+  if(!area)return;
+  let rows;
+  try{rows=await loadOrganelleVolumes(force);}
+  catch(e){area.innerHTML="<div class='placeholder'>The organelle tracings could not be read ("+String(e&&e.message||e)+").</div>";return;}
+  if(!rows.length){area.innerHTML="<div class='placeholder'>No organelle has been traced on an identified cell yet \u2014 trace one on the pad and it appears here.</div>";return;}
+  organVolFillPick_(rows);
+  const byOrgan=document.getElementById("organVolMode").value==="organ", sel=document.getElementById("organVolPick").value;
+  const groups={};
+  rows.forEach(function(r){
+    if((byOrgan?r.organ:r.cellType)!==sel)return;
+    const g=byOrgan?r.cellType:r.organ;
+    (groups[g]=groups[g]||[]).push(r.v);
+  });
+  area.innerHTML="";
+  dotMedianChart(area.id,groups,(byOrgan?sel+" volume":"Organelle volume in "+sel)+" (\u00b5m\u00b3)",true,false,byOrgan?"cell type":"organelle");
+  area.parentNode.querySelectorAll(".footnote.organvol").forEach(e=>e.remove());
+  const p=document.createElement("p");p.className="footnote organvol";
+  const tot=Object.values(groups).reduce((a,b)=>a+b.length,0);
+  p.textContent="n = "+tot+" traced "+(byOrgan?sel.toLowerCase():"organelles")+" \u00b7 "+rows.length+" organelle tracings with a volume on identified cells"
+    +(_organVolSkipped?" \u00b7 "+_organVolSkipped+" left out (no identified cell)":"")+" \u00b7 groups need 3 or more to be drawn";
+  area.parentNode.insertBefore(p,area.nextSibling);
+}
+(function(){
+  const mode=document.getElementById("organVolMode"),pick=document.getElementById("organVolPick");
+  if(mode)mode.addEventListener("change",function(){renderOrganelleVolumes();});
+  if(pick)pick.addEventListener("change",function(){renderOrganelleVolumes();});
+})();
+window.__dashOrganVol={load:f=>loadOrganelleVolumes(f),render:f=>renderOrganelleVolumes(f),rows:()=>_organVolRows};
+
 function applyLiveData(d){
   /* KEPT, so the Excel export below hands out exactly what the charts were drawn from rather than
      taking a second fetch that could disagree with what is on screen. */
@@ -3550,6 +3645,7 @@ function applyLiveData(d){
   renderSynapseIO(d.connSamples);
   renderMeshContactStats(d.meshContactStats);
   try{renderAiCharts(d);}catch(e){console.warn("[dashboard] organelle model charts",e);}
+  renderOrganelleVolumes(true).catch(function(e){console.warn("[dashboard] organelle volumes",e);});
 }
 
 /* force=true (the Refresh button) always hits the network, no matter how fresh the cache is.

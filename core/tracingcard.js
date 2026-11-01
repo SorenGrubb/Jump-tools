@@ -6576,7 +6576,7 @@ function padHistNote(){
   }
 }
 var PAD_REDO_ALLOW = false;
-function padHistReset(){ PAD_HIST = []; PAD_REDO = []; }
+function padHistReset(){ PAD_HIST = []; PAD_REDO = []; PAD_AI_TRIED = {}; }
 function padHistUndo(){
   if (!PAD) return false;
   var now = padHistSnap();
@@ -6758,6 +6758,60 @@ async function padAiTagKind(ring){
 /* "Use these contours": the AI's names become the default type. Per structure, the name most of its
    rings carry; the type box takes it when every named structure agrees and the box is still on its
    untouched default -- a type somebody chose themselves is never overruled. */
+/* STRUCTURES THE AI HAS NOT NAMED (2026-11-01, Søren, 20:00: "The automatic suggestion of organelles
+   after 'use these contours' does not work. It keep suggesting Whole cell mesh when I am tracing
+   lysosomes."). Only a ring made by an AI click was ever named, so anything drawn by hand, freehand,
+   or pulled in from a draft was not, and the box stayed on Whole cell. Now every structure with no
+   name is asked about when its contours are used: its biggest contour, on its own section, read
+   through the suggestion model over a 4 um field round it (UJ.organelleml.kindOf). */
+var PAD_AI_TRIED = {}, PAD_AI_NAMING = null, PAD_AI_NAME_T = 0;
+/* AS SOON AS THE FIRST CONTOUR IS DRAWN (20:02, "it could be nice if they were already named after
+   drawing the first one"): padRings() calls this after every change; a moment later the unnamed
+   structures are asked about, and the answer is said on the pad and becomes the type. */
+function padAiNameSoon(){
+  if (!(UJ.organelleml && UJ.organelleml.available && UJ.organelleml.available())) return;
+  clearTimeout(PAD_AI_NAME_T);
+  PAD_AI_NAME_T = setTimeout(function(){
+    if (PAD_AI_NAMING) return;
+    var before = {};
+    (PAD ? PAD.rings : []).forEach(function(r){ if (r.aiKind) before[String(r.inst || 0)] = 1; });
+    PAD_AI_NAMING = padAiNameMissing().then(function(n){
+      PAD_AI_NAMING = null;
+      if (!n) return;
+      padAiApplyKinds();
+      var said = {};
+      PAD.rings.forEach(function(r){ var i = String(r.inst || 0); if (r.aiKind && !before[i]) said[i] = r.aiKind; });
+      var txt = Object.keys(said).map(function(i){ return "#" + (Number(i) + 1) + " looks like " + UJ.organelleml.nameOf(said[i]).toLowerCase(); });
+      if (txt.length) padSay(txt.join(", ") + " \u2014 that is the type it will be filed as unless you change it.");
+      try { tracingEachRender(); } catch (_e){}
+    }).catch(function(){ PAD_AI_NAMING = null; });
+  }, 500);
+}
+async function padAiNameMissing(){
+  if (!PAD || !(UJ.organelleml && UJ.organelleml.available && UJ.organelleml.available() && UJ.organelleml.kindOf)) return 0;
+  var S = UJ.organelleseg, area = function(P){ return S && S._area ? Math.abs(S._area(P)) : P.length; };
+  var by = {};
+  PAD.rings.forEach(function(r){ (by[String(r.inst || 0)] = by[String(r.inst || 0)] || []).push(r); });
+  var named = 0;
+  for (var i in by){
+    var rs = by[i];
+    if (rs.some(function(r){ return r.aiKind; })) continue;
+    if (PAD_AI_TRIED[i] === rs.length) continue;      // asked already with these contours: no name came back
+    PAD_AI_TRIED[i] = rs.length;
+    var big = rs.reduce(function(a, b){ return area(b.points) > area(a.points) ? b : a; });
+    var c = [0, 0]; big.points.forEach(function(p){ c[0] += p[0]; c[1] += p[1]; }); c[0] /= big.points.length; c[1] /= big.points.length;
+    var tr = (UJ.emtiles && UJ.emtiles.config) ? UJ.emtiles.config().res : [4, 4, 40];
+    var half = Math.round(2000 / tr[0]), W = 500, sc = 2 * half / W;
+    var view = { z: big.z, w: W, h: W, vw: W, vh: W, x0: Math.round(c[0]), y0: Math.round(c[1]),
+                 toolAt: function(px, py){ return [c[0] - half + px * sc, c[1] - half + py * sc, big.z]; } };
+    try {
+      var k = await UJ.organelleml.kindOf(view, big.z, big.points);
+      if (k && k.k){ rs.forEach(function(r){ r.aiKind = k.k; }); named++; }
+    } catch (_e){}
+  }
+  if (named && typeof padAiOn === "function" && padAiOn()) try { padAiRun(); } catch (_e){}
+  return named;
+}
 function padAiApplyKinds(){
   if (!PAD) return "";
   var by = {};
@@ -7402,6 +7456,7 @@ function padRings(){
   /* The preview and the draft both follow the contours from here: this is called after every close,
      every delete and every reload of a section, which is every way the set of rings can change. */
   try { padHistNote(); } catch (_e){}
+  try { padAiNameSoon(); } catch (_e){}
   pad3DSoon();
   draftSoon();
   padVolume();
@@ -8090,6 +8145,14 @@ function wirePad(){
        produce the NEXT VERSION of it, not a rival; PAD_EDIT_ID is set by tracingOpenShared() and
        cleared by padOpen(), so a pad opened fresh carries nothing. */
     var aiSaid = padAiApplyKinds();
+    /* and the structures nobody named yet, asked about now; the type follows when the answer comes */
+    padAiNameMissing().then(function(n){
+      if (!n) return;
+      var said = padAiApplyKinds();
+      try { tracingEachRender(true); } catch (_e){}
+      if (said) tracingSay(rings.length + " contour" + (rings.length === 1 ? "" : "s") + " from the pad on "
+        + sections.size + " sections. Name it below and keep it." + said);
+    }).catch(function(){});
     TRACING_PENDING = { rings: rings, id: PAD_EDIT_ID || undefined };
     document.getElementById("tracingFound").style.display = "";
     tracingEachRender(true);
