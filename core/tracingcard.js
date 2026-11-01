@@ -6508,7 +6508,8 @@ async function padAiOutlineAt(e){
          rings on this section are merged: pieces that touch become one ring. */
       var merged = UJ.organelleseg.union(mine.map(function(r){ return r.points; }).concat([o.points]), 2);
       PAD.rings = PAD.rings.filter(function(r){ return mine.indexOf(r) < 0; });
-      merged.forEach(function(P){ PAD.rings.push({ z: z, inst: PAD.inst || 0, points: P }); });
+      var keepKind = (mine.filter(function(r){ return r.aiKind; })[0] || {}).aiKind;
+      merged.forEach(function(P){ PAD.rings.push({ z: z, inst: PAD.inst || 0, points: P, aiKind: keepKind }); });
       PAD_AI_LAST = { z: z, points: merged.reduce(function(a, b){ return UJ.organelleseg._area(b) > UJ.organelleseg._area(a) ? b : a; }) };
       padPaint(); padRings();
       padAiOutSay("Added: this section now has " + merged.length + " contour" + (merged.length > 1 ? "s" : "")
@@ -6520,9 +6521,11 @@ async function padAiOutlineAt(e){
     var hit = mine.filter(function(r){ return UJ.organelleseg.inside([t[0], t[1]], r.points)
                                              || UJ.organelleseg.inside(UJ.organelleseg.centroid(r.points), o.points); });
     if (hit.length) PAD.rings = PAD.rings.filter(function(r){ return hit.indexOf(r) < 0; });
-    PAD.rings.push({ z: z, inst: PAD.inst || 0, points: o.points });
-    PAD_AI_LAST = { z: z, points: o.points };
+    var ring = { z: z, inst: PAD.inst || 0, points: o.points };
+    PAD.rings.push(ring);
+    PAD_AI_LAST = { z: z, points: o.points, ring: ring };
     padPaint(); padRings();
+    padAiTagKind(ring);
     padAiOutSay((hit.length ? "Replaced the outline here: " : "Outlined: ") + (o.areaNm2 / 1e6).toFixed(3) + " \u00b5m\u00b2, " + o.points.length
       + " points. Shift+click a missed part to add it, alt+drag to edit points, or follow \u25b6.");
   } catch (err){
@@ -6601,6 +6604,45 @@ function padCpContext(e, ring){
   cv.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2,
     clientX: e.clientX, clientY: e.clientY, ctrlKey: !!ring, metaKey: !!ring }));
 }
+/* WHAT THE AI THINKS AN OUTLINE IS (2026-11-01) -- asked of the suggestion model, which knows
+   names, while the outline model only knows edges. Kept on the ring as aiKind; "Use these contours"
+   turns it into the type the tracing is filed as. Quiet when there is no suggestion model. */
+async function padAiTagKind(ring){
+  if (!(UJ.organelleml && UJ.organelleml.available()) || !PAD_VIEW) return;
+  try {
+    var r = await UJ.organelleml.kindOf(PAD_VIEW, ring.z, ring.points);
+    if (!r) return;
+    ring.aiKind = r.k;
+    if (PAD_AI_LAST && PAD_AI_LAST.ring === ring) PAD_AI_LAST.kind = r.k;
+    var el = document.getElementById("tracePadAiOutSay");
+    if (el && el.textContent.indexOf(" \u2014 looks like") < 0)
+      el.textContent += " \u2014 looks like " + UJ.organelleml.nameOf(r.k).toLowerCase() + " (" + Math.round(r.p * 100) + "%).";
+  } catch (_e){}
+}
+/* "Use these contours": the AI's names become the default type. Per structure, the name most of its
+   rings carry; the type box takes it when every named structure agrees and the box is still on its
+   untouched default -- a type somebody chose themselves is never overruled. */
+function padAiApplyKinds(){
+  if (!PAD) return "";
+  var by = {};
+  PAD.rings.forEach(function(r){ if (r.aiKind){ var i = String(r.inst || 0); (by[i] = by[i] || {})[r.aiKind] = (by[i][r.aiKind] || 0) + 1; } });
+  var insts = Object.keys(by);
+  if (!insts.length) return "";
+  var sel = document.getElementById("tracingWhat");
+  var opt = function(k){ return sel ? [].slice.call(sel.options).filter(function(o){ return o.value === k; })[0] : null; };
+  var kinds = insts.map(function(i){ return Object.keys(by[i]).sort(function(a, b){ return by[i][b] - by[i][a]; })[0]; });
+  insts.forEach(function(i, n){
+    var o = opt(kinds[n]);
+    if (o && !(PAD_INST_KIND[i] && PAD_INST_KIND[i].kind && PAD_INST_KIND[i].kind !== "cell"))
+      PAD_INST_KIND[i] = { kind: kinds[n], name: o.textContent };
+  });
+  var same = kinds.every(function(k){ return k === kinds[0]; });
+  if (sel && same && opt(kinds[0]) && (sel.value === "__cell" || sel.value === "__other" || sel.value === "")){
+    sel.value = kinds[0]; sel.dispatchEvent(new Event("change"));
+    return " Type set from the AI: " + opt(kinds[0]).textContent + " \u2014 change it below if it is something else.";
+  }
+  return "";
+}
 var PAD_AI_FOLLOWING = false;
 async function padAiFollow(dir){
   if (!PAD) return;
@@ -6629,8 +6671,11 @@ async function padAiFollow(dir){
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
       function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
       { existing: existing, gap: 1 });
-    got.forEach(function(g){ PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points }); });
-    if (got.length) PAD_AI_LAST = got[got.length - 1];
+    /* The chain is one organelle: what the first outline was, they all are. */
+    var chainKind = (from.ring && from.ring.aiKind) || from.kind
+      || (padAiMine(from.z).filter(function(r){ return r.aiKind; })[0] || {}).aiKind;
+    got.forEach(function(g){ PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points, aiKind: chainKind || undefined }); });
+    if (got.length){ PAD_AI_LAST = got[got.length - 1]; PAD_AI_LAST.kind = chainKind; }
     padPaint(); padRings();
     var interp = got.filter(function(g){ return g.interpolated; }).map(function(g){ return g.z; });
     var moved = got.filter(function(g){ return g.insteadOf != null; }).map(function(g){ return "z " + g.z + " instead of " + g.insteadOf; });
@@ -7837,12 +7882,13 @@ function wirePad(){
     /* THE ID SURVIVES THE PAD. Editing a tracing opened from the dataset and pressing this must
        produce the NEXT VERSION of it, not a rival; PAD_EDIT_ID is set by tracingOpenShared() and
        cleared by padOpen(), so a pad opened fresh carries nothing. */
+    var aiSaid = padAiApplyKinds();
     TRACING_PENDING = { rings: rings, id: PAD_EDIT_ID || undefined };
     document.getElementById("tracingFound").style.display = "";
     tracingEachRender(true);
     tracingVolShow();
     tracingSay(rings.length + " contour" + (rings.length === 1 ? "" : "s") + " from the pad on "
-      + sections.size + " sections. Name it below and keep it.");
+      + sections.size + " sections. Name it below and keep it." + aiSaid);
     document.getElementById("tracingName").focus();
   });
 

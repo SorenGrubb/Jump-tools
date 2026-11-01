@@ -440,6 +440,34 @@ UJ.organelleml = (function(){
     g.restore();
     return n;
   }
+  /* WHAT IS THIS OUTLINE? (2026-11-01, Søren: an AI-outlined mitochondrion should be filed as a
+     mitochondrion, not as the default whole cell.) The outline model draws edges and knows no names;
+     this model knows names. Its marks on this section that fall INSIDE the outline -- or, failing
+     that, the nearest within 300 nm of its centre -- say what it is: the most confident one wins.
+     Imaging artifacts are not an answer. Runs the model on the view if it has not run there yet. */
+  async function kindOf(view, z, points){
+    if (!available() || !view) return null;
+    var marks = await run(view, {});
+    if (!marks) return null;
+    var tres = (UJ.emtiles && UJ.emtiles.config && UJ.emtiles.config()) ? UJ.emtiles.config().res : [4, 4, 40];
+    var inPoly = function(pt, poly){
+      var x = pt[0], y = pt[1], c = false;
+      for (var i = 0, j = poly.length - 1; i < poly.length; j = i++){
+        var a = poly[i], b = poly[j];
+        if (((a[1] > y) !== (b[1] > y)) && (x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+      }
+      return c;
+    };
+    var cx = 0, cy = 0;
+    points.forEach(function(p){ cx += p[0]; cy += p[1]; }); cx /= points.length; cy /= points.length;
+    var cand = marks.filter(function(m){ return m.t[2] === z && m.k !== ARTIFACT; });
+    var inside = cand.filter(function(m){ return inPoly(m.t, points); });
+    if (!inside.length) inside = cand.filter(function(m){
+      return Math.hypot((m.t[0] - cx) * tres[0], (m.t[1] - cy) * tres[1]) <= 300; });
+    if (!inside.length) return null;
+    inside.sort(function(a, b){ return b.p - a.p; });
+    return { k: inside[0].k, p: inside[0].p };
+  }
   function summary(){
     if (!LAST) return "";
     var by = {};
@@ -453,7 +481,7 @@ UJ.organelleml = (function(){
 
   return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
-           markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
+           kindOf: kindOf, markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
            NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
            _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
 })();
