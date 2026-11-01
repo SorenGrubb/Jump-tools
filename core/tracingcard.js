@@ -6443,6 +6443,7 @@ function padAiTickSync(){
   if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
   if (!ok) box.checked = false;
   else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
+  try { padCpSync(); } catch (_e){}
 }
 function padAiOn(){
   var b = document.getElementById("tracePadAi");
@@ -6488,6 +6489,7 @@ function padAiOutTickSync(){
     lab.style.display = ok ? "" : "none";
   });
   var b = document.getElementById("tracePadAiOut"); if (b && !ok) b.checked = false;
+  try { padCpSync(); } catch (_e){}
 }
 /* This structure's rings on one section. */
 function padAiMine(z){
@@ -6495,7 +6497,7 @@ function padAiMine(z){
 }
 async function padAiOutlineAt(e){
   if (!PAD_VIEW || !PAD) return;
-  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z, add = !!e.shiftKey;
+  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY), z = PAD.z, add = !!e.shiftKey || PAD_TOOL === "aiadd";
   padAiOutSay(add ? "Adding that part\u2026" : "Outlining\u2026");
   try {
     var o = await UJ.organelleseg.outline([t[0], t[1]], z);
@@ -6526,6 +6528,78 @@ async function padAiOutlineAt(e){
   } catch (err){
     padAiOutSay(String(err && err.message || err), true);
   }
+}
+/* ── THE PANEL'S TOOLS ────────────────────────────────────────────────────────────  2026-11-01
+   One tool at a time, so a phone has every gesture a keyboard has:
+     hand    the pad's own clicks (the same as alt with the AI on)
+     ai      AI outline              aiadd   AI outline, ADD PART (the same as shift+click)
+     fix     correct the AI's marks  delpt   tap a point to delete it (right-click)
+     delring tap a contour to delete it (ctrl/cmd + right-click)
+   The ticks under the pad stay, for a keyboard; the two always agree. */
+var PAD_TOOL = "hand";
+function padCpEl(k){ return document.querySelector('#tracePadCp [data-cp="' + k + '"]'); }
+function padCpTick(id, v){
+  var b = document.getElementById(id);
+  if (b && b.checked !== v){ b.checked = v; b.dispatchEvent(new Event("change")); }
+}
+function padCpSetTool(t){
+  PAD_TOOL = t;
+  padCpTick("tracePadAiOut", t === "ai" || t === "aiadd");
+  padCpTick("tracePadAiFix", t === "fix");
+  if (t === "aiadd") padAiOutSay("Add part: tap the part the outline missed.");
+  if (t === "delpt") padSay("Delete point: tap a point to remove it.");
+  if (t === "delring") padSay("Delete contour: tap a contour to remove the whole of it.");
+  padCpSync();
+}
+function padCpSync(){
+  var box = document.getElementById("tracePadCp");
+  if (!box) return;
+  var on = function(id){ var b = document.getElementById(id); return !!(b && b.checked); };
+  /* the ticks may have been changed by hand: the tool follows them */
+  if (on("tracePadAiFix")) PAD_TOOL = "fix";
+  else if (on("tracePadAiOut")){ if (PAD_TOOL !== "aiadd") PAD_TOOL = "ai"; }
+  else if (PAD_TOOL === "ai" || PAD_TOOL === "aiadd" || PAD_TOOL === "fix") PAD_TOOL = "hand";
+  var seg = padAiOutAvailable(), sug = padAiAvailable();
+  var show = { ai: seg, aiadd: seg, followback: seg, followon: seg, fix: sug, suggest: sug, dark: sug,
+               seg: !!document.getElementById("tracePadSeg") && (function(){ var b = document.getElementById("tracePadSeg"),
+                     l = b.closest && b.closest("label"); return !l || l.style.display !== "none"; })(),
+               pen: !!document.getElementById("tracePadPen") };
+  var active = { hand: PAD_TOOL === "hand", ai: PAD_TOOL === "ai", aiadd: PAD_TOOL === "aiadd", fix: PAD_TOOL === "fix",
+                 delpt: PAD_TOOL === "delpt", delring: PAD_TOOL === "delring",
+                 pen: on("tracePadPen"), suggest: on("tracePadAi"), dark: on("tracePadAiDark"), seg: on("tracePadSeg"),
+                 help: box.dataset.caps === "1" };
+  [].slice.call(box.querySelectorAll("[data-cp]")).forEach(function(b){
+    var k = b.getAttribute("data-cp");
+    if (k in show) b.style.display = show[k] ? "flex" : "none";
+    b.style.background = active[k] ? "var(--accent, #2f81f7)" : "rgba(0,0,0,.55)";
+    b.setAttribute("aria-pressed", active[k] ? "true" : "false");
+  });
+  [].slice.call(box.querySelectorAll(".padcpcap")).forEach(function(c){ c.style.display = box.dataset.caps === "1" ? "" : "none"; });
+  [].slice.call(box.querySelectorAll("[data-cp]")).forEach(function(b){
+    b.style.width = box.dataset.caps === "1" ? "58px" : "40px"; b.style.height = box.dataset.caps === "1" ? "46px" : "40px"; });
+  box.style.gridTemplateColumns = box.dataset.caps === "1" ? "repeat(2,58px)" : "repeat(2,40px)";
+  padCpPlace();
+}
+/* The burger and the panel sit just under the tip bar, whatever its height. */
+function padCpPlace(){
+  var cv = document.getElementById("tracePad"), btn = document.getElementById("tracePadCpBtn"), box = document.getElementById("tracePadCp");
+  if (!cv || !btn || !box) return;
+  var top = cv.offsetTop + 6;
+  btn.style.top = top + "px"; box.style.top = (top + 46) + "px";
+  /* The four move-the-picture arrows step aside while the panel is open, so neither hides the other. */
+  var pan = document.getElementById("tracePadPan");
+  if (pan) pan.style.right = (box.style.display !== "none" ? box.offsetWidth + 16 : 8) + "px";
+}
+/* A tap in the delete tools is handed to the pad's own right-click, with the modifier it expects. */
+function padCpContext(e, ring){
+  var cv = document.getElementById("tracePad");
+  if (!PAD_VIEW || !PAD) return;
+  if (!ring){
+    var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
+    if (!UJ.tracepad.hitVertex(PAD, t[0], t[1], PAD_VIEW.pxPerToolVoxel)){ padSay("Tap exactly on a point to delete it.", true); return; }
+  }
+  cv.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2,
+    clientX: e.clientX, clientY: e.clientY, ctrlKey: !!ring, metaKey: !!ring }));
 }
 var PAD_AI_FOLLOWING = false;
 async function padAiFollow(dir){
@@ -6915,6 +6989,7 @@ async function padDraw(){
     padPaint();
     padRings();
     padAiRun();
+    try { padCpPlace(); } catch (_e){}
     padSay(UJ.tracepad.count(PAD).rings + " contour(s) kept, "
       + (PAD.pending.length ? PAD.pending.length + " vertices on this one \u2014 click the ring to close it"
                             : "click each vertex round the cell")
@@ -7657,6 +7732,11 @@ function wirePad(){
       if (e.target !== cv || e.button !== 0) return;
       if (ev === "pointerdown") padAiPass = !!e.altKey;
       if (padAiPass || e.altKey){ if (ev === "click" || ev === "dblclick") padAiPass = false; return; }
+      if (PAD_TOOL === "delpt" || PAD_TOOL === "delring"){
+        e.stopImmediatePropagation(); e.preventDefault();
+        if (ev === "pointerup") padCpContext(e, PAD_TOOL === "delring");
+        return;
+      }
       var fix = padAiFixMode(), out = !fix && padAiOutMode();
       if (!fix && !out) return;
       e.stopImmediatePropagation(); e.preventDefault();
@@ -7680,6 +7760,42 @@ function wirePad(){
       padAiOutSay("Click a lysosome or a mitochondrion near its middle. Clicks do not draw by hand until you turn this off.");
     } else padAiOutSay("");
   });
+  /* THE PANEL. */
+  const cpBtn = document.getElementById("tracePadCpBtn"), cpBox = document.getElementById("tracePadCp");
+  if (cpBtn && cpBox){
+    let open = false;
+    try { open = localStorage.getItem("ujump_pad_panel_v1") === "1"; cpBox.dataset.caps = localStorage.getItem("ujump_pad_panel_caps_v1") || "0"; } catch (_e){}
+    const show = function(v){ cpBox.style.display = v ? "grid" : "none"; cpBtn.style.background = v ? "var(--accent, #2f81f7)" : "rgba(0,0,0,.55)";
+                              try { localStorage.setItem("ujump_pad_panel_v1", v ? "1" : "0"); } catch (_e){} padCpPlace(); padCpSync(); };
+    show(open);
+    cpBtn.addEventListener("click", function(){ show(cpBox.style.display === "none"); });
+    cpBox.addEventListener("click", function(ev){
+      const b = ev.target.closest && ev.target.closest("[data-cp]");
+      if (!b) return;
+      const k = b.getAttribute("data-cp"), click = function(id){ const el = document.getElementById(id); if (el) el.click(); };
+      const flip = function(id){ const el = document.getElementById(id); if (el){ el.checked = !el.checked; el.dispatchEvent(new Event("change")); } };
+      if (["hand", "ai", "aiadd", "fix", "delpt", "delring"].indexOf(k) >= 0) padCpSetTool(PAD_TOOL === k && k !== "hand" ? "hand" : k);
+      else if (k === "pen") flip("tracePadPen");
+      else if (k === "undo") click("tracePadUndo");
+      else if (k === "followback") padAiFollow(-1);
+      else if (k === "followon") padAiFollow(1);
+      else if (k === "zup") click("tracePadPrev");
+      else if (k === "zdown") click("tracePadNext");
+      else if (k === "zoomin") padZoomStep(1);
+      else if (k === "zoomout") padZoomStep(-1);
+      else if (k === "newinst") click("tracePadNewInst");
+      else if (k === "suggest") flip("tracePadAi");
+      else if (k === "dark") flip("tracePadAiDark");
+      else if (k === "seg") flip("tracePadSeg");
+      else if (k === "help"){ cpBox.dataset.caps = cpBox.dataset.caps === "1" ? "0" : "1";
+        try { localStorage.setItem("ujump_pad_panel_caps_v1", cpBox.dataset.caps); } catch (_e){} }
+      padCpSync();
+    });
+    ["tracePadAi", "tracePadAiDark", "tracePadSeg", "tracePadPen", "tracePadAiOut", "tracePadAiFix"].forEach(function(id){
+      const el = document.getElementById(id); if (el) el.addEventListener("change", function(){ setTimeout(padCpSync, 0); });
+    });
+    window.addEventListener("resize", padCpPlace);
+  }
   const pfb = document.getElementById("tracePadAiFollowBack"), pfo = document.getElementById("tracePadAiFollowOn");
   if (pfb) pfb.addEventListener("click", function(){ padAiFollow(-1); });
   if (pfo) pfo.addEventListener("click", function(){ padAiFollow(1); });
@@ -8334,6 +8450,36 @@ function tracingCardHtml(){
     "<span></span>",
     "<button type=\"button\" class=\"padpan\" data-pan=\"0,0.5\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer\" title=\"Move the picture half a screen down\" aria-label=\"Move down\">&#9660;</button>",
     "<span></span>",
+    "</div>",
+    "<!-- THE PAD'S OWN CONTROL PANEL.  2026-11-01. Søren: \"The e.g. alt key does not exist on a mobile",
+    "     device... Could we add some buttons as a control panel on the right side of the pad. Maybe a",
+    "     burger in the top right corner\" -- and: \"Suggest more and use symbols instead of text.\" Every",
+    "     modifier-key gesture is a tool here instead: draw, AI outline, add part (shift), delete point",
+    "     (right-click), delete contour (ctrl/cmd+right-click), correct the AI. ℹ shows the words. -->",
+    "<button type=\"button\" id=\"tracePadCpBtn\" style=\"position:absolute;right:8px;top:44px;z-index:6;padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;\" title=\"Tools: draw, AI outline, add part, delete, follow, zoom\" aria-label=\"Tools\">&#9776;</button>",
+    "<div id=\"tracePadCp\" style=\"position:absolute;right:8px;top:90px;z-index:6;display:none;grid-template-columns:repeat(2,40px);gap:4px;padding:6px;border-radius:10px;background:rgba(13,17,23,.82);border:1px solid rgba(255,255,255,.25);max-height:calc(100% - 100px);overflow:auto\">",
+    "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Tools\"></div>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"hand\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Draw and edit by hand (click points, drag points) -- the same as holding alt with the AI on\" aria-label=\"draw\"><span>&#9998;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">draw</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"pen\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Freehand pen: draw round the organelle with a finger or pen\" aria-label=\"pen\"><span>&#9997;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">pen</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"ai\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI outline: tap a lysosome or a mitochondrion to outline it\" aria-label=\"AI outline\"><span>&#10024;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">AI outline</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"aiadd\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI add part: tap a part the AI outline missed to add it (shift+click)\" aria-label=\"add part\"><span>&#8853;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">add part</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"delpt\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete point: tap a point to remove it (right-click)\" aria-label=\"del point\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del point</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"delring\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete contour: tap a contour to remove it (Ctrl/Cmd+right-click)\" aria-label=\"del contour\"><span>&#10006;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del contour</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"fix\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Correct the AI: tap a suggestion to say what it really is\" aria-label=\"correct\"><span>&#10003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">correct</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",
+    "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Follow and move\"></div>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"followback\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline backwards through the sections\" aria-label=\"follow &#9664;\"><span>&#8647;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9664;</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"followon\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline forwards through the sections\" aria-label=\"follow &#9654;\"><span>&#8649;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9654;</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"zup\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Previous section (, key)\" aria-label=\"z &#8722;\"><span>&#11014;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">z &#8722;</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"zdown\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Next section (. key)\" aria-label=\"z +\"><span>&#11015;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">z +</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"zoomin\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Zoom in (+ key)\" aria-label=\"zoom in\"><span>&#65291;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">zoom in</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"zoomout\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Zoom out (- key)\" aria-label=\"zoom out\"><span>&#65293;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">zoom out</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"newinst\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Start another organelle of the same type (+ another one)\" aria-label=\"new one\"><span>&#10133;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">new one</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"help\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Show or hide the words under these buttons\" aria-label=\"labels\"><span>&#8505;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">labels</span></button>",
+    "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Show\"></div>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"suggest\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Suggest organelles (AI marks)\" aria-label=\"suggest\"><span>&#128161;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">suggest</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"dark\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Dark-cell mode for the suggestions\" aria-label=\"dark cell\"><span>&#9681;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">dark cell</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"seg\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Show the segmentation\" aria-label=\"segm.\"><span>&#9638;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">segm.</span></button>",
     "</div>",
     "</div>",
     "<!-- SEVERAL OF THE SAME THING.  2026-09-17. Søren: \"I want the option to draw more than one",
