@@ -239,6 +239,10 @@ const ok = (c, what, d) => {
          takes the whole contour away — which is what it has always done. */
       const n1 = PAD.rings.length;
       fire({ ctrlKey: true, metaKey: true });
+      /* 2026-11-01: ctrl+DRAG now cuts, so ctrl+CLICK is decided on lifting -- release unmoved */
+      { const up = new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 1, pointerType: "mouse", ctrlKey: true, metaKey: true });
+        Object.defineProperty(up, "offsetX", { value: 9000 }); Object.defineProperty(up, "offsetY", { value: 8800 });
+        cv.dispatchEvent(up); }
       out.erased = n1 - PAD.rings.length;
       return out;
     });

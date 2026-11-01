@@ -777,8 +777,23 @@ function link(annotations){
       ok(drew.chips === 1,
          "...and it is an ORDINARY contour: it has its own delete chip like any other", drew.chips);
 
-      /* A grabbed vertex still wins over starting a stroke, or a drawn contour could never be
-         corrected by dragging one of its points -- which is most of what correction is. */
+      /* 2026-11-01, Søren: "The freehand still does not add to a tracing, it just pulls the point you
+         click on when you click and drag. That should only be when you have the manual annotation
+         selected." So: with freehand on, a drag from a point DRAWS (and is added to the contour);
+         with it off (✎ manual), a drag from a point MOVES it. */
+      const penDrag = await p.evaluate(() => {
+        const r = PAD.rings[0], q = PAD_VIEW.pxAt([r.points[0][0], r.points[0][1], PAD.z]);
+        return { x: q[0], y: q[1], before: JSON.stringify(r.points[0]) };
+      });
+      await p.mouse.move(box.x + penDrag.x, box.y + penDrag.y);
+      await p.mouse.down();
+      await p.mouse.move(box.x + penDrag.x + 25, box.y + penDrag.y + 15, { steps: 5 });
+      await p.mouse.up();
+      await p.waitForTimeout(60);
+      ok(await p.evaluate((b) => !PAD.rings[0].points.some(function(q){ return Math.abs(q[0] - JSON.parse(b)[0] - 25 * 4 / (PAD_VIEW.pxPerToolVoxel * 4)) < 1 && Math.abs(q[1] - JSON.parse(b)[1] - 15 / PAD_VIEW.pxPerToolVoxel) < 1; }), penDrag.before),
+         "with freehand on, a drag from a point draws instead of pulling the point", penDrag.before);
+      await p.evaluate(() => {
+        const b = document.getElementById("tracePadPen"); b.checked = false; b.dispatchEvent(new Event("change")); });
       const vtx = await p.evaluate(() => {
         const r = PAD.rings[0], q = PAD_VIEW.pxAt([r.points[0][0], r.points[0][1], PAD.z]);
         return { x: q[0], y: q[1], before: JSON.stringify(r.points[0]), rings: PAD.rings.length };
@@ -791,7 +806,7 @@ function link(annotations){
       const moved2 = await p.evaluate(() => ({
         rings: PAD.rings.length, now: JSON.stringify(PAD.rings[0].points[0]) }));
       ok(moved2.rings === vtx.rings && moved2.now !== vtx.before,
-         "dragging one of its points MOVES it rather than starting a new stroke",
+         "with freehand off (manual), dragging one of its points MOVES it rather than starting a new stroke",
          vtx.before + " -> " + moved2.now);
 
       /* A pen switches it on by itself. pointerType is the browser saying a stylus is on the glass,

@@ -6553,7 +6553,8 @@ async function padAiOutlineAt(e){
    you draw, in the same way freehand drawing without backspace should add to the drawing.")
    The ticks under the pad stay, for a keyboard; the two always agree. */
 var PAD_TOOL = "hand";
-var PAD_SUB = false;              // ⌫ on: a freehand stroke subtracts
+var PAD_SUB = false;
+var PAD_CTRLCUT = false;          // ctrl/cmd held at pointerdown: a drag cuts, a click removes the contour              // ⌫ on: a freehand stroke subtracts
 /* ── UNDO THAT UNDOES THE LAST CHANGE ─────────────────────────────────────────────  2026-11-01
    Søren: "if I change something and press undo, it just deletes the whole tracing without just
    undoing." The pad's own undo only knew "last vertex, else last contour". Now the contours are
@@ -6562,19 +6563,35 @@ var PAD_SUB = false;              // ⌫ on: a freehand stroke subtracts
    follow, a deleted contour. A contour still being clicked point by point loses its last point,
    as before. */
 var PAD_HIST = [];
+/* REDO (2026-11-01, Søren: "Can we have ctrl+z as undo and have a redo also?"). What Undo leaves
+   goes on PAD_REDO; any new change empties it, as in every editor. */
+var PAD_REDO = [];
 function padHistSnap(){ return PAD ? JSON.stringify(PAD.rings) : "[]"; }
 function padHistNote(){
   if (!PAD) return;
   var s = padHistSnap();
-  if (PAD_HIST[PAD_HIST.length - 1] !== s){ PAD_HIST.push(s); if (PAD_HIST.length > 200) PAD_HIST.shift(); }
+  if (PAD_HIST[PAD_HIST.length - 1] !== s){
+    PAD_HIST.push(s); if (PAD_HIST.length > 200) PAD_HIST.shift();
+    if (!PAD_REDO_ALLOW) PAD_REDO = [];
+  }
 }
-function padHistReset(){ PAD_HIST = []; }
+var PAD_REDO_ALLOW = false;
+function padHistReset(){ PAD_HIST = []; PAD_REDO = []; }
 function padHistUndo(){
   if (!PAD) return false;
   var now = padHistSnap();
   while (PAD_HIST.length && PAD_HIST[PAD_HIST.length - 1] === now) PAD_HIST.pop();
   if (!PAD_HIST.length) return false;
+  PAD_REDO.push(now);
   PAD.rings = JSON.parse(PAD_HIST[PAD_HIST.length - 1]);
+  PAD_AI_LAST = null;
+  return true;
+}
+function padHistRedo(){
+  if (!PAD || !PAD_REDO.length) return false;
+  var s = PAD_REDO.pop();
+  PAD.rings = JSON.parse(s);
+  PAD_REDO_ALLOW = true; padHistNote(); PAD_REDO_ALLOW = false;
   PAD_AI_LAST = null;
   return true;
 }
@@ -7849,6 +7866,11 @@ function wirePad(){
     if (padHistUndo()){ padPaint(); padRings(); padSay("Undone: back to before the last change."); return; }
     padSay("Nothing left to undo.", true);
   });
+  const redoBtn = document.getElementById("tracePadRedo");
+  if (redoBtn) redoBtn.addEventListener("click", function(){
+    if (padHistRedo()){ padPaint(); padRings(); padSay("Redone."); }
+    else padSay("Nothing to redo.", true);
+  });
   document.getElementById("tracePadClose").addEventListener("click", function(){
     document.getElementById("tracePadWrap").style.display = "none";
     draftSave(false); draftRender();      // closing the pad is not losing the work
@@ -7915,7 +7937,7 @@ function wirePad(){
   ["pointerdown", "pointerup", "click", "dblclick"].forEach(function(ev){
     fixHost.addEventListener(ev, function(e){
       if (e.target !== cv || e.button !== 0) return;
-      if (ev === "pointerdown") padAiPass = !!e.altKey;
+      if (ev === "pointerdown") padAiPass = !!(e.altKey || (PAD_MAC ? e.metaKey : e.ctrlKey));
       if (padAiPass || e.altKey){ if (ev === "click" || ev === "dblclick") padAiPass = false; return; }
       if (PAD_TOOL === "delpt" || PAD_TOOL === "delring"){
         e.stopImmediatePropagation(); e.preventDefault();
@@ -7959,10 +7981,11 @@ function wirePad(){
       if (!b) return;
       const k = b.getAttribute("data-cp"), click = function(id){ const el = document.getElementById(id); if (el) el.click(); };
       const flip = function(id){ const el = document.getElementById(id); if (el){ el.checked = !el.checked; el.dispatchEvent(new Event("change")); } };
-      if (["undo", "help", "zoomin", "zoomout", "zup", "zdown"].indexOf(k) < 0) padHistNote();
+      if (["undo", "redo", "help", "zoomin", "zoomout", "zup", "zdown"].indexOf(k) < 0) padHistNote();
       if (["hand", "ai", "aiadd", "fix", "delpt", "delring"].indexOf(k) >= 0) padCpSetTool(PAD_TOOL === k && k !== "hand" ? "hand" : k);
       else if (k === "pen"){ if (PAD_TOOL === "pen" && !PAD_SUB) padCpSetTool("hand"); else { padCpSetTool("pen"); padSubSet(false); } }
       else if (k === "undo") click("tracePadUndo");
+      else if (k === "redo") click("tracePadRedo");
       else if (k === "clearz") padSubSet(!PAD_SUB);
       else if (k === "followback") padAiFollow(-1);
       else if (k === "followon") padAiFollow(1);
@@ -7988,13 +8011,15 @@ function wirePad(){
   if (pfo) pfo.addEventListener("click", function(){ padAiFollow(1); });
   const paf = document.getElementById("tracePadAiFix");
   /* 2026-11-01, Søren: "I tried to add the organelles with the checkmark, but they are not removed
-     again when I unclicked it." ✓ switches the suggestions on so there is something to correct; when
-     it did, switching ✓ off switches them off again, marks and answers with them. */
+     again when I unclicked it." ✓ switches the suggestions on so there is something to correct, and
+     switching ✓ off switches them off again, marks and answers with them -- also when they were on
+     already (they come back on by themselves when the page remembers them; 18:01, "the suggestions
+     do not go away"). 💡 shows them again without correcting. */
   let fixTurnedAiOn = false;
   if (paf) paf.addEventListener("change", function(){
     padAiFixClose();
     if (paf.checked && pao && pao.checked){ pao.checked = false; padAiOutSay(""); }
-    if (!paf.checked && fixTurnedAiOn){
+    if (!paf.checked){
       fixTurnedAiOn = false;
       const ai0 = document.getElementById("tracePadAi");
       if (ai0 && ai0.checked){ ai0.checked = false; ai0.dispatchEvent(new Event("change")); }
@@ -8061,6 +8086,16 @@ function wirePad(){
        gesture is asking for a copy of. Left button only, like everything else that draws. */
     if (e.shiftKey && padErase(e) && e.button === 0){
       down = null; dragging = null; padCopyContourAt(e); return;
+    }
+    /* CTRL+DRAG CUTS, CTRL+CLICK REMOVES (2026-11-01, Søren: "ctrl + click and drag does no longer
+       delete parts of the tracing"). With the left button the gesture is decided on lifting: moved,
+       it was a cut drawn freehand -- the keyboard's ⌫; not moved, the whole contour goes, as before. */
+    if (padErase(e) && e.button === 0){
+      dragging = null; down = [e.offsetX, e.offsetY]; moved = false; PAD_CTRLCUT = true;
+      const tc = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
+      UJ.tracepad.startStroke(PAD, tc[0], tc[1]);
+      try { cv.setPointerCapture(e.pointerId); } catch (_e){}
+      return;
     }
     if (padErase(e)){ down = null; dragging = null; padEraseAt(e); return; }
     /* LEFT BUTTON ONLY. A right-click fires pointerdown/pointerup like any other, so without this
@@ -8146,6 +8181,24 @@ function wirePad(){
     if (!PAD_VIEW || !down) return;
     const wasPan = moved;
     const from = down; down = null;
+    if (PAD.stroke && PAD_CTRLCUT){
+      PAD_CTRLCUT = false;
+      if (!wasPan){ PAD.stroke = null; padPaint(); padEraseAt(e); return; }
+      const cutWhat = UJ.tracepad.endStroke(PAD, padTol(1.2));
+      PAD_HOVER = null;
+      if (cutWhat === "ring"){
+        const keepSub = PAD_SUB; PAD_SUB = true;
+        const how = padStrokeBool();
+        PAD_SUB = keepSub;
+        padPaint(); padRings();
+        padSay(how === "sub" ? "Cut away from the contour. Undo takes it back."
+          : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
+          : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
+          : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how !== "sub");
+      } else padPaint();
+      return;
+    }
+    PAD_CTRLCUT = false;
     if (PAD.stroke){
       /* Within about a pixel of where it was drawn. A distance rather than a vertex count, because
          "within a pixel of the line I drew" is a promise about the picture the tracer is looking
@@ -8347,6 +8400,15 @@ function wirePad(){
     const wrap = document.getElementById("tracePadWrap");
     if (!wrap || wrap.style.display === "none") return;
     if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "")) return;
+    /* CTRL+Z UNDO; CTRL+ALT+Z REDO (Søren's choice), and Ctrl+Y / Ctrl+Shift+Z as other programs
+       have it. Cmd on a Mac. By the key's position (e.code), so alt/option changing the character
+       does not matter. 2026-11-01. */
+    if (e.ctrlKey || e.metaKey){
+      const z = e.code === "KeyZ" || (e.key || "").toLowerCase() === "z", y = e.code === "KeyY" || (e.key || "").toLowerCase() === "y";
+      if (z && !e.shiftKey && !e.altKey){ document.getElementById("tracePadUndo").click(); e.preventDefault(); return; }
+      if ((z && (e.altKey || e.shiftKey)) || (y && !e.altKey)){ const r = document.getElementById("tracePadRedo"); if (r) r.click(); e.preventDefault(); return; }
+      return;                              // ctrl+anything else is the browser's
+    }
     /* +/- ZOOM (2026-10-06). "=" and "_" are the unshifted keys under + and − on most
        layouts, and the numpad sends its own names; all of them mean the same thing here. */
     if (e.key === "+" || e.key === "=" || e.key === "Add"){ padZoomStep(1); e.preventDefault(); }
@@ -8615,6 +8677,7 @@ function tracingCardHtml(){
     "<button class=\"idbtn\" id=\"tracePadNext\" style=\"flex:0 0 auto\" title=\"On one step (. key)\">&#9654;</button>",
     "<div class=\"coord\" style=\"flex:0 0 84px\" title=\"How many sections a step moves. Every fifth section is about half a percent off the real volume.\"><input type=\"text\" id=\"tracePadStep\" inputmode=\"numeric\" value=\"5\"></div>",
     "<button class=\"idbtn\" id=\"tracePadUndo\" style=\"flex:0 0 auto\" title=\"Takes back the last vertex, or the last closed contour if you have not started one\">Undo</button>",
+"<button class=\"idbtn\" id=\"tracePadRedo\" style=\"flex:0 0 auto\" title=\"Redo what Undo took back (Ctrl+Alt+Z, Ctrl+Y)\">Redo</button>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Press and draw all the way round the structure, then lift — the way you would with a pen on paper. Made for a pen display or a tablet, and it works with a mouse held down. The stroke is thinned to a contour you can still edit point by point. With this on, a plain drag DRAWS, so shift+drag is how you pan. Lifted too early? Hold alt (option on a Mac) and draw on from where it stopped.\"><input type=\"checkbox\" id=\"tracePadPen\"> draw freehand (pen)</label>",
     "<!-- THE SEGMENTATION, UNDER THE CONTOURS.  2026-09-17. Søren: \"There should be an option to show",
     "     the segmentation of the root ID and the nucleus ID of the cell in the EM window.\" Off by",
@@ -8693,7 +8756,8 @@ function tracingCardHtml(){
     "<button type=\"button\" class=\"padcp\" data-cp=\"clearz\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Cut: while this is on, a freehand stroke cuts away from the contours it overlaps (off: a stroke adds to them)\" aria-label=\"cut\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">cut</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"delring\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete contour: tap a contour to remove it (Ctrl/Cmd+right-click)\" aria-label=\"del contour\"><span>&#10006;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del contour</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"fix\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Correct the AI: tap a suggestion to say what it really is\" aria-label=\"correct\"><span>&#10003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">correct</span></button>",
-    "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo (Ctrl+Z)\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",
+"<button type=\"button\" class=\"padcp\" data-cp=\"redo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Redo (Ctrl+Alt+Z)\" aria-label=\"redo\"><span>&#8631;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">redo</span></button>",
     "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Follow and move\"></div>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"followback\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline backwards through the sections\" aria-label=\"follow &#9664;\"><span>&#8647;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9664;</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"followon\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline forwards through the sections\" aria-label=\"follow &#9654;\"><span>&#8649;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9654;</span></button>",
