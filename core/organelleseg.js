@@ -209,9 +209,31 @@ UJ.organelleseg = (function(){
       if (px.length < 4 || area(px) < 0.3 * comp.n) return null;
       var tr = toolRes(), sc = 0;
       for (var q = 0; q < prob.length; q++) if (comp.mask[q]) sc += prob[q];
+      /* ── HOW MUCH OF IT IS AN IMAGING ARTIFACT ──────────────────────────  2026-11-01
+         Søren: "the same system as a missing slice should apply if there is an imaging artefact
+         that overlaps with the organelle." Over the outline's box and 100 nm round it: the share
+         of voxels that are not tissue -- unread (a missing chunk), near-black (a fold, a knife
+         mark: raw below seg.json artifactDark, 15 by default) or near-white (a crack, resin:
+         above artifactBright, 240). Follow treats a section as it treats a missing one when that
+         share passes 3%, or when there are at least as many bad voxels as the outline is wide --
+         a thin fold or knife line straight across the organelle is a small share of the box. */
+      var bx0 = m.crop, by0 = m.crop, bx1 = -1, by1 = -1;
+      for (var q2 = 0; q2 < comp.mask.length; q2++) if (comp.mask[q2]){
+        var qx = q2 % m.crop, qy = (q2 / m.crop) | 0;
+        if (qx < bx0) bx0 = qx; if (qx > bx1) bx1 = qx; if (qy < by0) by0 = qy; if (qy > by1) by1 = qy;
+      }
+      var mg = Math.round(100 / pl.res[0]), dark = m.artifactDark == null ? 15 : m.artifactDark,
+          bright = m.artifactBright == null ? 240 : m.artifactBright, bad = 0, all = 0;
+      for (var yy = Math.max(0, by0 - mg); yy <= Math.min(m.crop - 1, by1 + mg); yy++)
+        for (var xx = Math.max(0, bx0 - mg); xx <= Math.min(m.crop - 1, bx1 + mg); xx++){
+          var oo = yy * pl.w + xx; all++;
+          if (yy >= pl.h || xx >= pl.w || !pl.seen[oo] || pl.raw[oo] < dark || pl.raw[oo] > bright) bad++;
+        }
       return {
         points: px.map(function(a){ return [(pl.x0 + a[0] + 0.5) * pl.res[0] / tr[0], (pl.y0 + a[1] + 0.5) * pl.res[1] / tr[1]]; }),
-        areaNm2: comp.n * pl.res[0] * pl.res[1], score: sc / comp.n, ep: EP
+        areaNm2: comp.n * pl.res[0] * pl.res[1], score: sc / comp.n, ep: EP,
+        artifact: all ? bad / all : 0,
+        artifactLine: bad >= Math.max(8, Math.min(bx1 - bx0 + 1, by1 - by0 + 1))
       };
     });
     QUEUE = p.catch(function(){});
@@ -331,9 +353,14 @@ UJ.organelleseg = (function(){
     opts = opts || {};
     var tr = toolRes(), got = [], prev = points, prevZ = z, gridZ = z;
     var prevArea = area(points) * tr[0] * tr[1];
-    var fits = function(o, from, fromArea){
+    var ART = opts.artifactFrac == null ? 0.03 : opts.artifactFrac;
+    var why = {};                                  // z -> "artifact", for the status line
+    var fits = function(o, from, fromArea, zz){
       if (!o) return false;
       if (o.existing) return true;                 // what is already drawn there is the answer
+      /* AN ARTIFACT OVER THE ORGANELLE counts as a missing section: a fold, a knife mark, a crack,
+         or one of the person's own "imaging artifact" answers on this section inside or beside it. */
+      if (o.artifact > ART || o.artifactLine || (opts.artifactAt && zz != null && opts.artifactAt(zz, o.points))){ if (zz != null) why[zz] = "artifact"; return false; }
       var c = centroid(from), c2 = centroid(o.points);
       var jump = Math.hypot((c2[0] - c[0]) * tr[0], (c2[1] - c[1]) * tr[1]);
       return !(o.areaNm2 < fromArea / 3 || o.areaNm2 > fromArea * 3 || jump > Math.max(300, Math.sqrt(fromArea)));
@@ -350,7 +377,7 @@ UJ.organelleseg = (function(){
       var zz = gridZ + dir * step;
       gridZ = zz;
       var o = have(zz) || await outline(centroid(prev), zz);
-      if (fits(o, prev, prevArea)){ take(o, zz); }
+      if (fits(o, prev, prevArea, zz)){ take(o, zz); }
       else {
         var done = false;
         /* 1. the nearest good neighbour, within half a step, never behind where it came from */
@@ -359,9 +386,9 @@ UJ.organelleseg = (function(){
             var zn = zz + sgn * d * dir;
             if ((zn - prevZ) * dir <= 0) continue;
             var on = have(zn) || await outline(centroid(prev), zn);
-            if (fits(on, prev, prevArea)){
+            if (fits(on, prev, prevArea, zn)){
               take(on, zn); done = true;
-              if (!on.existing) got[got.length - 1].insteadOf = zz;    // for the status line
+              if (!on.existing){ got[got.length - 1].insteadOf = zz; got[got.length - 1].why = why[zz] || ""; }
             }
           }
         }
@@ -369,8 +396,8 @@ UJ.organelleseg = (function(){
         if (!done && k < n){
           var z2 = zz + dir * step;
           var o2 = have(z2) || await outline(centroid(prev), z2);
-          if (fits(o2, prev, prevArea)){
-            got.push({ z: zz, points: between(prev, o2.points, (zz - prevZ) / (z2 - prevZ)), interpolated: true });
+          if (fits(o2, prev, prevArea, z2)){
+            got.push({ z: zz, points: between(prev, o2.points, (zz - prevZ) / (z2 - prevZ)), interpolated: true, why: why[zz] || "" });
             take(o2, z2); gridZ = z2; k++; done = true;
           }
         }

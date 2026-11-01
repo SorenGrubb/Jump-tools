@@ -6536,10 +6536,25 @@ async function padAiOutlineAt(e){
    One tool at a time, so a phone has every gesture a keyboard has:
      hand    the pad's own clicks (the same as alt with the AI on)
      ai      AI outline              aiadd   AI outline, ADD PART (the same as shift+click)
-     fix     correct the AI's marks  delpt   tap a point to delete it (right-click)
-     delring tap a contour to delete it (ctrl/cmd + right-click)
+     fix     correct the AI's marks  delring tap a contour to delete it (ctrl/cmd + right-click)
+   and one action: clearz  wipe every contour on this section, to trace it again (undo brings it back).
+   (2026-11-01, Søren: "I'm not sure what the backspace does, I can't get it to delete any points. I
+   think it should delete a whole tracing in the current slice, so that you can redo the AI
+   tracing." ⌫ was "delete point"; single points stay on right-click for a mouse.)
    The ticks under the pad stay, for a keyboard; the two always agree. */
 var PAD_TOOL = "hand";
+var PAD_CLEARED = null;           // { z, rings } -- what ⌫ took off a section, for Undo
+function padClearSection(){
+  if (!PAD) return;
+  var gone = PAD.rings.filter(function(r){ return r.z === PAD.z; });
+  if (!gone.length && !PAD.pending.length){ padSay("Nothing traced on this section (z " + PAD.z + ").", true); return; }
+  if (gone.length) PAD_CLEARED = { z: PAD.z, rings: gone };
+  UJ.tracepad.clearSection(PAD);
+  if (PAD_AI_LAST && (gone.indexOf(PAD_AI_LAST.ring) >= 0 || PAD_AI_LAST.z === PAD.z)) PAD_AI_LAST = null;
+  padPaint(); padRings();
+  padSay("Cleared z " + PAD.z + ": " + gone.length + " contour" + (gone.length === 1 ? "" : "s")
+    + " removed. Trace it again (\u2728 AI outline, or draw); \u21b6 Undo brings them back.");
+}
 function padCpEl(k){ return document.querySelector('#tracePadCp [data-cp="' + k + '"]'); }
 function padCpTick(id, v){
   var b = document.getElementById(id);
@@ -6672,7 +6687,18 @@ async function padAiFollow(dir){
     };
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
       function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
-      { existing: existing, gap: 1 });
+      { existing: existing, gap: 1,
+        /* Your own "imaging artifact" answers count: one on this section inside the organelle, or
+           within 100 nm of its edge, makes the section a missing one. */
+        artifactAt: function(z, pts){
+          if (!(UJ.organelleml && UJ.organelleml.corrections)) return false;
+          var c = UJ.organelleseg.centroid(pts), tr = UJ.emtiles.config().res;
+          var r = Math.sqrt(UJ.organelleseg._area(pts) / Math.PI) * tr[0] + 100;
+          return UJ.organelleml.corrections().some(function(a){
+            return a.k === UJ.organelleml.ARTIFACT && a.t[2] === z
+              && (UJ.organelleseg.inside([a.t[0], a.t[1]], pts) || Math.hypot((a.t[0] - c[0]) * tr[0], (a.t[1] - c[1]) * tr[1]) <= r);
+          });
+        } });
     /* The chain is one organelle: what the first outline was, they all are. */
     var chainKind = (from.ring && from.ring.aiKind) || from.kind
       || (padAiMine(from.z).filter(function(r){ return r.aiKind; })[0] || {}).aiKind;
@@ -6680,10 +6706,12 @@ async function padAiFollow(dir){
     if (got.length){ PAD_AI_LAST = got[got.length - 1]; PAD_AI_LAST.kind = chainKind; }
     padPaint(); padRings();
     var interp = got.filter(function(g){ return g.interpolated; }).map(function(g){ return g.z; });
-    var moved = got.filter(function(g){ return g.insteadOf != null; }).map(function(g){ return "z " + g.z + " instead of " + g.insteadOf; });
+    var moved = got.filter(function(g){ return g.insteadOf != null; }).map(function(g){
+      return "z " + g.z + " instead of " + g.insteadOf + (g.why === "artifact" ? " (imaging artifact)" : ""); });
+    interp = got.filter(function(g){ return g.interpolated; }).map(function(g){ return g.z + (g.why === "artifact" ? " (imaging artifact)" : ""); });
     padAiOutSay(got.length
       ? "Added " + got.length + " contour" + (got.length > 1 ? "s" : "") + " (z " + got[0].z + "\u2013" + got[got.length - 1].z + ")"
-        + (interp.length ? "; interpolated over a missing section at z " + interp.join(", ") : "")
+        + (interp.length ? "; interpolated over a missing or damaged section at z " + interp.join(", ") : "")
         + (moved.length ? "; used the neighbouring section where the planned one failed (" + moved.join(", ") + ")" : "")
         + ". Step through with , and . to check; follow again to go further."
       : "Nothing new: the next sections either already have this structure, or did not look like the same organelle. Step there and click it, or draw it.");
@@ -7711,6 +7739,11 @@ function wirePad(){
     padDraw();
   });
   document.getElementById("tracePadUndo").addEventListener("click", function(){
+    /* After ⌫: once nothing new is left on the section to undo, Undo puts the cleared contours back. */
+    if (PAD_CLEARED && PAD_CLEARED.z === PAD.z && !PAD.pending.length && !PAD.rings.some(function(r){ return r.z === PAD.z; })){
+      PAD.rings = PAD.rings.concat(PAD_CLEARED.rings); PAD_CLEARED = null;
+      padPaint(); padRings(); padSay("The cleared contours are back."); return;
+    }
     UJ.tracepad.undo(PAD); padPaint(); padRings(); padSay("Undone.");
   });
   document.getElementById("tracePadClose").addEventListener("click", function(){
@@ -7824,6 +7857,7 @@ function wirePad(){
       if (["hand", "ai", "aiadd", "fix", "delpt", "delring"].indexOf(k) >= 0) padCpSetTool(PAD_TOOL === k && k !== "hand" ? "hand" : k);
       else if (k === "pen") flip("tracePadPen");
       else if (k === "undo") click("tracePadUndo");
+      else if (k === "clearz") padClearSection();
       else if (k === "followback") padAiFollow(-1);
       else if (k === "followon") padAiFollow(1);
       else if (k === "zup") click("tracePadPrev");
@@ -8511,7 +8545,7 @@ function tracingCardHtml(){
     "<button type=\"button\" class=\"padcp\" data-cp=\"pen\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Freehand pen: draw round the organelle with a finger or pen\" aria-label=\"pen\"><span>&#9997;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">pen</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"ai\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI outline: tap a lysosome or a mitochondrion to outline it\" aria-label=\"AI outline\"><span>&#10024;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">AI outline</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"aiadd\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"AI add part: tap a part the AI outline missed to add it (shift+click)\" aria-label=\"add part\"><span>&#8853;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">add part</span></button>",
-    "<button type=\"button\" class=\"padcp\" data-cp=\"delpt\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete point: tap a point to remove it (right-click)\" aria-label=\"del point\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del point</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"clearz\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Clear this section: remove its contours so you can trace it again (Undo brings them back)\" aria-label=\"clear section\"><span>&#9003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">clear z</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"delring\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Delete contour: tap a contour to remove it (Ctrl/Cmd+right-click)\" aria-label=\"del contour\"><span>&#10006;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">del contour</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"fix\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Correct the AI: tap a suggestion to say what it really is\" aria-label=\"correct\"><span>&#10003;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">correct</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",
