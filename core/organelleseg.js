@@ -36,24 +36,53 @@ UJ.organelleseg = (function(){
   var CFG = { base: "", ok: false, probe: null, readPlane: null };
   var META = null, SESSION = null, LOADING = null, EP = "";
   var QUEUE = Promise.resolve();
+  /* ── MORE THAN ONE OUTLINE MODEL (2026-11-02) ──────────────────────────────────────────────────
+     Søren: "I think our next big step should be tracing nuclei ... Can we train the nucleus AI tracing on
+     the existing nucleus segmentations?" -- and: "this will mainly be preparation for getting AI in the
+     other tools." A nucleus does not fit in the organelle model's 2 um at 8 nm, so it has a model of its
+     own, nucleus.json / nucleus.onnx beside seg.json (12 um at 32 nm, trained by
+     nucleus_outline_train.ipynb on the MICrONS nucleus segmentation). Each model keeps its own meta and
+     session in MODELS; the one in use is swapped into META / SESSION / LOADING inside the queue, so
+     every line below that reads them is unchanged and two models never run on each other's state. */
+  var MODELS = { seg: { file: "seg.json", ok: false, probe: null, meta: null, session: null, loading: null },
+                 nucleus: { file: "nucleus.json", ok: false, probe: null, meta: null, session: null, loading: null } };
+  var CUR = "seg";
+  function use(name){
+    name = MODELS[name] ? name : "seg";
+    if (name === CUR) return;
+    var a = MODELS[CUR]; a.meta = META; a.session = SESSION; a.loading = LOADING;
+    var b = MODELS[name]; META = b.meta; SESSION = b.session; LOADING = b.loading;
+    CUR = name;
+  }
 
   function configure(cfg){
     cfg = cfg || {};
     var b = String(cfg.base || "");
     if (b && b.slice(-1) !== "/") b += "/";
-    if (b !== CFG.base){ META = null; SESSION = null; LOADING = null; }
+    if (b !== CFG.base){
+      META = null; SESSION = null; LOADING = null;
+      Object.keys(MODELS).forEach(function(k){ MODELS[k].meta = MODELS[k].session = MODELS[k].loading = null; });
+    }
     CFG.base = b;
     if (cfg.ortBase){ ORT_BASE = cfg.ortBase; ORT_JS = cfg.ortJs || (ORT_BASE + "ort.webgpu.min.js"); }
     if (cfg.readPlane) CFG.readPlane = cfg.readPlane;      // for a check with no imagery behind it
     CFG.ok = false;
-    CFG.probe = !b ? Promise.resolve(false)
-      : fetch(b + "seg.json", { method: "HEAD", cache: "no-cache" })
-          .then(function(r){ CFG.ok = !!r.ok; return CFG.ok; })
-          .catch(function(){ CFG.ok = false; return false; });
+    Object.keys(MODELS).forEach(function(k){
+      var M = MODELS[k]; M.ok = false;
+      M.probe = !b ? Promise.resolve(false)
+        : fetch(b + M.file, { method: "HEAD", cache: "no-cache" })
+            .then(function(r){ M.ok = !!r.ok; return M.ok; })
+            .catch(function(){ M.ok = false; return false; });
+    });
+    CFG.probe = MODELS.seg.probe.then(function(v){ CFG.ok = v; return v; });
     return CFG.probe;
   }
-  function available(){ return !!(CFG.base && CFG.ok); }
-  function whenAvailable(){ return CFG.probe || Promise.resolve(false); }
+  /* available() / whenAvailable(): the organelle model, as before. With a name: that model. */
+  function available(name){ return !!(CFG.base && (name ? (MODELS[name] && MODELS[name].ok) : CFG.ok)); }
+  function whenAvailable(name){
+    if (name && MODELS[name]) return MODELS[name].probe || Promise.resolve(false);
+    return CFG.probe || Promise.resolve(false);
+  }
 
   function loadScript(src){
     return new Promise(function(res, rej){
@@ -69,16 +98,18 @@ UJ.organelleseg = (function(){
     if (SESSION) return Promise.resolve(SESSION);
     if (LOADING) return LOADING;
     LOADING = (async function(){
-      var r = await fetch(CFG.base + "seg.json", { cache: "no-cache" });
-      if (!r.ok) throw new Error("no outline model has been trained for this dataset yet");
+      var file = MODELS[CUR].file;
+      var r = await fetch(CFG.base + file, { cache: "no-cache" });
+      if (!r.ok) throw new Error(CUR === "nucleus" ? "no nucleus outline model has been trained for this dataset yet"
+                                                   : "no outline model has been trained for this dataset yet");
       var m = await r.json();
-      if (!m || m.format !== "ujump-organelle-outline-1") throw new Error("seg.json is not an outline model this page understands");
+      if (!m || m.format !== "ujump-organelle-outline-1") throw new Error(file + " is not an outline model this page understands");
       await loadScript(ORT_JS);
       var ort = window.ort;
       try { if (!ort.env.wasm.wasmPaths) ort.env.wasm.wasmPaths = ORT_BASE; } catch (_e){}
       var sess = null, err = null, eps = navigator.gpu ? [["webgpu"], ["wasm"]] : [["wasm"]];
       for (var i = 0; i < eps.length && !sess; i++){
-        try { sess = await ort.InferenceSession.create(CFG.base + (m.onnx || "seg.onnx"), { executionProviders: eps[i] }); EP = eps[i][0]; }
+        try { sess = await ort.InferenceSession.create(CFG.base + (m.onnx || file.replace(/\.json$/, ".onnx")), { executionProviders: eps[i] }); EP = eps[i][0]; }
         catch (e){ err = e; }
       }
       if (!sess) throw new Error("the outline model could not start: " + String(err && err.message || err));
@@ -90,22 +121,42 @@ UJ.organelleseg = (function(){
   }
 
   /* The crop, read through the page's own EM reader at the model's voxel size. */
+  /* The level to read: the one at the model's voxel size, or -- on another dataset, 2026-11-02 -- the
+     nearest one at least as fine (else the finest there is), which readPlane then resamples. */
   async function mipFor(nm){
-    var first = await UJ.emtiles.scaleAt(0, false);
+    var first = await UJ.emtiles.scaleAt(0, false), best = -1, bestR = 0;
     for (var i = 0; i < first.count; i++){
-      var s = await UJ.emtiles.scaleAt(i, false);
-      if (Math.abs(s.scale.resolution[0] - nm) < 0.01) return i;
+      var s = await UJ.emtiles.scaleAt(i, false), r = s.scale.resolution[0];
+      if (Math.abs(r - nm) < 0.01) return i;
+      if (r <= nm * 1.0001 && r > bestR){ best = i; bestR = r; }
     }
-    return -1;
+    return best >= 0 ? best : 0;
   }
   async function readPlane(xy, z, m){
     if (CFG.readPlane) return CFG.readPlane(xy, z, m);
     var mip = await mipFor(m.nm);
-    if (mip < 0) throw new Error("this volume has no " + m.nm + " nm level for the outline model");
+    var sc = await UJ.emtiles.scaleAt(mip, false), r = sc.scale.resolution[0];
     var cv = document.createElement("canvas");
+    /* The same stretch of tissue the model was trained on, read at this level, then resampled to the
+       model's own pixels -- bilinear for the picture, nearest for "was this read". */
+    var n = Math.max(8, Math.round(m.crop * m.nm / r));
     var v = await UJ.emtiles.drawSection(cv, { centre: [Math.round(xy[0]), Math.round(xy[1]), z], mip: mip, zoom: 1,
-                                               w: m.crop, h: m.crop, lo: 0, hi: 255 });
-    return { raw: v.raw, seen: v.seen, w: v.vw, h: v.vh, x0: v.x0, y0: v.y0, res: v.resNm };
+                                               w: n, h: n, lo: 0, hi: 255 });
+    if (Math.abs(v.resNm[0] - m.nm) < 0.01)
+      return { raw: v.raw, seen: v.seen, w: v.vw, h: v.vh, x0: v.x0, y0: v.y0, res: v.resNm };
+    var C = m.crop, k = v.resNm[0] / m.nm, W = v.vw, H = v.vh;
+    var raw = new Uint8Array(C * C), seen = new Uint8Array(C * C);
+    for (var y = 0; y < C; y++) for (var x = 0; x < C; x++){
+      var fx = (x + 0.5) / k - 0.5, fy = (y + 0.5) / k - 0.5;
+      var x0 = Math.max(0, Math.min(W - 1, Math.floor(fx))), y0 = Math.max(0, Math.min(H - 1, Math.floor(fy)));
+      var x1 = Math.min(W - 1, x0 + 1), y1 = Math.min(H - 1, y0 + 1), ax = Math.max(0, Math.min(1, fx - x0)), ay = Math.max(0, Math.min(1, fy - y0));
+      var o = y * C + x;
+      raw[o] = Math.round((v.raw[y0 * W + x0] * (1 - ax) + v.raw[y0 * W + x1] * ax) * (1 - ay)
+                        + (v.raw[y1 * W + x0] * (1 - ax) + v.raw[y1 * W + x1] * ax) * ay);
+      var nx = Math.max(0, Math.min(W - 1, Math.round(fx))), ny = Math.max(0, Math.min(H - 1, Math.round(fy)));
+      seen[o] = v.seen[ny * W + nx];
+    }
+    return { raw: raw, seen: seen, w: C, h: C, x0: v.x0 * k, y0: v.y0 * k, res: [m.nm, m.nm, v.resNm[2]] };
   }
   function toolRes(){
     try { return UJ.emtiles.config().res; } catch (_e){ return [4, 4, 40]; }
@@ -230,8 +281,10 @@ UJ.organelleseg = (function(){
     }
   }
   /* ── ONE OUTLINE ──────────────────────────────────────────────────────────────────────────── */
-  function outline(xy, z){
+  function outline(xy, z, opts){
+    var want = (opts && opts.model) || "seg";
     var p = QUEUE.then(async function(){
+      use(want);
       await load();
       var m = META, pl = await readPlane(xy, z, m);
       var n = pl.w * pl.h, sum = 0, sq = 0, cnt = 0;
@@ -248,7 +301,7 @@ UJ.organelleseg = (function(){
       var prob = new Float32Array(out.length);
       for (var k = 0; k < out.length; k++) prob[k] = 1 / (1 + Math.exp(-out[k]));
       var comp = clicked(prob, m.crop, m.crop, m.threshold || 0.5);
-      if (!comp || comp.n * pl.res[0] * pl.res[1] < 1e4) return null;   // under (100 nm)^2: noise, not an organelle
+      if (!comp || comp.n * pl.res[0] * pl.res[1] < (m.minAreaNm2 || 1e4)) return null;   // under (100 nm)^2 (a nucleus: its own floor): noise
       var px = simplifyRing(trace(comp.mask, m.crop, m.crop), pl.res[0]);
       /* A sliver -- a membrane line, a streak -- traces to a polygon with almost no inside. */
       if (px.length < 4 || area(px) < 0.3 * comp.n) return null;
@@ -499,7 +552,7 @@ UJ.organelleseg = (function(){
     };
     /* opts.avoid(z) -> polygons of OTHER structures already traced on z: never drawn over */
     var look = async function(zz){
-      var o = await outline(centroid(prev), zz);
+      var o = await outline(centroid(prev), zz, { model: opts.model });
       return opts.avoid ? clip(o, opts.avoid(zz), centroid(prev)) : o;
     };
     var take = function(o, zz){

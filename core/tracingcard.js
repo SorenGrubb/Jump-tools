@@ -6624,7 +6624,18 @@ function padAiSay(msg, bad){
    being drawn (PAD.inst) on this section -- the same object a hand-drawn ring is, so everything the
    pad already does to rings (drag, delete, undo, volume, publish) applies unchanged. */
 var PAD_AI_LAST = null;           // { z, points } -- what Follow carries on from
-function padAiOutAvailable(){ return !!(UJ.organelleseg && UJ.organelleseg.available()); }
+function padAiOutAvailable(){ return !!(UJ.organelleseg && (UJ.organelleseg.available() || UJ.organelleseg.available("nucleus"))); }
+/* WHICH OUTLINE MODEL (2026-11-02): the nucleus one while the structure being drawn is a nucleus --
+   its type set in its row, or in the type box -- and the organelle one otherwise. A click the
+   organelle model finds nothing under gets a second try with the nucleus model. */
+var PAD_AI_MODEL = {};       // structure number -> the outline model that drew it
+function padAiModel(){
+  var S = UJ.organelleseg;
+  if (!(S && S.available("nucleus"))) return "seg";
+  if (!S.available()) return "nucleus";
+  try { if (tracingKindFor(PAD ? PAD.inst : 0).kind === "nucleus") return "nucleus"; } catch (_e){}
+  return "seg";
+}
 function padAiOutMode(){
   var b = document.getElementById("tracePadAiOut");
   return !!(b && b.checked && padAiOutAvailable());
@@ -6661,9 +6672,16 @@ async function padAiOutlineAt(e){
     if (others.some(function(P){ return UJ.organelleseg.inside([t[0], t[1]], P); })){
       padAiOutSay("That spot is already traced as another structure. Pick that structure in the list to change it, or click outside it.", true); return;
     }
-    var o = await UJ.organelleseg.outline([t[0], t[1]], z);
+    var model = padAiModel();
+    var o = await UJ.organelleseg.outline([t[0], t[1]], z, { model: model });
+    if (!o && model === "seg" && UJ.organelleseg.available("nucleus")){
+      model = "nucleus"; o = await UJ.organelleseg.outline([t[0], t[1]], z, { model: model });
+    }
+    if (o) PAD_AI_MODEL[String(PAD.inst || 0)] = model;
     if (o && UJ.organelleseg.clip) o = UJ.organelleseg.clip(o, others, [t[0], t[1]]);
-    if (!o){ padAiOutSay("No lysosome or mitochondrion found under that click \u2014 click nearer its middle, or draw it by hand.", true); return; }
+    if (!o){ padAiOutSay(model === "nucleus"
+        ? "No nucleus found under that click \u2014 click inside it, nearer the middle, or draw it by hand."
+        : "No lysosome or mitochondrion found under that click \u2014 click nearer its middle, or draw it by hand.", true); return; }
     var mine = padAiMine(z);
     if (add && mine.length){
       /* SHIFT+CLICK ADDS THE PART IT MISSED (2026-11-01). The new outline and this structure's
@@ -7057,6 +7075,8 @@ async function padAiFollow(dir){
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
       function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
       { existing: existing, gap: 1, avoid: padAiOthers,
+        /* the model that drew the outline being followed, else the one for this structure's type */
+        model: PAD_AI_MODEL[String(PAD.inst || 0)] || padAiModel(),
         /* Your own "imaging artifact" answers count: one on this section inside the organelle, or
            within 100 nm of its edge, makes the section a missing one. */
         artifactAt: function(z, pts){
@@ -9399,7 +9419,10 @@ function padTrimForHost(el){
   padAiTickSync();
   if (UJ.organelleml) UJ.organelleml.whenAvailable().then(function(){ padAiTickSync(); });
   padAiOutTickSync();
-  if (UJ.organelleseg) UJ.organelleseg.whenAvailable().then(function(){ padAiOutTickSync(); });
+  if (UJ.organelleseg){
+    UJ.organelleseg.whenAvailable().then(function(){ padAiOutTickSync(); });
+    UJ.organelleseg.whenAvailable("nucleus").then(function(){ padAiOutTickSync(); });
+  }
   var mesh = null;
   try { mesh = (UJ && UJ.cfg && UJ.cfg.mesh) || null; } catch (_e){ mesh = null; }
   if (!(mesh && (mesh.meshBase || mesh.meshBaseAlt))){
