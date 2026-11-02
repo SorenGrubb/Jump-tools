@@ -1,0 +1,28 @@
+{
+ "format": "ujump-organelle-outline-1",
+ "dataset": "minnie65",
+ "onnx": "nucleus.onnx",
+ "nm": 32,
+ "crop": 384,
+ "norm": "crop",
+ "threshold": 0.5,
+ "kinds": [
+  "nucleus"
+ ],
+ "simplifyNm": 40,
+ "minAreaNm2": 2000000.0,
+ "validation": [
+  {
+   "src": "segmentation",
+   "held_out": 553,
+   "mean_IoU": 0.969,
+   "median_IoU": 0.987,
+   "envelope_off_nm": 17.07
+  }
+ ],
+ "trained": "2026-11-02T11:53",
+ "trainedOn": {
+  "segmentation": 3678
+ },
+ "source": "nucleus_outline_train.ipynb"
+}
