@@ -7163,7 +7163,7 @@ async function padSegOverlay(){
   if (!PAD_VIEW){ padSegSay("No section on the pad yet.", true); return null; }
   /* Each id only where the dataset has the volume to paint it from, 2026-09-21 — on βJump the
      nucleus box holds a Hoechst blob number and there is no nucleus segmentation behind it. */
-  const SRCS = tracingSources();
+  const SRCS = padSources();
   const root = SRCS.seg ? (document.getElementById("tracingRootId").value || "").trim() : "";
   const nuc = SRCS.nuc ? (document.getElementById("tracingNucId").value || "").trim() : "";
   const byKey = !!((document.getElementById("tracingNucId").value || "").trim()
@@ -7175,7 +7175,7 @@ async function padSegOverlay(){
   }
   try {
     if (!UJ.segpaint.configured())
-      UJ.segpaint.configure(tracingSources());
+      UJ.segpaint.configure(padSources());
     const cv = document.getElementById("tracePad");
     padSegSay("Reading the segmentation…");
     /* THE WHOLE CELL, where a cell is many segments.  2026-09-21. On χJump the root box holds
@@ -7309,6 +7309,36 @@ function padZoomStep(d){
   sel.dispatchEvent(new Event("change"));
   padSay("Zoom: " + (sel.options[i].textContent || "").trim() + "\u2026");
 }
+/* ── THE PAD READS THE VOLUME ITS CELL IS IN (2026-11-01, Søren: "It looks like the tracing pad does
+   not show anything for a minnie35 cell. The em data does not load. It should!"). µJump declares two
+   volumes (UJ.volumes: minnie65, then minnie35, which has its own EM and segmentation and no nucleus
+   detection). The pad used to read whatever the page configured first -- minnie65 -- wherever it
+   was, so below section 14,816 it drew minnie65's empty margin. Now, before each draw, the shared
+   reader (and the segmentation painter) is pointed at the volume the pad's centre is in; the cell
+   card's EM panel and the previews borrow minnie65 back for their own draws (emtiles.withConfig).
+   A page that declares one volume or none is untouched. */
+function padSources(){
+  var base = tracingSources();
+  try {
+    if (!(UJ.volumes && UJ.volumes.count && UJ.volumes.count() > 1 && PAD_CENTRE)) return base;
+    var v = UJ.volumes.sourcesAtVox(PAD_CENTRE, base.res);
+    if (!v || !v.em || !v.inside) return base;
+    return Object.assign({}, base, { em: v.em, seg: v.seg || "", nuc: v.nuc || "", volKey: v.key });
+  } catch (_e){ return base; }
+}
+var PAD_VOL_KEY = "";
+function padVolumeSync(){
+  var want = padSources(), hb = function(u){ return (UJ.segread && UJ.segread._httpBase && u) ? UJ.segread._httpBase(u) : (u || ""); };
+  var now = UJ.emtiles.configured() ? UJ.emtiles.config() : null;
+  var key = want.volKey || "";
+  if (!now || now.em !== hb(want.em)){
+    UJ.emtiles.configure(want);
+    try { if (UJ.segpaint && UJ.segpaint.configure) UJ.segpaint.configure(want); } catch (_e){}
+    if (PAD_VOL_KEY !== key && key && PAD_VOL_KEY) padSay("This cell is in " + key + " \u2014 the pad now reads its imagery.");
+  }
+  PAD_VOL_KEY = key;
+  return want;
+}
 async function padDraw(){
   if (!PAD_CENTRE) return;
   const cv = document.getElementById("tracePad");
@@ -7317,7 +7347,8 @@ async function padDraw(){
   PAD_REDRAW = false;
   const sel = document.getElementById("tracePadMip");
   const pick = String(sel.value).split(":");
-  const mip = +pick[0], zoom = +(pick[1] || 1);
+  let mip = +pick[0];
+  const zoom = +(pick[1] || 1);
   padBusy(true, "Loading the section\u2026");
   try{
     /* Fill the card rather than sitting in a black band: the canvas' pixel width IS the number of
@@ -7328,6 +7359,9 @@ async function padDraw(){
     /* THE WINDOW GOES IN. Without it emtiles uses 86/172 — minnie65's — on every volume; see
        tracingWindow's header for what that did to Lee16. */
     var PAD_WIN = tracingWindow();
+    try { padVolumeSync(); } catch (_e){}
+    /* the other volume may have fewer levels: the nearest one it has */
+    try { const sc = await UJ.emtiles.scaleAt(mip, tracingSlabOk()); if (sc && sc.count && mip >= sc.count) mip = sc.count - 1; } catch (_e){}
     PAD_VIEW = await UJ.emtiles.drawSection(cv, {
       centre: PAD_CENTRE, mip: mip, zoom: zoom, w: wide, h: cv.height, slabOk: tracingSlabOk(),
       lo: PAD_WIN.lo, hi: PAD_WIN.hi,

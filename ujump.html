@@ -4835,10 +4835,13 @@ async function drawPanelEmPlane(tok){
   await new Promise(function(r){setTimeout(r,250);});
   if(EM_PLANE_TOKEN!==tok)return;
   try{
-    if(!UJ.emtiles.configured())
-      UJ.emtiles.configure({em:SRC.em,res:(typeof UJ.cfg!=="undefined"&&UJ.cfg)?UJ.cfg.res:[4,4,40]});
+    var emMine={em:SRC.em,res:(typeof UJ.cfg!=="undefined"&&UJ.cfg)?UJ.cfg.res:[4,4,40]};
+    if(!UJ.emtiles.configured())UJ.emtiles.configure(emMine);
     emPlaneSay(tok,"reading the EM…");
-    var view=await UJ.emtiles.drawSection(cv,{centre:pos,w:EM_PLANE_W,h:EM_PLANE_H,
+    /* THE PAD MAY BE ON minnie35 NOW (2026-11-01): it points the shared reader at the volume of the
+       cell it is tracing, so this panel borrows minnie65 for its one draw and hands it back. */
+    var emNow=(typeof UJ.emtiles.config==="function")?UJ.emtiles.config():null,emWant=(UJ.segread&&UJ.segread._httpBase)?UJ.segread._httpBase(SRC.em):SRC.em;
+    var emDraw=function(){return UJ.emtiles.drawSection(cv,{centre:pos,w:EM_PLANE_W,h:EM_PLANE_H,
       mip:EM_PLANE_MIP,zoom:1,slabOk:true,
       /* ONE WINDOW FOR EVERY EM, 2026-09-18 -- EM_WINDOW is read from EM_SHADER_CONTROLS, which is
          what this page sends Neuroglancer, so the pad, this panel and every link it writes cannot
@@ -4848,7 +4851,8 @@ async function drawPanelEmPlane(tok){
          tissue is wider than a downsampled histogram -- which is what "pale/washed out" was. It can
          only narrow, so this view can never have LESS contrast than the plain window gave it. */
       tighten:true,
-      onProgress:function(d,n){emPlaneSay(tok,"reading the EM… "+d+"/"+n);}});
+      onProgress:function(d,n){emPlaneSay(tok,"reading the EM… "+d+"/"+n);}});};
+    var view=(emNow&&emNow.em!==emWant&&UJ.emtiles.withConfig)?await UJ.emtiles.withConfig(emMine,emDraw):await emDraw();
     if(EM_PLANE_TOKEN!==tok)return;
     /* SHORT ENOUGH TO SIT ON THE CAPTION LINE. Every word here that wraps costs a whole row of
        the panel (see emPlaneBox's comment on why rows are expensive in this column), so the
