@@ -542,6 +542,55 @@ function tracingFoldWire(host){
    tracedBy is the one-name fallback for rows written before that column existed, and it holds a
    comma-joined list on some of them, so it is split the same way it was joined. */
 var TRACING_NOBODY = "(not named)";
+/* ── DELETING YOUR OWN TRACING FROM THE DATASET ─────────────────────────────────  2026-11-01
+   Søren, passing on a user: "I was wondering if there was a way for users to delete their own
+   organelle annotations from the database for everyone; right now If I delete my own annotation it
+   says that it has been removed from this page but that it will stay in the database."
+   A 🗑 "delete for everyone" appears on a tracing in the dataset whose every version is yours (by
+   the names the index carries); the backend decides by the verified e-mail and refuses anything
+   else (Code.gs tracedStructureDelete_). Two clicks, like every other bin here. The row is kept in
+   the history tab and the file is binned, so the site owner can still recover it. */
+function tracingMe(){
+  try {
+    if (typeof GOOGLE_VERIFIED === "undefined" || !GOOGLE_VERIFIED || !GOOGLE_CREDENTIAL) return null;
+    var p = JSON.parse(decodeURIComponent(atob(GOOGLE_CREDENTIAL.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+      .split("").map(function(c){ return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2); }).join("")));
+    return { name: String(p.name || ""), email: String(p.email || "") };
+  } catch (_e){ return null; }
+}
+function tracingSharedRow(sid){
+  return (TRACING_SHARED || []).filter(function(t){ return t.structureId === sid; })[0] || null;
+}
+function tracingCanDelete(row){
+  var me = tracingMe();
+  if (!me || !me.name || !row) return false;
+  var who = tracingWhoList(row);
+  return who.length > 0 && who.every(function(w){ return w.toLowerCase() === me.name.toLowerCase(); });
+}
+function tracingDeleteBtn(sid, cls){
+  return '<button class="idbtn tracingdanger ' + cls + '" aria-label="Delete for everyone" data-sid="' + escHtml(sid) + '" '
+    + TRACING_ICOBTN + ' title="Delete for everyone \u2014 takes this tracing out of the shared dataset, not just off '
+    + 'this page. Only for tracings you made yourself; click twice.">' + TRACING_ICON.bin
+    + '<b style="font-weight:600;font-size:11px">all</b></button>';
+}
+async function tracingDeleteShared(sid, btn){
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  if (!tracingMe()){ tracingSay("Sign in with Google to delete a tracing from the dataset.", true); return; }
+  var row = tracingSharedRow(sid), name = (row && row.name) || "that tracing";
+  if (btn) btn.disabled = true;
+  tracingSay("Deleting \u201c" + name + "\u201d from the dataset\u2026");
+  var res = await tracingPost({ type: "traced_structure_delete", credential: GOOGLE_CREDENTIAL, structureId: sid });
+  if (btn) btn.disabled = false;
+  if (!res || !res.ok){ tracingSay((res && res.error) || "The tracing could not be deleted.", true); return; }
+  TRACING_SHARED = (TRACING_SHARED || []).filter(function(t){ return t.structureId !== sid; });
+  TRACINGS_KEPT = TRACINGS_KEPT.filter(function(t){ return t.id !== sid; });
+  tracingWrite(TRACINGS_KEPT);
+  try { tracingRenderList(); } catch (_e){}
+  try { tracingRenderShared(); } catch (_e2){}
+  tracingSay(res.removed === false
+    ? "\u201c" + name + "\u201d was already gone from the dataset."
+    : "Deleted \u201c" + name + "\u201d from the dataset for everyone. A copy is kept in the history, so the site owner can recover it if it was a mistake.");
+}
 function tracingWhoList(t){
   var a = (t && t.contributors && t.contributors.length)
           ? t.contributors.slice()
@@ -809,8 +858,11 @@ function tracingRenderList(){
             +'<button class="idbtn tracingview" aria-label="Neuroglancer" data-n="'+i+'" ' + TRACING_ICOBTN + ' '
             +'title="Neuroglancer \u2014 Open this tracing in the viewer — its contours as an annotation layer in its '
             +'own colour.">' + TRACING_ICON.ngl + '</button>'
-            +'<button class="idbtn tracingdanger tracingdrop" aria-label="Remove" title="Remove \u2014 takes this tracing off this page. What is already in the dataset stays there." data-n="'+i+'" ' + TRACING_ICOBTN + '>'
-            +TRACING_ICON.bin + '</button></div>';
+            +'<button class="idbtn tracingdanger tracingdrop" aria-label="Remove" title="Remove \u2014 takes this tracing off this page. What is already in the dataset stays there'
+              +(tracingCanDelete(tracingSharedRow(t.id))?' \u2014 the \u201call\u201d bin beside it deletes it for everyone':'')+'." data-n="'+i+'" ' + TRACING_ICOBTN + '>'
+            +TRACING_ICON.bin + '</button>'
+            +(!t.pending_share&&tracingCanDelete(tracingSharedRow(t.id))?tracingDeleteBtn(t.id,"tracingdelkept"):'')
+            +'</div>';
         }).join("")
         +'</details>';
         }).join("")
@@ -825,8 +877,16 @@ function tracingRenderList(){
   });
   host.querySelectorAll(".tracingdrop").forEach(function(b){
     b.addEventListener("click",function(){
+      const t=TRACINGS_KEPT[Number(b.dataset.n)];
       TRACINGS_KEPT.splice(Number(b.dataset.n),1);
       tracingWrite(TRACINGS_KEPT);tracingRenderList();
+      if(t&&!t.pending_share)tracingSay("Removed \u201c"+(t.name||"that tracing")+"\u201d from this page. It is still in the dataset"
+        +(tracingCanDelete(tracingSharedRow(t.id))?" \u2014 to delete it for everyone, use its \u201call\u201d bin in the dataset list.":"."));
+    });
+  });
+  host.querySelectorAll(".tracingdelkept").forEach(function(b){
+    b.addEventListener("click",function(){
+      tracingArm(b,"Delete for everyone?",function(){tracingDeleteShared(b.dataset.sid,b);});
     });
   });
   host.querySelectorAll(".tracingcellngl").forEach(function(b){
@@ -5247,6 +5307,7 @@ function tracingRenderShared(){
                     + 'rel="noopener" aria-label="The file in Drive" ' + TRACING_ICOBTN
                     + ' title="The file in Drive \u2014 this tracing’s own file, as it was saved.">'
                     + TRACING_ICON.file + '</a>' : "")
+                + (tracingCanDelete(t) ? tracingDeleteBtn(t.structureId, "tracingdel") : "")
                 + '</div>';
             }).join("")
           + '</details>';
@@ -5259,6 +5320,11 @@ function tracingRenderShared(){
   tracingSplitMarkWire(host);
   [].slice.call(host.querySelectorAll(".tracingopen")).forEach(function(b){
     b.addEventListener("click", function(){ tracingOpenShared(b.dataset.sid, b); });
+  });
+  [].slice.call(host.querySelectorAll(".tracingdel")).forEach(function(b){
+    b.addEventListener("click", function(){
+      tracingArm(b, "Delete for everyone?", function(){ tracingDeleteShared(b.dataset.sid, b); });
+    });
   });
   [].slice.call(host.querySelectorAll(".tracingngl")).forEach(function(b){
     b.addEventListener("click", function(){ tracingSharedInViewer(b.dataset.sid, b); });
@@ -6721,9 +6787,20 @@ function padStrokeBool(){
     return S.union([r.points, stroke.points], cellOf([r.points, stroke.points])).length === 1;
   };
   var others = PAD.rings.slice(0, -1);
+  /* ── A STROKE WHOLLY INSIDE IS A HOLE (2026-11-02, Søren: "It used to be that if you drew something
+     inside another tracing of the same kind, it subtracted from the tracing and left a hole. I liked
+     that."). The pad's rule has always been even-odd -- a contour inside another is a hole, in the
+     fill, the volume and the export -- and the merge of 2026-11-01 swallowed it. So a stroke that lies
+     entirely inside a contour of this structure stays a contour of its own, which is a hole, with ⌫
+     or without; and the holes already there are left out of a merge or a cut, so they stay holes. */
+  var mineZ = others.filter(function(r){ return r.z === z && (r.inst || 0) === inst; });
+  var within = function(P, Q){ return P.every(function(p){ return S.inside(p, Q); }); };
+  var isHole = function(r){ return mineZ.some(function(q){ return q !== r && within(r.points, q.points); }); };
+  if (mineZ.some(function(r){ return !isHole(r) && within(stroke.points, r.points); })
+      && !mineZ.some(function(r){ return isHole(r) && touches(r); })) return "hole";
   if (PAD_SUB){
     PAD.rings.pop();
-    var hit = others.filter(function(r){ return r.z === z && (r.inst || 0) === inst && touches(r); });
+    var hit = mineZ.filter(function(r){ return !isHole(r) && touches(r); });
     if (!hit.length) return others.some(function(r){ return r.z === z && touches(r); }) ? "subother" : "subnone";
     var out = [], before = 0, after = 0;
     PAD.rings.forEach(function(r){
@@ -6737,7 +6814,7 @@ function padStrokeBool(){
     PAD.rings = out;
     return "sub";
   }
-  var same = others.filter(function(r){ return r.z === z && (r.inst || 0) === inst && touches(r); });
+  var same = mineZ.filter(function(r){ return !isHole(r) && touches(r); });
   if (!same.length) return "";
   var keep = PAD.rings.filter(function(r){ return r !== stroke && same.indexOf(r) < 0; });
   var polys = same.map(function(r){ return r.points; }).concat([stroke.points]);
@@ -8172,7 +8249,8 @@ function wirePad(){
           if (what === "ring"){
             const how = padStrokeBool();
             padPaint(); padRings();
-            padSay(how === "add" ? "Drawn and added to the contour. Click (without dragging) for an AI outline again."
+            padSay(how === "hole" ? "A hole: drawn wholly inside the contour, so it is cut out of it. Click (without dragging) for an AI outline again."
+            : how === "add" ? "Drawn and added to the contour. Click (without dragging) for an AI outline again."
               : "Contour drawn freehand. Click (without dragging) for an AI outline again.");
           } else padPaint();
           return;
@@ -8437,9 +8515,10 @@ function wirePad(){
         padPaint(); padRings();
         padSay(how === "sub" ? "Cut away from the contour. Undo takes it back."
           : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
+          : how === "hole" ? "A hole: drawn wholly inside the contour, so it is cut out of it (a contour inside another is a hole). Undo takes it back."
           : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
           : how === "subother" ? "Nothing cut: the stroke only crossed another structure \u2014 only the selected one (#" + ((PAD.inst || 0) + 1) + ") is changed. Pick the other under Drawing to cut it."
-          : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how !== "sub");
+          : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how !== "sub" && how !== "hole");
       } else padPaint();
       return;
     }
@@ -8478,6 +8557,7 @@ function wirePad(){
             : how === "subnone" ? "Nothing cut: the stroke did not overlap a contour on this section."
           : how === "subother" ? "Nothing cut: the stroke only crossed another structure \u2014 only the selected one (#" + ((PAD.inst || 0) + 1) + ") is changed. Pick the other under Drawing to cut it."
             : how === "subhole" ? "Nothing cut: a cut has to reach the edge of the contour \u2014 a hole inside one cannot be kept."
+          : how === "hole" ? "A hole: drawn wholly inside the contour, so it is cut out of it (a contour inside another is a hole). Undo takes it back."
             : "Cutting needs core/organelleseg.js, which has not loaded \u2014 reload the page.", how === "subnone" || how === "subhole" || how === "subother" || how === "nobool");
           return;
         }
