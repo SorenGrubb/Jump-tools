@@ -324,7 +324,10 @@ function openDashboard(){
       +'<button class="dbtn" id="handleSave">Save</button></div>';
     h+='<h3>Favourites</h3><div id="favList" style="font-size:13px">Loading…</div>';
     h+='<h3>Leaderboard — top 10</h3><div id="lbList">Loading…</div>';h+='<h3>Reports needing review</h3><div style="font-size:12px;color:var(--mut);margin-bottom:4px">Cells where your identification has received down-votes — worth a second look. Re-identifying a cell updates your earlier report.</div><div id="dvList">Loading…</div>';
-    h+='<div style="margin-top:10px"><button class="dbtn" id="downloadMyWorkBtn">Download your work</button><div style="font-size:11px;color:var(--mut);margin-top:4px">Every identification, confirmation, organelle report, and other annotation you\'ve submitted, as an Excel file (one tab per report type).</div></div>';
+    h+='<div style="margin-top:10px"><button class="dbtn" id="downloadMyWorkBtn">Download your work</button><div style="font-size:11px;color:var(--mut);margin-top:4px">Every identification, confirmation, organelle report, and other annotation you\'ve submitted, as an Excel file (one tab per report type).</div>'
+      /* 2026-11-03: the same rows, newest first, with links back and delete -- see mywork.html */
+      +'<div style="margin-top:8px"><a class="dbtn" href="mywork.html" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none">My contributions \u2192</a>'
+      +'<div style="font-size:11px;color:var(--mut);margin-top:4px">Everything you have added, in every tool, newest first \u2014 with a link back to each, and delete for your own organelles and outlines.</div></div></div>';
     h+='<div style="margin-top:16px;font-size:11px;color:var(--mut,#8b949e)">We store your Google name, email and contribution activity to power these stats and the public leaderboard, which shows your chosen display name. Contact soren@grubb.dk to remove your data.</div>';
     body.innerHTML=h;
     loadProfileTotals(function(t){

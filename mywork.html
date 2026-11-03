@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+/* Same theme key as every tool, resolved before the first paint. */
+(function(){
+  var t = null;
+  try { t = localStorage.getItem("ujump_theme"); } catch(e){}
+  if (t !== "light" && t !== "dark")
+    t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
+<title>My contributions · Jump tools</title>
+<meta name="description" content="Everything you have added in the Jump tools, newest first, with a link back to each and a way to delete your own organelle reports and tracings.">
+<!--
+  MY CONTRIBUTIONS (2026-11-03). From a user, passed on by Søren: "add an entire page to the site where
+  users can see all their contributions in chronological order (e.g., Nov 1st 11:22 AM, added organelle
+  to CELL ID XYZ, link) with an easy option to edit or delete those from the database. Right now I'm
+  limited in being able to trace back what I last worked on unless I'm very meticulous about it on a
+  separate excel sheet or notepad."
+
+  READS: ?myReports=<Google ID token>&ds=<tool> for every tool in core/tools.js -- the same read that
+  "Download your work" makes, so this page shows exactly the rows that file would hold (plus, since
+  today, Traced structures). Asked of each tool's spreadsheet in parallel; a tool whose book does not
+  answer is said, not hidden.
+  DELETES: an organelle report (POST my_report_delete) or a tracing (POST traced_structure_delete).
+  Both refuse anything that is not the caller's own, by the verified e-mail. Everything else is
+  changed where it was made -- "Open" goes back to the cell; a cell identity is changed by identifying
+  the cell again, which replaces the earlier report.
+  NOTHING IS STORED HERE: the sign-in lives in this page's memory, and the list is read fresh.
+-->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%2327c9a3' stroke-width='9'/><circle cx='50' cy='50' r='12' fill='%2327c9a3'/></svg>">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="core/tools.js"></script>
+<style>
+  :root{
+    --bg:#fbfaf8; --ink:#1b1e22; --mut:#5f6873; --line:#e4e1da; --card:#ffffff;
+    --accent:#0f766e; --on-accent:#ffffff; --bad:#c62828; --chip:#eef2f1;
+  }
+  [data-theme="dark"]{
+    --bg:#0d1117; --ink:#e6edf3; --mut:#8b949e; --line:#30363d; --card:#161b22;
+    --accent:#27e0b3; --on-accent:#0d1117; --bad:#f85149; --chip:#1f2a2e;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:0 16px 60px}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:22px 0 10px;border-bottom:1px solid var(--line)}
+  header h1{font-size:22px;margin:0;flex:1 1 auto}
+  header .home{font-size:13px}
+  .lead{color:var(--mut);font-size:14px;margin:12px 0 4px;max-width:720px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0 6px}
+  .bar select,.bar input[type=search]{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
+  .bar input[type=search]{flex:1 1 200px;min-width:0}
+  .bar label{font-size:13px;color:var(--mut);display:flex;gap:5px;align-items:center}
+  .btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.del{background:transparent;color:var(--bad);border:1px solid var(--line);font-weight:500}
+  .btn:disabled{opacity:.5;cursor:default}
+  .status{font-size:13px;color:var(--mut);margin:6px 0}
+  .tools{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+  .tools span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--mut)}
+  .tools span.ok{color:var(--ink)} .tools span.err{color:var(--bad)}
+  h2.day{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:20px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  .ev{display:grid;grid-template-columns:70px 1fr auto;gap:4px 10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .ev .t{font-size:12px;color:var(--mut);padding-top:2px;font-variant-numeric:tabular-nums}
+  .ev .what{min-width:0}
+  .ev .what b{font-weight:600}
+  .ev .meta{font-size:12px;color:var(--mut);overflow-wrap:anywhere}
+  .ev .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .ev .acts .btn{padding:4px 9px;font-size:12px}
+  .tag{display:inline-block;font-size:11px;border-radius:6px;padding:0 6px;margin-right:6px;background:var(--chip);color:var(--ink);vertical-align:1px}
+  .gone{opacity:.45;text-decoration:line-through}
+  .more{margin:16px 0;text-align:center}
+  #signin{margin:16px 0}
+  @media (max-width:560px){ .ev{grid-template-columns:62px 1fr} .ev .acts{grid-column:2;justify-content:flex-start} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>My contributions</h1>
+    <a class="home" href="index.html">← All tools</a>
+  </header>
+  <p class="lead">Everything you have added in the Jump tools, newest first: identifications, organelles, outlines, votes and the rest. <b>Open</b> takes you back to the cell. Your own organelle reports and outlines can be deleted from the dataset here; a cell's identity is changed by identifying the cell again, which replaces your earlier report.</p>
+  <div id="signin"></div>
+  <div class="status" id="status">Sign in with Google to see your contributions.</div>
+  <div class="tools" id="tools"></div>
+  <div class="bar" id="bar" style="display:none">
+    <select id="fTool"><option value="">All tools</option></select>
+    <select id="fType"><option value="">Everything</option></select>
+    <input type="search" id="fText" placeholder="Search: cell id, type, organelle, comment…">
+    <label title="Your ✓ / ✗ answers to the AI's organelle suggestions on the tracing pad — there can be a great many"><input type="checkbox" id="fAi"> AI training answers</label>
+    <button class="btn ghost" id="reload" title="Read everything again">↻</button>
+  </div>
+  <div id="list"></div>
+</div>
+<script>
+"use strict";
+var ENDPOINT = "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec";
+var CLIENT_ID = "240227117082-gmiv0s37qdqngo3t3ph0lmthg4t4t47p.apps.googleusercontent.com";
+var CRED = "", ME = null, EVENTS = [], SHOWN = 300, TOOLS = [];
+
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function say(t, bad){ var el = document.getElementById("status"); el.textContent = t; el.style.color = bad ? "var(--bad)" : ""; }
+function jwt(c){
+  try { return JSON.parse(decodeURIComponent(atob(c.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")).split("").map(function(ch){
+    return "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2); }).join(""))); } catch (_e){ return null; }
+}
+
+/* ── SIGN-IN ────────────────────────────────────────────────────────────────────────────────── */
+function onCred(resp){
+  var p = jwt(resp && resp.credential);
+  if (!p || !p.email){ say("That sign-in could not be read — try again.", true); return; }
+  CRED = resp.credential; ME = p;
+  document.getElementById("signin").innerHTML = '<span class="status">Signed in as <b>' + esc(p.name || p.email) + '</b></span>';
+  loadAll();
+}
+function gsiReady(){
+  if (!(window.google && google.accounts && google.accounts.id)){ setTimeout(gsiReady, 200); return; }
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCred, auto_select: true });
+  google.accounts.id.renderButton(document.getElementById("signin"), { theme: "filled_blue", size: "large", text: "signin_with" });
+  try { google.accounts.id.prompt(); } catch (_e){}
+}
+
+/* ── WHAT EACH ROW IS ───────────────────────────────────────────────────────────────────────── */
+function obj(headers, row){ var o = {}; headers.forEach(function(h, i){ o[h] = row[i]; }); return o; }
+function pretty(s){ s = String(s || "").replace(/_/g, " "); return s.charAt(0).toUpperCase() + s.slice(1); }
+var TYPES = {
+  "New identifications": { cat: "Identifications", say: function(o){ return "Identified the cell as <b>" + esc(o.identified || "?") + "</b>"; } },
+  "Confirmations": { cat: "Identifications", say: function(o){ return "Confirmed <b>" + esc(o.identified || "?") + "</b>"; } },
+  "Discrepancies": { cat: "Identifications", say: function(o){ return "Disagreed with the prediction: <b>" + esc(o.identified || "?") + "</b>"; } },
+  "Merged splits": { cat: "Identifications", say: function(o){ return "Split a merged nucleus: <b>" + esc(o.identified || "?") + "</b>"; } },
+  "New cells (no nucleus)": { cat: "New cells", say: function(o){ return "Found a new cell: <b>" + esc(o.identified || "?") + "</b>"; } },
+  "Not a nucleus": { cat: "New cells", say: function(){ return "Flagged a detection as <b>not a nucleus</b>"; } },
+  "Organelle locations": { cat: "Organelles", say: function(o){
+      if (o.path === "ai-correction") return "AI training answer: <b>" + esc(pretty(o.kind)) + "</b>";
+      if (o.source === "segmentation") return "Outline centre registered: <b>" + esc(pretty(o.kind)) + "</b>";
+      return "Added an organelle: <b>" + esc(pretty(o.kind)) + "</b>"; } },
+  "Traced structures": { cat: "Outlines", say: function(o){
+      return "Traced <b>" + esc(o.name || pretty(o.kind) || "a structure") + "</b> — " + (o.contours || 0) + " contours on " + (o.sections || 0)
+        + " sections" + (Number(o.versions) > 1 ? " · v" + o.versions : "") + (o.volumeUm3 !== "" && o.volumeUm3 != null ? " · " + Number(o.volumeUm3).toPrecision(3) + " µm³" : ""); } },
+  "Computed volumes": { cat: "Volumes", say: function(o){ return "Computed the cell's volume: <b>" + esc(o.volumeUm3) + " µm³</b>"; } },
+  "Root ID proposals": { cat: "Root IDs", say: function(o){ return "Proposed root ID <b>" + esc(o.rootId) + "</b>"; } },
+  "Root ID votes": { cat: "Votes", say: function(o){ return "Voted " + (Number(o.vote) >= 0 ? "for" : "against") + " root ID " + esc(o.rootId); } },
+  "Identity votes": { cat: "Votes", say: function(o){ return "Voted on an identity" + (o.identified ? ": " + esc(o.identified) : ""); } },
+  "Favourites": { cat: "Favourites", say: function(){ return "Starred a cell"; } },
+  "Mesh contacts": { cat: "Cell contacts", say: function(){ return "Checked cell contacts"; } },
+  "Mesh proximity": { cat: "Cell contacts", say: function(){ return "Checked cell proximity"; } }
+};
+function describe(sheet, o){
+  var t = TYPES[sheet];
+  if (t) return { cat: t.cat, html: t.say(o) };
+  var main = o.identified || o.name || o.kind || o.cellType || "";
+  return { cat: sheet, html: esc(sheet) + (main ? ": <b>" + esc(main) + "</b>" : "") };
+}
+function whenOf(o){
+  var v = o.timestamp || o.updated || o.at || o.time || o.date || "";
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function coordOf(o){
+  var c = String(o.coord || o.cellCoord || o.pointA || o.position || "").trim();
+  var n = c.split(/[^0-9.\-]+/).filter(Boolean).map(Number);
+  return (n.length >= 3 && n.slice(0, 3).every(isFinite)) ? n.slice(0, 3).map(Math.round).join(",") : "";
+}
+function linkOf(tool, sheet, o){
+  var page = (tool && tool.page) || "ujump.html";
+  if (sheet === "Traced structures" && o.structureId) return page + "?trace=" + encodeURIComponent(o.structureId);
+  var c = coordOf(o);
+  return page + (c ? "?at=" + c : "");
+}
+
+/* ── READ ───────────────────────────────────────────────────────────────────────────────────── */
+async function loadTool(t){
+  var chip = document.getElementById("tool_" + t.key);
+  try {
+    var r = await fetch(ENDPOINT + "?myReports=" + encodeURIComponent(CRED) + "&ds=" + encodeURIComponent(t.key));
+    var d = await r.json();
+    if (!d || d.error || !d.sheets) throw new Error((d && d.error) || "no answer");
+    var n = 0;
+    Object.keys(d.sheets).forEach(function(sheet){
+      var s = d.sheets[sheet];
+      (s.rows || []).forEach(function(row){
+        var o = obj(s.headers, row), when = whenOf(o), dsc = describe(sheet, o);
+        EVENTS.push({ tool: t, sheet: sheet, o: o, when: when, cat: dsc.cat, html: dsc.html,
+                      ai: sheet === "Organelle locations" && o.path === "ai-correction",
+                      text: (Object.keys(o).map(function(k){ return o[k]; }).join(" ") + " " + sheet + " " + t.label).toLowerCase() });
+        n++;
+      });
+    });
+    chip.className = "ok"; chip.textContent = t.label + " · " + n;
+  } catch (e){
+    chip.className = "err"; chip.textContent = t.label + " · could not be read"; chip.title = String(e && e.message || e);
+  }
+}
+async function loadAll(){
+  EVENTS = []; SHOWN = 300;
+  TOOLS = (window.UJ && UJ.tools && UJ.tools.all) ? UJ.tools.all() : [{ key: "ujump", label: "µJump", page: "ujump.html" }];
+  document.getElementById("tools").innerHTML = TOOLS.map(function(t){ return '<span id="tool_' + esc(t.key) + '">' + esc(t.label) + ' · …</span>'; }).join("");
+  say("Reading your contributions from every tool — the first answer can take half a minute if the backend has been idle.");
+  await Promise.all(TOOLS.map(loadTool));
+  EVENTS.sort(function(a, b){ return (b.when ? b.when.getTime() : 0) - (a.when ? a.when.getTime() : 0); });
+  var fTool = document.getElementById("fTool"), fType = document.getElementById("fType");
+  var tools = {}, cats = {};
+  EVENTS.forEach(function(e){ tools[e.tool.key] = e.tool.label; cats[e.cat] = (cats[e.cat] || 0) + 1; });
+  fTool.innerHTML = '<option value="">All tools</option>' + Object.keys(tools).map(function(k){ return '<option value="' + esc(k) + '">' + esc(tools[k]) + '</option>'; }).join("");
+  fType.innerHTML = '<option value="">Everything</option>' + Object.keys(cats).sort().map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + ' (' + cats[c] + ')</option>'; }).join("");
+  document.getElementById("bar").style.display = "";
+  say(EVENTS.length ? EVENTS.length.toLocaleString() + " contributions." : "Nothing yet — once you identify a cell, add an organelle or trace something, it appears here.");
+  render();
+}
+
+/* ── SHOW ───────────────────────────────────────────────────────────────────────────────────── */
+function visible(){
+  var tool = document.getElementById("fTool").value, cat = document.getElementById("fType").value;
+  var q = document.getElementById("fText").value.trim().toLowerCase(), ai = document.getElementById("fAi").checked;
+  return EVENTS.filter(function(e){
+    if (e.ai && !ai) return false;
+    if (tool && e.tool.key !== tool) return false;
+    if (cat && e.cat !== cat) return false;
+    if (q && e.text.indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function dayOf(d){ return d ? d.toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" }) : "Undated"; }
+function timeOf(d){ return d ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : ""; }
+function render(){
+  var L = visible(), host = document.getElementById("list"), html = "", day = null;
+  L.slice(0, SHOWN).forEach(function(e, i){
+    var dd = dayOf(e.when);
+    if (dd !== day){ html += '<h2 class="day">' + esc(dd) + '</h2>'; day = dd; }
+    var o = e.o, cell = [];
+    if (o.nucleusId) cell.push("nucleus " + esc(o.nucleusId));
+    if (o.rootId && e.sheet !== "Root ID proposals") cell.push("root " + esc(o.rootId));
+    var c = coordOf(o); if (c) cell.push("at " + esc(c));
+    if (o.comment) cell.push("“" + esc(String(o.comment).slice(0, 140)) + "”");
+    var canDel = e.sheet === "Organelle locations" || (e.sheet === "Traced structures" && o.structureId);
+    var idx = EVENTS.indexOf(e);
+    html += '<div class="ev' + (e.gone ? ' gone' : '') + '" data-i="' + idx + '">'
+      + '<div class="t">' + esc(timeOf(e.when)) + '</div>'
+      + '<div class="what"><span class="tag">' + esc(e.tool.label) + '</span>' + e.html
+      + (cell.length ? '<div class="meta">' + cell.join(" · ") + '</div>' : '') + '</div>'
+      + '<div class="acts">'
+      + '<a class="btn ghost" target="_blank" rel="noopener" href="' + esc(linkOf(e.tool, e.sheet, o)) + '" title="'
+        + (e.sheet === "Traced structures" ? "Open this outline on the tracing pad, to change it" : "Open the cell this is about") + '">'
+        + (e.sheet === "Traced structures" ? "Edit" : "Open") + '</a>'
+      + (canDel && !e.gone ? '<button class="btn del" data-del="' + idx + '" title="Delete from the dataset, for everyone">Delete</button>' : '')
+      + '</div></div>';
+  });
+  if (!L.length && EVENTS.length) html = '<p class="status">Nothing matches.</p>';
+  if (L.length > SHOWN) html += '<div class="more"><button class="btn ghost" id="more">Show more (' + (L.length - SHOWN) + ' left)</button></div>';
+  host.innerHTML = html;
+  var m = document.getElementById("more"); if (m) m.onclick = function(){ SHOWN += 300; render(); };
+  [].slice.call(host.querySelectorAll("[data-del]")).forEach(function(b){
+    b.onclick = function(){
+      if (b.dataset.armed){ del(EVENTS[Number(b.dataset.del)], b); return; }
+      b.dataset.armed = "1"; b.textContent = "Delete for everyone?";
+      setTimeout(function(){ if (b.isConnected && b.dataset.armed){ delete b.dataset.armed; b.textContent = "Delete"; } }, 4000);
+    };
+  });
+}
+
+/* ── DELETE ─────────────────────────────────────────────────────────────────────────────────── */
+async function del(e, b){
+  if (!e || !CRED) return;
+  b.disabled = true; b.textContent = "Deleting…";
+  var o = e.o, body = e.sheet === "Traced structures"
+    ? { type: "traced_structure_delete", structureId: o.structureId }
+    : { type: "my_report_delete", sheet: e.sheet, timestamp: String(o.timestamp || ""), kind: o.kind || "", pointA: o.pointA || "" };
+  body.credential = CRED; body.ds = e.tool.key;
+  try {
+    var r = await fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+    var d = JSON.parse(await r.text());
+    if (!d.ok) throw new Error(d.error || "the backend said no");
+    e.gone = true; render();
+    say(d.removed === false ? "That one was already gone from the dataset." : "Deleted from the dataset. A copy is kept by the site in case it was a mistake.");
+  } catch (err){
+    b.disabled = false; b.textContent = "Delete";
+    say(String(err && err.message || err), true);
+  }
+}
+
+["fTool", "fType", "fAi"].forEach(function(id){ document.getElementById(id).addEventListener("change", function(){ SHOWN = 300; render(); }); });
+document.getElementById("fText").addEventListener("input", function(){ SHOWN = 300; render(); });
+document.getElementById("reload").addEventListener("click", function(){ if (CRED) loadAll(); });
+window.__mywork = { onCred: onCred, events: function(){ return EVENTS; }, render: render };
+gsiReady();
+</script>
+</body>
+</html>

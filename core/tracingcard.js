@@ -542,6 +542,26 @@ function tracingFoldWire(host){
    tracedBy is the one-name fallback for rows written before that column existed, and it holds a
    comma-joined list on some of them, so it is split the same way it was joined. */
 var TRACING_NOBODY = "(not named)";
+/* ── ?trace=<structureId>: OPEN THAT OUTLINE ON THE PAD (2026-11-03) ──────────────────────────
+   The "Edit" link on mywork.html. The pad's own opener, after the page has wired itself; tried for
+   up to half a minute while the card and the pad come up. */
+(function(){
+  var sid = "";
+  try { sid = new URLSearchParams(location.search).get("trace") || ""; } catch (_e){}
+  if (!sid) return;
+  var tries = 0;
+  function go(){
+    tries++;
+    if (typeof tracingOpenShared === "function" && document.getElementById("tracePad")
+        && typeof REPORT_ENDPOINT !== "undefined" && REPORT_ENDPOINT){
+      try { tracingOpenShared(sid, null); } catch (e){ console.warn("[?trace]", e); }
+      return;
+    }
+    if (tries < 60) setTimeout(go, 500);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){ setTimeout(go, 800); });
+  else setTimeout(go, 800);
+})();
 /* ── DELETING YOUR OWN TRACING FROM THE DATASET ─────────────────────────────────  2026-11-01
    Søren, passing on a user: "I was wondering if there was a way for users to delete their own
    organelle annotations from the database for everyone; right now If I delete my own annotation it
