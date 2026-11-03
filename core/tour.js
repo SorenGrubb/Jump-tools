@@ -76,6 +76,7 @@ var UJ = UJ || {};
   var IX = 0;               /* which step */
   var MISSING = [];         /* every target this run could not find: tourcheck.js reads it */
   var EL = {};              /* the overlay's elements, built once */
+  var WAITING = false;      /* the current step is waiting on `needs` (see follow()) */
   var WATCH = null;         /* the MutationObserver waiting for a `needs` selector */
   var TIMER = null;
   var AIM = null;           /* the selector the overlay is currently following */
@@ -422,6 +423,19 @@ var UJ = UJ || {};
       if (!PART) return;
       var r = AIM ? rectOf(AIM) : null;
       if (!r && !AIM) return;                       /* a step that points at nothing: nothing to do */
+      /* ── A WAITING STEP WHOSE BUTTON IS NOT ON THE PAGE MUST NOT BLACK THE PAGE OUT ── 2026-11-03
+         Søren, from his phone: "Waiting for you to press Log one" over a fully dimmed page, the
+         bubble in the middle, and no Log one anywhere -- the guided identification was not on its
+         result screen. A missing target fell through to dimAround(null), which dims EVERYTHING
+         and swallows clicks, so the only way out was Next. While waiting, a missing target now
+         takes the dimming off and docks the bubble at the bottom, so the page can be scrolled
+         and used to bring the control up -- and the watch carries the step on when it lands. */
+      if (!r && WAITING) {
+        if (LAST === "wait-gone") return;
+        LAST = "wait-gone";
+        dimOff(); placeWaitBubble();
+        return;
+      }
       var key = r ? [Math.round(r.left), Math.round(r.top),
                      Math.round(r.width), Math.round(r.height)].join(",") : "gone";
       if (key === LAST) return;
@@ -430,6 +444,14 @@ var UJ = UJ || {};
       placeBubble(r);
     };
     FRAME = requestAnimationFrame(tick);
+  }
+  function placeWaitBubble() {
+    var b = EL.bubble, W = window.innerWidth, H = window.innerHeight, gap = 12;
+    var bw = Math.min(380, W - 24);
+    b.style.width = bw + "px";
+    var bh = b.offsetHeight;
+    Object.assign(b.style, { left: Math.round((W - bw) / 2) + "px",
+                             top: Math.max(gap, H - bh - gap) + "px" });
   }
   function unfollow() {
     if (FRAME) cancelAnimationFrame(FRAME);
@@ -597,6 +619,7 @@ var UJ = UJ || {};
 
     var waitEl = b.querySelector(".tour-wait"), goneEl = b.querySelector(".tour-gone");
     waitEl.hidden = true; goneEl.hidden = true;
+    WAITING = false;
     /* AN EXAMPLE, FETCHED FOR YOU.                                                 2026-10-23
        Søren: "If the walkthrough depends on finding a cell with organelles, nobody can use it
        because they won't go through hundreds of cells to find one that has organelles annotated."
@@ -647,6 +670,7 @@ var UJ = UJ || {};
        the hole, where it is clickable; with nothing named, the dimming is simply off and the whole
        page stays usable. */
     if (s.needs && !needsMet(s.needs)) {
+      WAITING = true;
       waitEl.hidden = false;
       waitEl.textContent = "Waiting for you to " + (s.after || "open this part of the page") + ".";
       if (canExample) exEl.hidden = false;

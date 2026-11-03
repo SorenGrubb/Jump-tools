@@ -912,32 +912,40 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#organRows",
      "needs": "#organRows",
-     "press": "#idfOrganelleToggle",
-     "after": "press “Log one”",
+     "press": "#idfOrganelleToggle, #commOrganelleToggle",
+     "example": "organelleForm",
+     "exampleLabel": "Open the organelle form for me",
+     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
      "title": "One row per structure, from a list of 61",
      "say": "Each row is one structure: pick its kind from the topic-organised list and give its coordinate. Anything with two ends &mdash; a primary cilium, for one &mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into the first box and all three fill themselves."
     },
     {
      "at": "#organAddRow",
      "needs": "#organAddRow",
-     "press": "#idfOrganelleToggle",
-     "after": "press “Log one”",
+     "press": "#idfOrganelleToggle, #commOrganelleToggle",
+     "example": "organelleForm",
+     "exampleLabel": "Open the organelle form for me",
+     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
      "title": "As many as the cell has",
      "say": "<b>+ Add another structure</b> gives you another row, of any kind. Log two centrioles if there are two; log a centriole and the cilium sitting on it, which is the usual pair. One report, one cell, however many structures."
     },
     {
      "at": ".organ-paste-box",
      "needs": ".organ-paste-box",
-     "press": "#idfOrganelleToggle",
-     "after": "press “Log one”",
+     "press": "#idfOrganelleToggle, #commOrganelleToggle",
+     "example": "organelleForm",
+     "exampleLabel": "Open the organelle form for me",
+     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
      "title": "Or point at them in the viewer instead",
      "say": "Typing coordinates is the slow way. Ctrl+click each structure in Neuroglancer, paste that link in here, pick what they all are, and every marker becomes a row. It stays shut by default because it is the shortcut for the day you have twelve mitochondria &mdash; not the way in."
     },
     {
      "at": "#organSubmit",
      "needs": "#organSubmit",
-     "press": "#idfOrganelleToggle",
-     "after": "press “Log one”",
+     "press": "#idfOrganelleToggle, #commOrganelleToggle",
+     "example": "organelleForm",
+     "exampleLabel": "Open the organelle form for me",
+     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
      "title": "Submitting it",
      "say": "One submission carries every row, with an optional comment on all of them &mdash; the place to say “cilium is short, hard to trace to a clear tip”. Signed in, you are told when a report of yours is confirmed."
     },
@@ -15302,6 +15310,23 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
    its rings are fetched and the "Show the cell with all …" button appears without a second click.
    Nothing is hard-coded: the example is whatever the community has outlined most. */
 window.UJ_TOUR_EXAMPLE=async function(what){
+  /* 2026-11-03 -- Søren, from his phone: the "Log one" steps waited on Identify's result screen,
+     and getting there on a phone is a whole identification. The same form sits on every cell
+     card under the community reports (#commOrganelleToggle); this opens that one, showing a
+     random cell first if none is on screen. */
+  if(what==="organelleForm"){
+    var tog=document.getElementById("idfOrganelleToggle")||document.getElementById("commOrganelleToggle");
+    if(!tog){
+      /* No cell on screen: open any one (a guided type pick would need a type chosen first). */
+      if(typeof jumpToNucleusIndex==="function"&&typeof N!=="undefined"&&N>0)jumpToNucleusIndex(Math.floor(Math.random()*N));
+      for(var i=0;i<60&&!(tog=document.getElementById("commOrganelleToggle"));i++)await new Promise(function(r){setTimeout(r,250);});
+    }
+    if(!tog)return{ok:false,msg:"No cell is open yet \u2014 show one with \u201cRandom example\u201d, then try again."};
+    for(var e=tog;e&&e!==document.body;e=e.parentElement)if(e.tagName==="DETAILS"&&!e.open)e.open=true;
+    if(!document.getElementById("organRows"))tog.click();
+    tog.scrollIntoView({block:"start"});
+    return{ok:true,msg:"Opened."};
+  }
   if(what!=="organelles")return{ok:false,msg:"This page has no example of that."};
   if(typeof REPORT_ENDPOINT==="undefined"||!REPORT_ENDPOINT)return{ok:false,msg:"The backend is not configured on this page."};
   var list=(typeof PANEL_TRACINGS!=="undefined"&&PANEL_TRACINGS)||null;
