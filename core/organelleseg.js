@@ -55,28 +55,39 @@ UJ.organelleseg = (function(){
     CUR = name;
   }
 
+  /* A FALLBACK BASE, 2026-11-03 (see core/organelleml.js): configure({ base, fallback }) -- each
+     model is looked for in the page's own folder first and in the fallback after, separately, so a
+     dataset can have its own outline model and still borrow another's nucleus model. */
   function configure(cfg){
     cfg = cfg || {};
-    var b = String(cfg.base || "");
-    if (b && b.slice(-1) !== "/") b += "/";
-    if (b !== CFG.base){
+    var slash = function(x){ x = String(x || ""); return (x && x.slice(-1) !== "/") ? x + "/" : x; };
+    var list = [slash(cfg.base)].concat([].concat(cfg.fallback || []).map(slash)).filter(Boolean);
+    var b = list[0] || "";
+    if (b !== CFG.base || CFG.list + "" !== list + ""){
       META = null; SESSION = null; LOADING = null;
       Object.keys(MODELS).forEach(function(k){ MODELS[k].meta = MODELS[k].session = MODELS[k].loading = null; });
     }
-    CFG.base = b;
+    CFG.base = b; CFG.list = list;
     if (cfg.ortBase){ ORT_BASE = cfg.ortBase; ORT_JS = cfg.ortJs || (ORT_BASE + "ort.webgpu.min.js"); }
     if (cfg.readPlane) CFG.readPlane = cfg.readPlane;      // for a check with no imagery behind it
     CFG.ok = false;
     Object.keys(MODELS).forEach(function(k){
-      var M = MODELS[k]; M.ok = false;
-      M.probe = !b ? Promise.resolve(false)
-        : fetch(b + M.file, { method: "HEAD", cache: "no-cache" })
-            .then(function(r){ M.ok = !!r.ok; return M.ok; })
-            .catch(function(){ M.ok = false; return false; });
+      var M = MODELS[k]; M.ok = false; M.base = b;
+      M.probe = (async function(){
+        for (var i = 0; i < list.length; i++){
+          try {
+            var r = await fetch(list[i] + M.file, { method: "HEAD", cache: "no-cache" });
+            if (r.ok){ M.base = list[i]; M.ok = true; return true; }
+          } catch (_e){}
+        }
+        return false;
+      })();
     });
     CFG.probe = MODELS.seg.probe.then(function(v){ CFG.ok = v; return v; });
     return CFG.probe;
   }
+  /* Which folder a model comes from ("" if none was found). */
+  function source(name){ var M = MODELS[name || "seg"]; return M && M.ok ? M.base : ""; }
   /* available() / whenAvailable(): the organelle model, as before. With a name: that model. */
   function available(name){ return !!(CFG.base && (name ? (MODELS[name] && MODELS[name].ok) : CFG.ok)); }
   function whenAvailable(name){
@@ -99,7 +110,8 @@ UJ.organelleseg = (function(){
     if (LOADING) return LOADING;
     LOADING = (async function(){
       var file = MODELS[CUR].file;
-      var r = await fetch(CFG.base + file, { cache: "no-cache" });
+      var base = MODELS[CUR].base || CFG.base;
+      var r = await fetch(base + file, { cache: "no-cache" });
       if (!r.ok) throw new Error(CUR === "nucleus" ? "no nucleus outline model has been trained for this dataset yet"
                                                    : "no outline model has been trained for this dataset yet");
       var m = await r.json();
@@ -109,7 +121,7 @@ UJ.organelleseg = (function(){
       try { if (!ort.env.wasm.wasmPaths) ort.env.wasm.wasmPaths = ORT_BASE; } catch (_e){}
       var sess = null, err = null, eps = navigator.gpu ? [["webgpu"], ["wasm"]] : [["wasm"]];
       for (var i = 0; i < eps.length && !sess; i++){
-        try { sess = await ort.InferenceSession.create(CFG.base + (m.onnx || file.replace(/\.json$/, ".onnx")), { executionProviders: eps[i] }); EP = eps[i][0]; }
+        try { sess = await ort.InferenceSession.create(base + (m.onnx || file.replace(/\.json$/, ".onnx")), { executionProviders: eps[i] }); EP = eps[i][0]; }
         catch (e){ err = e; }
       }
       if (!sess) throw new Error("the outline model could not start: " + String(err && err.message || err));
@@ -596,7 +608,7 @@ UJ.organelleseg = (function(){
     return got;
   }
 
-  return { configure: configure, available: available, whenAvailable: whenAvailable,
+  return { configure: configure, source: source, available: available, whenAvailable: whenAvailable,
            outline: outline, follow: follow, union: union, clip: clip,
            subtract: function(polys, minus, cell){ return union(polys, cell, minus); }, inside: inside, between: between,
            centroid: centroid, meta: function(){ return META; },

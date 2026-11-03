@@ -1089,6 +1089,14 @@ document.addEventListener("DOMContentLoaded", function(){
 <!-- The card's store. BEFORE the card, because the card asks for it on load and a store
      that is not there yet means a first read answered from localStorage. 2026-10-05. -->
 <script src="core/kvstore.js"></script>
+<!-- THE PAD'S AI, 2026-11-03. Søren: "I guess we can also reuse some of the uJump for hJump, no?"
+     H01's own models go in models/organelles/h01/ (outlines: h01_organelle_outline_train.ipynb,
+     trained on MitoEM-H, pinky's synaptic clefts and CellMap); until a file is there, µJump's
+     model of the same name is used. H01 has the 8 and 32 nm levels the models read. -->
+<script src="core/organelleml.js"></script>
+<script>UJ.organelleml.configure({ base: "models/organelles/h01/", fallback: "models/organelles/minnie65/" });</script>
+<script src="core/organelleseg.js"></script>
+<script>UJ.organelleseg.configure({ base: "models/organelles/h01/", fallback: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>
 <script src="core/ontology.js"></script>
 <!-- Bulk organelle annotation, shared with µJump since 2026-09-21. After ontology.js,

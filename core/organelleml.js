@@ -59,23 +59,37 @@ UJ.organelleml = (function(){
   var TOKEN = 0;
   var MAX_SIDE = 1024, MAX_MARKS = 80, EDGE = 24;
 
+  /* A FALLBACK BASE, 2026-11-03. Søren: "I guess we can also reuse some of the uJump for hJump, no?"
+     configure({ base: "models/organelles/h01/", fallback: "models/organelles/minnie65/" }) uses the
+     page's own model when one has been trained for it, and the other dataset's until then. The model
+     reads EM at its own nm (model.json "nm"), so another volume's model runs as long as the volume
+     has that level; whether it is any GOOD there is for the reader to judge, which is why
+     source() says whose model it is. */
   function configure(cfg){
     cfg = cfg || {};
-    var b = String(cfg.base || "");
-    if (b && b.slice(-1) !== "/") b += "/";
-    if (b !== CFG.base){ META = null; SESSION = null; LOADING = null; LAST = null; }
-    CFG.base = b;
+    var slash = function(x){ x = String(x || ""); return (x && x.slice(-1) !== "/") ? x + "/" : x; };
+    var list = [slash(cfg.base)].concat([].concat(cfg.fallback || []).map(slash)).filter(Boolean);
+    var b = list[0] || "";
+    if (b !== CFG.base || CFG.list + "" !== list + ""){ META = null; SESSION = null; LOADING = null; LAST = null; }
+    CFG.base = b; CFG.list = list;
     if (cfg.ortBase){ ORT_BASE = cfg.ortBase; ORT_JS = cfg.ortJs || (ORT_BASE + "ort.webgpu.min.js"); }
     /* IS THERE A MODEL YET? One small request per page, so the tick only appears once a model has
        actually been trained and uploaded: until then a box that can only say "nothing here" is
        noise on every reader's pad. */
     CFG.ok = false;
-    CFG.probe = !b ? Promise.resolve(false)
-      : fetch(b + "model.json", { method: "HEAD", cache: "no-cache" })
-          .then(function(r){ CFG.ok = !!r.ok; return CFG.ok; })
-          .catch(function(){ CFG.ok = false; return false; });
+    CFG.probe = (async function(){
+      for (var i = 0; i < list.length; i++){
+        try {
+          var r = await fetch(list[i] + "model.json", { method: "HEAD", cache: "no-cache" });
+          if (r.ok){ CFG.base = list[i]; CFG.ok = true; return true; }
+        } catch (_e){}
+      }
+      return false;
+    })();
     return CFG.probe;
   }
+  /* Which folder the model in use comes from ("" before the probe has answered). */
+  function source(){ return CFG.ok ? CFG.base : ""; }
   function available(){ return !!(CFG.base && CFG.ok); }
   function whenAvailable(){ return CFG.probe || Promise.resolve(false); }
   function on(){
@@ -533,7 +547,7 @@ UJ.organelleml = (function(){
       + (CORR.length ? " · " + CORR.length + " answer" + (CORR.length > 1 ? "s" : "") + " of yours (click one to undo or change it)" : "");
   }
 
-  return { configure: configure, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
+  return { configure: configure, source: source, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
            kindOf: kindOf, markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
            NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
