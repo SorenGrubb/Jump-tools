@@ -11387,7 +11387,7 @@ async function stkNet(){
     const n = meta.n, q = meta.quant, o = meta.origin, pos = new Float32Array((n + 2 * meta.chains) * 3), rad = new Float32Array(n + 2 * meta.chains);
     let nFree = n; const DUP = new Map();               // extra points: a capped chain's own copy of a shared end (below)
     for (let i = 0; i < n; i++){ pos[i*3] = A.pos[i*3] * q + o[0]; pos[i*3+1] = A.pos[i*3+1] * q + o[1]; pos[i*3+2] = A.pos[i*3+2] * q + o[2]; rad[i] = A.rad[i] * meta.radius_unit; }
-    const CL = meta.classes, cls = A.cls;
+    const CL = meta.classes, cls = new Uint8Array(n + 2 * meta.chains); cls.set(A.cls.subarray(0, n));   // room for the end copies (DUP), which keep their class
     /* ── NO ARTERY JOINS A VEIN ──────────────────────────────────────────────────────  2026-11-04
        Søren: "For this arteriole, the flow is backwards" -- the eastern arteriole of the anastomosis at
        206894,84336,20490 -> 227779,84429,18046. Its trunk ran, in the skeleton, INTO a pial venule at
@@ -11439,13 +11439,17 @@ async function stkNet(){
          volume, piled up in them and spilled past the real wall. A radius is now held to what its class can be:
          capillaries 4 µm, arteriole-capillary transitions 6, capillary-venule transitions 7 (interior points; the
          ends belong to the vessels they join). */
-      { const CAP = { a1: 4, a2: 4, a3: 4, mid: 4, unk: 4, v3: 4, v2: 4, v1: 4, act: 6, cvt: 7 };
+      /* 2026-11-04, Søren: "Right here 333185, 86531, 11579, there is a lot of blood cells collecting." The
+         penetrating arterioles there were traced 21 µm in radius -- a 42 µm penetrating arteriole, twice the widest
+         real one (mouse cortex: about 10-25 µm across; Blinder et al. 2013 Nat Neurosci 16:889). Placed by volume,
+         red cells filled them and crawled. Penetrating arterioles are now held to 10 µm in radius, the same way. */
+      { const CAP = { a1: 4, a2: 4, a3: 4, mid: 4, unk: 4, v3: 4, v2: 4, v1: 4, act: 6, cvt: 7, pa: 10 };
         for (let c = 0; c < nc; c++){ const lim = CAP[CL[cc[c]]]; if (!lim) continue;
           for (let k = off[c]; k < off[c+1]; k++){ const i = cp[k]; if (rad[i] <= lim) continue;
             if (k === off[c] || k === off[c+1] - 1){
               /* an end is shared with the vessel it joins: this chain gets its own copy of the point, same place,
                  its own radius, still the same junction (jx below maps the copy to the original) */
-              const ni = nFree++; pos[ni*3] = pos[i*3]; pos[ni*3+1] = pos[i*3+1]; pos[ni*3+2] = pos[i*3+2]; rad[ni] = lim;
+              const ni = nFree++; pos[ni*3] = pos[i*3]; pos[ni*3+1] = pos[i*3+1]; pos[ni*3+2] = pos[i*3+2]; rad[ni] = lim; cls[ni] = cls[i];
               DUP.set(ni, DUP.has(i) ? DUP.get(i) : i); cp[k] = ni;
             } else rad[i] = lim; } } }
       const split = new Map();                            // point -> { art: [[c,e]], ven: [[c,e]], other }
@@ -11522,6 +11526,22 @@ async function stkNet(){
       const ka = cp[off[c]], kb = cp[off[c+1] - 1];
       ja[c] = AV_SPLIT.has(c + ":0") ? jxv(ka) : jx(ka); jb[c] = AV_SPLIT.has(c + ":1") ? jxv(kb) : jx(kb);
     }
+    /* ── ONE VESSEL TRACED TWICE ───────────────────────────────────────────────────  2026-11-04
+       Same place (333185, 86531, 11579): the skeleton has every vessel of that branch point twice -- two junctions
+       0 µm apart, joined by a 0 µm piece, and from each a copy of every vessel to the same far ends. Both copies
+       carried blood and both were filled with red cells: twice the cells in one place. Junctions joined by a piece
+       shorter than 1.5 µm count as one; between the same two junctions, pieces of the same class and about the same
+       length (within 35 %) are one vessel: the widest is kept, the others carry nothing (stkConductances) and so
+       take no red cells. */
+    const ghost = new Uint8Array(nc);
+    { const pj = new Int32Array(J.length).map((_, i) => i), fj = x => { while (pj[x] !== x){ pj[x] = pj[pj[x]]; x = pj[x]; } return x; };
+      for (let c = 0; c < nc; c++) if (len[c] < 1.5){ const a = fj(ja[c]), b = fj(jb[c]); if (a !== b) pj[a] = b; }
+      const grp = new Map();
+      for (let c = 0; c < nc; c++){ if (len[c] < 1.5) continue; const a = fj(ja[c]), b = fj(jb[c]); if (a === b) continue;
+        const k = Math.min(a, b) + "," + Math.max(a, b) + "," + ccls[c]; let l = grp.get(k); if (!l){ l = []; grp.set(k, l); } l.push(c); }
+      for (const l of grp.values()){ if (l.length < 2) continue;
+        l.sort((x, y) => G0[y] - G0[x]); const kept = [];
+        for (const c of l){ if (kept.some(d => Math.abs(len[d] - len[c]) <= 0.35 * Math.max(len[d], len[c]))) ghost[c] = 1; else kept.push(c); } } }
     const nJ = J.length, bcP = new Float64Array(nJ).fill(NaN), bcVen = new Uint8Array(nJ), bcPO2 = new Float32Array(nJ).fill(STK_PT);
     for (let k = 0; k < A.bcIdx.length; k++){ const j = jOf.get(A.bcIdx[k]); if (j != null){ bcP[j] = A.bcP[k] * 0.01 * 133.322; bcVen[j] = A.bcP[k] * 0.01 <= 12.5 ? 1 : 0; } }
     const deg = new Int32Array(nJ + 1); for (let c = 0; c < nc; c++){ deg[ja[c] + 1]++; deg[jb[c] + 1]++; }
@@ -11540,7 +11560,7 @@ async function stkNet(){
     const par = new Int32Array(nJ).map((_, i) => i), find = x => { while (par[x] !== x){ par[x] = par[par[x]]; x = par[x]; } return x; };
     const collat = [];
     for (const c of pial){ const a = find(ja[c]), b = find(jb[c]); if (a === b) collat.push(c); else par[a] = b; }
-    STK.net = { meta, n, pos, rad, cls, CL, nc, off, cp, bridge: BRIDGE, arc, G0, len, vol, ccls, mid, kind, autoR, ja, jb, J, nJ, bcP, bcVen, bcPO2, jdeg: deg, jc, hash, S, K, collat: new Set(collat) };
+    STK.net = { meta, n, pos, rad, cls, CL, nc, off, cp, bridge: BRIDGE, arc, G0, len, vol, ccls, mid, kind, autoR, ja, jb, J, nJ, bcP, bcVen, bcPO2, jdeg: deg, jc, hash, S, K, collat: new Set(collat), ghost };
     STK.kap = new Float32Array(nc); STK.dead = new Uint8Array(nc); STK.hypT = new Float32Array(nc);
     /* precapillary sphincters at PA branch points (Grubb et al. 2020) -- deterministic per piece */
     { const hash = x => { x = Math.imul(x ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
@@ -11655,8 +11675,41 @@ function stkBC(map){
       const k = N.ccls[N.jc[N.jdeg[j]]]; if (k !== paK && k !== actK) continue;
       const depth = Math.max(0, N.pos[N.J[j]*3+1] - PIA);
       bc[j] = Math.min(bc[j], N.pialP - 0.015 * depth * 133.322);
-      if (N.paCap && isFinite(N.paCap[j])) bc[j] = Math.min(bc[j], N.paCap[j]);
+      /* ── ITS TOP IN THE VOLUME, ITS CUT AT THE SIDE: CLOSED ─────────────────────────────  2026-11-04
+         Søren: "This penetrating arteriole has backwards flow, likely because it is near the edge of the dataset
+         235285, 92395, 8414." A penetrating arteriole whose pial arteriole is INSIDE the volume (reached within
+         800 µm along penetrating arterioles / transitions) and that is cut at the side lower down is fed from that
+         pial arteriole: what lies beyond the cut is downstream of it. Any pressure given to the cut either pushed
+         blood up into the pial arteriole or competed with it, so the cut is closed. Penetrating arterioles whose
+         top is outside the volume keep their inlet. */
+      if (!N.paLinked){
+        const partK = N.CL.indexOf("part"); N.paLinked = new Uint8Array(N.nJ);
+        for (let j2 = 0; j2 < N.nJ; j2++){
+          if (isNaN(N.bcP[j2]) || N.bcVen[j2] || N.jdeg[j2+1] <= N.jdeg[j2]) continue;
+          const k0 = N.ccls[N.jc[N.jdeg[j2]]]; if (k0 !== paK && k0 !== actK) continue;
+          const dist = new Map([[j2, 0]]), q = [[0, j2]];
+          while (q.length){ q.sort((a, b) => a[0] - b[0]); const [d, u] = q.shift(); if (d > dist.get(u)) continue;
+            let pial = false; for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++) if (N.ccls[N.jc[t]] === partK) pial = true;
+            if (pial && u !== j2){ N.paLinked[j2] = 1; break; }
+            for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++){ const c = N.jc[t]; if (N.ccls[c] !== paK && N.ccls[c] !== actK) continue;
+              const v = N.ja[c] === u ? N.jb[c] : N.ja[c], nd = d + N.len[c]; if (nd <= 800 && nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); q.push([nd, v]); } } }
+        }
+      }
+      if (N.paLinked[j]) bc[j] = NaN;
     }
+  }
+  /* ── A CAPILLARY CUT AT THE EDGE BELOW AN ARTERIOLE OF THE VOLUME IS AN OUTLET ─────────────  2026-11-04
+     Søren: "This penetrating arteriole has backwards flow, likely because it is near the edge of the dataset
+     235285, 92395, 8414." It was fed from BELOW: a first-order capillary leaving the box 300 µm down
+     (230656, 163075, 7968) had the fixed pressure of its class, 35 mmHg -- but the pial arterioles of this field have
+     already fallen to ~26 mmHg where that penetrating arteriole leaves them, so blood came in at the capillary, ran up
+     the penetrating arteriole and out into the pial arteriole. A cut end of the arterial side (a1-a3) whose own
+     arteriole is in the volume (pial arteriole reached within 800 µm along penetrating arteriole, transition, a1-a3)
+     lies DOWNSTREAM of that arteriole: its pressure is held 2 mmHg below what the network has there with the end
+     closed (stkArtEnds, once), so blood always leaves through it. */
+  if (N.artLinked){
+    for (let j = 0; j < N.nJ; j++){ if (!N.artLinked[j] || isNaN(bc[j])) continue;
+      if (STK._closeArt) bc[j] = NaN; else if (N.artCap && isFinite(N.artCap[j])) bc[j] = Math.min(bc[j], N.artCap[j]); }
   }
   for (let j = 0; j < N.nJ; j++) if (!isNaN(bc[j]) && !N.bcVen[j]) bc[j] = (10 + (bc[j] / 133.322 - 10) * f) * 133.322;
   /* ICP (section 43): no vessel in the skull can hold a pressure below it -- the veins (and the box's open capillary
@@ -11771,6 +11824,7 @@ function stkConductances(base){
       Rs += 8 * 1.2e-3 * stkVisc(2 * sp.rs, hd) * sp.L / (Math.PI * sp.rs ** 4);
     }
     G[c] = Rs > 0 ? 1 / Rs : 0;
+    if (N.ghost && N.ghost[c]) G[c] *= 1e-6;                                   // the second tracing of one vessel (stkNet)
     if (!base && STK.stall && STK.stall.has(c)) G[c] *= 1e-3;
     if (!base && WBC.stall.size && WBC.stall.has(c)) G[c] *= 1e-3;            // a white cell stuck in it (section 43)
   }
@@ -11936,10 +11990,30 @@ async function stkPaCap(){
     if (!n) break;
   }
 }
+/* the arterial-side capillary cut ends below an arteriole of the volume (see stkBC) */
+async function stkArtEnds(){
+  const N = STK.net, partK = N.CL.indexOf("part"), ART = new Set(["pa", "act", "a1", "a2", "a3"].map(k => N.CL.indexOf(k))), CAPK = new Set(["a1", "a2", "a3"].map(k => N.CL.indexOf(k)));
+  N.artLinked = new Uint8Array(N.nJ); N.artCap = new Float64Array(N.nJ).fill(NaN);
+  let any = false;
+  for (let j = 0; j < N.nJ; j++){
+    if (isNaN(N.bcP[j]) || N.bcVen[j] || (N.pialIn && N.pialIn[j]) || N.jdeg[j+1] <= N.jdeg[j]) continue;
+    if (!CAPK.has(N.ccls[N.jc[N.jdeg[j]]])) continue;
+    const dist = new Map([[j, 0]]), q = [[0, j]];
+    while (q.length){ q.sort((a, b) => a[0] - b[0]); const [d, u] = q.shift(); if (d > dist.get(u)) continue;
+      let pial = false; for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++) if (N.ccls[N.jc[t]] === partK) pial = true;
+      if (pial && u !== j){ N.artLinked[j] = 1; any = true; break; }
+      for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++){ const c = N.jc[t]; if (!ART.has(N.ccls[c])) continue;
+        const v = N.ja[c] === u ? N.jb[c] : N.ja[c], nd = d + N.len[c]; if (nd <= 800 && nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); q.push([nd, v]); } } }
+  }
+  if (!any) return;
+  STK._closeArt = true;
+  let r; try { r = await stkSolve(stkConductances(true), null, stkBC(90)); } finally { STK._closeArt = false; }
+  for (let j = 0; j < N.nJ; j++) if (N.artLinked[j] && isFinite(r.p[j])) N.artCap[j] = r.p[j] - 2 * 133.322;
+}
 async function stkBaseline(){
   const N = STK.net; STK.H = new Float32Array(N.nc).fill(0.3);
-  if (!N.paCap) await stkPaCap();
   if (!STK.anCal) await stkAnCalibrate();
+  if (!N.artCap) await stkArtEnds();                    // after the anastomosis calibration: it moves the inlets these ends hang from
   let r = null;
   for (let it = 0; it < 3; it++){ r = await stkSolve(stkConductances(true), r ? r.p : null, stkBC(90)); stkHct(r.Q, r.p); }
   STK.Q0 = r.Q; STK.p0 = r.p; STK.H0 = Float32Array.from(STK.H); STK.bcOut = null;
