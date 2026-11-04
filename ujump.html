@@ -662,6 +662,12 @@ function ujVrPointsSay(el, msg, bad){
 <script src="core/tools.js"></script>
 <script src="core/forum.js"></script>
 <script src="core/panel.js"></script>
+<!-- THE AXON INITIAL SEGMENT, 2026-11-04 -- core/ais.js reads data/ais/minnie65/ (made by
+     minnie65_skeletons_ais.ipynb from the MICrONS skeletons); no files there, no row. -->
+<script src="core/ais.js"></script>
+<script>UJ.ais.configure({ base: "data/ais/minnie65/" });</script>
+<!-- SKELETONS, 2026-11-04 -- core/skel.js reads MICrONS' public v1300 SWC files (no sign-in). -->
+<script src="core/skel.js"></script>
 <script src="core/tree.js"></script>
 <script src="core/report.js"></script>
 <script src="core/stepthrough.js"></script>
@@ -6110,7 +6116,7 @@ function showNucleus(pos){
     if(locOnlyBtnFar)locOnlyBtnFar.addEventListener("click",()=>openLocationOnlyReport(pos));
   }
   try{loadRecActPanel("recActPanel",root,nid,own?own.type:(ti.cls?longName(ti.name):"Cell"));}catch(_e){}
-  window.CUR_POS=pos;loadCommunityReports(nid,pos);loadRootIdPanel(nid);loadIdentityVotesPanel(nid,[ti&&ti.name,(own&&own.fine)]);loadClassificationHistory(nid);
+  window.CUR_POS=pos;loadCommunityReports(nid,pos);if(window.UJ&&UJ.ais)UJ.ais.panel(nid);if(window.UJ&&UJ.skel&&root)UJ.skel.panel(root);loadRootIdPanel(nid);loadIdentityVotesPanel(nid,[ti&&ti.name,(own&&own.fine)]);loadClassificationHistory(nid);
   /* cellType/nucleusId (2026-08-09, "every time a user looks at the connectivity, the data
      should be added to the graph") -- same own-verified > MICrONS-prediction > "Unclassified"
      precedence save_computed_volume already uses for its own cellType, so a cell's connectivity
@@ -6202,6 +6208,10 @@ function buildState(pos){
      µJump itself is in light mode, Neuroglancer's normal dark default otherwise. Applies to both
      the 2D cross-section slice panels and the 3D perspective panel -- confirmed against
      Neuroglancer's own JSON state schema (both keys accept a plain hex string). */
+  /* The computed axon initial segment of the cell on screen (core/ais.js), once its file has been read. */
+  try{ var _ais=(window.UJ&&UJ.ais&&CUR_NUCID)?UJ.ais.layer(CUR_NUCID):null; if(_ais)layers.push(_ais); }catch(_e){}
+  /* Its skeleton (core/skel.js), once the reader has asked for it with the panel's button. */
+  try{ if(window.UJ&&UJ.skel&&CUR_ROOT&&UJ.skel.wanted(CUR_ROOT)){ var _sk=UJ.skel.cached(CUR_ROOT); if(_sk)layers.push.apply(layers,UJ.skel.ngLayers(_sk,[UJ_RX,UJ_RY,UJ_RZ])); } }catch(_e){}
   const _st={dimensions:DIM,position:pos,crossSectionScale:3.0,projectionScale:PROJECTION_SCALE(CUR_IS_NEURON),...PROJ_ORIENT(),layers,selectedLayer:{layer:layers[0].name,visible:true},layout:{type:"xy-3d",orthographicProjection:true},showDefaultAnnotations:false,crossSectionBackgroundColor:ngBgColor(),perspectiveViewBackgroundColor:ngBgColor()};
   /* The organelle a Jump was about, if this is the coordinate it was about. One call at the one
      place every link on this page comes from, rather than at each of the places that ask for one

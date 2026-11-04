@@ -300,6 +300,7 @@
       <option value="full">Detail: full (PC only — millions of triangles per cell)</option>
     </select>
     <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
+    <button id="skelBtn" title="Each MICrONS cell's skeleton, read from MICrONS' public files: red axon (proofread cells only), blue basal dendrites, purple apical dendrite, white soma">Skeletons</button>
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
     <button id="glassOthers" title="Keep the picked cell (or the cells you have marked solid) as they are and make every other cell see-through — they stay in place as context">Others see-through</button>
     <button id="glassClear" title="Make every cell solid again">All solid</button>
@@ -911,7 +912,7 @@
 
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
-    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
+    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
     layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
@@ -979,7 +980,7 @@
 
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
-    ["view", "eye", "View", [["detail"], ["nucBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
+    ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
@@ -1289,6 +1290,7 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="core/mesh.js"></script>
+<script src="core/skel.js"></script>
 <script src="core/nucmesh.js"></script>
 <script src="core/segread.js"></script>
 <script src="core/segpaint.js"></script>
@@ -8253,6 +8255,35 @@ document.getElementById("detail").addEventListener("change", () => {
 });
 function setNuclei(v){ SHOW_NUC = v; document.getElementById("nucBtn").classList.toggle("on", v); applyLook(); }
 document.getElementById("nucBtn").addEventListener("click", () => setNuclei(!SHOW_NUC));
+/* ── SKELETONS, 2026-11-04 ───────────────────────────────────────────────────────────────────
+   Søren: "we need to get all the skeletons also, so we can use them to show in our Neuroglancer
+   instance or in VR." Nothing is hosted: core/skel.js reads each MICrONS cell's v1300 SWC from
+   MICrONS' public bucket, by the cell's root id. The SWC is in µm in the volume's own frame -- the
+   frame the meshes are in -- so it goes into `content` beside the mesh as it is. A proofread cell has
+   its axon; every other cell only its dendrites (MICrONS leaves unproofread axons out). Other
+   datasets have no skeletons here, and are skipped. (SKEL, further up, is the VESSEL skeleton.) */
+const SKL = { on: false, objs: new Map(), timer: 0 };
+function skelSync(){
+  for (const [c, o] of SKL.objs) if (!SKL.on || !c.mesh || CELLS.indexOf(c) < 0){ content.remove(o); o.geometry.dispose(); o.material.dispose(); SKL.objs.delete(c); }
+  if (!SKL.on || !(window.UJ && UJ.skel)) return;
+  for (const c of CELLS){
+    if (!c.mesh || SKL.objs.has(c) || c.skelAsked || c.skelNone || (c.ds || "microns") !== "microns" || !/^\d+$/.test(String(c.root || ""))) continue;
+    c.skelAsked = true;
+    UJ.skel.get(c.root).then(sk => {
+      c.skelAsked = false;
+      if (!sk){ c.skelNone = true; return; }
+      if (!SKL.on || !c.mesh || SKL.objs.has(c)) return;
+      const o = UJ.skel.threeLines(sk, THREE); o.userData.context = true; o.userData.skelOf = c.i;
+      content.add(o); SKL.objs.set(c, o);
+    });
+  }
+}
+function setSkeletons(v){
+  SKL.on = v; document.getElementById("skelBtn").classList.toggle("on", v);
+  clearInterval(SKL.timer); SKL.timer = v ? setInterval(skelSync, 2000) : 0;
+  skelSync();
+}
+document.getElementById("skelBtn").addEventListener("click", () => setSkeletons(!SKL.on));
 function syncVisChecks(){ renderList(); }
 function setCellGlass(list, v){
   list.forEach(c => { if (c) c.glass = !!v; });
@@ -16055,7 +16086,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
