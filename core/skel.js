@@ -162,9 +162,10 @@
       if (sk === null)   // no skeleton published: the link opens Neuroglancer at the AIS instead
         label = '<a href="#" class="aisview idf-back" data-nid="' + nid + '" data-x="' + s0[0] + '" data-y="' + s0[1] + '" data-z="' + s0[2]
           + '" style="margin:0;font-size:inherit;font-weight:700" title="Opens Neuroglancer at the start of the axon initial segment, drawn as an orange line">Skeleton \u2197</a>';
-      aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> <b>Axon initial segment</b> marked in orange (computed from the skeleton): '
+      aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> <b>Axon initial segment</b> marked in orange' + (ais.src === "mark" ? ': ' : ' (computed from the skeleton): ')
         + (UJ.ais.describe ? UJ.ais.describe(ais) : "");
     }
+    if (!aisTxt && nid && window.UJ.ais && UJ.ais.status) { var st = UJ.ais.status(nid); if (st) aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> ' + st; }
     host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn + aisTxt;
   }
   document.addEventListener("click", function (e) {
