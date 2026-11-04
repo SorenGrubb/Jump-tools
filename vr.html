@@ -1121,6 +1121,13 @@ window.VR_DATASETS = {
        the penetrating arteriole between them. Its two sides are balanced so the watershed sits at mid, and the
        inlet pressures then swing so its flow turns over now and then; activity on one side pulls it that way. */
     anastomoses: [{ a: [206894, 84336, 20490], b: [227779, 84429, 18046], mid: [219568, 85684, 19170], period: 40 }],
+    /* Vessels the skeleton labels wrongly (Søren, 2026-11-04), two points on each in µJump voxels and the real class. */
+    vesselFix: [{ a: [300830, 84629, 18727], b: [329769, 86478, 14580], cls: "pven" },
+      /* the short piece 259837,80894 -> 268544,80637 that feeds the pial arteriole at 256172,82434,10799 from the trunk
+         at 271496,80330,13976: labelled venule, so it was cut off and that arteriole had no flow */
+      { at: [264194, 80381, 13184], cls: "part" },
+      /* ...and that trunk itself: the artery beside the pial venule from 268544,80637,13888 to 306175,80381,13440 */
+      { link: [[268544, 80637, 13888], [306175, 80381, 13440]] }],
     pvsMesh: "data/pvs/v1/pvs_mesh.bin",
     pvsNg: "data/pvs/v1/ng/",
     pvsVr: "data/pvs/v1/vr/",
@@ -11344,7 +11351,7 @@ document.getElementById("csdAgain").addEventListener("click", () => { if (CSD.on
    A CLOT closes the piece between its two branch points (conductance × 10⁻⁴). Pial COLLATERALS: pial-
    artery pieces that close a loop (outside the widest spanning tree), gold; off = closed. */
 const STK = { on: false, net: null, netP: null, clots: [], arm: false, collat: true, rbc: true, colour: true, plot: true, sd: true,
-              map: 90, auto: true, pialEq: true, pialCloseR: 6, pialWob: 1, pialWobT: 0, anSwing: true, k: 1, kSolved: 1, lam: 0.06, pulse: true, peri: true, hyp: true, hypThr: 10, cmode: "auto",
+              map: 90, auto: true, pialEq: true, pialCloseR: 6, pialWob: 0, pialWobT: 0, anSwing: true, k: 1, kSolved: 1, lam: 0.06, pulse: true, peri: true, hyp: true, hypThr: 10, cmode: "auto",
               Q0: null, p0: null, Q: null, p: null, Si: null, So: null, solving: false, again: false, dirty: false, lastSolveW: 0, t: 0, hist: [],
               cs: new Map(), vmap: null, vmapFor: null, rbcMesh: null, parts: null, clotGrp: null, colGrp: null, pockMesh: null, cv: null, spr: null,
               note: "", prevColour: null, wallOp: null, firstAD: false, inBox: null, box: null, grid: null, kap: null, dead: null, hypT: null, kapSolved: 0,
@@ -11377,7 +11384,8 @@ async function stkNet(){
     const buf = await (await fetch(base + "flow.bin")).arrayBuffer();
     const A = {};
     for (const l of meta.layout){ const T = { uint16: Uint16Array, uint8: Uint8Array, uint32: Uint32Array }[l.dtype]; A[l.name] = new T(buf, l.offset, l.count); }
-    const n = meta.n, q = meta.quant, o = meta.origin, pos = new Float32Array(n * 3), rad = new Float32Array(n);
+    const n = meta.n, q = meta.quant, o = meta.origin, pos = new Float32Array((n + 2 * meta.chains) * 3), rad = new Float32Array(n + 2 * meta.chains);
+    let nFree = n; const DUP = new Map();               // extra points: a capped chain's own copy of a shared end (below)
     for (let i = 0; i < n; i++){ pos[i*3] = A.pos[i*3] * q + o[0]; pos[i*3+1] = A.pos[i*3+1] * q + o[1]; pos[i*3+2] = A.pos[i*3+2] * q + o[2]; rad[i] = A.rad[i] * meta.radius_unit; }
     const CL = meta.classes, cls = A.cls;
     /* ── NO ARTERY JOINS A VEIN ──────────────────────────────────────────────────────  2026-11-04
@@ -11393,12 +11401,53 @@ async function stkNet(){
             venous chains within 400 µm, the two are joined by an arterial piece -- the artery that ran beside
             the vein -- with the narrower end's radius and the venous path's length. */
     let nc = meta.chains, off = A.chainOff, cp = A.chainPts;
-    const AV_SPLIT = new Set(), BRIDGE = new Set();      // "c:end" keys whose end gets its own junction; bridge chains
+    const AV_SPLIT = new Set(), BRIDGE = new Set(), RELAB_ALL = new Map();      // "c:end" keys whose end gets its own junction; bridge chains
     { const ARTK = new Set(["part", "pa", "act"].map(k => CL.indexOf(k))), VENK = new Set(["pven", "pcv", "av", "cvt"].map(k => CL.indexOf(k)));
       const cc = new Int16Array(nc), cntK = new Float32Array(CL.length);
       for (let c = 0; c < nc; c++){ cntK.fill(0); for (let k = off[c]; k < off[c+1]; k++) cntK[cls[cp[k]]]++; let bi = 0; for (let k = 1; k < CL.length; k++) if (cntK[k] > cntK[bi]) bi = k; cc[c] = bi; }
       const atPt = new Map(); const addE = (i, c, e) => { let l = atPt.get(i); if (!l){ l = []; atPt.set(i, l); } l.push([c, e]); };
       for (let c = 0; c < nc; c++){ addE(cp[off[c]], c, 0); addE(cp[off[c+1] - 1], c, 1); }
+      const clen0 = c => { let L = 0; for (let k = off[c]; k < off[c+1] - 1; k++){ const a = cp[k], b = cp[k+1]; L += Math.hypot(A.pos[a*3]-A.pos[b*3], A.pos[a*3+1]-A.pos[b*3+1], A.pos[a*3+2]-A.pos[b*3+2]) * meta.quant; } return L; };
+      /* ── A VESSEL WHOSE LABEL IS WRONG ──────────────────────────────────────────────  2026-11-04
+         Søren: "The flow in one of the pial venules is not working between here 300830, 84629, 18727 and here
+         329769, 86478, 14580." Most of that venule was labelled pial ARTERIOLE in the skeleton, so separating the
+         artery-vein junctions (below) cut it into pieces. DSX.vesselFix names such a vessel by two points on it (µJump
+         voxels) and the class it really is: every chain on the shortest path between them takes that class first. */
+      const RELAB = new Map();
+      for (const F of (DSX.vesselFix || [])){
+        const k = CL.indexOf(F.cls); if (k < 0) continue;
+        const qn = v => [v[0] * 0.004, v[1] * 0.004, v[2] * 0.04];
+        const chainNear = q => { let best = -1, bd = 30; for (let c = 0; c < nc; c++) for (let kk = off[c]; kk < off[c+1]; kk++){ const i = cp[kk];
+          const d = Math.hypot(A.pos[i*3] * meta.quant + meta.origin[0] - q[0], A.pos[i*3+1] * meta.quant + meta.origin[1] - q[1], A.pos[i*3+2] * meta.quant + meta.origin[2] - q[2]); if (d < bd){ bd = d; best = c; } } return best; };
+        if (F.at){ const c1 = chainNear(qn(F.at)); if (c1 >= 0){ cc[c1] = k; RELAB.set(c1, k); } continue; }   // one chain, by a point on it
+        const ca = chainNear(qn(F.a)), cb = chainNear(qn(F.b)); if (ca < 0 || cb < 0) continue;
+        const ends = c => [cp[off[c]], cp[off[c+1] - 1]];
+        const dist = new Map(), prevC = new Map(), q = [];
+        for (const e of ends(ca)){ dist.set(e, 0); q.push([0, e]); }
+        const goal = new Set(ends(cb)); let hit = -1;
+        while (q.length){ q.sort((x, y) => x[0] - y[0]); const [d, u] = q.shift(); if (d > dist.get(u)) continue; if (goal.has(u)){ hit = u; break; }
+          for (const [c, e] of atPt.get(u) || []){ const v = e === 0 ? cp[off[c+1] - 1] : cp[off[c]], nd = d + clen0(c);
+            if (nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); prevC.set(v, [u, c]); q.push([nd, v]); } } }
+        const path = [ca, cb]; let u = hit; while (prevC.has(u)){ const [w, c] = prevC.get(u); path.push(c); u = w; }
+        path.forEach(c => { cc[c] = k; RELAB.set(c, k); });
+      }
+      RELAB.forEach((v, c) => RELAB_ALL.set(c, v));
+      /* ── NO CAPILLARY 50 µm WIDE ──────────────────────────────────────────────────────  2026-11-04
+         Søren: "Around 147873, 106132, 12676 it seems like the blood is flowing outside of the ascending venule."
+         Where the skeleton has several branches inside one wide traced vessel, each took the traced lumen's radius
+         (within 12 µm), so short capillary-venule transitions there were 25 µm in radius -- red cells, placed by
+         volume, piled up in them and spilled past the real wall. A radius is now held to what its class can be:
+         capillaries 4 µm, arteriole-capillary transitions 6, capillary-venule transitions 7 (interior points; the
+         ends belong to the vessels they join). */
+      { const CAP = { a1: 4, a2: 4, a3: 4, mid: 4, unk: 4, v3: 4, v2: 4, v1: 4, act: 6, cvt: 7 };
+        for (let c = 0; c < nc; c++){ const lim = CAP[CL[cc[c]]]; if (!lim) continue;
+          for (let k = off[c]; k < off[c+1]; k++){ const i = cp[k]; if (rad[i] <= lim) continue;
+            if (k === off[c] || k === off[c+1] - 1){
+              /* an end is shared with the vessel it joins: this chain gets its own copy of the point, same place,
+                 its own radius, still the same junction (jx below maps the copy to the original) */
+              const ni = nFree++; pos[ni*3] = pos[i*3]; pos[ni*3+1] = pos[i*3+1]; pos[ni*3+2] = pos[i*3+2]; rad[ni] = lim;
+              DUP.set(ni, DUP.has(i) ? DUP.get(i) : i); cp[k] = ni;
+            } else rad[i] = lim; } } }
       const split = new Map();                            // point -> { art: [[c,e]], ven: [[c,e]], other }
       for (const [i, l] of atPt){
         const art = l.filter(([c]) => ARTK.has(cc[c])), ven = l.filter(([c]) => VENK.has(cc[c]));
@@ -11423,11 +11472,21 @@ async function stkNet(){
             const pi = P3(i), pu = P3(u), w = [pu[0] - pi[0], pu[1] - pi[1], pu[2] - pi[2]], L = Math.hypot(...w) || 1;
             const di = outDir(i), du = outDir(u), c1 = (di[0] * w[0] + di[1] * w[1] + di[2] * w[2]) / L, c2 = -(du[0] * w[0] + du[1] * w[1] + du[2] * w[2]) / L;
             if (c1 > 0.3 && c2 > 0.3) cand.push([d / (c1 + c2), i, u, d]); }
-          for (const [c, e] of atPt.get(u) || []){ if (!VENK.has(cc[c])) continue; const v = e === 0 ? cp[off[c+1] - 1] : cp[off[c]], nd = d + clen(c);
+          for (const [c, e] of atPt.get(u) || []){ if (!VENK.has(cc[c])) continue; let v = e === 0 ? cp[off[c+1] - 1] : cp[off[c]]; if (DUP.has(v)) v = DUP.get(v); const nd = d + clen(c);
             if (nd <= 400 && nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); q.push([nd, v]); } } }
       }
       cand.sort((a, b) => a[0] - b[0]);
       const extra = [], done = new Set();
+      /* links named by hand first (DSX.vesselFix {link: [p, q]}): the nearest chain ends to the two points are joined by
+         an arterial piece -- an artery that ran beside a vein, where the automatic pairing cannot see it */
+      for (const F of (DSX.vesselFix || [])){
+        if (!F.link) continue;
+        const endNear = v => { const q = [v[0] * 0.004, v[1] * 0.004, v[2] * 0.04]; let best = -1, bd = 25;
+          for (const [i] of atPt){ const d = Math.hypot(A.pos[i*3] * meta.quant + meta.origin[0] - q[0], A.pos[i*3+1] * meta.quant + meta.origin[1] - q[1], A.pos[i*3+2] * meta.quant + meta.origin[2] - q[2]); if (d < bd){ bd = d; best = i; } }
+          return best; };
+        const i = endNear(F.link[0]), u = endNear(F.link[1]);
+        if (i >= 0 && u >= 0 && i !== u){ const pi = P3(i), pu = P3(u); done.add(i); done.add(u); extra.push([i, u, Math.hypot(pu[0] - pi[0], pu[1] - pi[1], pu[2] - pi[2])]); }
+      }
       for (const [, i, u, d] of cand){ if (done.has(i) || done.has(u)) continue; done.add(i); done.add(u); extra.push([i, u, d]); }
       if (extra.length){
         const off2 = new Uint32Array(nc + extra.length + 1), cp2 = new Uint32Array(cp.length + extra.length * 2);
@@ -11441,8 +11500,8 @@ async function stkNet(){
     const mid = new Float32Array(nc * 3), kind = new Uint8Array(nc), autoR = new Uint8Array(nc);
     const jOf = new Map(), J = [];
     const ja = new Int32Array(nc), jb = new Int32Array(nc);
-    const jx = i => { let v = jOf.get(i); if (v == null){ v = J.length; jOf.set(i, v); J.push(i); } return v; };
-    const jxv = i => { let v = jOf.get(-(i + 1)); if (v == null){ v = J.length; jOf.set(-(i + 1), v); J.push(i); } return v; };
+    const jx = i => { if (DUP.has(i)) i = DUP.get(i); let v = jOf.get(i); if (v == null){ v = J.length; jOf.set(i, v); J.push(i); } return v; };
+    const jxv = i => { if (DUP.has(i)) i = DUP.get(i); let v = jOf.get(-(i + 1)); if (v == null){ v = J.length; jOf.set(-(i + 1), v); J.push(i); } return v; };
     for (let c = 0; c < nc; c++){
       let Rs = 0, L = 0, V = 0; const cnt = new Float32Array(CL.length);
       arc[off[c]] = 0;
@@ -11455,6 +11514,7 @@ async function stkNet(){
       G0[c] = Rs > 0 ? 1 / Rs : 0; len[c] = L; vol[c] = V;
       let bi = 0; for (let k = 1; k < CL.length; k++) if (cnt[k] > cnt[bi]) bi = k;
       if (BRIDGE.has(c)) bi = CL.indexOf("part");          // the artery beside the vein (above)
+      if (RELAB_ALL.has(c)) bi = RELAB_ALL.get(c);           // a vessel labelled wrongly (DSX.vesselFix)
       ccls[c] = bi;
       const pr = STK_CLS[CL[bi]] || STK_CLS.unk; kind[c] = pr[0]; autoR[c] = pr[1];
       const im = cp[off[c] + ((off[c+1] - off[c]) >> 1)]; mid[c*3] = pos[im*3]; mid[c*3+1] = pos[im*3+1]; mid[c*3+2] = pos[im*3+2];
@@ -11535,6 +11595,24 @@ function stkBC(map){
     if (!N.pialIn || N.pialInR !== STK.pialCloseR){ const m = new Uint8Array(N.nJ); let pm = 0;
       for (let j = 0; j < N.nJ; j++){ if (isNaN(bc[j]) || N.bcVen[j] || N.jdeg[j+1] <= N.jdeg[j]) continue; const c = N.jc[N.jdeg[j]]; if (N.CL[N.ccls[c]] !== "part") continue;
         const rr = []; for (let k = N.off[c]; k < N.off[c+1]; k++) rr.push(N.rad[N.cp[k]]); rr.sort((x, y) => x - y); const rm = rr[rr.length >> 1];
+        /* ── A CUT END INSIDE THE TISSUE IS NOT AN INLET ─────────────────────────────  2026-11-04
+           Søren: "a place around 191589, 80899, 23486 where red blood cells come into existence, while there is very
+           little coming in from the border of the dataset around 183110, 77842, 26908 and very little flows backwards
+           through 188086, 80650, 23918." The "cut end" there was a 2 µm stub 212 µm from any edge -- a break in the
+           skeleton, not the edge of the data -- and as an inlet it fed the trunk from the middle. A trunk end is an
+           inlet only if the vessels STOP beyond it: 20-80 µm on, straight out from the end, the network has (almost)
+           nothing, as at the edge of the data. Where the tissue's vessels carry on, the end is closed. */
+        const i0 = N.J[j], kIn = N.ja[c] === j ? Math.min(N.off[c+1] - 1, N.off[c] + 6) : Math.max(N.off[c], N.off[c+1] - 7), i1 = N.cp[kIn];
+        let dx = N.pos[i0*3] - N.pos[i1*3], dy = N.pos[i0*3+1] - N.pos[i1*3+1], dz = N.pos[i0*3+2] - N.pos[i1*3+2], dl = Math.hypot(dx, dy, dz);
+        let beyond = 0;
+        if (dl > 0.5){ dx /= dl; dy /= dl; dz /= dl;
+          for (let t = 20; t <= 80; t += 15){ const x = N.pos[i0*3] + dx * t, y = N.pos[i0*3+1] + dy * t, z = N.pos[i0*3+2] + dz * t;
+            const gx = Math.floor(x / N.S), gy = Math.floor(y / N.S), gz = Math.floor(z / N.S); let any = false;
+            for (let a = -1; a <= 1 && !any; a++) for (let b = -1; b <= 1 && !any; b++) for (let d = -1; d <= 1 && !any; d++){
+              const l = N.hash.get(N.K(gx + a, gy + b, gz + d)); if (l && l.length) any = true; }
+            if (any) beyond++; } }
+        N.pialInside = N.pialInside || new Uint8Array(N.nJ);
+        if (beyond >= 3){ m[j] = 2; N.pialInside[j] = 1; continue; }
         if (rm < (STK.pialCloseR || 0)) m[j] = 2; else { m[j] = 1; pm = Math.max(pm, bc[j]); }
         (N.pialW || (N.pialW = new Float32Array(N.nJ)))[j] = Math.min(70, 45 + 0.25 * 2 * rm) * 133.322; }
       /* Hand-set roles (DSX.pialEnds): the nearest arterial cut end within 40 µm. */
@@ -11563,6 +11641,21 @@ function stkBC(map){
           bc[j] += a.off[k] + (STK.anSwing && !STK.anFreeze ? a.swing[k] * Math.sin(6.2832 * tt / a.period) : 0); } }
       else if (N.pialIn[j] === 2) bc[j] = NaN;
       else if (N.pialIn[j] === 3) bc[j] = 0.75 * N.pialP;
+    }
+  }
+  /* ── A PENETRATING ARTERIOLE CUT AT DEPTH IS NOT ABOVE THE PIAL PRESSURE ───────────────  2026-11-04
+     Søren: "a bit of flow is coming from around 243484, 86519, 8041, which does not make sense". A penetrating
+     arteriole (or transition) leaving the side of the volume deep down got 45 + 0.25·D mmHg, the pial value -- more
+     than the pial trunk it hangs from, so blood ran UP it into the pial arteriole. Its pressure there is what is left
+     after the descent: the pial inlet pressure less 0.015 mmHg per µm of depth (about 7 mmHg at 500 µm). */
+  if (STK.pialEq && N.pialP){
+    const PIA = 350, paK = N.CL.indexOf("pa"), actK = N.CL.indexOf("act");
+    for (let j = 0; j < N.nJ; j++){
+      if (isNaN(bc[j]) || N.bcVen[j] || N.pialIn[j] || N.jdeg[j+1] <= N.jdeg[j]) continue;
+      const k = N.ccls[N.jc[N.jdeg[j]]]; if (k !== paK && k !== actK) continue;
+      const depth = Math.max(0, N.pos[N.J[j]*3+1] - PIA);
+      bc[j] = Math.min(bc[j], N.pialP - 0.015 * depth * 133.322);
+      if (N.paCap && isFinite(N.paCap[j])) bc[j] = Math.min(bc[j], N.paCap[j]);
     }
   }
   for (let j = 0; j < N.nJ; j++) if (!isNaN(bc[j]) && !N.bcVen[j]) bc[j] = (10 + (bc[j] / 133.322 - 10) * f) * 133.322;
@@ -11749,7 +11842,7 @@ async function stkUpdate(){
    flow never turned. For each anastomosis in DSX.anastomoses: the flow in its half from mid to b is linear in the
    inlet pressures, Q = Q0 + sum s_j dP_j; one adjoint solve gives every s_j. The inlets are moved along s (at most
    8 mmHg each) until Q = 0 -- the watershed at the penetrating arteriole -- and then swing along s with the
-   anastomosis's period, enough to send half of the side's flow across each way. Activity dilating the vessels on
+   anastomosis's period, enough to send the side's flow across each way (at most 6 mmHg per inlet). Activity dilating the vessels on
    one side (neurovascular coupling) moves the watershed on top of that. */
 async function stkPcg(G, bc, rhsFree){             // A x = rhsFree on the free junctions, Dirichlet 0 at the BCs
   const N = STK.net, nJ = N.nJ, ja = N.ja, jb = N.jb, nc = N.nc, diag = new Float64Array(nJ);
@@ -11799,7 +11892,10 @@ async function stkAnCalibrate(){
     const r0 = await stkSolve(G, null, bc0), Q0 = g * (r0.p[jm] - r0.p[jf]);
     const s2 = sj.reduce((a, v) => a + v * v, 0) || 1, cap = 10 * 133.322;
     /* least change that balances it, each inlet held within ±10 mmHg: what a capped inlet cannot take, the others do */
-    const off = sj.map(() => 0), free = sj.map(() => true);
+    /* only the inlets that matter to this anastomosis move (|s| at least a tenth of the largest): moving a far inlet
+       a little against its neighbour on the same wide trunk sent tens of times the anastomosis's flow between them */
+    const smax = Math.max(...sj.map(Math.abs)) || 1;
+    const off = sj.map(() => 0), free = sj.map(v => Math.abs(v) >= 0.1 * smax);
     for (let round = 0; round < 8; round++){
       const resid = Q0 + sj.reduce((a, v, k) => a + v * off[k], 0); if (Math.abs(resid) < 1e-6 * Math.abs(Q0 || 1)) break;
       const fs2 = sj.reduce((a, v, k) => a + (free[k] ? v * v : 0), 0); if (!fs2) break;
@@ -11807,14 +11903,42 @@ async function stkAnCalibrate(){
     }
     /* the swing: half the flow the side carries, both ways, at most 4 mmHg per inlet */
     let qSide = 0; for (let t = N.jdeg[jf]; t < N.jdeg[jf+1]; t++) qSide = Math.max(qSide, Math.abs(r0.Q[N.jc[t]]));
-    const amp = 0.5 * Math.max(Math.abs(Q0), qSide), swing = sj.map(v => Math.max(-4 * 133.322, Math.min(4 * 133.322, amp * v / s2)));
+    const fs2 = sj.reduce((a, v, k) => a + (Math.abs(v) >= 0.1 * smax ? v * v : 0), 0) || 1;
+    const amp = 1.0 * Math.max(Math.abs(Q0), qSide), swing = sj.map(v => Math.abs(v) < 0.1 * smax ? 0 : Math.max(-6 * 133.322, Math.min(6 * 133.322, amp * v / fs2)));
     cal.push({ idx: new Map(inl.map((j, k) => [j, k])), off, swing, period: A.period || 40, cB, jm, Q0 });
     console.info("[vr] anastomosis balanced: " + (Q0 / 1e6).toFixed(2) + " -> 0 (offsets up to " + (Math.max(...off.map(Math.abs)) / 133.322).toFixed(1) + " mmHg)");
   }
   STK.anCal = cal.length ? cal : null;
 }
+/* ── NOR ABOVE THE PIAL ARTERIOLE IT HANGS FROM ──────────────────────────────────────  2026-11-04
+   (Søren, same report: "a bit of flow is coming from around 243484, 86519, 8041".) The penetrating arteriole there
+   leaves the volume's side only ~90 µm down, so the depth rule above barely lowers it -- but the pial arteriole it
+   hangs from runs ~10 mmHg lower than the inlet pressure, so it still pushed blood UP. After one solve, every such cut
+   end whose penetrating arteriole reaches a pial arteriole within 800 µm is held 1 mmHg below the pressure found
+   there (twice, as the pial pressures settle), so it can only take blood from it, never feed it. */
+async function stkPaCap(){
+  const N = STK.net, paK = N.CL.indexOf("pa"), actK = N.CL.indexOf("act"), partK = N.CL.indexOf("part");
+  N.paCap = new Float64Array(N.nJ).fill(NaN);
+  for (let round = 0; round < 2; round++){
+    const r = await stkSolve(stkConductances(true), null, stkBC(90));
+    let n = 0;
+    for (let j = 0; j < N.nJ; j++){
+      if (isNaN(N.bcP[j]) || N.bcVen[j] || (N.pialIn && N.pialIn[j]) || N.jdeg[j+1] <= N.jdeg[j]) continue;
+      const k0 = N.ccls[N.jc[N.jdeg[j]]]; if (k0 !== paK && k0 !== actK) continue;
+      const dist = new Map([[j, 0]]), q = [[0, j]]; let pt = NaN;
+      while (q.length){ q.sort((a, b) => a[0] - b[0]); const [d, u] = q.shift(); if (d > dist.get(u)) continue;
+        let pial = false; for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++) if (N.ccls[N.jc[t]] === partK) pial = true;
+        if (pial && u !== j){ pt = r.p[u]; break; }
+        for (let t = N.jdeg[u]; t < N.jdeg[u+1]; t++){ const c = N.jc[t]; if (N.ccls[c] !== paK && N.ccls[c] !== actK) continue;
+          const v = N.ja[c] === u ? N.jb[c] : N.ja[c], nd = d + N.len[c]; if (nd <= 800 && nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); q.push([nd, v]); } } }
+      if (isFinite(pt)){ const cap = pt - 133.322; if (!isFinite(N.paCap[j]) || cap < N.paCap[j]){ N.paCap[j] = cap; n++; } }
+    }
+    if (!n) break;
+  }
+}
 async function stkBaseline(){
   const N = STK.net; STK.H = new Float32Array(N.nc).fill(0.3);
+  if (!N.paCap) await stkPaCap();
   if (!STK.anCal) await stkAnCalibrate();
   let r = null;
   for (let it = 0; it < 3; it++){ r = await stkSolve(stkConductances(true), r ? r.p : null, stkBC(90)); stkHct(r.Q, r.p); }
