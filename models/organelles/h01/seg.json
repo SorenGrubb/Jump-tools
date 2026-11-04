@@ -1,0 +1,67 @@
+{
+ "format": "ujump-organelle-outline-1",
+ "dataset": "h01",
+ "onnx": "seg.onnx",
+ "nm": 8,
+ "crop": 256,
+ "norm": "crop",
+ "threshold": 0.5,
+ "kinds": [
+  "arteriole",
+  "centriole",
+  "cilium",
+  "er",
+  "mitochondria",
+  "synapse"
+ ],
+ "minAreaNm2": 2500,
+ "validation": [
+  {
+   "src": "CellMap er",
+   "held_out": 60,
+   "mean_IoU": 0.001,
+   "median_IoU": 0.0
+  },
+  {
+   "src": "CellMap mitochondria",
+   "held_out": 60,
+   "mean_IoU": 0.641,
+   "median_IoU": 0.776
+  },
+  {
+   "src": "h01 centriole",
+   "held_out": 50,
+   "mean_IoU": 0.366,
+   "median_IoU": 0.32
+  },
+  {
+   "src": "h01 cilium",
+   "held_out": 28,
+   "mean_IoU": 0.364,
+   "median_IoU": 0.366
+  },
+  {
+   "src": "pinky mitochondria (\u00b5Jump)",
+   "held_out": 98,
+   "mean_IoU": 0.567,
+   "median_IoU": 0.654
+  },
+  {
+   "src": "pinky synaptic cleft",
+   "held_out": 141,
+   "mean_IoU": 0.313,
+   "median_IoU": 0.352
+  }
+ ],
+ "trained": "2026-11-04T15:24",
+ "trainedOn": {
+  "CellMap er": 60,
+  "CellMap mitochondria": 120,
+  "h01 arteriole": 60,
+  "h01 centriole": 192,
+  "h01 cilium": 110,
+  "pinky mitochondria (\u00b5Jump)": 726,
+  "pinky synaptic cleft": 600
+ },
+ "source": "h01_organelle_outline_train.ipynb"
+}
