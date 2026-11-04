@@ -94,15 +94,16 @@
       if (!a) { host.innerHTML = ""; host.style.display = "none"; return; }
       host.style.display = "";
       var s = a.p[0];
-      host.innerHTML = '<span style="color:' + COLOR + '">●</span> <b>Axon initial segment</b> (computed from the skeleton): '
-        + describe(a) + ' <button class="aisview" data-nid="' + esc(nid) + '" data-x="' + s[0] + '" data-y="' + s[1] + '" data-z="' + s[2]
-        + '" style="margin-left:6px;padding:1px 8px;font-size:11px" title="Opens Neuroglancer at the start of the AIS, with the AIS drawn as an orange line">View →</button>';
+      host.innerHTML = '<span style="color:' + COLOR + '">●</span> <a href="#" class="aisview idf-back" data-nid="' + esc(nid) + '" data-x="' + s[0] + '" data-y="' + s[1] + '" data-z="' + s[2]
+        + '" style="margin:0;font-size:inherit;font-weight:700" title="Opens Neuroglancer at the start of the AIS, with the AIS drawn as an orange line">Axon initial segment \u2197</a>'
+        + ' (computed from the skeleton): ' + describe(a);
     });
   }
   /* "View →": Neuroglancer at the AIS's start; buildState adds the AIS layer for the cell on screen. */
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest(".aisview");
     if (!b || typeof neuroglancerLinkForPos !== "function") return;
+    e.preventDefault();
     var url = neuroglancerLinkForPos([+b.dataset.x, +b.dataset.y, +b.dataset.z]);
     if (url) window.open(url, "_blank", "noopener");
   });

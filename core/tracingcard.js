@@ -6627,7 +6627,12 @@ function padAiSay(msg, bad){
   if (!el) return;
   el.textContent = msg || "";
   el.style.color = bad ? "var(--bad)" : "";
+  /* The kind chips under it (2026-11-04: "too crowded ... select for a certain organelle type"). */
+  try { if (window.UJ && UJ.organelleml && UJ.organelleml.chips) UJ.organelleml.chips(document.getElementById("tracePadAiKinds"), (typeof PAD !== "undefined" && PAD) ? PAD.z : null); } catch (_e){}
 }
+document.addEventListener("ujorgfilter", function(){
+  try { padPaint(); padAiSay(UJ.organelleml.summary()); } catch (_e){}
+});
 /* ── CORRECTING THE MODEL ─────────────────────────────────────────────────────  2026-10-30
    Søren: *"Can we train it just by it guessing and then instead of saying yes or no, I can tell it
    exactly what it is and that trains it?"* With "correct it" ticked, a click on the pad opens a
@@ -9091,6 +9096,7 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"For dark cells -- endothelial cells, dark microglia, a pericyte -- where the model sees nothing: every voxel is measured against its own 2 um surroundings before the model looks, so a dark cytoplasm lands on the grey the model knows. Leave it off in ordinary tissue.\"><input type=\"checkbox\" id=\"tracePadAiDark\"> dark-cell mode</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
+    "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
     "     start with those 2?\" (lysosomes, mitochondria). core/organelleseg.js; hidden until seg.json exists. -->",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on a lysosome or a mitochondrion draws its outline on this section, as ordinary contour points in the structure you are drawing. Shift+click a part it missed to add it. Hold alt to drag points or edit by hand without turning this off. Clicking inside an outline that is already there replaces it. Then Follow carries it through the next sections, one step (the step box) at a time, skipping sections that already have it and bridging one missing section, until the organelle ends.\"><input type=\"checkbox\" id=\"tracePadAiOut\"> AI outline (click an organelle)</label>",

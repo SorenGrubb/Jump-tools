@@ -145,16 +145,21 @@
       var d = Math.hypot(sk.pos[s0 * 3] - nc[0] * res[0] / 1000, sk.pos[s0 * 3 + 1] - nc[1] * res[1] / 1000, sk.pos[s0 * 3 + 2] - nc[2] * res[2] / 1000);
       if (d > 40) warn = ' <span style="color:#f0883e">\u26a0 its soma is ' + d.toFixed(0) + ' \u00b5m from this nucleus</span>';
     }
-    host.innerHTML = '<b>Skeleton</b> <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn
-      + (sk === null ? "" : ' <button class="skelview" data-root="' + root + '" style="margin-left:6px;padding:1px 8px;font-size:11px" '
-      + 'title="Reads the cell\u2019s skeleton from MICrONS\u2019 public bucket and opens Neuroglancer with it drawn over the cell: '
-      + 'red axon, blue basal dendrites, purple apical dendrite">View in Neuroglancer \u2192</button>');
+    /* "Skeleton" IS the link (Søren, 2026-11-04: "should just be a link for the Skeleton part of the text
+       instead of a button"), styled like the panel's other links (.idf-back, "Log one →"). */
+    var label = sk === null ? '<b>Skeleton</b>'
+      : '<a href="#" class="skelview idf-back" data-root="' + root + '" style="margin:0;font-size:inherit;font-weight:700" '
+      + 'title="Opens Neuroglancer with the cell\u2019s skeleton drawn over it (read from MICrONS\u2019 public files): '
+      + 'red axon, blue basal dendrites, purple apical dendrite">Skeleton \u2197</a>';
+    host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn;
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest(".skelview");
     if (!b || typeof neuroglancerLinkForPos !== "function") return;
+    e.preventDefault();
+    if (b.dataset.busy) return; b.dataset.busy = "1";
     var root = b.dataset.root, w = window.open("", "_blank");       // opened now, so no pop-up blocker
-    b.disabled = true; b.textContent = "reading the skeleton\u2026";
+    b.textContent = "Skeleton (reading\u2026)";
     get(root).then(function (sk) {
       if (!sk) { if (w) w.close(); panel(root); return; }
       WANT[root] = true; panel(root);

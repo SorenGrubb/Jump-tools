@@ -414,7 +414,8 @@ UJ.organelleml = (function(){
   function same(a, b){ return a[0] === b[0] && a[1] === b[1] && a[2] === b[2]; }
   function markAt(view, px, py, z, radius){
     var r = radius || 14, best = null, bd = r * r;
-    var all = (LAST && LAST.z === z ? LAST.marks : []).concat(CORR.filter(function(c){ return c.t[2] === z; }));
+    var all = (LAST && LAST.z === z ? LAST.marks.filter(function(m){ return shown(m.k); }) : [])
+      .concat(CORR.filter(function(c){ return c.t[2] === z && answerShown(c); }));
     all.forEach(function(mk){
       var q = view.pxAt(mk.t), d = (q[0] - px) * (q[0] - px) + (q[1] - py) * (q[1] - py);
       if (d <= bd){ bd = d; best = mk; }
@@ -437,6 +438,55 @@ UJ.organelleml = (function(){
   }
   function corrections(){ return CORR.slice(); }
 
+  /* ── SHOW ONLY SOME KINDS ───────────────────────────────────────────────────────  2026-11-04
+     Søren: "It is getting too crowded. We should have a way to select for a certain organelle type."
+     One chip per kind on this section (with its count and colour) and one for your own answers:
+     a click hides or shows that kind, shift+click shows ONLY that kind, "all" brings everything back.
+     Remembered in this browser. Hidden marks are not drawn and cannot be clicked; nothing else changes
+     (the AI outline still names a structure from every mark). */
+  var LS_HIDE = "ujump_organelleml_hide_v1", ANS = "__answers";
+  var HIDE = (function(){ try { return new Set(JSON.parse(localStorage.getItem(LS_HIDE) || "[]")); } catch (_e){ return new Set(); } })();
+  function keepHide(){ try { localStorage.setItem(LS_HIDE, JSON.stringify(Array.from(HIDE))); } catch (_e){} }
+  function shown(k){ return !HIDE.has(k); }
+  function answerShown(c){ return !HIDE.has(ANS) && shown(c.verdict === "no" ? NOT_ORGANELLE : c.k); }
+  function chips(host, z){
+    if (!host) return;
+    if (!LAST || !on()){ host.innerHTML = ""; host.style.display = "none"; return; }
+    host.style.display = "";
+    var by = {};
+    LAST.marks.forEach(function(m){ by[m.k] = (by[m.k] || 0) + 1; });
+    var zz = z != null ? z : LAST.z, nAns = CORR.filter(function(c){ return c.t[2] === zz; }).length;
+    var ks = Object.keys(by).sort(function(a, b){ return by[b] - by[a]; });
+    HIDE.forEach(function(k){ if (k !== ANS && ks.indexOf(k) < 0) ks.push(k); });     // a hidden kind stays offered
+    var esc = function(x){ return String(x).replace(/[&<>"]/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var chip = function(k, label, n, col){
+      var off = HIDE.has(k);
+      return '<button type="button" class="orgchip" data-k="' + esc(k) + '" title="Click: hide or show. Shift+click: show only this." '
+        + 'style="margin:2px 4px 2px 0;padding:1px 8px;border-radius:12px;font-size:11px;cursor:pointer;'
+        + 'border:1px solid ' + col + ';background:' + (off ? "transparent" : "rgba(255,255,255,.06)") + ';color:inherit;opacity:' + (off ? 0.4 : 1) + '">'
+        + '<span style="color:' + col + '">\u25cf</span> ' + esc(label) + (n ? " " + n : "") + '</button>';
+    };
+    var h = '<span style="font-size:11px;opacity:.75;margin-right:4px">Show:</span>';
+    ks.forEach(function(k){ h += chip(k, nameOf(k).toLowerCase(), by[k] || 0, colourOf(k)); });
+    h += chip(ANS, "your answers", nAns, "#ffffff");
+    if (HIDE.size) h += '<button type="button" class="orgchip" data-k="__all" style="margin:2px 0;padding:1px 8px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--accent,#3fb950);background:transparent;color:var(--accent,#3fb950)">all</button>';
+    host.innerHTML = h;
+    if (!host.__wired){
+      host.__wired = true;
+      host.addEventListener("click", function(e){
+        var b = e.target.closest && e.target.closest(".orgchip"); if (!b) return;
+        var k = b.dataset.k;
+        if (k === "__all") HIDE.clear();
+        else if (e.shiftKey){
+          HIDE.clear();
+          Array.prototype.forEach.call(host.querySelectorAll(".orgchip"), function(o){ var kk = o.dataset.k; if (kk !== k && kk !== "__all") HIDE.add(kk); });
+        } else if (HIDE.has(k)) HIDE.delete(k); else HIDE.add(k);
+        keepHide(); chips(host, zz);
+        try { document.dispatchEvent(new CustomEvent("ujorgfilter")); } catch (_e){}
+      });
+    }
+  }
+
   function ring(g, q, col, dashed){
     g.beginPath(); g.arc(q[0], q[1], 7, 0, 6.2832);
     g.setLineDash([]); g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
@@ -458,6 +508,7 @@ UJ.organelleml = (function(){
       LAST.marks.forEach(function(mk){
         /* A corrected mark is drawn as its correction, below, not twice. */
         if (mine.some(function(c){ return same(c.t, mk.t); })) return;
+        if (!shown(mk.k)) return;
         var q = view.pxAt(mk.t);
         if (!inView(q, view)) return;
         var col = colourOf(mk.k);
@@ -469,6 +520,7 @@ UJ.organelleml = (function(){
     /* YOUR ANSWERS, in white with a dashed ring, so what you said and what it guessed never look
        alike: ✓ name (it was right), ✗ not an organelle, → name (it is something else, or a miss). */
     mine.forEach(function(c){
+      if (!answerShown(c)) return;
       var q = view.pxAt(c.t);
       if (!inView(q, view)) return;
       ring(g, q, "#ffffff", true);
@@ -540,16 +592,15 @@ UJ.organelleml = (function(){
     if (!LAST) return "";
     var by = {};
     LAST.marks.forEach(function(m){ by[m.k] = (by[m.k] || 0) + 1; });
-    var parts = Object.keys(by).sort(function(a, b){ return by[b] - by[a]; })
-      .map(function(k){ return by[k] + "× " + nameOf(k).toLowerCase(); });
-    return (parts.length ? parts.join(", ") : "nothing above the thresholds here")
+    var n = LAST.marks.length, hid = LAST.marks.filter(function(m){ return !shown(m.k); }).length;
+    return (n ? n + " suggestion" + (n > 1 ? "s" : "") + (hid ? " (" + hid + " hidden)" : "") : "nothing above the thresholds here")
       + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + (LAST.dark ? ", dark-cell mode" : "") + ")"
       + (CORR.length ? " · " + CORR.length + " answer" + (CORR.length > 1 ? "s" : "") + " of yours (click one to undo or change it)" : "");
   }
 
-  return { configure: configure, source: source, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
+  return { configure: configure, source: source, chips: chips, available: available, whenAvailable: whenAvailable, on: on, setOn: setOn, run: run,
            paint: paint, summary: summary, meta: function(){ return META; },
            kindOf: kindOf, markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
            NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
-           _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; } };
+           _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; }, _setLast: function(x){ LAST = x; } };
 })();
