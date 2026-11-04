@@ -77,6 +77,12 @@ var UJ = UJ || {};
   var MISSING = [];         /* every target this run could not find: tourcheck.js reads it */
   var EL = {};              /* the overlay's elements, built once */
   var WAITING = false;      /* the current step is waiting on `needs` (see follow()) */
+  var WAIT_FREE = false;    /* ...and its `press` control has been pressed: leave the page alone */
+  document.addEventListener("click", function (e) {
+    if (!WAITING || !PART) return;
+    var st = PART.steps[IX]; if (!st || !st.press) return;
+    try { if (e.target.closest && e.target.closest(st.press)) { WAIT_FREE = true; LAST = null; } } catch (_e) {}
+  }, true);
   var WATCH = null;         /* the MutationObserver waiting for a `needs` selector */
   var TIMER = null;
   var AIM = null;           /* the selector the overlay is currently following */
@@ -430,6 +436,17 @@ var UJ = UJ || {};
          and swallows clicks, so the only way out was Next. While waiting, a missing target now
          takes the dimming off and docks the bubble at the bottom, so the page can be scrolled
          and used to bring the control up -- and the watch carries the step on when it lands. */
+      /* ── PRESSED, SO HANDS OFF ───────────────────────────────────────────────────  2026-11-04
+         Søren: "if I press guided identification it takes me to the cell identity card it is greyed out and I
+         don't know what to do." A waiting step kept the page dimmed around the button it asked for -- and after
+         it was pressed, everything that button opened (a whole identification to work through) sat under the
+         dimming. Once the reader has pressed it, the dimming comes off and the bubble moves to the bottom. */
+      if (WAITING && WAIT_FREE) {
+        if (LAST === "wait-free") return;
+        LAST = "wait-free";
+        dimOff(); placeWaitBubble();
+        return;
+      }
       if (!r && WAITING) {
         if (LAST === "wait-gone") return;
         LAST = "wait-gone";
@@ -619,7 +636,7 @@ var UJ = UJ || {};
 
     var waitEl = b.querySelector(".tour-wait"), goneEl = b.querySelector(".tour-gone");
     waitEl.hidden = true; goneEl.hidden = true;
-    WAITING = false;
+    WAITING = false; WAIT_FREE = false;
     /* AN EXAMPLE, FETCHED FOR YOU.                                                 2026-10-23
        Søren: "If the walkthrough depends on finding a cell with organelles, nobody can use it
        because they won't go through hundreds of cells to find one that has organelles annotated."

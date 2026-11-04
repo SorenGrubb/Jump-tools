@@ -882,12 +882,12 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
   },
   {
    "id": "organelles",
-   "title": "Organelles — logging them, and outlining them",
+   "title": "Organelles: points and outlines",
    "blurb": "Where a structure sits, what shape it is, and how the two are paired: the cell's Organelles section, the report form, the bulk route, and the tracing pad.",
    "steps": [
     {
-     "say": "A cell's identity is one answer about the whole cell. This part is about the <b>structures inside it</b> &mdash; centrioles, cilia, mitochondria and the rest. Two things can be recorded about each one, and they are not alternatives: a <b>point</b> saying where it is, and an <b>outline</b> saying what shape it is. About four minutes.",
-     "title": "Where a structure is, and what shape it is"
+     "say": "This part is about the <b>structures inside a cell</b>: mitochondria, centrioles, cilia and so on. You can mark each one with a <b>point</b> (where it is) and an <b>outline</b> (its shape). About four minutes.",
+     "title": "Points and outlines"
     },
     {
      "at": "#cellOrganDetails",
@@ -895,8 +895,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "needs": "#cellOrganDetails",
      "after": "show a cell, so there is something to count",
-     "title": "What is already known about this cell",
-     "say": "The cell panel's <b>Organelles</b> section counts three things: how many structures are <b>outlined</b>, how many are <b>logged</b> as points, and how many are <b>paired</b> &mdash; a point inside an outline, the same organelle recorded both ways. On a cell nobody has worked on it says so, and that is an invitation: most cells in this volume have nothing on them at all."
+     "title": "What is already recorded",
+     "say": "The <b>Organelles</b> section shows what people have already recorded in this cell. If it says nothing, nobody has worked on this cell yet &mdash; most cells are still empty."
     },
     {
      "at": ".organshowall",
@@ -904,16 +904,17 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "example": "organelles",
      "exampleLabel": "Take me to a cell with outlined organelles",
      "after": "open a cell with outlined organelles \u2014 the button below picks one for you",
-     "title": "All of them at once, in the viewer",
-     "say": "This opens Neuroglancer with the cell and every outline on it &mdash; one annotation layer each, in the colours they were drawn in, cell see-through in the 3D pane. It is the quickest way to see whether a set of outlines is distributed the way you expect, or clustered where you happened to be looking."
+     "title": "See them in 3D",
+     "say": "This button opens Neuroglancer with the cell and all its outlined organelles, so you can see them in 3D."
     },
     {
-     "at": "#idfOrganelleToggle",
-     "needs": "#idfOrganelleToggle",
-     "press": "#idfgo",
-     "after": "work through Identify to its result screen",
-     "title": "Logging one yourself",
-     "say": "On the guided identification's <b>result</b> screen, <b>Log one &rarr;</b> opens the organelle form on the same cell, at the same coordinate. It is deliberately a small line rather than a panel: it is the thing you do <i>after</i> saying what the cell is, not instead of it."
+     "at": "#commOrganelleToggle, #idfOrganelleToggle",
+     "needs": "#commOrganelleToggle, #idfOrganelleToggle",
+     "example": "organelleForm",
+     "exampleLabel": "Show me where",
+     "after": "show a cell first",
+     "title": "Record one yourself",
+     "say": "To record an organelle yourself, press <b>Log one &rarr;</b>. It opens a small form for the cell you are looking at."
     },
     {
      "at": "#organRows",
@@ -922,8 +923,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
      "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
-     "title": "One row per structure, from a list of 61",
-     "say": "Each row is one structure: pick its kind from the topic-organised list and give its coordinate. Anything with two ends &mdash; a primary cilium, for one &mdash; takes <b>two</b> points, base and tip. Paste “x, y, z” into the first box and all three fill themselves."
+     "title": "One row per organelle",
+     "say": "Each row is one organelle: choose what it is and give its position (x, y, z). Paste “x, y, z” into the first box and all three fill in. A cilium needs <b>two</b> points: base and tip."
     },
     {
      "at": "#organAddRow",
@@ -932,8 +933,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
      "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
-     "title": "As many as the cell has",
-     "say": "<b>+ Add another structure</b> gives you another row, of any kind. Log two centrioles if there are two; log a centriole and the cilium sitting on it, which is the usual pair. One report, one cell, however many structures."
+     "title": "More than one",
+     "say": "<b>+ Add another structure</b> adds a row, so you can record several organelles in one go."
     },
     {
      "at": ".organ-paste-box",
@@ -942,8 +943,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
      "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
-     "title": "Or point at them in the viewer instead",
-     "say": "Typing coordinates is the slow way. Ctrl+click each structure in Neuroglancer, paste that link in here, pick what they all are, and every marker becomes a row. It stays shut by default because it is the shortcut for the day you have twelve mitochondria &mdash; not the way in."
+     "title": "Or click them in Neuroglancer",
+     "say": "Faster for many: Ctrl+click each organelle in Neuroglancer, paste the Neuroglancer link here, and every click becomes a row."
     },
     {
      "at": "#organSubmit",
@@ -952,19 +953,19 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
      "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
-     "title": "Submitting it",
-     "say": "One submission carries every row, with an optional comment on all of them &mdash; the place to say “cilium is short, hard to trace to a clear tip”. Signed in, you are told when a report of yours is confirmed."
+     "title": "Submit",
+     "say": "Press <b>Submit</b> to save all rows. You can add a comment if something was unclear."
     },
     {
      "at": "#bulkOrganPanel",
      "tab": "jump",
-     "title": "The other end of the scale: one kind, many cells",
-     "say": "<b>Bulk organelle annotation</b> is for a survey rather than a cell. Mark the same kind of structure in as many cells as you like in Neuroglancer &mdash; a point, or a line for anything with two ends &mdash; and paste the whole address bar here. You never visit the cells one at a time."
+     "title": "Many cells at once",
+     "say": "<b>Bulk organelle annotation</b> is for marking one kind of organelle in many cells at once: mark them all in Neuroglancer and paste the link here."
     },
     {
      "at": "#bulkOrganResolve",
-     "title": "It works out which cell each marker is in",
-     "say": "<b>Find the cells</b> looks every marker up in the real segmentation, in order: the cell at that point; failing that the nucleus at it; failing that the nearest nucleus, with the distance shown so you can judge it. A marker in nothing is listed with the reason and cannot be ticked. Then tick the rows you trust, add a comment, and submit them together &mdash; nothing is guessed."
+     "title": "Which cell is each mark in?",
+     "say": "<b>Find the cells</b> works out which cell each mark belongs to. Tick the rows that look right and submit them."
     },
     {
      "at": "#tracingCard",
@@ -972,8 +973,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "needs": "#tracingCard",
      "after": "show a cell, so there is a plane to draw on",
-     "title": "Where the drawing happens",
-     "say": "This card appears once a cell is on screen. The EM plane you are looking at is a real 4 &times; 4 &times; 40 nm image, and anything you draw on it is in <b>volume coordinates</b> &mdash; not pixels of your screen &mdash; so a contour keeps its meaning when you come back to it or open it somewhere else."
+     "title": "Drawing outlines",
+     "say": "This is where you <b>draw outlines</b> on the EM image of the cell you are looking at."
     },
     {
      "at": "#tracePadOpen",
@@ -981,52 +982,52 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tracePadOpen",
      "after": "press “Trace it here”",
      "title": "Open the pad",
-     "say": "<b>Trace it here</b> opens the pad over the plane. It is a polygon tool by default: click once per vertex, and close the shape by clicking the first point again. That suits a vessel lumen or a nuclear outline, where a dozen points describe the boundary better than two hundred do."
+     "say": "<b>Trace it here</b> opens the drawing pad. Click around the edge of the organelle, and click the first point again to close the outline."
     },
     {
      "at": "#tracePadPen",
      "needs": "#tracePadPen",
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
-     "title": "Or draw it freehand",
-     "say": "<b>Pen</b> follows the pointer continuously, which is what you want with a graphics tablet and a pen in your hand &mdash; a mitochondrion or an astrocytic process has no corners to click. The two modes write the same contour; only the number of points differs."
+     "title": "Freehand",
+     "say": "With <b>Pen</b> you draw the outline freehand instead &mdash; easiest with a drawing tablet."
     },
     {
      "at": "#tracePadGhosts",
      "needs": "#tracePadGhosts",
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
-     "title": "See what is already segmented",
-     "say": "This lays the cell and its nucleus underneath your drawing, see-through. Use it to check that what you are outlining really is inside the cell you think it is &mdash; the commonest tracing error is a process that belongs to the neighbour."
+     "title": "Check the cell",
+     "say": "This shows the cell's segmentation under your drawing, so you can check you are inside the right cell."
     },
     {
      "at": "#tracePadDraft",
      "needs": "#tracePadDraft",
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
-     "title": "It keeps your work in this browser",
-     "say": "<b>Save draft</b> puts the contour in this browser's own storage, under the cell it belongs to, so closing the pad does not lose it. It is a draft, in one browser &mdash; not a submission and not a backup. Export anything you want to keep."
+     "title": "Save a draft",
+     "say": "<b>Save draft</b> keeps your drawing in this browser, so closing the pad does not lose it."
     },
     {
      "at": "#tracePad3D",
      "needs": "#tracePad3D",
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
-     "title": "Stack the contours into a shape",
-     "say": "Trace the same structure on several planes and this lifts the stack into 3D &mdash; the same thing you would do in TrakEM2, at a smaller scale. It is how you get a surface out of a structure the automated segmentation never gave a label to."
+     "title": "Make it 3D",
+     "say": "Outline the same organelle on several sections and this turns the outlines into a 3D shape."
     },
     {
      "at": "#tracingRead",
      "needs": "#tracingRead",
      "press": "#randomOfType",
      "after": "show a cell, so the tracing card is there",
-     "title": "And read them back out",
-     "say": "<b>Read the contours</b> gives you the drafts as coordinates you can paste into Python, FIJI or Blender. Plain numbers, with the resolution written next to them, because a contour whose units you have to guess is not data."
+     "title": "Export",
+     "say": "<b>Read the contours</b> gives you the outlines as numbers, for use in other programs."
     },
     {
      "at": "#mainTabs",
-     "title": "Both halves, on one cell",
-     "say": "That is the pair: a <b>point</b> from the report form saying a structure is there, and an <b>outline</b> from the pad saying what shape it is. Record both on the same organelle and the cell panel's Organelles section shows it as <b>paired</b> &mdash; which is the strongest thing this tool can say about a structure."
+     "title": "Done",
+     "say": "That's it: a <b>point</b> says where an organelle is, an <b>outline</b> says its shape. Both on the same organelle is the best record."
     }
    ]
   },
