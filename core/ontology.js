@@ -430,6 +430,12 @@ const ORGANELLE_GROUPS=[
     {value:"dendritic_spine",label:"Dendritic spine",short:"dendritic spine",vector:false},
     {value:"axonal_bouton",label:"Axonal bouton",short:"axonal bouton",vector:false}
   ]},
+  /* 2026-11-04, Søren: "Could we mark a coordinate in the beginning of the Axon and then the AIS could be marked
+     automatically based on that?" -- a point inside the axon where it leaves the soma (or dendrite); core/ais.js
+     traces the axon initial segment from it on the cell's mesh. */
+  {label:"Axon",kinds:[
+    {value:"axon_start",label:"Axon start (where the axon leaves the soma or dendrite)",short:"axon start",vector:false}
+  ]},
   {label:"Extracellular matrix & structures",kinds:[
     {value:"elastin",label:"Elastin",short:"elastin",vector:false},
     {value:"fibrin",label:"Fibrin",short:"fibrin",vector:false},

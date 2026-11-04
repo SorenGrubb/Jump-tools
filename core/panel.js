@@ -1434,6 +1434,8 @@ function loadCommunityReports(nid,cellPos){
                   by:s.by||""};
         });
         PANEL_ORGAN_NID=String(nid);
+        /* an "axon start" mark: core/ais.js traces the AIS from it (2026-11-04) */
+        try{if(window.UJ&&UJ.ais&&UJ.ais.marks)UJ.ais.marks(String(nid),PANEL_ORGAN_ANNS);}catch(_e){}
         try{renderOrganelleSection(nid,(typeof CUR_ROOT!=="undefined"&&CUR_ROOT)||"");}catch(_e){}
       }
       if(organelleGroups.length){
@@ -1982,6 +1984,13 @@ function wireOrganelleForm(container,slug){
       submitBtn.textContent="submitted";
       container.querySelector("#organThanks").innerHTML='<div class="idf-flag" style="border-color:var(--accent);color:var(--accent);margin-top:10px">Thanks — '+subs.length+' structure'+(subs.length>1?"s":"")+' logged against this cell.</div>';
       if(typeof loadMyStats==="function"){try{loadMyStats();}catch(_e){}}
+      /* an axon start just logged on the cell on screen: trace its AIS now, not on the next visit (2026-11-04) */
+      try{
+        if(window.UJ&&UJ.ais&&UJ.ais.marks&&subs.some(function(s){return s.kind==="axon_start";})&&typeof CUR_NUCID!=="undefined"&&CUR_NUCID){
+          var _own=(PANEL_ORGAN_ANNS&&PANEL_ORGAN_NID===String(CUR_NUCID))?PANEL_ORGAN_ANNS:[];
+          UJ.ais.marks(String(CUR_NUCID),_own.concat(subs));
+        }
+      }catch(_e){}
     };
     const no_=msg=>{
       submitBtn.disabled=false;submitBtn.textContent="Try again";

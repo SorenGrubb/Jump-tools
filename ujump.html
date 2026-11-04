@@ -6117,7 +6117,7 @@ function showNucleus(pos){
     if(locOnlyBtnFar)locOnlyBtnFar.addEventListener("click",()=>openLocationOnlyReport(pos));
   }
   try{loadRecActPanel("recActPanel",root,nid,own?own.type:(ti.cls?longName(ti.name):"Cell"));}catch(_e){}
-  window.CUR_POS=pos;loadCommunityReports(nid,pos);if(window.UJ&&UJ.ais)UJ.ais.panel(nid);if(window.UJ&&UJ.skel&&root)UJ.skel.panel(root);loadRootIdPanel(nid);loadIdentityVotesPanel(nid,[ti&&ti.name,(own&&own.fine)]);loadClassificationHistory(nid);
+  window.CUR_POS=pos;loadCommunityReports(nid,pos);if(window.UJ&&UJ.ais)UJ.ais.panel(nid);if(window.UJ&&UJ.skel)UJ.skel.panel(root);loadRootIdPanel(nid);loadIdentityVotesPanel(nid,[ti&&ti.name,(own&&own.fine)]);loadClassificationHistory(nid);
   /* cellType/nucleusId (2026-08-09, "every time a user looks at the connectivity, the data
      should be added to the graph") -- same own-verified > MICrONS-prediction > "Unclassified"
      precedence save_computed_volume already uses for its own cellType, so a cell's connectivity

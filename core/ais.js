@@ -79,24 +79,18 @@
                     : "leaves the soma";
     return "<b>" + (+a.L).toFixed(0) + " µm</b>, " + from + "; " + ends + "." + (a.pa ? "" : " The axon is not proofread, so treat it as a guide.");
   }
-  function panel(nid, el) {
+  /* The cell panel has ONE Neuroglancer link for the cell's skeleton (Søren, 2026-11-04: "I guess we don't need
+     to have 2 links to the same neuroglancer ... drop the Axon initial segment line and mark it on the skeleton
+     line"). So the AIS has no row of its own: once its entry is read, the skeleton row (core/skel.js) is drawn
+     again and says the AIS is marked; that link's Neuroglancer state carries the AIS layer (buildState). */
+  function panel(nid) {
     nid = String(nid || "");
+    var old = document.getElementById("aisRow"); if (old) old.remove();
     return get(nid).then(function (a) {
       var cur = (typeof CUR_NUCID !== "undefined" && CUR_NUCID) ? String(CUR_NUCID) : nid;
       if (cur !== nid) return;                                       // the reader has moved on
-      var host = el || document.getElementById("aisRow");
-      if (!host) {
-        var np = document.getElementById("nucpanel"); if (!np) return;
-        host = document.createElement("div"); host.id = "aisRow"; host.className = "meta";
-        var after = np.querySelector("#commReports");
-        if (after && after.parentNode) after.parentNode.insertBefore(host, after.nextSibling); else np.appendChild(host);
-      }
-      if (!a) { host.innerHTML = ""; host.style.display = "none"; return; }
-      host.style.display = "";
-      var s = a.p[0];
-      host.innerHTML = '<span style="color:' + COLOR + '">●</span> <a href="#" class="aisview idf-back" data-nid="' + esc(nid) + '" data-x="' + s[0] + '" data-y="' + s[1] + '" data-z="' + s[2]
-        + '" style="margin:0;font-size:inherit;font-weight:700" title="Opens Neuroglancer at the start of the AIS, with the AIS drawn as an orange line">Axon initial segment \u2197</a>'
-        + ' (computed from the skeleton): ' + describe(a);
+      if (window.UJ.skel && UJ.skel.refresh) UJ.skel.refresh();
+      return a;
     });
   }
   /* "View →": Neuroglancer at the AIS's start; buildState adds the AIS layer for the cell on screen. */
@@ -107,5 +101,5 @@
     var url = neuroglancerLinkForPos([+b.dataset.x, +b.dataset.y, +b.dataset.z]);
     if (url) window.open(url, "_blank", "noopener");
   });
-  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, _meta: function () { return META; } };
+  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, describe: describe, COLOR: COLOR, _meta: function () { return META; } };
 })();

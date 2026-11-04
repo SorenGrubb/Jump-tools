@@ -128,9 +128,12 @@
      from then on every Neuroglancer link for that cell carries it (buildState asks wanted()). */
   var WANT = {};
   function wanted(root) { return !!WANT[String(root)]; }
+  var LAST = "";
+  function refresh() { if (LAST) panel(LAST); }
   function panel(root) {
-    root = String(root || "");
-    var np = document.getElementById("nucpanel"); if (!np || !/^\d+$/.test(root)) return;
+    root = String(root || ""); LAST = root;
+    var np = document.getElementById("nucpanel");
+    if (!np || !/^\d+$/.test(root)) { var stale = document.getElementById("skelRow"); if (stale) stale.remove(); LAST = ""; return; }
     var host = document.getElementById("skelRow");
     if (!host) {
       host = document.createElement("div"); host.id = "skelRow"; host.className = "meta";
@@ -151,7 +154,18 @@
       : '<a href="#" class="skelview idf-back" data-root="' + root + '" style="margin:0;font-size:inherit;font-weight:700" '
       + 'title="Opens Neuroglancer with the cell\u2019s skeleton drawn over it (read from MICrONS\u2019 public files): '
       + 'red axon, blue basal dendrites, purple apical dendrite">Skeleton \u2197</a>';
-    host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn;
+    /* the axon initial segment, when core/ais.js has one for this cell: marked here, drawn in the same Neuroglancer */
+    var nid = (typeof CUR_NUCID !== "undefined" && CUR_NUCID) ? String(CUR_NUCID) : "";
+    var ais = nid && window.UJ.ais ? UJ.ais.cached(nid) : null, aisTxt = "";
+    if (ais && ais.p && ais.p.length) {
+      var s0 = ais.p[0];
+      if (sk === null)   // no skeleton published: the link opens Neuroglancer at the AIS instead
+        label = '<a href="#" class="aisview idf-back" data-nid="' + nid + '" data-x="' + s0[0] + '" data-y="' + s0[1] + '" data-z="' + s0[2]
+          + '" style="margin:0;font-size:inherit;font-weight:700" title="Opens Neuroglancer at the start of the axon initial segment, drawn as an orange line">Skeleton \u2197</a>';
+      aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> <b>Axon initial segment</b> marked in orange (computed from the skeleton): '
+        + (UJ.ais.describe ? UJ.ais.describe(ais) : "");
+    }
+    host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn + aisTxt;
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest(".skelview");
@@ -167,6 +181,6 @@
       if (w && url) w.location = url; else if (url) window.open(url, "_blank");
     });
   });
-  window.UJ.skel = { get: get, wanted: wanted, panel: panel, cached: cached, segments: segments, ngLayers: ngLayers, threeLines: threeLines,
+  window.UJ.skel = { get: get, wanted: wanted, panel: panel, refresh: refresh, cached: cached, segments: segments, ngLayers: ngLayers, threeLines: threeLines,
                      describe: describe, COLOR: COLOR, NAME: NAME, _parse: parse };
 })();
