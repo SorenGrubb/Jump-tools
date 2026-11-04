@@ -1128,6 +1128,10 @@ window.VR_DATASETS = {
       { at: [264194, 80381, 13184], cls: "part" },
       /* ...and that trunk itself: the artery beside the pial venule from 268544,80637,13888 to 306175,80381,13440 */
       { link: [[268544, 80637, 13888], [306175, 80381, 13440]] }],
+    /* Where a vein leaves the dataset but its tracing stops short (Søren, 2026-11-04), µJump voxels: the nearest
+       junction of a wide venous vessel (median radius ≥ 6 µm, within 100 µm) becomes an outlet at mmHg; the vein's
+       other cut ends become its inlets (stkNet). */
+    venOut: [{ at: [86227, 260692, 19704], mmHg: 10 }],   // the deep venule in the white matter
     pvsMesh: "data/pvs/v1/pvs_mesh.bin",
     pvsNg: "data/pvs/v1/ng/",
     pvsVr: "data/pvs/v1/vr/",
@@ -11548,6 +11552,28 @@ async function stkNet(){
     for (let j = 0; j < nJ; j++) deg[j+1] += deg[j];
     const jc = new Int32Array(deg[nJ]), fill = deg.slice(0, nJ);
     for (let c = 0; c < nc; c++){ jc[fill[ja[c]]++] = c; jc[fill[jb[c]]++] = c; }
+    /* ── A VEIN THAT LEAVES WHERE ITS TRACING STOPS ─────────────────────────────────────  2026-11-04
+       Søren: "For the deep venule in the white matter, the blood flow is running backwards in some places. It should
+       exit the dataset around here: 86227, 260692, 19704." The 19 µm venule's skeleton ends at 89600,254206,20960 in
+       three thin stubs that end in nothing, so its west end was closed and all its blood went east, against the real
+       direction. DSX.venOut makes that end an outlet. */
+    for (const e of (DSX.venOut || [])){
+      const qq = [e.at[0] * 0.004, e.at[1] * 0.004, e.at[2] * 0.04], VK = new Set(["pven", "pcv", "v1", "v2", "v3", "cvt", "pial"].map(k => CL.indexOf(k)));
+      const rmed = c => { const r = []; for (let k = off[c]; k < off[c+1]; k++) r.push(rad[cp[k]]); r.sort((x, y) => x - y); return r[r.length >> 1]; };
+      let bj = -1, bd = 100;
+      for (let j = 0; j < nJ; j++){ let wide = false; for (let t = deg[j]; t < deg[j+1]; t++){ const c = jc[t]; if (VK.has(ccls[c]) && rmed(c) >= 6) wide = true; }
+        if (!wide) continue; const i = J[j], d = Math.hypot(pos[i*3] - qq[0], pos[i*3+1] - qq[1], pos[i*3+2] - qq[2]); if (d < bd){ bd = d; bj = j; } }
+      if (bj < 0) continue;
+      const pOut = e.mmHg || 10; bcP[bj] = pOut * 133.322; bcVen[bj] = 1;
+      /* ...and the same vein's other cut ends (along wide venous vessels, within e.up µm, default 1500) are where its
+         blood comes IN from beyond the box: e.upRise (6) mmHg above the outlet, above what the vein collects on the way. They had the common venous outlet pressure
+         (11 mmHg), and the vein drained out of both ends from a watershed in its middle. */
+      const dist = new Map([[bj, 0]]), q = [[0, bj]];
+      while (q.length){ q.sort((a, b) => a[0] - b[0]); const [d, u] = q.shift(); if (d > dist.get(u)) continue;
+        if (u !== bj && !isNaN(bcP[u]) && bcVen[u]) bcP[u] = Math.max(bcP[u], (pOut + (e.upRise || 6)) * 133.322);
+        for (let t = deg[u]; t < deg[u+1]; t++){ const c = jc[t]; if (!VK.has(ccls[c]) || rmed(c) < 6) continue;
+          const v = ja[c] === u ? jb[c] : ja[c], nd = d + len[c]; if (nd <= (e.up || 1500) && nd < (dist.has(v) ? dist.get(v) : 1e18)){ dist.set(v, nd); q.push([nd, v]); } } }
+    }
     for (let j = 0; j < nJ; j++) if (!isNaN(bcP[j]) && deg[j+1] > deg[j]){ const c = jc[deg[j]]; bcPO2[j] = (STK_CLS[CL[ccls[c]]] || STK_CLS.unk)[4]; }
     const S = 10, hash = new Map(), K = (x, y, z) => x + "," + y + "," + z;
     for (let c = 0; c < nc; c++) for (let k = off[c]; k < off[c+1]; k++){

@@ -1,0 +1,18 @@
+{
+ "format": "ujump-ais-1",
+ "dataset": "minnie65",
+ "materialization": 1926,
+ "res": [
+  4,
+  4,
+  40
+ ],
+ "shards": 64,
+ "maxUm": 40.0,
+ "made": "2026-11-04",
+ "source": "minnie65_skeletons_ais.ipynb",
+ "rule": "skeleton-service axon label; from where the axon leaves the soma or dendrite to its first branch point or 40 µm; AIS shorter than 10 µm left out; 'from a dendrite' only if it leaves ≥ 10 µm from the soma",
+ "minUm": 10.0,
+ "minDendUm": 10.0,
+ "count": 27029
+}
