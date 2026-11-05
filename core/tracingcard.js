@@ -1403,10 +1403,26 @@ function tracingBareNumberFor(id, kind, label, nuc, root, at){
 /* `skip` is the ids on the pad. A structure is not its own sibling: a re-add is in TRACINGS_KEPT
    already, so without this it counted itself and a lone hand-named structure came back "second
    tracing 2". Found by tracingpanelcheck.js; see src/numbering_does_not_count_itself.py. */
+/* ── NUMBERS FREED BY A DELETION ARE GIVEN OUT AGAIN ──────────────────────────────────  2026-11-05
+   Søren, passing on a tracer's note: "if you have lysosomes (e.g., 1-7) then delete them from the dataset
+   and add more instead, the numbering doesn't restart from 1 which might be confusing." The next new
+   structure took one past the HIGHEST number on the cell, so after deleting Lysosomes 1-7 the new ones
+   were 10, 11, 12... Now each new structure takes the LOWEST number no structure on the cell is using,
+   so they fill 1-7 first. Two cases keep the old rule (one past the highest, or the count): a cell
+   whose siblings include unnumbered ones (their order is unknown), and a kind a cell has only one of.
+   tracingNextIndex leaves what it saw in TRACING_LAST_USED; tracingFreeIndices reads it. Survivors
+   keep their numbers -- renaming published structures is not done from here. */
+var TRACING_LAST_USED = null;
+function tracingFreeIndices(kind, nextOld, n){
+  var u = TRACING_LAST_USED, out = [];
+  if (!u || u.bare || !tracingKindNumbered(kind)){ for (var i = 0; i < n; i++) out.push(nextOld + i); return out; }
+  for (var k = 1; out.length < n; k++) if (!u.used[k]) out.push(k);
+  return out;
+}
 function tracingNextIndex(kind, label, nuc, root, skip, at){
   var wantK = String(kind || ""), wantL = tracingSeriesLabel(label);
   var here = tracingCellOf({ nucleusId: nuc, rootId: root, cellCoord: at });
-  var top = 0, have = 0, seen = {};
+  var top = 0, have = 0, seen = {}, used = {}, bare = 0;
   (skip || []).forEach(function(id){ if (id) seen[String(id)] = 1; });
   (TRACING_SHARED || []).forEach(function(t){
     if (!t) return;
@@ -1424,6 +1440,7 @@ function tracingNextIndex(kind, label, nuc, root, skip, at){
       have++;
       seen[String(t.structureId || "")] = 1;
       if (Number(t.instanceIndex) > top) top = Number(t.instanceIndex);
+      if (Number(t.instanceIndex) > 0) used[Number(t.instanceIndex)] = 1; else bare++;
     }
   });
   /* ── HOW MANY IT HAS, NOT THE HIGHEST IT CARRIES ──────────────────────────────  2026-09-27
@@ -1447,7 +1464,9 @@ function tracingNextIndex(kind, label, nuc, root, skip, at){
     if (!same || !sameCell) return;
     have++;
     if (Number(t.instance_index) > top) top = Number(t.instance_index);
+    if (Number(t.instance_index) > 0) used[Number(t.instance_index)] = 1; else bare++;
   });
+  TRACING_LAST_USED = { used: used, bare: bare };
   /* THE COUNT IS ONLY MEANINGFUL FOR A KIND A CELL HAS MANY OF (2026-09-27). A cell has one
      nucleus, so counting nuclei and answering 2 made a lone nucleus "Nucleus 2" — and under
      `other` the same count inflated a hand-named singleton. Those keep the old answer: one more
@@ -1728,7 +1747,7 @@ function tracingCurrentAll(){
      which carries no instance_index at all — was renumbered every time it was opened. `known`
      asks whether the dataset has it; `keep` says what number it carries, and 0 is an answer.
      See src/opening_an_organelle_is_not_changing_it.py. */
-  const first={}, taken={}, count={}, keep={}, known={};
+  const first={}, taken={}, count={}, keep={}, known={}, free={};
   groups.forEach(function(g){
     const k=seriesKey(g.w);
     count[k]=(count[k]||0)+1;
@@ -1738,8 +1757,10 @@ function tracingCurrentAll(){
        other way: the siblings OPENED beside a new structure are real siblings and must be counted,
        and only the structure asking must not count itself. Both halves were caught by a check —
        tracingpanelcheck for the self-count, reopenedtracingcheck for the over-skip. */
-    if(first[k]===undefined)first[k]=tracingNextIndex(g.w.kind,g.w.name,nid,rid,[idOf(g)],
+    if(first[k]===undefined){first[k]=tracingNextIndex(g.w.kind,g.w.name,nid,rid,[idOf(g)],
                                                       tracingCellAtVal());
+      /* the numbers this pad's new structures of the series take, lowest free first (2026-11-05) */
+      free[k]=tracingFreeIndices(g.w.kind,first[k],groups.length);}
   });
 
   return groups.map(function(g){
@@ -1764,7 +1785,7 @@ function tracingCurrentAll(){
       several=(index>0);
     } else {
       const n=(taken[k]||0); taken[k]=n+1;
-      index=first[k]+n;
+      index=(free[k]&&free[k][n])||(first[k]+n);
       /* ALWAYS, for a kind a cell can have many of (2026-09-27). It was `(count>1)||(first>1)`,
          which left a cell's FIRST lysosome bare — and a bare one submits no number, so the next one
          asked "what is the highest number here" and got 0, and stayed bare too. Søren: "if you add
