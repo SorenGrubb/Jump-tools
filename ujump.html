@@ -1737,6 +1737,41 @@ for at least one second</div>
 <div style="margin-top:6px;color:var(--mut)">Most of the traced space lies along the pia; deeper down only some penetrating vessels were traced, so a deep cell's distance is usually to the pia. Only MICrONS nuclei have a distance. To see the space itself, tick it under "Add extra layers to the 3D view". The distance is always in the Excel download.</div>
 </div>
 </details>
+<!-- MICROGLIA TOUCHING AN AXON INITIAL SEGMENT, 2026-11-04 (Gary Morris: ~5-10 % of microglia closely appose the
+     AIS; Søren: "I'll make it something we can filter for"). data/ais/minnie65/microglia.json, made by
+     minnie65_microglia_ais.ipynb; read by core/ais.js (UJ.ais.mg) the first time this is ticked. -->
+<details class="rv-panel filter-section" id="filterSecMgAis">
+<summary title="Microglia whose mesh comes within the chosen distance of a neuron's axon initial segment (the computed AIS line along the axon's middle). A candidate list: check each contact in the EM.">Microglia touching an axon initial segment</summary>
+<div style="margin-top:10px;font-size:12px">
+<div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
+<label><input type="checkbox" id="filterMgAisOn"> Only</label>
+<select id="filterMgAisMode" style="padding:4px 6px">
+<option value="mg">microglia touching an AIS</option>
+<option value="neuron">neurons whose AIS a microglia touches</option>
+</select>
+<span>within</span>
+<input type="text" id="filterMgAisDist" value="1" style="width:48px;padding:4px 6px" inputmode="decimal">
+<span style="color:var(--mut)">µm of the AIS axis</span>
+</div>
+<div id="filterMgAisMsg" style="margin-top:6px;color:var(--mut)">An AIS is about 1 µm across, so a membrane touching it sits roughly 0.5–1 µm from its axis. The AIS line comes from the skeleton and can sit a little off-centre: treat every match as a candidate. Tick a cell type above too (e.g. microglia), or "include unclassified".</div>
+</div>
+</details>
+<script>
+(function(){
+  var on=document.getElementById("filterMgAisOn"),msg=document.getElementById("filterMgAisMsg");
+  if(!on)return;
+  var base=msg.textContent;
+  on.addEventListener("change",function(){
+    if(!on.checked||!(window.UJ&&UJ.ais&&UJ.ais.mg))return;
+    if(UJ.ais.mg.ready()&&UJ.ais.mg.meta())return;
+    msg.textContent="Reading the microglia–AIS contacts…";
+    UJ.ais.mg.load().then(function(m){
+      if(!m){msg.innerHTML='<span style="color:var(--warn)">No microglia–AIS contacts yet: run minnie65_microglia_ais.ipynb and put its microglia.json in data/ais/minnie65/.</span>';return;}
+      msg.textContent=m.contacts.length+" contacts from "+m.microglia+" microglia (closer than "+m.keepUm+" µm). "+base;
+    });
+  });
+})();
+</script>
 <script>
 (function(){
   const sel=document.getElementById("filterRecAct"),more=document.getElementById("filterRecMore"),box=document.getElementById("filterRecClips"),msg=document.getElementById("filterRecMsg");
@@ -12643,6 +12678,11 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     /* PERIVASCULAR SPACE (2026-10-21): pvsDist(), near cellVolume. */
     const pvsOn=!!(document.getElementById("filterPvsOn")||{}).checked;
     const pvsMin=numIn("filterPvsMin",0),pvsMax=numIn("filterPvsMax",Infinity);
+    /* MICROGLIA TOUCHING AN AIS (2026-11-04): core/ais.js UJ.ais.mg, read when the box is ticked. Not read yet = no match. */
+    const mgAisOn=!!(document.getElementById("filterMgAisOn")||{}).checked;
+    const mgAisMode=(document.getElementById("filterMgAisMode")||{}).value||"mg";
+    const mgAisMax=numIn("filterMgAisDist",1);
+    const mgAis=(window.UJ&&UJ.ais&&UJ.ais.mg)?UJ.ais.mg:null;
     const recSel=document.getElementById("filterRecAct")?document.getElementById("filterRecAct").value:"";
     const recOn=!!recSel&&!!(UJ.recact&&UJ.recact.ready());
     const recZ=parseFloat((document.getElementById("filterRecZ")||{}).value)||2;
@@ -12762,6 +12802,12 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
         if(cv==null||cv<volMin||cv>volMax)return null;
         if(volNoFrag&&(cf&2))return null;
         if(volNoMerge&&(cf&1))return null;
+      }
+      if(mgAisOn){
+        if(row.space!=="N"||!mgAis||!mgAis.ready())return null;
+        const nid_=String(NID[row.i]);
+        const cs_=mgAisMode==="neuron"?mgAis.ofNeuron(nid_):mgAis.ofMicroglia(nid_);
+        if(!cs_.some(function(c){return c.d<=mgAisMax;}))return null;
       }
       if(pvsOn){
         if(row.space!=="N")return null;

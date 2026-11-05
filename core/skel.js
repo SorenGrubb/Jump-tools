@@ -165,8 +165,23 @@
       aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> <b>Axon initial segment</b> marked in orange' + (ais.src === "mark" ? ': ' : ' (computed from the skeleton): ')
         + (UJ.ais.describe ? UJ.ais.describe(ais) : "");
     }
+    /* microglia touching an AIS (core/ais.js UJ.ais.mg): on the neuron, who touches its AIS; on a microglia, whose AIS it touches */
+    var mgTxt = "";
+    if (nid && window.UJ.ais && UJ.ais.mg && UJ.ais.mg.ready() && UJ.ais.mg.meta()) {
+      var M = UJ.ais.mg.meta(), tu = M.touchUm || 1;
+      var link = function (c, other) {
+        return '<a href="#" class="mgaisjump" data-nid="' + other + '">' + other + '</a> (' + c.d.toFixed(1) + ' µm, ' + c.s.toFixed(0) + ' µm along the AIS'
+          + ' — <a href="#" class="mgaisview" data-x="' + c.at[0] + '" data-y="' + c.at[1] + '" data-z="' + c.at[2] + '" title="Neuroglancer at the contact">contact ↗</a>)';
+      };
+      var asN = UJ.ais.mg.ofNeuron(nid).filter(function (c) { return c.d <= tu; });
+      var asM = UJ.ais.mg.ofMicroglia(nid).filter(function (c) { return c.d <= tu; });
+      if (asN.length) mgTxt += '<br><span style="color:#d29922">\u25cf</span> <b>Microglia touching this AIS</b> (within ' + tu + ' µm of its axis, a candidate to check in the EM): '
+        + asN.map(function (c) { return link(c, c.mg); }).join("; ");
+      if (asM.length) mgTxt += '<br><span style="color:#d29922">\u25cf</span> <b>Touches the axon initial segment of ' + asM.length + ' neuron' + (asM.length > 1 ? "s" : "") + '</b> (within ' + tu + ' µm of its axis, a candidate to check in the EM): '
+        + asM.map(function (c) { return link(c, c.neuron); }).join("; ");
+    }
     if (!aisTxt && nid && window.UJ.ais && UJ.ais.status) { var st = UJ.ais.status(nid); if (st) aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> ' + st; }
-    host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn + aisTxt;
+    host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn + aisTxt + mgTxt;
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest(".skelview");
@@ -181,6 +196,19 @@
       var url = neuroglancerLinkForPos(window.CUR_POS);
       if (w && url) w.location = url; else if (url) window.open(url, "_blank");
     });
+  });
+  /* the microglia-AIS lines' links: the other cell, or Neuroglancer at the contact */
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".mgaisjump, .mgaisview");
+    if (!a) return;
+    e.preventDefault();
+    if (a.classList.contains("mgaisview")) {
+      if (typeof neuroglancerLinkForPos === "function") { var u = neuroglancerLinkForPos([+a.dataset.x, +a.dataset.y, +a.dataset.z]); if (u) window.open(u, "_blank", "noopener"); }
+      return;
+    }
+    if (typeof NID === "undefined" || typeof jumpToNucleusIndex !== "function") return;
+    var want = String(a.dataset.nid);
+    for (var i = 0; i < NID.length; i++) if (String(NID[i]) === want) { jumpToNucleusIndex(i); return; }
   });
   window.UJ.skel = { get: get, wanted: wanted, panel: panel, refresh: refresh, cached: cached, segments: segments, ngLayers: ngLayers, threeLines: threeLines,
                      describe: describe, COLOR: COLOR, NAME: NAME, _parse: parse };

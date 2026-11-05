@@ -7,7 +7,6 @@
  "norm": "crop",
  "threshold": 0.5,
  "kinds": [
-  "arteriole",
   "centriole",
   "cilium",
   "er",
@@ -17,47 +16,40 @@
  "minAreaNm2": 2500,
  "validation": [
   {
-   "src": "CellMap er",
-   "held_out": 60,
-   "mean_IoU": 0.001,
-   "median_IoU": 0.0
-  },
-  {
    "src": "CellMap mitochondria",
    "held_out": 60,
-   "mean_IoU": 0.641,
-   "median_IoU": 0.776
+   "mean_IoU": 0.501,
+   "median_IoU": 0.527
   },
   {
    "src": "h01 centriole",
    "held_out": 50,
-   "mean_IoU": 0.366,
-   "median_IoU": 0.32
+   "mean_IoU": 0.487,
+   "median_IoU": 0.51
   },
   {
    "src": "h01 cilium",
-   "held_out": 28,
-   "mean_IoU": 0.364,
-   "median_IoU": 0.366
+   "held_out": 22,
+   "mean_IoU": 0.552,
+   "median_IoU": 0.526
   },
   {
    "src": "pinky mitochondria (\u00b5Jump)",
-   "held_out": 98,
-   "mean_IoU": 0.567,
-   "median_IoU": 0.654
+   "held_out": 151,
+   "mean_IoU": 0.651,
+   "median_IoU": 0.765
   },
   {
    "src": "pinky synaptic cleft",
-   "held_out": 141,
-   "mean_IoU": 0.313,
-   "median_IoU": 0.352
+   "held_out": 150,
+   "mean_IoU": 0.326,
+   "median_IoU": 0.362
   }
  ],
- "trained": "2026-11-04T15:24",
+ "trained": "2026-11-04T22:04",
  "trainedOn": {
   "CellMap er": 60,
   "CellMap mitochondria": 120,
-  "h01 arteriole": 60,
   "h01 centriole": 192,
   "h01 cilium": 110,
   "pinky mitochondria (\u00b5Jump)": 726,

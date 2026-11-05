@@ -26,7 +26,7 @@
   function configure(cfg) {
     var b = String((cfg && cfg.base) || "");
     if (b && b.slice(-1) !== "/") b += "/";
-    CFG.base = b; META = null; METAP = null; SHARD = {}; SHARDP = {};
+    CFG.base = b; META = null; METAP = null; SHARD = {}; SHARDP = {}; if (typeof MG !== "undefined") { MG.p = null; MG.meta = null; MG.byMg = {}; MG.byN = {}; MG.done = false; }
   }
   function meta() {
     if (!CFG.base) return Promise.resolve(null);
@@ -97,6 +97,38 @@
     return "<b>" + (+a.L).toFixed(0) + " µm</b>, " + from + "; " + ends + "." + (a.pa ? "" : " The axon is not proofread, so treat it as a guide.");
   }
 
+
+  /* ── MICROGLIA TOUCHING AN AIS ──────────────────────────────────────────────────────────  2026-11-04
+     Gary Morris: "a proportion of microglia (~5-10%) closely appose the AIS"; Søren: "I'll make it something we
+     can filter for. Microglia touching AIS." minnie65_microglia_ais.ipynb measures every microglia's mesh
+     against every AIS line and writes data/ais/<dataset>/microglia.json:
+       {format "ujump-ais-microglia-1", keepUm, touchUm, contacts: [[mgNid, neuronNid, closest µm,
+        AIS µm within touchUm, µm along the AIS, x, y, z (voxels, the AIS point nearest the microglia)], ...]}
+     Read once, the first time something asks; no file, no lines and an empty filter.
+       UJ.ais.mg.load()            -> Promise<meta|null>
+       UJ.ais.mg.ready()           -> true once read (whether or not it exists)
+       UJ.ais.mg.ofMicroglia(nid)  -> [{mg, neuron, d, L, s, at}]  (closest first)
+       UJ.ais.mg.ofNeuron(nid)     -> the same, for a neuron's AIS                                       */
+  var MG = { p: null, meta: null, byMg: {}, byN: {}, done: false };
+  function mgLoad() {
+    if (!MG.p) MG.p = (CFG.base ? fetch(CFG.base + "microglia.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
+      .catch(function () { return null; })
+      .then(function (d) {
+        if (d && d.format === "ujump-ais-microglia-1") {
+          MG.meta = d;
+          (d.contacts || []).forEach(function (c) {
+            var o = { mg: String(c[0]), neuron: String(c[1]), d: +c[2], L: +c[3], s: +c[4], at: [c[5], c[6], c[7]] };
+            (MG.byMg[o.mg] = MG.byMg[o.mg] || []).push(o); (MG.byN[o.neuron] = MG.byN[o.neuron] || []).push(o);
+          });
+          var by = function (a, b) { return a.d - b.d; };
+          Object.keys(MG.byMg).forEach(function (k) { MG.byMg[k].sort(by); }); Object.keys(MG.byN).forEach(function (k) { MG.byN[k].sort(by); });
+        }
+        MG.done = true; return MG.meta;
+      });
+    return MG.p;
+  }
+  var mgApi = { load: mgLoad, ready: function () { return MG.done; }, meta: function () { return MG.meta; },
+    ofMicroglia: function (nid) { return MG.byMg[String(nid)] || []; }, ofNeuron: function (nid) { return MG.byN[String(nid)] || []; } };
   /* ── AN AXON START MARKED BY HAND, AND THE AIS TRACED FROM IT ─────────────────────────────  2026-11-04
      Søren: "For these neurons without an AIS skeleton. Could we mark a coordinate in the beginning of the Axon
      and then the AIS could be marked automatically based on that?"
@@ -261,6 +293,7 @@
       var cur = (typeof CUR_NUCID !== "undefined" && CUR_NUCID) ? String(CUR_NUCID) : nid;
       if (cur !== nid) return;                                       // the reader has moved on
       if (window.UJ.skel && UJ.skel.refresh) UJ.skel.refresh();
+      if (!MG.done) mgLoad().then(function () { if (window.UJ.skel && UJ.skel.refresh) UJ.skel.refresh(); });
       return a;
     });
   }
@@ -272,5 +305,5 @@
     var url = neuroglancerLinkForPos([+b.dataset.x, +b.dataset.y, +b.dataset.z]);
     if (url) window.open(url, "_blank", "noopener");
   });
-  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, describe: describe, COLOR: COLOR, marks: marks, status: status, _trace: traceOnMesh, _meta: function () { return META; } };
+  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, describe: describe, COLOR: COLOR, marks: marks, status: status, _trace: traceOnMesh, mg: mgApi, _meta: function () { return META; } };
 })();
