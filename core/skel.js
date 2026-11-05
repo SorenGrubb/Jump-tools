@@ -168,17 +168,19 @@
     /* microglia touching an AIS (core/ais.js UJ.ais.mg): on the neuron, who touches its AIS; on a microglia, whose AIS it touches */
     var mgTxt = "";
     if (nid && window.UJ.ais && UJ.ais.mg && UJ.ais.mg.ready() && UJ.ais.mg.meta()) {
-      var M = UJ.ais.mg.meta(), tu = M.touchUm || 1;
-      var link = function (c, other) {
-        return '<a href="#" class="mgaisjump" data-nid="' + other + '">' + other + '</a> (' + c.d.toFixed(1) + ' µm, ' + c.s.toFixed(0) + ' µm along the AIS'
+      var M = UJ.ais.mg.meta(), mesh = M.gapTouchUm != null, tu = mesh ? M.gapTouchUm : (M.touchUm || 1);
+      var how = mesh ? 'membranes within ' + tu + ' µm, cell mesh to the AIS part of the neuron’s mesh' : 'within ' + tu + ' µm of the AIS axis';
+      var link = function (c, other, withType) {
+        return '<a href="#" class="mgaisjump" data-nid="' + other + '">' + other + '</a>' + (withType && c.t ? ' ' + c.t : '')
+          + ' (' + (c.g != null ? 'gap ' + c.g.toFixed(2) + ' µm' : c.d.toFixed(1) + ' µm from the axis') + ', ' + c.s.toFixed(0) + ' µm along the AIS'
           + ' — <a href="#" class="mgaisview" data-x="' + c.at[0] + '" data-y="' + c.at[1] + '" data-z="' + c.at[2] + '" title="Neuroglancer at the contact">contact ↗</a>)';
       };
-      var asN = UJ.ais.mg.ofNeuron(nid).filter(function (c) { return c.d <= tu; });
-      var asM = UJ.ais.mg.ofMicroglia(nid).filter(function (c) { return c.d <= tu; });
-      if (asN.length) mgTxt += '<br><span style="color:#d29922">\u25cf</span> <b>Microglia touching this AIS</b> (within ' + tu + ' µm of its axis, a candidate to check in the EM): '
-        + asN.map(function (c) { return link(c, c.mg); }).join("; ");
-      if (asM.length) mgTxt += '<br><span style="color:#d29922">\u25cf</span> <b>Touches the axon initial segment of ' + asM.length + ' neuron' + (asM.length > 1 ? "s" : "") + '</b> (within ' + tu + ' µm of its axis, a candidate to check in the EM): '
-        + asM.map(function (c) { return link(c, c.neuron); }).join("; ");
+      var asN = UJ.ais.mg.ofNeuron(nid).filter(function (c) { return c.gap <= tu; });
+      var asM = UJ.ais.mg.ofMicroglia(nid).filter(function (c) { return c.gap <= tu; });
+      if (asN.length) mgTxt += '<br><span style="color:#d29922">●</span> <b>Cells touching this AIS</b> (' + how + '; a candidate to check in the EM): '
+        + asN.map(function (c) { return link(c, c.mg, true); }).join("; ");
+      if (asM.length) mgTxt += '<br><span style="color:#d29922">●</span> <b>Touches the axon initial segment of ' + asM.length + ' neuron' + (asM.length > 1 ? "s" : "") + '</b> (' + how + '; a candidate to check in the EM): '
+        + asM.map(function (c) { return link(c, c.neuron, false); }).join("; ");
     }
     if (!aisTxt && nid && window.UJ.ais && UJ.ais.status) { var st = UJ.ais.status(nid); if (st) aisTxt = '<br><span style="color:' + (UJ.ais.COLOR || "#ff9f1a") + '">\u25cf</span> ' + st; }
     host.innerHTML = label + ' <span class="nsub">(MICrONS v1300' + (sk ? ", " + describe(sk) : sk === null ? ": none published for this root id" : "") + ')</span>' + warn + aisTxt + mgTxt;

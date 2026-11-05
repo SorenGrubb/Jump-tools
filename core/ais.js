@@ -117,10 +117,16 @@
         if (d && d.format === "ujump-ais-microglia-1") {
           MG.meta = d;
           (d.contacts || []).forEach(function (c) {
-            var o = { mg: String(c[0]), neuron: String(c[1]), d: +c[2], L: +c[3], s: +c[4], at: [c[5], c[6], c[7]] };
+            /* g: membrane gap (µm) between the cell's mesh and the neuron's mesh around its AIS, when the notebook
+               measured it (2026-11-05, Søren: "a filter of the distance of the cell mesh to the AIS part of neuronal
+               mesh"); else null, and the AIS-axis distance d stands in for it. Lm: AIS µm with membranes that close. */
+            var g = (c.length > 8 && c[8] != null) ? +c[8] : null;
+            var o = { mg: String(c[0]), neuron: String(c[1]), d: +c[2], L: +c[3], s: +c[4], at: [c[5], c[6], c[7]],
+                      g: g, Lm: (c.length > 9 && c[9] != null) ? +c[9] : null, t: c.length > 10 ? String(c[10]) : "microglia",
+                      gap: g != null ? g : +c[2] };
             (MG.byMg[o.mg] = MG.byMg[o.mg] || []).push(o); (MG.byN[o.neuron] = MG.byN[o.neuron] || []).push(o);
           });
-          var by = function (a, b) { return a.d - b.d; };
+          var by = function (a, b) { return a.gap - b.gap; };
           Object.keys(MG.byMg).forEach(function (k) { MG.byMg[k].sort(by); }); Object.keys(MG.byN).forEach(function (k) { MG.byN[k].sort(by); });
         }
         MG.done = true; return MG.meta;

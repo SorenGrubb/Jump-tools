@@ -1656,7 +1656,9 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
 <div class="row" style="margin-top:8px;align-items:center;gap:8px">
 <label style="font-size:12px" title="Applies to fineDist, the raw nearest-traced-vessel-point distance -- independent of the type dropdown above (see its own doc comment in runFilter()). Combine both to require a SPECIFIC vessel type within a distance, or check this alone for &quot;near any vessel, don't care which type&quot; with an actual number attached (unlike &quot;Near any vessel type&quot; above, which has no distance limit at all on its own)."><input type="checkbox" id="filterVesselDistOn"> Within</label>
 <input type="text" id="filterVesselDist" value="10" style="width:50px;padding:4px 6px" inputmode="decimal" title="Distance from the nucleus centre to the nearest point of the vessel SURFACE in Wan &amp; Wei&#39;s TriSAM segmentation (point to triangle), for every cell, recomputed 2026-10-21. A nucleus touching a vessel reads a few µm (its own radius); a cell inside the vessel wall can read less."far from anything traced", not "far from a vessel".">
-<span style="font-size:12px;color:var(--mut)">µm of the nearest vessel surface (TriSAM). A vessel type picked above without this box means within 10 µm.</span>
+<span style="font-size:12px;color:var(--mut)">µm and at least</span>
+<input type="text" id="filterVesselMin" value="" placeholder="0" style="width:50px;padding:4px 6px" inputmode="decimal" title="2026-11-05: a lower limit too, for distance bands such as 5-15 µm or 15+ µm (leave the first box high, e.g. 1000, for &quot;15 µm or more&quot;)">
+<span style="font-size:12px;color:var(--mut)">µm from the nearest vessel surface (TriSAM; from the nucleus centre). A vessel type picked above without this box means within 10 µm.</span>
 </div>
 <div class="row" style="margin-top:10px;align-items:center;gap:8px">
 <label style="font-size:12px"><input type="checkbox" id="filterGLOn"> Within</label>
@@ -1673,11 +1675,34 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
 <details class="rv-panel filter-section" id="filterSecNear">
 <summary title="Finds cells (from the type checkboxes ticked in &quot;Select the cell(s) of interest&quot; above) that fall within a chosen distance of AT LEAST ONE cell of the type(s) ticked below -- e.g. tick &quot;Microglia&quot; there and &quot;23P&quot; here to find microglia near layer 2/3 pyramidal neurons, or tick every excitatory-neuron subtype here to find cells near ANY excitatory neuron. The reference population below is exactly the same cells &quot;Select the cell(s) of interest&quot; would find if you ticked those boxes as the PRIMARY filter -- own-verified and community-identified cells included -- just used here as landmarks instead of as the result being returned.">Do you want to find cells close to another cell type?</summary>
 <div style="margin-top:10px">
-<label style="font-size:12px"><input type="checkbox" id="filterNearOn"> Also require being within</label>
+<label style="font-size:12px"><input type="checkbox" id="filterNearOn"> Also require being</label>
+<select id="filterNearMode" style="padding:3px 4px;font-size:12px" title="2026-11-05: &quot;farther than&quot; keeps a cell only if EVERY cell of the ticked types is farther away (nucleus centre to nucleus centre). For soma-to-soma closeness use &quot;Spatial group&quot; below, which measures the gap between nuclei."><option value="within">within</option><option value="beyond">farther than</option></select>
 <input type="text" id="filterNearDist" value="10" style="width:50px;padding:4px 6px" inputmode="decimal">
 <span style="font-size:12px;color:var(--mut)">µm of at least one cell of type(s):</span>
 <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:7px;padding:8px 10px;margin-top:8px" id="filterNearTypes"></div>
 <label style="font-size:12px;display:flex;align-items:center;gap:6px;margin-top:8px" title="Off by default: normally only the cells ticked in &quot;Select the cell(s) of interest&quot; are returned (the ones found NEAR a reference-type cell), not the reference-type cells themselves. Check this to ALSO add every matched reference-type cell to the results (e.g. see both the microglia AND the layer 2/3 neurons they're near together, in the export or the 3D view) -- these landmark rows still respect every other filter on this panel (region box, layer, etc.), they just don't have to be near anything themselves."><input type="checkbox" id="filterNearIncludeRef"> Also include the reference-type cell(s) themselves in the results</label>
+</div>
+</details>
+<!-- SPATIAL GROUP, 2026-11-05 (Gary Morris: satellite microglia beside neuronal somata are not freely roaming;
+     compare Hesham's and Rukaya's vessel groups). spatialIndex()/spatialGroupOf() above runFilter(). -->
+<details class="rv-panel filter-section" id="filterSecSpatial">
+<summary title="What each cell sits beside: a vessel, another cell's soma (a neuron, or which other type), or nothing. Cells: the gap between the two nuclei (centre distance minus both nuclear radii). Vessels: nucleus centre to the vessel surface, as the vessel filter above.">Spatial group (vessel / other somata / freely roaming)</summary>
+<div style="margin-top:10px;font-size:12px">
+<label><input type="checkbox" id="filterSpatialOn"> Only these groups:</label>
+<div class="toggles" style="margin-top:6px">
+<label><input type="checkbox" class="fspatial" value="free" checked> Freely roaming (away from vessels and every other soma)</label>
+<label><input type="checkbox" class="fspatial" value="vessel" checked> Vessel only (beside a vessel, away from every other soma)</label>
+<label><input type="checkbox" class="fspatial" value="neuron" checked> Beside a neuron soma (away from vessels)</label>
+<label><input type="checkbox" class="fspatial" value="other" checked> Beside another cell's soma, not a neuron (away from vessels)</label>
+<label><input type="checkbox" class="fspatial" value="both" checked> Beside a vessel and another cell's soma</label>
+</div>
+<div class="row" style="align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+<span>Beside a vessel: nucleus centre within</span><input type="text" id="filterSpatialV" value="5" style="width:44px;padding:4px 6px" inputmode="decimal"><span>µm of its surface.</span>
+<span>Beside a soma: gap between the nuclei under</span><input type="text" id="filterSpatialG" value="2" style="width:44px;padding:4px 6px" inputmode="decimal"><span>µm</span>
+</div>
+<div style="margin-top:6px"><label><input type="checkbox" id="filterSpatialUncl" checked> Unclassified nuclei count as neighbours</label></div>
+<div style="margin-top:4px"><label><input type="checkbox" id="filterSpatialVes"> The vessel's own cells count as neighbours (endothelial cells, pericytes / mural cells, smooth muscle, perivascular fibroblasts, and unclassified nuclei within 3 µm of a vessel surface)</label></div>
+<div style="margin-top:6px;color:var(--mut)">While this is ticked the Excel download also has, for every cell: its spatial group, the nearest other nucleus (gap, type, nucleus ID) and the nearest neuron nucleus (gap, nucleus ID). The gap is between the NUCLEI: the cytoplasm around each makes the gap between the cells smaller, so this is generous rather than strict. Measured over all microglia: the median gap to the nearest other nucleus is 1.6 µm (for L2/3 pyramidal neurons to the nearest neuron, 2.3 µm), and under 5 µm puts 55 % of microglia "beside a neuron soma" -- hence 2 µm as the default. MICrONS nuclei only.</div>
 </div>
 </details>
 <details class="rv-panel filter-section" id="filterSecV1Col">
@@ -1741,19 +1766,19 @@ for at least one second</div>
      AIS; Søren: "I'll make it something we can filter for"). data/ais/minnie65/microglia.json, made by
      minnie65_microglia_ais.ipynb; read by core/ais.js (UJ.ais.mg) the first time this is ticked. -->
 <details class="rv-panel filter-section" id="filterSecMgAis">
-<summary title="Microglia whose mesh comes within the chosen distance of a neuron's axon initial segment (the computed AIS line along the axon's middle). A candidate list: check each contact in the EM.">Microglia touching an axon initial segment</summary>
+<summary title="Cells (microglia, or the types the notebook was run for) whose mesh comes within the chosen distance of the AIS part of a neuron's mesh. A candidate list: check each contact in the EM.">Cells touching an axon initial segment (mesh to mesh)</summary>
 <div style="margin-top:10px;font-size:12px">
 <div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
 <label><input type="checkbox" id="filterMgAisOn"> Only</label>
 <select id="filterMgAisMode" style="padding:4px 6px">
-<option value="mg">microglia touching an AIS</option>
+<option value="mg">cells (e.g. microglia) touching an AIS</option>
 <option value="neuron">neurons whose AIS a microglia touches</option>
 </select>
-<span>within</span>
-<input type="text" id="filterMgAisDist" value="1" style="width:48px;padding:4px 6px" inputmode="decimal">
-<span style="color:var(--mut)">µm of the AIS axis</span>
+<span>gap between the meshes under</span>
+<input type="text" id="filterMgAisDist" value="0.3" style="width:48px;padding:4px 6px" inputmode="decimal">
+<span style="color:var(--mut)">µm (the cell's mesh to the neuron's mesh within 1.5 µm of its AIS line)</span>
 </div>
-<div id="filterMgAisMsg" style="margin-top:6px;color:var(--mut)">An AIS is about 1 µm across, so a membrane touching it sits roughly 0.5–1 µm from its axis. The AIS line comes from the skeleton and can sit a little off-centre: treat every match as a candidate. Tick a cell type above too (e.g. microglia), or "include unclassified".</div>
+<div id="filterMgAisMsg" style="margin-top:6px;color:var(--mut)">Meshes are surfaces made from the segmentation, so 0–0.3 µm means the membranes touch at this resolution. Treat every match as a candidate and confirm it in the EM. Tick a cell type above too (e.g. microglia).</div>
 </div>
 </details>
 <script>
@@ -1767,7 +1792,7 @@ for at least one second</div>
     msg.textContent="Reading the microglia–AIS contacts…";
     UJ.ais.mg.load().then(function(m){
       if(!m){msg.innerHTML='<span style="color:var(--warn)">No microglia–AIS contacts yet: run minnie65_microglia_ais.ipynb and put its microglia.json in data/ais/minnie65/.</span>';return;}
-      msg.textContent=m.contacts.length+" contacts from "+m.microglia+" microglia (closer than "+m.keepUm+" µm). "+base;
+      msg.textContent=m.contacts.length+" contacts from "+m.microglia+" cells ("+((m.cellTypes||["microglia"]).join(", "))+")"+(m.gapTouchUm==null?" -- measured to the AIS axis only, not mesh to mesh: the box reads µm from the axis":"")+". "+base;
     });
   });
 })();
@@ -12632,6 +12657,80 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     });
     return boxes;
   }
+  /* ── SPATIAL GROUP: WHAT A CELL SITS BESIDE ─────────────────────────────────────────  2026-11-05
+     Gary Morris: microglia beside a neuron's soma (del Río-Hortega's "neuronal satellites", 1919) are not
+     freely roaming, and Hesham's and Rukaya's vessel groups (<5, 5-15, 15+ µm) may mix them. Wanted:
+       freely roaming (away from vessels and from every other soma),
+       purely vascular (<5 µm from a vessel, away from every other soma),
+       beside another cell's soma -- a neuron, or which other type.
+     Measured per MICrONS nucleus:
+       vessel: nucleus centre to the nearest vessel surface (TriSAM), as the vessel filter;
+       cells:  the GAP between two nuclei = centre distance minus both nuclear radii (from each nucleus's
+               volume, as a sphere). A proxy for how close the two somata are; a soma's own cytoplasm makes
+               the real gap between the cells smaller than this, never larger.
+     Every nucleus counts as a neighbour, classified or not, except, when asked, the vessel's own cells:
+     endothelial cells, pericytes / mural cells, smooth muscle and perivascular fibroblasts, and any
+     UNCLASSIFIED nucleus whose centre is within 3 µm of a vessel surface (MICrONS gives endothelial cells no
+     type of their own, so they are mostly unclassified nuclei in the vessel wall). */
+  let SPATIAL_IX=null;
+  const SPATIAL_NEURON=/neuron|pyramidal|interneuron|basket|martinotti|chandelier|bipolar|neurogliaform|stellate|^(23P|4P|5P-ET|5P-IT|5P-NP|6P-CT|6P-IT|BC|BPC|MC|NGC)$/i;
+  const SPATIAL_VASC=/endothel|pericyte|mural|smooth muscle|perivascular fibroblast/i;
+  function spatialIndex(){
+    if(SPATIAL_IX)return SPATIAL_IX;
+    const type=new Array(N).fill(null);
+    for(const r of buildAllIdentities()){ if(r.space==="N"&&!r.merged&&!r.mergedSub&&r.type&&type[r.i]===null)type[r.i]=r.type; }
+    const rad=new Float32Array(N), vs=[];
+    for(let i=0;i<N;i++){ const v=NV[i]; if(v>0){rad[i]=Math.cbrt(3*v/(4*Math.PI)); vs.push(rad[i]);} }
+    vs.sort((a,b)=>a-b); const rMed=vs.length?vs[vs.length>>1]:4;
+    for(let i=0;i<N;i++) if(!(rad[i]>0)) rad[i]=rMed;
+    const kind=new Uint8Array(N);                 // 1 neuron, 2 vessel cell, 3 other classified, 4 unclassified
+    const vd=window.OWN_FINE_DIST;
+    for(let i=0;i<N;i++){
+      const t=type[i];
+      if(t&&SPATIAL_NEURON.test(t))kind[i]=1;
+      else if(t&&SPATIAL_VASC.test(t))kind[i]=2;
+      else if(t)kind[i]=3;
+      else kind[i]=(vd&&vd[i]!==DIST_NONE&&vd[i]<=3000)?2:4;
+    }
+    const C=30, grid=new Map();
+    for(let i=0;i<N;i++){
+      const k=Math.floor(NX[i]*UJ_RX/1000/C)+","+Math.floor(NY[i]*UJ_RY/1000/C)+","+Math.floor(NZ[i]*UJ_RZ/1000/C);
+      let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i);
+    }
+    SPATIAL_IX={type,rad,kind,grid,C};
+    return SPATIAL_IX;
+  }
+  /* Nearest neighbours of nucleus i by gap (µm): {any, neuron, other} each {gap, j} or null. */
+  function spatialNeighbours(i,vesselCellsCount,unclassifiedCount){
+    const X=spatialIndex(), x=NX[i]*UJ_RX/1000, y=NY[i]*UJ_RY/1000, z=NZ[i]*UJ_RZ/1000;
+    const cx=Math.floor(x/X.C),cy=Math.floor(y/X.C),cz=Math.floor(z/X.C);
+    const out={any:null,neuron:null,other:null};
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){
+      const a=X.grid.get((cx+dx)+","+(cy+dy)+","+(cz+dz)); if(!a)continue;
+      for(const j of a){
+        if(j===i)continue;
+        const k=X.kind[j];
+        if(k===2&&!vesselCellsCount)continue;
+        if(k===4&&!unclassifiedCount)continue;
+        const d=Math.hypot(NX[j]*UJ_RX/1000-x,NY[j]*UJ_RY/1000-y,NZ[j]*UJ_RZ/1000-z);
+        if(d>X.C)continue;
+        const g=d-X.rad[i]-X.rad[j];
+        if(!out.any||g<out.any.gap)out.any={gap:g,j};
+        if(k===1){ if(!out.neuron||g<out.neuron.gap)out.neuron={gap:g,j}; }
+        else if(!out.other||g<out.other.gap)out.other={gap:g,j};
+      }
+    }
+    return out;
+  }
+  const SPATIAL_LABEL={free:"Freely roaming",vessel:"Vessel only",neuron:"Beside a neuron soma",other:"Beside another cell's soma",both:"Vessel and another cell's soma"};
+  function spatialGroupOf(i,vMaxUm,gMaxUm,vesselCellsCount,unclassifiedCount){
+    const vd=window.OWN_FINE_DIST, v=(vd&&vd[i]!==DIST_NONE)?vd[i]/1000:null;
+    const nb=spatialNeighbours(i,vesselCellsCount,unclassifiedCount);
+    const nearVessel=v!==null&&v<=vMaxUm;
+    const nearNeuron=!!(nb.neuron&&nb.neuron.gap<=gMaxUm), nearCell=!!(nb.any&&nb.any.gap<=gMaxUm);
+    const g=nearVessel?(nearCell?"both":"vessel"):(nearNeuron?"neuron":nearCell?"other":"free");
+    return {group:g,vesselUm:v,nb};
+  }
   function runFilter(){
     buildAllIdentities();
     const types=activeTypeSet();
@@ -12644,6 +12743,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     const vesselDistOn=document.getElementById("filterVesselDistOn")?document.getElementById("filterVesselDistOn").checked:false;
     const vesselDistInput=document.getElementById("filterVesselDist");
     const vesselMaxUm=vesselDistInput&&vesselDistInput.value?parseFloat(vesselDistInput.value):10;
+    const vesselMinUm=(function(){const v=parseFloat(String((document.getElementById("filterVesselMin")||{}).value||"").replace(",","."));return Number.isFinite(v)?v:0;})();
     const glOn=document.getElementById("filterGLOn")?document.getElementById("filterGLOn").checked:false;
     const glDistInput=document.getElementById("filterGLDist");
     const glMax=glDistInput&&glDistInput.value?parseFloat(glDistInput.value)*1000:10000;
@@ -12693,6 +12793,13 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     const nearOn=document.getElementById("filterNearOn")?document.getElementById("filterNearOn").checked:false;
     const nearDistInput=document.getElementById("filterNearDist");
     const nearMaxUm=nearDistInput&&nearDistInput.value?parseFloat(nearDistInput.value):10;
+    const nearBeyond=((document.getElementById("filterNearMode")||{}).value==="beyond");
+    /* SPATIAL GROUP (2026-11-05): spatialGroupOf() above. */
+    const spOn=!!(document.getElementById("filterSpatialOn")||{}).checked;
+    const spGroups=new Set(Array.prototype.map.call(document.querySelectorAll(".fspatial:checked"),function(e){return e.value;}));
+    const spNum=(id,d)=>{const v=parseFloat(String((document.getElementById(id)||{}).value||"").replace(",","."));return Number.isFinite(v)?v:d;};
+    const spV=spNum("filterSpatialV",5),spG=spNum("filterSpatialG",2);
+    const spUncl=!!(document.getElementById("filterSpatialUncl")||{}).checked,spVes=!!(document.getElementById("filterSpatialVes")||{}).checked;
     const nearTypes=activeNearTypeSet();
     const nearValid=nearOn&&nearTypes.size>0;
     const nearIncludeRef=document.getElementById("filterNearIncludeRef")?document.getElementById("filterNearIncludeRef").checked:false;
@@ -12807,7 +12914,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
         if(row.space!=="N"||!mgAis||!mgAis.ready())return null;
         const nid_=String(NID[row.i]);
         const cs_=mgAisMode==="neuron"?mgAis.ofNeuron(nid_):mgAis.ofMicroglia(nid_);
-        if(!cs_.some(function(c){return c.d<=mgAisMax;}))return null;
+        if(!cs_.some(function(c){return c.gap<=mgAisMax;}))return null;
       }
       if(pvsOn){
         if(row.space!=="N")return null;
@@ -12861,7 +12968,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
          with vesselSel exactly like glOn/wmOn combine with nothing else -- independent of which
          (if any) vessel type is selected above, since fineDist is that same independent value. */
       if(vesselDistOn){
-        if(fineDist===null||fineDist>vesselMaxUm*1000)return null;
+        if(fineDist===null||fineDist>vesselMaxUm*1000||fineDist<vesselMinUm*1000)return null;
       }
       let gl=null;
       if(glOn){
@@ -12971,12 +13078,19 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
          themselves in the results" checkbox, see the reference-inclusion pass below) -- a
          reference-population row obviously can't be required to be near a member of its OWN
          population (that's what it IS), it still has to pass every OTHER filter on this panel. */
+      let spatial=null;
+      if(spOn){
+        if(row.space!=="N"||row.merged)return null;
+        spatial=spatialGroupOf(row.i,spV,spG,spVes,spUncl);
+        if(!spGroups.has(spatial.group))return null;
+      }
       let nearDist=null;
       if(nearValid&&!isRefRow){
         nearDist=nearestRefDistNm(row);
-        if(nearDist===null||nearDist>nearMaxNm)return null;
+        if(nearBeyond){ if(nearDist!==null&&nearDist<=nearMaxNm)return null; }
+        else if(nearDist===null||nearDist>nearMaxNm)return null;
       }
-      return{row,fine,fineDist,gl,layerLabel,wmDist,v1Bucket,rowArea,regionBoxLabel,hasCil,hasCent,nearDist,recAct,isRefRow:!!isRefRow};
+      return{row,fine,fineDist,gl,layerLabel,wmDist,v1Bucket,rowArea,regionBoxLabel,hasCil,hasCent,nearDist,recAct,spatial,isRefRow:!!isRefRow};
     }
     const out=[];
     if(attention){
@@ -13068,7 +13182,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
         if(m){out.push(m);seen.add(key);}
       }
     }
-    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive,recActive:recOn&&recSel!=="not",recSel,recClips,volActive:volOn,pvsActive:pvsOn};
+    return{matches:out,vesselActive:!!vesselSel,vesselDistActive:vesselDistOn,glActive:glOn,layerActive:layers.size>0,wmActive:wmOn,regionActive:!!(regionOn&&regionValid),attentionActive:!!attention,v1ColActive:v1On,nearActive:nearValid,nearIncludeRefActive,recActive:recOn&&recSel!=="not",recSel,recClips,volActive:volOn,pvsActive:pvsOn,spatialActive:spOn};
   }
 
   /* Grid-accelerated k-nearest-neighbour lookup for the bulk Excel export. kNearest() above is
@@ -13465,6 +13579,15 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     }
     if(result.regionActive)cols.push({header:"Region box",get:m=>m.regionBoxLabel||""});
     if(result.nearActive)cols.push({header:"Distance to nearest matched reference-type cell (µm)",get:m=>m.nearDist!=null?(m.nearDist/1000).toFixed(1):""});
+    if(result.spatialActive){
+      const nbT=j=>{const X=spatialIndex();return X.type[j]||(X.kind[j]===2?"unclassified, in a vessel wall":"unclassified");};
+      cols.push({header:"Spatial group",get:m=>m.spatial?SPATIAL_LABEL[m.spatial.group]:""});
+      cols.push({header:"Nearest other nucleus: gap between nuclei (µm)",get:m=>m.spatial&&m.spatial.nb.any?m.spatial.nb.any.gap.toFixed(1):""});
+      cols.push({header:"Nearest other nucleus: type",get:m=>m.spatial&&m.spatial.nb.any?nbT(m.spatial.nb.any.j):""});
+      cols.push({header:"Nearest other nucleus: nucleus ID",get:m=>m.spatial&&m.spatial.nb.any?String(NID[m.spatial.nb.any.j]):""});
+      cols.push({header:"Nearest neuron nucleus: gap between nuclei (µm)",get:m=>m.spatial&&m.spatial.nb.neuron?m.spatial.nb.neuron.gap.toFixed(1):""});
+      cols.push({header:"Nearest neuron nucleus: nucleus ID",get:m=>m.spatial&&m.spatial.nb.neuron?String(NID[m.spatial.nb.neuron.j]):""});
+    }
     if(result.nearIncludeRefActive)cols.push({header:"Included as reference-type cell (landmark)?",get:m=>m.isRefRow?"Yes":"No"});
     /* Organelle location columns -- one column per (kind, instance#, role), each a single
        paste-ready "x, y, z" string (see orgPtText()/organelleInstancesForRow() above for the full
