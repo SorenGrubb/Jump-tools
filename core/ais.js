@@ -260,28 +260,39 @@
   }
   function refreshRow() { if (window.UJ.skel && UJ.skel.refresh) UJ.skel.refresh(); }
   /* this cell's organelle reports (core/panel.js, after every fetch of them) */
-  function marks(nid, anns) {
-    nid = String(nid || ""); if (!nid) return;
+  /* opts: {root, nucVox (voxels), mesh: {positions (µm), indices} or a function returning a Promise of one}.
+     µJump's panel passes nothing and the cell on screen is used (CUR_ROOT, CUR_NUC_CENTER_VOX, the mesh read
+     by UJ.mesh); the VR viewer passes its own cell and the mesh it already has. Resolves the entry or null. */
+  function marks(nid, anns, opts) {
+    opts = opts || {};
+    nid = String(nid || ""); if (!nid) return Promise.resolve(null);
     var pts = (anns || []).filter(function (a) { return a && a.kind === "axon_start"; }).map(function (a) { return parseVox(a.pointA); }).filter(Boolean);
-    if (!pts.length) { if (TRACED[nid]) { delete TRACED[nid]; refreshRow(); } return; }
-    Promise.resolve(get(nid)).then(function (comp) {
-      if (comp) return;                                               // the computed AIS stands
+    if (!pts.length) { if (TRACED[nid]) { delete TRACED[nid]; refreshRow(); } return Promise.resolve(null); }
+    return Promise.resolve(get(nid)).then(function (comp) {
+      if (comp) return comp;                                          // the computed AIS stands
       var pool = poolMarks(pts), key = pool.at.map(function (x) { return x.toFixed(0); }).join(",") + "/" + pool.n;
-      if (TRACED[nid] && TRACED[nid].key === key) return;             // already traced (or tracing) from this
-      var root = (typeof CUR_ROOT !== "undefined" && CUR_ROOT) ? String(CUR_ROOT) : "";
+      if (TRACED[nid] && TRACED[nid].key === key) return TRACED[nid].p;   // already traced (or tracing) from this
+      var root = opts.root ? String(opts.root) : (typeof CUR_ROOT !== "undefined" && CUR_ROOT) ? String(CUR_ROOT) : "";
       var T = TRACED[nid] = { key: key, state: "tracing", n: pool.n };
       refreshRow();
-      if (!root || !window.UJ.mesh || !UJ.mesh.fetchCombinedMesh) { T.state = "failed"; T.msg = "no root id / mesh for this cell"; refreshRow(); return; }
-      var nc = window.CUR_NUC_CENTER_VOX ? v2um(window.CUR_NUC_CENTER_VOX) : null;
-      UJ.mesh.fetchCombinedMesh(root).then(function (m) {
-        if (TRACED[nid] !== T) return;
+      var nv = opts.nucVox || (opts.root ? null : window.CUR_NUC_CENTER_VOX), nc = nv ? v2um(nv) : null;
+      var meshP = typeof opts.mesh === "function" ? opts.mesh() : opts.mesh ? Promise.resolve(opts.mesh)
+        : (root && window.UJ.mesh && UJ.mesh.fetchCombinedMesh) ? UJ.mesh.fetchCombinedMesh(root) : null;
+      if (!meshP) { T.state = "failed"; T.msg = "no root id / mesh for this cell"; refreshRow(); return (T.p = Promise.resolve(null)); }
+      T.p = Promise.resolve(meshP).then(function (m) {
+        if (TRACED[nid] !== T) return null;
+        if (!m || !m.positions) { T.state = "failed"; T.msg = "no mesh for this cell"; refreshRow(); return null; }
         var r = traceOnMesh(m.positions, m.indices, v2um(pool.at), nc);
         if (r.fail) { T.state = "failed"; T.msg = r.fail; }
         else { T.state = "done"; T.entry = { r: root, p: r.pts.map(um2v), L: +r.L.toFixed(1), e: r.e, src: "mark", n: pool.n, pa: 0, fd: 0 }; }
         refreshRow();
-      }, function (err) { if (TRACED[nid] !== T) return; T.state = "failed"; T.msg = (err && err.message) || "the mesh could not be read"; refreshRow(); });
+        return T.entry || null;
+      }, function (err) { if (TRACED[nid] !== T) return null; T.state = "failed"; T.msg = (err && err.message) || "the mesh could not be read"; refreshRow(); return null; });
+      return T.p;
     });
   }
+  /* The AIS line of a cell in µm (the volume's own frame), computed or traced: [[x,y,z], ...] or null. */
+  function lineUm(a) { return a && a.p && a.p.length > 1 ? a.p.map(v2um) : null; }
   /* what the skeleton row says while a cell has a mark but no traced AIS yet */
   function status(nid) {
     var t = TRACED[String(nid || "")]; if (!t || t.state === "done") return "";
@@ -311,5 +322,5 @@
     var url = neuroglancerLinkForPos([+b.dataset.x, +b.dataset.y, +b.dataset.z]);
     if (url) window.open(url, "_blank", "noopener");
   });
-  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, describe: describe, COLOR: COLOR, marks: marks, status: status, _trace: traceOnMesh, mg: mgApi, _meta: function () { return META; } };
+  window.UJ.ais = { configure: configure, get: get, cached: cached, layer: layer, panel: panel, describe: describe, COLOR: COLOR, marks: marks, status: status, lineUm: lineUm, _trace: traceOnMesh, mg: mgApi, _meta: function () { return META; } };
 })();
