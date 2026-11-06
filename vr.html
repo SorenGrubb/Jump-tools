@@ -373,7 +373,7 @@
   <div id="menRow" class="ctl" style="flex-wrap:wrap;gap:4px 10px;font-size:12px;align-items:center" title="Søren's own Neuroglancer outlines of the brain's borders (2026-11-06), drawn section by section and joined into sheets the way the visual-area walls are. The outlines themselves are drawn too: they are the data, the skin between them is interpolation.">
     <span style="color:var(--mut)">Borders:</span>
     <label title="Glia limitans — the astrocyte end-feet sheet at the brain's surface (beige)"><input type="checkbox" id="menGlia"> glia limitans</label>
-    <label title="Arachnoid mater — the outer leptomeningeal layer (blue), with the arterioles (red) and venules (blue) marked in it"><input type="checkbox" id="menArach"> arachnoid mater</label>
+    <label title="Arachnoid mater — the outer leptomeningeal layer (blue)"><input type="checkbox" id="menArach"> arachnoid mater</label>
     <label title="The border between grey and white matter (white)"><input type="checkbox" id="menWm"> white matter</label>
     <label title="The arachnoid villus (Grubb, preprint): its outline (gold), its core channel (coral) and its inner channel (cyan)"><input type="checkbox" id="menVillus"> arachnoid villus</label>
     <label title="The outline of the whole imaged volume, traced at seven depths"><input type="checkbox" id="menBox"> dataset box</label>
@@ -4873,7 +4873,7 @@ document.getElementById("areaBtn").addEventListener("click", () => setAreas(!ARE
    area walls: translucent, both sides, no depth write, drawn after the cells. */
 const MEN_PARTS = {
   glia:   { layers: ["glia"],                   label: "Glia limitans",    skin: 0.30, line: 0.30 },
-  arach:  { layers: ["arach"],                  label: "Arachnoid mater",  skin: 0.20, line: 0.30, points: true },
+  arach:  { layers: ["arach"],                  label: "Arachnoid mater",  skin: 0.20, line: 0.30 },   // its file's arteriole/venule points are not drawn (Søren, 2026-11-06: not needed)
   wm:     { layers: ["wm"],                     label: "White matter",     skin: 0.22, line: 0.30 },
   villus: { layers: ["vout", "vcore", "vchan"], label: "Arachnoid villus", skin: [0.18, 0.30, 0.45], line: 0.85 },
   box:    { layers: ["bbox"],                   label: "Dataset box",      skin: 0.035, line: 0.8 }
@@ -4931,7 +4931,7 @@ async function buildMen(part){
   const on = Object.keys(MEN.on).filter(k => MEN.on[k]).map(k => MEN_PARTS[k].label);
   ctxNote.textContent = "Borders (Søren's Neuroglancer outlines): " + on.join(", ") + "."
     + (part === "villus" ? " Villus: outline gold, core channel coral, inner channel cyan." : "")
-    + (part === "arach" ? " Arterioles red, venules blue." : "");
+    + "";
   MENU.dirty = true;
 }
 function setMen(part, v){ if (!(part in MEN.on)) return; MEN.on[part] = !!v; buildMen(part); MENU.dirty = true; }
