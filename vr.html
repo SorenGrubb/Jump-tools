@@ -370,6 +370,14 @@
     <button id="rboxBtn" class="on" style="display:none" title="The region box(es) that limited Filter and show, in the same colours as its 3D view">Region box</button>
     <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
   </div>
+  <div id="menRow" class="ctl" style="flex-wrap:wrap;gap:4px 10px;font-size:12px;align-items:center" title="Søren's own Neuroglancer outlines of the brain's borders (2026-11-06), drawn section by section and joined into sheets the way the visual-area walls are. The outlines themselves are drawn too: they are the data, the skin between them is interpolation.">
+    <span style="color:var(--mut)">Borders:</span>
+    <label title="Glia limitans — the astrocyte end-feet sheet at the brain's surface (beige)"><input type="checkbox" id="menGlia"> glia limitans</label>
+    <label title="Arachnoid mater — the outer leptomeningeal layer (blue), with the arterioles (red) and venules (blue) marked in it"><input type="checkbox" id="menArach"> arachnoid mater</label>
+    <label title="The border between grey and white matter (white)"><input type="checkbox" id="menWm"> white matter</label>
+    <label title="The arachnoid villus (Grubb, preprint): its outline (gold), its core channel (coral) and its inner channel (cyan)"><input type="checkbox" id="menVillus"> arachnoid villus</label>
+    <label title="The outline of the whole imaged volume, traced at seven depths"><input type="checkbox" id="menBox"> dataset box</label>
+  </div>
   <div class="ctl">
     <select id="skelSel" title="The Shih lab's hand-labelled vascular skeletons, including the whole capillary bed (How et al., bioRxiv 2026, doi:10.64898/2026.09.26.754479) — the same layers as Filter-and-show's &quot;Shih lab vascular skeletons&quot;">
       <option value="off">Vessel skeletons: off</option>
@@ -981,7 +989,7 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
@@ -1105,6 +1113,9 @@ window.VR_DATASETS = {
     tracingDs: "ujump",
     /* The V1 column and the four visual areas, from ujump.html itself (src/build_vr_v1areas.js). */
     v1areas: "core/vr_v1areas_microns.json",
+    /* Søren's outlines of the glia limitans, arachnoid mater, white matter, arachnoid villus and the
+       dataset box (dashboard-data-tools/meninges_prep.py; core/meninges.js; 2026-11-06). */
+    meninges: "data/meninges/minnie65.json",
     /* Søren's verified nucleus→centriole and cilium base→tip vectors (src/build_vr_vectors.js). */
     vectors: "core/vr_vectors_microns.json",
     /* MICrONS recorded activity, baked from DANDI:000402 by microns_activity_bake.ipynb (section 21). */
@@ -1317,6 +1328,7 @@ UJ.cfg = { id: VR_DS, mesh: JSON.parse(JSON.stringify(VR_DATASETS[VR_DS].mesh ||
 <script src="core/emtiles.js"></script>
 <script src="core/tracing.js"></script>
 <script src="core/traceloft.js"></script>
+<script src="core/meninges.js"></script>
 <!-- The walkthrough overlay, the same one µJump uses. No core/stepthrough.js here:
      this page has no tab bar, so no step names a tab. core/tour.js, 2026-10-23. -->
 <script src="core/tour.js"></script>
@@ -2029,6 +2041,7 @@ const LAYERS = { data: null, group: null };
 const ATLAS = { data: null, loading: null };
 const V1COL = { mode: "off", group: null };
 const AREAS = { on: false, group: null };
+const MEN = { on: { glia: false, arach: false, wm: false, villus: false, box: false }, data: null, loading: null, groups: {} };
 const SKEL = { mode: "off", groups: new Set(["art", "ven", "deep", "pial", "cap"]), cap: "act", raw: {}, loading: {}, group: null, n: 0 };
 const ctxNote = document.getElementById("ctxNote");
 function regionBox(){
@@ -4440,7 +4453,7 @@ function captureScene(){
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
           selected: SELECTED, stimMode: document.getElementById("stimMode").value, stimGain: document.getElementById("stimGain").value, plots: !!STIM.plots, stimHidden: !!STIM.withHidden, ca: caUi(), ra: raUi(), nv: nvUi(), sl: slUi(), csdPlot: CSD.plot, lfp: lfpUi(), phys: { T: PHYS.T, icp: PHYS.icp }, wbc: { on: WBC.on, ad: WBC.ad, ly6g: WBC.ly6g, teach: WBC.teach }, pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w }, plotShow: Object.assign({}, PLOT_SHOW),
-          pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
+          pts: PTS.on, ptsDir: PTS.dir, v1: V1COL.mode, areas: AREAS.on, men: menUi(), skel: { mode: SKEL.mode, groups: [...SKEL.groups], cap: SKEL.cap },
           bg: LOOK.bg, grid: LOOK.grid, vpart: Object.assign({}, VPART.on) },
     /* Absolute, with the centre and the fit it was made under: a scene that had neighbours added
        after it opened is centred and fitted on fewer cells than it holds, and recomputing either
@@ -4648,6 +4661,7 @@ async function applyScene(sc){
   if (u.pts === false || u.ptsDir){ PTS.on = u.pts !== false; PTS.dir = u.ptsDir || "both"; document.getElementById("ptsDir").value = PTS.dir; buildPoints(); }
   if (u.v1 && u.v1 !== "off") setV1Col(u.v1);
   if (u.areas) setAreas(true);
+  if (u.men) menApply(u.men);
   if (u.skel && u.skel.mode && u.skel.mode !== "off"){
     SKEL.groups = new Set(u.skel.groups || []); SKEL.cap = u.skel.cap || "act"; setSkel(u.skel.mode);
   }
@@ -4844,6 +4858,86 @@ async function buildAreas(){
 }
 function setAreas(v){ AREAS.on = v; buildAreas(); MENU.dirty = true; }
 document.getElementById("areaBtn").addEventListener("click", () => setAreas(!AREAS.on));
+
+/* ── the brain's borders: glia limitans, arachnoid mater, white matter, arachnoid villus, dataset box ──
+   2026-11-06. Søren: *"The white matter, the arachnoid mater, and the glia limitans should be shown
+   like sheets similar to the division of the visual areas. I want the white matter border to be white
+   and the glia limitans to be brain matter coloured… The arachnoid villus… outlines of the structure,
+   an outline of the channel inside it and an outline of the inner channel… together with the glia
+   limitans, arachnoid mater outline and the white matter border… also… the bounding box for the
+   entire dataset."*
+   His Neuroglancer line annotations, one polyline per traced section, joined into surfaces by
+   core/meninges.js: sheets by a greedy stitch between neighbouring sections (no surface across a
+   gap in the drawing), the villus and the box by core/traceloft.js's loft. The traced lines are
+   drawn on top -- they are the data; the skin between them is interpolation. Same material as the
+   area walls: translucent, both sides, no depth write, drawn after the cells. */
+const MEN_PARTS = {
+  glia:   { layers: ["glia"],                   label: "Glia limitans",    skin: 0.30, line: 0.30 },
+  arach:  { layers: ["arach"],                  label: "Arachnoid mater",  skin: 0.20, line: 0.30, points: true },
+  wm:     { layers: ["wm"],                     label: "White matter",     skin: 0.22, line: 0.30 },
+  villus: { layers: ["vout", "vcore", "vchan"], label: "Arachnoid villus", skin: [0.18, 0.30, 0.45], line: 0.85 },
+  box:    { layers: ["bbox"],                   label: "Dataset box",      skin: 0.035, line: 0.8 }
+};
+const MEN_IDS = { glia: "menGlia", arach: "menArach", wm: "menWm", villus: "menVillus", box: "menBox" };
+async function loadMeninges(){
+  if (MEN.data) return MEN.data;
+  if (!MEN.loading) MEN.loading = fetch(DSX.meninges).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(d => { MEN.data = d; return d; }).catch(e => { MEN.loading = null; throw e; });
+  return MEN.loading;
+}
+function menLayerGroup(l, skinOp, lineOp){
+  const g = new THREE.Group(), col = new THREE.Color(l.color);
+  const G = l.kind === "sheet" ? UJ.meninges.sheet(l) : UJ.meninges.rings(l, UJ.traceloft && UJ.traceloft.loft);
+  if (G.indices.length){
+    const m = new THREE.Mesh(geometryFrom(G.positions, G.indices),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: skinOp, side: THREE.DoubleSide, depthWrite: false }));
+    m.renderOrder = 3; g.add(m);
+  }
+  if (G.lines.length){
+    const ln = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(G.lines, 3)),
+      new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: lineOp, depthWrite: false }));
+    ln.renderOrder = 4; g.add(ln);
+  }
+  g.userData.tris = G.indices.length / 3;
+  return g;
+}
+async function buildMen(part){
+  disposeGroup(MEN.groups[part]); MEN.groups[part] = null;
+  { const cb = document.getElementById(MEN_IDS[part]); if (cb) cb.checked = MEN.on[part]; }
+  if (!MEN.on[part]) return;
+  let d; try { d = await loadMeninges(); } catch (e){ ctxNote.textContent = "The borders could not be loaded: " + (e.message || e); return; }
+  if (!MEN.on[part] || MEN.groups[part]) return;
+  const P = MEN_PARTS[part], grp = new THREE.Group();
+  P.layers.forEach((key, i) => {
+    const l = d.layers.find(x => x.key === key); if (!l) return;
+    grp.add(menLayerGroup(l, Array.isArray(P.skin) ? P.skin[i] : P.skin, P.line));
+  });
+  if (P.points && d.points){
+    for (const nm in d.points){
+      const q = d.points[nm]; if (!q.p || !q.p.length) continue;
+      const inst = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(3, 1), new THREE.MeshStandardMaterial({ color: q.color, roughness: 0.5 }), q.p.length);
+      const M4 = new THREE.Matrix4();
+      q.p.forEach((v, k) => { M4.makeTranslation(v[0], v[1], v[2]); inst.setMatrixAt(k, M4); });
+      inst.instanceMatrix.needsUpdate = true; grp.add(inst);
+    }
+  }
+  const l0 = d.layers.find(x => x.key === P.layers[0]);
+  if (l0){
+    const a = UJ.meninges.anchor(l0), h = labelHeight();
+    const lab = textSprite(P.layers.length > 1 ? [P.label, "outline · core channel · inner channel"] : [P.label], { fit: true, border: l0.color });
+    lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(a[0], a[1] - h * (part === "wm" ? -1 : 1), a[2]); grp.add(lab);
+  }
+  MEN.groups[part] = grp; content.add(grp);
+  const on = Object.keys(MEN.on).filter(k => MEN.on[k]).map(k => MEN_PARTS[k].label);
+  ctxNote.textContent = "Borders (Søren's Neuroglancer outlines): " + on.join(", ") + "."
+    + (part === "villus" ? " Villus: outline gold, core channel coral, inner channel cyan." : "")
+    + (part === "arach" ? " Arterioles red, venules blue." : "");
+  MENU.dirty = true;
+}
+function setMen(part, v){ if (!(part in MEN.on)) return; MEN.on[part] = !!v; buildMen(part); MENU.dirty = true; }
+function menUi(){ return Object.assign({}, MEN.on); }
+function menApply(u){ if (!u) return; for (const k in MEN.on){ const v = !!u[k]; if (v !== MEN.on[k]) setMen(k, v); } }
+for (const k in MEN_IDS){ const cb = document.getElementById(MEN_IDS[k]); if (cb) cb.addEventListener("change", e => setMen(k, e.target.checked)); }
 
 /* ── the vessel skeletons ── */
 const SKEL_FILES = {
@@ -8685,6 +8779,7 @@ function menuRows(){
                 on: V1COL.mode !== "off", act: () => setV1Col(({ off: "outline", outline: "cells", cells: "off" })[V1COL.mode]) });
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
     if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
+    if (DS_HAS.men) for (const k in MEN_PARTS) rows.push({ label: MEN_PARTS[k].label + (k === "villus" ? " (3 outlines)" : ""), on: MEN.on[k], act: () => setMen(k, !MEN.on[k]) });
     const vm = document.getElementById("vascSel").value;
     if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
                 on: vm !== "off", act: () => setVessels(({ off: "whole", whole: "box", box: "off" })[vm]) });
@@ -9963,7 +10058,7 @@ function tlKey(lane, o){ return Object.assign({ id: TL.uid++, lane }, o); }
 /* What a view key holds -- read from the live state, so it is whatever the panel shows now. */
 function tlCaptureView(){
   return { nuc: SHOW_NUC, glass: SEE_THROUGH, iso: ISOLATE, colour: COLOUR_MODE, layers: layersOn(),
-           vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, skel: SKEL.mode,
+           vessels: document.getElementById("vascSel").value, v1: V1COL.mode, areas: AREAS.on, men: menUi(), skel: SKEL.mode,
            org: ORG.on, traced: TRC.on, cvec: VEC.cent, lvec: VEC.cil, pts: PTS.on, sbar: SBAR.on, rbox: RBOX.on,
            plots: !!STIM.plots, sel: SELECTED, hidden: CELLS.map(c => !!c.hidden), glassCells: CELLS.map(c => !!c.glass), glassLevel: GLASS_LEVEL, plotShow: Object.assign({}, PLOT_SHOW), bg: LOOK.bg, grid: LOOK.grid,
            /* the vessels' story (2026-10-22, the planetarium film): colour, the vascular regulation, the red cells */
@@ -10025,6 +10120,7 @@ function tlApplyView(v){
     if (DS_HAS.pvs && pm !== sel.value){ sel.value = pm; buildPvs(); } }
   if (v.v1 && v.v1 !== V1COL.mode) setV1Col(v.v1);
   if (v.areas !== AREAS.on) setAreas(v.areas);
+  if (v.men) menApply(v.men);
   if (v.skel && v.skel !== SKEL.mode) setSkel(v.skel);
   if (v.org !== ORG.on) setOrganelles(v.org);
   if (v.traced !== TRC.on) setTraced(v.traced);
@@ -16518,10 +16614,10 @@ const panel = document.getElementById("panel"), show = document.getElementById("
    neighbour table and Søren's vectors exist for MICrONS alone. Elsewhere those controls are
    taken away -- in the panel and in the headset palette -- rather than left to fail. */
 const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, vasc: !!DSX.vascMesh, skel: !!DSX.vascSkel,
-                 nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, seg: !!DSX.seg, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet };
+                 nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, seg: !!DSX.seg, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet, men: !!DSX.meninges };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
-  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", vascSel: "vasc", skelSel: "skel", capSel: "skel",
+  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", menRow: "men", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
                  emBtn: "em", emSize: "em", emDn: "em", emUp: "em", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapWbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn", tsBtn: "seg", tsR: "seg", tsTop: "seg", tsList: "seg" };
   for (const id in gone){
@@ -16530,7 +16626,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
     (el._wrap || el).style.setProperty("display", "none", "important"); el.dataset.dsGone = "1";
   }
   if (!DS_HAS.layers) document.getElementById("layerBtn").classList.remove("on");
-  if (!DS_HAS.layers && !DS_HAS.v1 && !DS_HAS.vasc && !DS_HAS.skel && !RBOX.list.length){
+  if (!DS_HAS.layers && !DS_HAS.v1 && !DS_HAS.vasc && !DS_HAS.skel && !DS_HAS.men && !RBOX.list.length){
     const t = document.querySelector('#tabs button[data-tab="map"]'); if (t) t.style.display = "none";
   }
   /* V1DD's meshes are listed by CAVE: without δJump's token there is no mesh at all. */
@@ -16542,7 +16638,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
