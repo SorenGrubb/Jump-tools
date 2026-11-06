@@ -663,7 +663,17 @@ function loadTracedStructures(nid, root){
   if (!host) return;
   host.innerHTML = "";
   if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
-  if (!nid && !root) return;
+  /* ── A CELL WITH NO IDS IS STILL A PLACE ─────────────────────────────  2026-11-06
+     Søren, on a verified macrophage in the Img35 imagery: *"I have tried to add their whole cell
+     tracing and even tried to trace the nucleus. It does not show on the cell identity card."* The
+     tracings were filed correctly -- cellCoord 321708,79882,9856, the card's own voxel -- but this
+     returned before looking, because a cell outside the segmentation has neither a nucleus id nor a
+     root id. The coordinate is the one identity it has, and panelSameCell already compares it
+     (window.CUR_POS); a tracing with no coordinate cannot match an empty id, so nothing else
+     arrives on these cards. */
+  var hasAt = false;
+  try { hasAt = !!(window.CUR_POS && window.CUR_POS.length === 3); } catch (_e0){ hasAt = false; }
+  if (!nid && !root && !hasAt) return;
   var render = function(list){
     var mine = (list || []).filter(function(t){
       if (!t) return false;

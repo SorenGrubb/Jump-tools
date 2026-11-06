@@ -5832,6 +5832,11 @@ function renderStandalone(st,panel,outOfRegion){
   oh+=renderLocationDiagram(st.pos);
   if(st.centriole)oh+='<div class="meta">Centriole at voxel ('+coordSpan(st.centriole[0],st.centriole[1],st.centriole[2])+') <button class="jumpview" data-x="'+st.centriole[0]+'" data-y="'+st.centriole[1]+'" data-z="'+st.centriole[2]+'" style="margin-left:6px;padding:2px 8px;font-size:11px">Jump to centriole</button></div>';
   oh+=cilHtml(st.cilium);
+  /* Where the hand-traced whole cell, nucleus and organelles of this point are listed (2026-11-06):
+     core/panel.js's loadTracedStructures puts "Traced on this cell" and the Organelles section
+     after #commReports, and matches them by this card's voxel -- the only identity a cell outside
+     the segmentation has. */
+  oh+='<div class="meta" id="commReports"></div>';
   /* Verified own-coordinate points have no MICrONS nucleus, so there is no real nucleusId to key
      a normal Root-ID proposal on. Reuse the exact same proposal/voting system (Root ID
      proposals sheet, propose_root_id/vote_root_id/loadRootIdPanel) as every other cell, but with
@@ -5858,6 +5863,8 @@ function renderStandalone(st,panel,outOfRegion){
   wireLeafSearch("mainLeaf",slug=>openIdentifyToLeaf(idfCtx,slug));
   window.CUR_POS=st.pos;window.CUR_CELLTYPE_DISPLAY=longName(st.type);window.CUR_ID_SOURCE="own";window.CUR_HAS_CELL=true;
   loadRootIdPanel(st.pos.join(","));
+  /* its tracings, by coordinate -- see the note at #commReports above */
+  try{ if(typeof loadTracedStructures==="function")loadTracedStructures("",""); }catch(_e){}
 }
 
 let LAST_OOB_QUERY=0; // bumped on every showNucleus() call; see the race-guard in the out-of-region branch below
@@ -9112,6 +9119,8 @@ function renderUserReportedCell(ur,panel){
   }
   oh+='<div class="idcta warn" style="margin-top:10px"><div class="idcta-top"><span>'+(isUnclassified?"Know what type of cell this is? Add the identification.":"Recognize this cell too, or think it’s something else? Add your own identification.")+'</span><button class="idbtn" id="idfNewCellGo">'+(isUnclassified?"Classify this cell &rarr;":"Report / confirm this cell &rarr;")+'</button></div>'
     +'<div class="idcta-search">'+leafSearchHtml("newCellLeaf","Already know the type? Jump straight there")+'</div></div>';
+  /* its hand-traced cell, nucleus and organelles, by coordinate -- as in renderStandalone (2026-11-06) */
+  oh+='<div class="meta" id="commReports"></div>';
   panel.innerHTML=oh;
   panel.querySelectorAll(".jump,.njump").forEach(b=>b.addEventListener("click",()=>{
     /* Only ".njump" (a "3 nearest neighbouring/nearest cells" list entry) sets a Back target --
@@ -9132,6 +9141,7 @@ function renderUserReportedCell(ur,panel){
      lets decorateMeshVolButtons() reveal the "Compute volume"/"3D model"/"PowerPoint" buttons
      rendered hidden above once a root ID exists. */
   loadRootIdPanel(ur.pos.join(","));
+  try{ if(typeof loadTracedStructures==="function")loadTracedStructures("",ur.rootId||""); }catch(_e){}
 }
 /* Shown when a query coordinate lands on (within 300nm of) a community-reported, IDENTIFIED
    sub-cell of a merged-nucleus detection (see nearestMergedSub()/MERGED_SUB_REPORTS_CACHE) --
