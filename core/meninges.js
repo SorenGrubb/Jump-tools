@@ -36,6 +36,7 @@ UJ.meninges = (function(){
   "use strict";
   var MAX_EDGE = 40;     // µm: a longer triangle edge is a gap in the annotation, not tissue
   var MAX_DZ = 40;       // µm: sections further apart than this are not joined
+  var MIN_FILL = 30;     // µm: a gap in one or two sections longer than this along the sheet is bridged
 
   function b64ToInt16(s){
     var bin = typeof atob === "function" ? atob(s) : Buffer.from(s, "base64").toString("binary");
@@ -94,22 +95,92 @@ UJ.meninges = (function(){
   function overlap(s, t){ return Math.min(s[1], t[1]) - Math.max(s[0], t[0]); }
 
   /* A sheet layer -> { positions: Float32Array, indices: Uint32Array, lines: Float32Array (segments) } */
+  /* Intervals along the axis: cover of a section, intersection, subtraction. */
+  function coverOf(pcs, ax){
+    var iv = pcs.map(function(p){ return span(p, ax); }).sort(function(a, b){ return a[0] - b[0]; }), out = [];
+    iv.forEach(function(v){ var l = out[out.length - 1]; if (l && v[0] <= l[1]) l[1] = Math.max(l[1], v[1]); else out.push(v.slice()); });
+    return out;
+  }
+  function intersect(A, B){
+    var out = [];
+    A.forEach(function(a){ B.forEach(function(b){ var lo = Math.max(a[0], b[0]), hi = Math.min(a[1], b[1]); if (hi > lo) out.push([lo, hi]); }); });
+    return out;
+  }
+  function subtract(A, B){
+    var out = A.map(function(a){ return a.slice(); });
+    B.forEach(function(b){
+      var nx = [];
+      out.forEach(function(a){
+        if (b[1] <= a[0] || b[0] >= a[1]){ nx.push(a); return; }
+        if (b[0] > a[0]) nx.push([a[0], b[0]]);
+        if (b[1] < a[1]) nx.push([b[1], a[1]]);
+      });
+      out = nx;
+    });
+    return out;
+  }
+  /* The part of a section's pieces that lies in [lo, hi] along the axis, as polylines. */
+  function clip(pcs, ax, lo, hi){
+    var out = [];
+    pcs.forEach(function(p){
+      var cur = [];
+      p.forEach(function(q){ var a = along(q, ax); if (a >= lo && a <= hi) cur.push(q); else if (cur.length){ out.push(cur); cur = []; } });
+      if (cur.length) out.push(cur);
+    });
+    return out.filter(function(c){ return c.length >= 2; });
+  }
+
+  /* A sheet layer -> { positions: Float32Array, indices: Uint32Array, lines: Float32Array (segments) } */
   function sheet(layer, opts){
     opts = opts || {};
-    var ax = layer.axis || [1, 0], P = [], I = [], L = [], prev = null, prevZ = 0;
-    var secs = layer.secs.map(function(s){ return { z: s[0], pcs: s[1].map(decode) }; });
-    secs.sort(function(a, b){ return a.z - b.z; });
+    var ax = layer.axis || [1, 0], P = [], I = [], L = [];
+    var maxDz = opts.maxDz || MAX_DZ, maxEdge = opts.maxEdge || MAX_EDGE, minFill = opts.minFill || MIN_FILL;
+    var raw = layer.secs.map(function(s){ return { z: s[0], pcs: s[1].map(decode) }; });
+    raw.sort(function(a, b){ return a.z - b.z; });
+    /* One section drawn at two z a fraction of a µm apart is one section (arachnoid, z 1033.3/1033.4). */
+    var secs = [];
+    raw.forEach(function(s){ var l = secs[secs.length - 1]; if (l && s.z - l.z < 0.5) l.pcs = l.pcs.concat(s.pcs); else secs.push(s); });
     secs.forEach(function(s){
       s.pcs.forEach(function(p){ for (var k = 0; k + 1 < p.length; k++) L.push(p[k][0], p[k][1], s.z, p[k + 1][0], p[k + 1][1], s.z); });
-      if (prev && s.z - prevZ <= (opts.maxDz || MAX_DZ)){
-        s.pcs.forEach(function(B){
-          var sb = span(B, ax), best = null, bo = 0;
-          prev.forEach(function(A){ var o = overlap(span(A, ax), sb); if (o > bo){ bo = o; best = A; } });
-          if (best) stitch(best, prevZ, B, s.z, P, I, opts.maxEdge);
+      s.cov = coverOf(s.pcs, ax);
+    });
+    /* Neighbouring sections: every piece joined to EVERY piece of the section below that it overlaps
+       along the axis (2026-11-06, v2). Joining only the most-overlapping one left a long hole wherever
+       one section was drawn in two pieces and its neighbour in one. */
+    for (var i = 1; i < secs.length; i++){
+      var s = secs[i], prev = secs[i - 1].pcs, prevZ = secs[i - 1].z;
+      if (s.z - prevZ > maxDz) continue;
+      s.pcs.forEach(function(B){
+        var sb = span(B, ax);
+        prev.forEach(function(A){ if (overlap(span(A, ax), sb) > -maxEdge) stitch(A, prevZ, B, s.z, P, I, maxEdge); });
+      });
+    }
+    /* BRIDGING A SECTION'S GAP (2026-11-06, v3). Søren: *"there are a lot of long stretches with
+       holes in the segmentation. It is fine with the holes for the penetrating vessels, but can we
+       close the very long holes?"* -- and the same for the arachnoid mater. Those holes are one or two
+       sections where a long stretch was simply not drawn (gaps of 30–200 µm along the sheet) while
+       the sections on both sides run straight through. So: where sections i and j (j = i+2 or i+3,
+       closer than MAX_DZ) both cover a stretch that NONE of the sections between them covers, and
+       that stretch is longer than MIN_FILL, i and j are joined directly across it. A penetrating
+       vessel leaves a hole that is short along the sheet, or one that runs through more than two
+       sections, so it stays open. */
+    for (i = 0; i < secs.length; i++){
+      for (var j = i + 2; j <= i + 3 && j < secs.length; j++){
+        if (secs[j].z - secs[i].z > maxDz) break;
+        var mid = [];
+        for (var k = i + 1; k < j; k++) mid = mid.concat(secs[k].cov);
+        var gaps = subtract(intersect(secs[i].cov, secs[j].cov), coverOf(mid.map(function(v){ return [[v[0] * ax[0], v[0] * ax[1]], [v[1] * ax[0], v[1] * ax[1]]]; }), ax));
+        gaps.forEach(function(g){
+          if (g[1] - g[0] < minFill) return;
+          var lo = g[0] - 6, hi = g[1] + 6;          // one resampled point (4 µm) past each side, to meet the edges
+          clip(secs[i].pcs, ax, lo, hi).forEach(function(A){
+            clip(secs[j].pcs, ax, lo, hi).forEach(function(B){
+              if (overlap(span(A, ax), span(B, ax)) > 0) stitch(A, secs[i].z, B, secs[j].z, P, I, maxEdge);
+            });
+          });
         });
       }
-      prev = s.pcs; prevZ = s.z;
-    });
+    }
     return { positions: new Float32Array(P), indices: new Uint32Array(I), lines: new Float32Array(L) };
   }
 
