@@ -217,6 +217,49 @@ UJ.organelleml = (function(){
     return out;
   }
 
+  /* ── THE SECTIONS ABOVE AND BELOW ──────────────────────────────────────────────  2026-11-06
+     Søren: "It seems like the predictions of the AI only uses the slice I am looking at and does not
+     interpret the slices above or below before concluding. Could we implement that?" The model is a
+     2D one, trained on single sections, so without retraining it the next best thing is to ASK IT
+     THREE TIMES: on this section and on one about 80 nm above and below (2 sections at 40 nm, 3 at
+     30 nm; an organelle is hundreds of nm deep, so it is still there), all read on the same grid, and
+     to average what it says, this section counting half and each neighbour a quarter. A mark the
+     neighbours agree with keeps its score; a one-section flicker (a fold, a dark smear, a membrane
+     cut obliquely) loses half of it and mostly falls under its class's threshold. A neighbour that is
+     mostly unread (outside the volume, a missing section) is left out. Costs three runs instead of
+     one. On by default; the pad's "use the sections above and below" box turns it off. */
+  var LS_3D = "ujump_organelleml_3d_v1";
+  function threeD(){ try { return localStorage.getItem(LS_3D) !== "0"; } catch (_e){ return true; } }
+  function setThreeD(v){ try { localStorage.setItem(LS_3D, v ? "1" : "0"); } catch (_e){} LAST = null; }
+  function neighbourStep(){
+    var tres = UJ.emtiles.config().res;
+    return Math.max(1, Math.round(80 / (tres[2] || 40)));
+  }
+  /* The plane at z, always through drawSection on the same centre and size as planeFor, so the three
+     planes share one grid. */
+  async function planeAtZ(view, nm, z){
+    var mip = await mipFor(nm);
+    if (mip < 0) throw new Error("this volume has no " + nm + " nm level for the model to read");
+    var a = view.toolAt(0, 0), b = view.toolAt(view.w, view.h);
+    var tres = UJ.emtiles.config().res;
+    var w = Math.min(MAX_SIDE, Math.max(32, Math.round(Math.abs(b[0] - a[0]) * tres[0] / nm)));
+    var h = Math.min(MAX_SIDE, Math.max(32, Math.round(Math.abs(b[1] - a[1]) * tres[1] / nm)));
+    var centre = [Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2), z];
+    var cv = document.createElement("canvas");
+    var v2 = await UJ.emtiles.drawSection(cv, { centre: centre, mip: mip, zoom: 1, w: w, h: h, lo: 0, hi: 255 });
+    return { raw: v2.raw, seen: v2.seen, w: v2.vw, h: v2.vh, x0: v2.x0, y0: v2.y0, res: v2.resNm };
+  }
+  function softmaxInto(logits, C, n, out, wgt){
+    for (var i = 0; i < n; i++){
+      var mx = -1e30, k;
+      for (k = 0; k < C; k++) if (logits[k * n + i] > mx) mx = logits[k * n + i];
+      var s = 0;
+      for (k = 0; k < C; k++) s += Math.exp(logits[k * n + i] - mx);
+      for (k = 0; k < C; k++) out[k * n + i] += wgt * Math.exp(logits[k * n + i] - mx) / s;
+    }
+  }
+  function seenFrac(pl){ var c = 0; for (var i = 0; i < pl.seen.length; i++) if (pl.seen[i]) c++; return c / Math.max(1, pl.seen.length); }
+
   function tensorData(pl, m, darkMode){
     var mult = m.inputMultiple || 16;
     var W = Math.ceil(pl.w / mult) * mult, H = Math.ceil(pl.h / mult) * mult;
@@ -344,25 +387,50 @@ UJ.organelleml = (function(){
       if (my !== TOKEN) return null;
       var m = META;
       var dk = dark();
-      var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm, dk ? "dark" : ""].join(":");
+      var d3 = threeD();
+      var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm, dk ? "dark" : "", d3 ? "3d" : ""].join(":");
       if (LAST && LAST.key === key) return LAST.marks;
-      say("looking for organelles…");
-      var pl = await planeFor(view, m.nm);
-      if (my !== TOKEN) return null;
-      var td = tensorData(pl, m, dk);
+      say(d3 ? "looking for organelles on this section and the ones above and below…" : "looking for organelles…");
       var ort = window.ort;
-      var feeds = {};
-      feeds[SESSION.inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
-      var t0 = performance.now();
-      var res = await runSafe(feeds, function(){ return load(say); });
-      var o = res[SESSION.outputNames[0]];
-      var C = o.dims[1], h = o.dims[2], w = o.dims[3];
-      var found = peaks(o.data, C, h, w, m, pl).map(function(k){
+      var infer = async function(pl){
+        var td = tensorData(pl, m, dk), feeds = {};
+        feeds[SESSION.inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
+        var res = await runSafe(feeds, function(){ return load(say); });
+        return res[SESSION.outputNames[0]];
+      };
+      var t0 = performance.now(), used = 1, pl, logits, C, h, w;
+      if (!d3){
+        pl = await planeFor(view, m.nm);
+        if (my !== TOKEN) return null;
+        var o = await infer(pl);
+        logits = o.data; C = o.dims[1]; h = o.dims[2]; w = o.dims[3];
+      } else {
+        var dz = neighbourStep();
+        try { pl = await planeAtZ(view, m.nm, view.z); }
+        catch (_e){ pl = await planeFor(view, m.nm); }        // no tiles to read here: this section only
+        if (my !== TOKEN) return null;
+        var o0 = await infer(pl);
+        C = o0.dims[1]; h = o0.dims[2]; w = o0.dims[3];
+        var n = h * w, prob = new Float32Array(C * n), parts = [[o0, 0.5]];
+        for (var sgn = -1; sgn <= 1; sgn += 2){
+          if (my !== TOKEN) return null;
+          var pn; try { pn = await planeAtZ(view, m.nm, view.z + sgn * dz); } catch (_e){ continue; }
+          if (pn.w !== pl.w || pn.h !== pl.h || pn.x0 !== pl.x0 || pn.y0 !== pl.y0 || seenFrac(pn) < 0.5) continue;
+          var on = await infer(pn);
+          if (on.dims[2] !== h || on.dims[3] !== w) continue;
+          parts.push([on, 0.25]); used++;
+        }
+        var tw = 0; parts.forEach(function(p){ tw += p[1]; });
+        parts.forEach(function(p){ softmaxInto(p[0].data, C, n, prob, p[1] / tw); });
+        logits = new Float32Array(C * n);
+        for (var q = 0; q < C * n; q++) logits[q] = Math.log(prob[q] + 1e-9);   // peaks() takes logits; log p is one
+      }
+      var found = peaks(logits, C, h, w, m, pl).map(function(k){
         return { k: k.k, p: k.p, t: toTool(pl, k.px, k.py, view.z) };
       });
-      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk,
+      LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk, sections: used,
                /* the raw scores too, for kindOf(): what an outline is, even where no mark was drawn */
-               grid: { logits: o.data, C: C, h: h, w: w, st: m.stride || 8, x0: pl.x0, y0: pl.y0, res: pl.res } };
+               grid: { logits: logits, C: C, h: h, w: w, st: m.stride || 8, x0: pl.x0, y0: pl.y0, res: pl.res } };
       return found;
     });
     QUEUE = p.catch(function(){});
@@ -594,7 +662,7 @@ UJ.organelleml = (function(){
     LAST.marks.forEach(function(m){ by[m.k] = (by[m.k] || 0) + 1; });
     var n = LAST.marks.length, hid = LAST.marks.filter(function(m){ return !shown(m.k); }).length;
     return (n ? n + " suggestion" + (n > 1 ? "s" : "") + (hid ? " (" + hid + " hidden)" : "") : "nothing above the thresholds here")
-      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + (LAST.dark ? ", dark-cell mode" : "") + ")"
+      + " — suggestions from a model, not answers (" + LAST.ms + " ms, " + LAST.ep + (LAST.dark ? ", dark-cell mode" : "") + (LAST.sections > 1 ? ", " + LAST.sections + " sections" : "") + ")"
       + (CORR.length ? " · " + CORR.length + " answer" + (CORR.length > 1 ? "s" : "") + " of yours (click one to undo or change it)" : "");
   }
 
@@ -602,5 +670,5 @@ UJ.organelleml = (function(){
            paint: paint, summary: summary, meta: function(){ return META; },
            kindOf: kindOf, markAt: markAt, correct: correct, uncorrect: uncorrect, corrections: corrections, nameOf: nameOf,
            NOT_ORGANELLE: NOT_ORGANELLE, ARTIFACT: ARTIFACT, dark: dark, setDark: setDark, _flatten: flatten,
-           _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; }, _setLast: function(x){ LAST = x; } };
+           threeD: threeD, setThreeD: setThreeD, _peaks: peaks, _tensorData: tensorData, _last: function(){ return LAST; }, _setLast: function(x){ LAST = x; } };
 })();
