@@ -390,7 +390,7 @@ UJ.organelleml = (function(){
       var d3 = threeD();
       var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm, dk ? "dark" : "", d3 ? "3d" : ""].join(":");
       if (LAST && LAST.key === key) return LAST.marks;
-      say(d3 ? "looking for organelles on this section and the ones above and below…" : "looking for organelles…");
+      say(d3 || (m.zOffsets && m.zOffsets.length > 1) ? "looking for organelles on this section and the ones above and below…" : "looking for organelles…");
       var ort = window.ort;
       var infer = async function(pl){
         var td = tensorData(pl, m, dk), feeds = {};
@@ -399,7 +399,34 @@ UJ.organelleml = (function(){
         return res[SESSION.outputNames[0]];
       };
       var t0 = performance.now(), used = 1, pl, logits, C, h, w;
-      if (!d3){
+      var zo = (m.zOffsets && m.zOffsets.length > 1) ? m.zOffsets : null;
+      if (zo){
+        /* A 3D MODEL (organelle_ml_train v13, 2026-11-06): its input IS the sections around this one, as
+           channels, at m.zOffsets sections of m.zNm. A neighbour that cannot be read, or is mostly empty,
+           gets this section instead -- as in training. With the pad's "use the sections above and below"
+           box off, every channel is this section. */
+        var tres3 = UJ.emtiles.config().res, ci = zo.indexOf(0);
+        try { pl = await planeAtZ(view, m.nm, view.z); }
+        catch (_e){ pl = await planeFor(view, m.nm); }
+        if (my !== TOKEN) return null;
+        var planes = [];
+        for (var zi = 0; zi < zo.length; zi++){
+          if (zi === ci || !d3){ planes.push(pl); continue; }
+          var dzs = Math.round(zo[zi] * (m.zNm || tres3[2]) / (tres3[2] || 40)), pn3 = null;
+          try { pn3 = await planeAtZ(view, m.nm, view.z + dzs); } catch (_e){ pn3 = null; }
+          if (my !== TOKEN) return null;
+          if (!pn3 || pn3.w !== pl.w || pn3.h !== pl.h || pn3.x0 !== pl.x0 || pn3.y0 !== pl.y0 || seenFrac(pn3) < 0.5) pn3 = pl;
+          else used++;
+          planes.push(pn3);
+        }
+        var tds = planes.map(function(q){ return tensorData(q, m, dk); }), W3 = tds[0].W, H3 = tds[0].H, n3 = W3 * H3;
+        var data3 = new Float32Array(zo.length * n3);
+        for (var c3 = 0; c3 < zo.length; c3++) data3.set(tds[c3].data, c3 * n3);
+        var feeds3 = {}; feeds3[SESSION.inputNames[0]] = new ort.Tensor("float32", data3, [1, zo.length, H3, W3]);
+        var res3 = await runSafe(feeds3, function(){ return load(say); });
+        var o3 = res3[SESSION.outputNames[0]];
+        logits = o3.data; C = o3.dims[1]; h = o3.dims[2]; w = o3.dims[3];
+      } else if (!d3){
         pl = await planeFor(view, m.nm);
         if (my !== TOKEN) return null;
         var o = await infer(pl);
