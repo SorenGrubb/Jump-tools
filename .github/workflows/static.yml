@@ -41,3 +41,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          # The site is ~300 MB (meshes, data, models); GitHub's processing of it can take longer
+          # than the action's default 10-minute wait, which then fails with "Timeout reached,
+          # aborting!" even though nothing is wrong with the files. Wait up to 30 minutes instead.
+          timeout: 1800000
