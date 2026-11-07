@@ -1938,6 +1938,8 @@ function tracingFillPos(force){
   els.forEach(function(e, i){ e.value = want[i]; });
   TRACING_POS_AUTO = want.join(",");
   if (say) say.textContent = "From the cell you looked up.";
+  /* and its type, for a cell with no ids -- a tick later, when the card has set its type (2026-11-07) */
+  setTimeout(function(){ try { tracingSuggestType(); } catch (_e){} }, 50);
   /* The ids with it, a tick later: pages set CUR_POS before their ids (2026-09-22). */
   clearTimeout(TRACING_IDS_SOON);
   TRACING_IDS_SOON = setTimeout(function(){ try { tracingFollowIds(); } catch (_e){} }, 0);
@@ -8079,9 +8081,23 @@ function tracingSuggestType(){
   if (!sel || !say) return;
   const nuc = (document.getElementById("tracingNucId").value || "").trim();
   const root = (document.getElementById("tracingRootId").value || "").trim();
-  if (!nuc && !root){ say.textContent = ""; return; }
   let id = null;
-  try { id = tracingIdentityFor(nuc, root); } catch (e){ say.textContent = ""; return; }
+  if (!nuc && !root){
+    /* ── A CELL WITH NO IDS STILL HAS A TYPE ─────────────────────────────  2026-11-07
+       Søren, adding a whole cell to the verified macrophage at 332121,83955,9372 (Img35): *"it
+       does not register the cell type and the dropdown does not have an option for macrophage."*
+       With no nucleus or root id there was nothing to look the type up by, so the box stayed on
+       "(no cell type)" -- and "Macrophage" is a verified-record type, not a leaf of the tree, so it
+       was not in the list either. The card on screen IS the record: when the cell centre in the
+       boxes is the cell on screen, its type is used, and added under "This cell's own record"
+       when the tree has no leaf of that name (the same as for a segmented cell below). */
+    const here = (window.CUR_POS && window.CUR_POS.length === 3) ? window.CUR_POS.map(function(n){ return String(Math.round(n)); }).join(",") : "";
+    const disp = String(window.CUR_CELLTYPE_DISPLAY || "").replace(/\s*\u2197.*$/, "").trim();
+    if (here && tracingPosNow() === ",,") try { tracingFillPos(false); } catch (_e){}      // an empty box is the cell on screen
+    if (!here || !disp || /^unclassified/i.test(disp) || tracingPosNow() !== here){ say.textContent = ""; return; }
+    id = { name: disp, via: "the cell on screen", how: window.CUR_ID_SOURCE === "own" ? "its verified record" : "its record" };
+  }
+  else try { id = tracingIdentityFor(nuc, root); } catch (e){ say.textContent = ""; return; }
   if (!id){ say.textContent = "No cell in this dataset has that nucleus ID or root ID."; return; }
   /* Fill in whichever id the cell has and the box does not. Never overwrites: a value already
      there was either read from the segmentation or typed, and both outrank a lookup. */
