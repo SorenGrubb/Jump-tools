@@ -137,10 +137,18 @@ UJ.traceloft = (function(){
      every real band is under 2.58, every shard is 2.93 or more.
      See src/a_contour_is_not_joined_to_something_far_away.py. */
   var REACH_RATIO = 2.5;
-  function plausiblePair(d, ra, rb){
+  /* ── AND HOW FAR APART THE SECTIONS ARE ─────────────────────────────  2026-11-07
+     Søren, of the rough pial macrophages traced every ~80 sections (3 µm): *"It makes the 3D model
+     look very broken."* A cell crossing the stack at an angle moves sideways by about as much as
+     the sections are apart, and with 3 µm between them that is more than the ratios above allow a
+     2 µm-wide contour. SLACK is the section gap itself, in the same units as the centres (one
+     section's thickness converted to x-y pixels): a slope of up to 45°. On a stack traced every
+     tenth section that is ~0.4 µm, which leaves the fibroblast-and-cilium case above as it was. */
+  function plausiblePair(d, ra, rb, slack){
     if (!(ra > 0) || !(rb > 0)) return true;        // no size recorded: exactly as before
-    if (d <= REACH_RATIO * (ra + rb)) return true;
-    return (d - (ra + rb)) <= 2 * Math.max(ra, rb);
+    slack = slack > 0 ? slack : 0;
+    if (d <= REACH_RATIO * (ra + rb) + slack) return true;
+    return (d - (ra + rb)) <= 2 * Math.max(ra, rb) + slack;
   }
   /* Greedy nearest-centroid pairing between the contours of two neighbouring sections. A cell that
      branches has two contours above one, and one of them gets the band while the other is capped —
@@ -157,7 +165,7 @@ UJ.traceloft = (function(){
         var d = Math.pow(c[0] - above[j].c[0], 2) + Math.pow(c[1] - above[j].c[1], 2);
         if (d < bestD){ bestD = d; pick = j; }
       }
-      if (pick >= 0 && plausiblePair(Math.sqrt(bestD), below[i].rad, above[pick].rad)){
+      if (pick >= 0 && plausiblePair(Math.sqrt(bestD), below[i].rad, above[pick].rad, below[i].slack)){
         used[pick] = 1; pairs.push([i, pick]);
       }
     }
@@ -285,8 +293,36 @@ UJ.traceloft = (function(){
     return tris;
   }
 
+  /* ── SPARSE STACKS ARE FILLED IN FIRST ──────────────────────────────────  2026-11-07
+     Søren, of the same macrophages: *"Can we fix that somehow by interpolating between the
+     z-planes?"* With 3 µm between sections a straight band is a long faceted prism, and a cell
+     that bends between two sections bends nowhere. When the typical gap is a micrometre or more,
+     interpolate() below adds curved contours between the traced ones before anything is banded:
+     one every ~0.5 µm, at most 8 per gap. MESH ONLY -- volume() and everything saved read the
+     traced contours, never these. Finer stacks (the first pial batch, every tenth section) are
+     left exactly as they were. */
+  var DENSE_FROM_NM = 1000, DENSE_STEP_NM = 500;
+  function densify(rings, res){
+    var zs = [], seen = {};
+    (rings || []).forEach(function(r){
+      if (!r || !r.points || r.points.length < 3) return;
+      var z = Math.round(r.z); if (!seen[z]){ seen[z] = 1; zs.push(z); }
+    });
+    zs.sort(function(a, b){ return a - b; });
+    var maxGap = 12, gaps = [], i;
+    for (i = 1; i < zs.length; i++){ gaps.push(zs[i] - zs[i - 1]); maxGap = Math.max(maxGap, zs[i] - zs[i - 1]); }
+    if (!gaps.length || !(res[2] > 0)) return { rings: rings, maxGap: maxGap };
+    gaps.sort(function(a, b){ return a - b; });
+    var gapNm = gaps[gaps.length >> 1] * res[2];
+    if (gapNm < DENSE_FROM_NM) return { rings: rings, maxGap: maxGap };
+    var per = Math.max(1, Math.min(8, Math.round(gapNm / DENSE_STEP_NM) - 1));
+    var out = interpolate(rings, { per: per, fill: false, res: res });
+    return { rings: out.rings, maxGap: maxGap, made: out.made };
+  }
   function loft(rings, resNm){
     var res = resNm || [1, 1, 1];
+    var dense = densify(rings, res);
+    rings = dense.rings;
     var byZ = {}, zs = [];
     (rings || []).forEach(function(r){
       if (!r || !r.points || r.points.length < 3) return;
@@ -294,7 +330,7 @@ UJ.traceloft = (function(){
       if (!pts) return;
       var z = Math.round(r.z);
       if (!byZ[z]){ byZ[z] = []; zs.push(z); }
-      byZ[z].push({ pts: pts, c: centroid(pts), rad: radiusOf(pts) });
+      byZ[z].push({ pts: pts, c: centroid(pts), rad: radiusOf(pts), interp: !!r.interp });
     });
     zs.sort(function(a, b){ return a - b; });
 
@@ -411,7 +447,8 @@ UJ.traceloft = (function(){
       for (i = 0; i < liveList.length; i++) if (!liveList[i].r.hole === !wantHole) b.push(liveList[i]);
       for (i = 0; i < above.length; i++) if (!above[i].hole === !wantHole){ ai.push(i); a.push(above[i]); }
       if (!b.length || !a.length) return;
-      pairUp(b.map(function(L){ return L.r; }), a).pairs.forEach(function(p){
+      var zPx = res[0] > 0 ? res[2] / res[0] : 0;
+      pairUp(b.map(function(L){ return { c: L.r.c, rad: L.r.rad, slack: (zHi - L.z) * zPx }; }), a).pairs.forEach(function(p){
         var L = b[p[0]], A = a[p[1]], j = ai[p[1]];
         band(L.r, A, L.z, zHi);
         mark(hasAbove, L.z, L.i);
@@ -429,8 +466,9 @@ UJ.traceloft = (function(){
        anywhere in this tracing. Eleven sections on his file, exactly the rate he used; ONE on an
        evenly traced object, so a contour that genuinely ends is still capped at the very next
        section, as it always was. */
-    var maxGap = 12;
-    for (var gi = 1; gi < zs.length; gi++) maxGap = Math.max(maxGap, zs[gi] - zs[gi - 1]);
+    /* From the TRACED sections: the interpolated ones are closer together, and a contour that
+       nothing continues must still wait for the tracer's own next section (2026-11-07). */
+    var maxGap = dense.maxGap;
     var live = zs.length ? byZ[zs[0]].map(function(r, i){ return { r: r, z: zs[0], i: i }; }) : [];
     for (var k = 1; k < zs.length; k++){
       var above = byZ[zs[k]], zHi = zs[k], moved = {};
@@ -611,6 +649,8 @@ UJ.traceloft = (function(){
   function interpolate(rings, opts){
     opts = opts || {};
     var per = Math.max(0, Math.min(8, opts.per | 0));
+    var fill = opts.fill !== false;                 // the missing integer sections; off for the mesh-only densify
+    var zPx = (opts.res && opts.res[0] > 0) ? opts.res[2] / opts.res[0] : 0;
     var byZ = {}, zs = [];
     (rings || []).forEach(function(r, i){
       if (!r || !r.points || r.points.length < 3) return;
@@ -628,13 +668,13 @@ UJ.traceloft = (function(){
     var chains = [], live = [], unpaired = 0;
     byZ[zs[0]].forEach(function(r){
       var ch = { steps: [{ z: zs[0], pts: r.pts }], inst: r.inst };
-      chains.push(ch); live.push({ ch: ch, last: r.pts });
+      chains.push(ch); live.push({ ch: ch, last: r.pts, z: zs[0] });
     });
     for (var k = 1; k < zs.length; k++){
       var above = byZ[zs[k]];
       /* With the radius, so a chain is not dragged onto a contour nowhere near it either — the
          same rule the mesh uses, and for the same reason (2026-09-24). */
-      var below = live.map(function(L){ return { c: centroid(L.last), rad: radiusOf(L.last) }; });
+      var below = live.map(function(L){ return { c: centroid(L.last), rad: radiusOf(L.last), slack: (zs[k] - L.z) * zPx }; });
       var pr = pairUp(below, above), taken = {};
       pr.pairs.forEach(function(pair){
         var L = live[pair[0]], A = above[pair[1]];
@@ -642,7 +682,7 @@ UJ.traceloft = (function(){
         var off = bestOffset(L.last, A.pts);
         var rot = A.pts.slice(off).concat(A.pts.slice(0, off));
         L.ch.steps.push({ z: zs[k], pts: rot });
-        L.last = rot;
+        L.last = rot; L.z = zs[k];
       });
       /* A contour nothing paired with starts a chain of its own -- a branch, or the section where
          the organelle first appears. Its own doing its best: it is not forced onto a neighbour. */
@@ -650,7 +690,7 @@ UJ.traceloft = (function(){
         if (taken[j]) return;
         unpaired++;
         var ch = { steps: [{ z: zs[k], pts: A.pts }], inst: A.inst };
-        chains.push(ch); live.push({ ch: ch, last: A.pts });
+        chains.push(ch); live.push({ ch: ch, last: A.pts, z: zs[k] });
       });
     }
 
@@ -665,7 +705,7 @@ UJ.traceloft = (function(){
         var gap = b.z - a.z;
         /* The sections with nothing on them, and then the fractional ones if asked for. */
         var want = [];
-        for (var zz = Math.floor(a.z) + 1; zz < b.z; zz++)
+        for (var zz = Math.floor(a.z) + 1; fill && zz < b.z; zz++)
           if (zz > a.z) want.push({ z: zz, t: (zz - a.z) / gap, keep: true });
         for (var q = 1; q <= per; q++){
           var t = q / (per + 1), fz = a.z + gap * t;
