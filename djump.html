@@ -12725,8 +12725,15 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
     "fvt_pial_arterioles","fvt_penetrating_arterioles","fvt_arterial_cap_order1","fvt_arterial_cap_order2","fvt_arterial_cap_order3",
     "fvt_venous_cap_order3","fvt_venous_cap_order2","fvt_venous_cap_order1","fvt_ascending_venules","fvt_pial_venules"]);
   if(filterCard){
-    filterCard.addEventListener("input",e=>{if(!STALE_IGNORE_IDS.has(e.target.id))invalidateFilterResult();});
-    filterCard.addEventListener("change",e=>{if(!STALE_IGNORE_IDS.has(e.target.id))invalidateFilterResult();});
+    /* NOT FROM THE CELL ON SCREEN (2026-11-07). While stepping through matches, the real cell panel
+       and the guided-ID panel are moved INTO this card (core/stepthrough.js), so their own boxes --
+       "Already know it?", the certainty scale, notes, the root-ID proposal -- bubbled up here as if
+       a filter had changed: every keystroke cleared the result and sent the panel back to the Jump
+       tab. Reported by Gary: "If I try and type into that box nothing happens, it just glitches."
+       Only the filter controls themselves make a result stale. */
+    const fromStepCell=e=>!!(e.target&&e.target.closest&&e.target.closest("#stepThroughCard"));
+    filterCard.addEventListener("input",e=>{if(!fromStepCell(e)&&!STALE_IGNORE_IDS.has(e.target.id))invalidateFilterResult();});
+    filterCard.addEventListener("change",e=>{if(!fromStepCell(e)&&!STALE_IGNORE_IDS.has(e.target.id))invalidateFilterResult();});
   }
   if(runBtn)runBtn.addEventListener("click",async()=>{
     runBtn.disabled=true;runBtn.textContent="Filtering…";
