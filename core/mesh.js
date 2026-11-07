@@ -1248,7 +1248,24 @@ UJ.mesh=(()=>{
   async function savePptx(geo,opts){
     const o=opts||{};
     const JSZip=await loadJSZip();
-    const cellRawPositions=geo.positions,cellRawIndices=geo.indices;
+    /* ── CENTRED BEFORE ANYTHING ELSE ─────────────────────────────────────────  2026-11-07
+       Søren, of a hand-traced macrophage (about 20 µm long, at x = 1332 µm): "Powerpoint is just
+       an empty file". am3d:preTrans is written as -centre x meterPerModelUnit x 36, and PowerPoint
+       reads it as a 32-bit integer. A small cell far from the origin gives a large n AND a large
+       centre, and the product (-3.8e9 here) overflows: PowerPoint drops the model and the slide is
+       empty. A neuron happened to fit only because its size keeps n small. Moving the geometry to
+       its own centre first makes preTrans ~0 for every cell, and changes nothing that is drawn. */
+    let gMinX=Infinity,gMinY=Infinity,gMinZ=Infinity,gMaxX=-Infinity,gMaxY=-Infinity,gMaxZ=-Infinity;
+    for(let k=0;k<geo.positions.length;k+=3){
+      const x=geo.positions[k],y=geo.positions[k+1],z=geo.positions[k+2];
+      if(x<gMinX)gMinX=x;if(x>gMaxX)gMaxX=x;
+      if(y<gMinY)gMinY=y;if(y>gMaxY)gMaxY=y;
+      if(z<gMinZ)gMinZ=z;if(z>gMaxZ)gMaxZ=z;
+    }
+    const gC=[(gMinX+gMaxX)/2,(gMinY+gMaxY)/2,(gMinZ+gMaxZ)/2];
+    const cellRawPositions=new Float32Array(geo.positions.length);
+    for(let k=0;k<geo.positions.length;k++)cellRawPositions[k]=geo.positions[k]-gC[k%3];
+    const cellRawIndices=geo.indices;
     const onProgress=o.onProgress;
     onProgress&&onProgress(0.96,"building PowerPoint…");
     /* Cell-only raw bbox -- used to size the scale bar ITSELF (its length stays 28% of the CELL's
