@@ -124,12 +124,16 @@
     if(!pos||pos.length<3){ line.style.display="none"; return; }
     var txt=pos.slice(0,3).map(function(n){ return Math.round(n); }).join(", ");
     line.style.display="";
-    line.innerHTML='<span>Voxel <b style="font-family:var(--mono,monospace)">'+txt+'</b></span>'
-      +'<button type="button" class="idbtn" style="width:auto;padding:3px 10px;font-size:12px">Copy</button>';
-    var b=line.querySelector("button");
-    b.addEventListener("click",function(){
+    /* The coordinate IS the control, as on every other coordinate pill on the cell card (Søren,
+       2026-11-07: "It should not have a button next to it that says copy, the coordinates should
+       be the link"). Same .idval class and data-c as coordSpan(), so it looks the same; copied
+       here, with the click stopped, because µJump's page-wide .idval listener exists only there. */
+    line.innerHTML='<span>Voxel</span><span class="idval" title="click to copy" data-c="'+txt+'" style="cursor:pointer">'+txt+'</span>';
+    var v=line.querySelector(".idval");
+    v.addEventListener("click",function(e){
+      e.stopPropagation();
       try{ navigator.clipboard&&navigator.clipboard.writeText(txt); }catch(_e){}
-      b.textContent="Copied"; setTimeout(function(){ b.textContent="Copy"; },1200);
+      v.textContent="copied"; setTimeout(function(){ v.textContent=txt; },900);
     });
   }
   UJ.stepthrough.relocateNucPanel=relocateNucPanel;
