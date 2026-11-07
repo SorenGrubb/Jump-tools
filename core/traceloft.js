@@ -319,8 +319,232 @@ UJ.traceloft = (function(){
     var out = interpolate(rings, { per: per, fill: false, res: res });
     return { rings: out.rings, maxGap: maxGap, made: out.made };
   }
+  /* ── A SPARSE STACK IS BUILT AS A VOLUME, NOT A LOFT ─────────────────────────  2026-11-07
+     Søren, of the rough pial macrophages traced every ~3 µm, after the densify() pass below did not
+     help: *"It did not improve."* Banding one contour to one contour cannot work there: a section
+     often holds a body and two or three small pieces, the next holds one, and a thin process moves
+     further sideways between sections than it is wide. Every one of those is a stub or a ribbon.
+
+     So, for those stacks, the method trace_mesh.py has always used for the export, with one
+     addition. Each section is filled (even-odd, so holes stay holes) and turned into a signed
+     distance map; between two sections the maps are BLENDED; marching over the blend gives one
+     closed surface whatever the number of pieces. THE ADDITION is registration: before blending,
+     the shift that best overlaps the two sections is found, and the in-between maps slide along it,
+     so a process that moves 4 µm sideways is carried across as a tube instead of thinning to
+     nothing in the middle (which is what plain blending does when two outlines do not overlap).
+     The shift is limited to 1.5x the section gap; past that the two are not taken to be the same.
+
+     Mesh only, like everything in this file: volume() still sums the traced contours. Grid: x-y
+     pixel 200 nm or the extent/180, z step 300 nm or the depth/300, so a cell is a few million
+     samples at most. Surface by naive surface nets (one vertex per crossing cell), which closes
+     itself because the grid is padded with outside on every side. */
+  var SDF_FROM_NM = 1000;
+  function sdfSparse(rings, res){
+    var zs = [], seen = {};
+    (rings || []).forEach(function(r){
+      if (!r || !r.points || r.points.length < 3) return;
+      var z = Math.round(r.z); if (!seen[z]){ seen[z] = 1; zs.push(z); }
+    });
+    if (zs.length < 2 || !(res[2] > 0)) return false;
+    zs.sort(function(a, b){ return a - b; });
+    var g = [], i;
+    for (i = 1; i < zs.length; i++) g.push(zs[i] - zs[i - 1]);
+    g.sort(function(a, b){ return a - b; });
+    return g[g.length >> 1] * res[2] >= SDF_FROM_NM;
+  }
+  function edt1(f, n, d, v, zz){
+    /* Felzenszwalb & Huttenlocher's lower envelope, squared distances along one line. */
+    var k = 0, q, s; v[0] = 0; zz[0] = -1e20; zz[1] = 1e20;
+    for (q = 1; q < n; q++){
+      for (;;){
+        s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+        if (s <= zz[k]){ k--; if (k < 0){ k = 0; break; } continue; }
+        break;
+      }
+      k++; v[k] = q; zz[k] = s; zz[k + 1] = 1e20;
+    }
+    k = 0;
+    for (q = 0; q < n; q++){
+      while (zz[k + 1] < q) k++;
+      d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+    }
+  }
+  function edt2(mask, nx, ny, wantInside){
+    /* Squared distance, in pixels, to the nearest pixel of the OTHER kind. */
+    var INF = 1e20, out = new Float64Array(nx * ny), n = Math.max(nx, ny);
+    var f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), zz = new Float64Array(n + 1);
+    var x, y;
+    for (x = 0; x < nx; x++){
+      for (y = 0; y < ny; y++) f[y] = (!!mask[y * nx + x] === wantInside) ? INF : 0;
+      edt1(f, ny, d, v, zz);
+      for (y = 0; y < ny; y++) out[y * nx + x] = d[y];
+    }
+    for (y = 0; y < ny; y++){
+      for (x = 0; x < nx; x++) f[x] = out[y * nx + x];
+      edt1(f, nx, d, v, zz);
+      for (x = 0; x < nx; x++) out[y * nx + x] = d[x];
+    }
+    return out;
+  }
+  function fillEvenOdd(polys, nx, ny, x0, y0, px){
+    var m = new Uint8Array(nx * ny), y, j, p, xs;
+    for (y = 0; y < ny; y++){
+      var yc = y0 + (y + 0.5) * px; xs = [];
+      for (j = 0; j < polys.length; j++){
+        var P = polys[j];
+        for (p = 0; p < P.length; p++){
+          var a = P[p], b = P[(p + 1) % P.length];
+          if ((a[1] <= yc) !== (b[1] <= yc)) xs.push(a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+        }
+      }
+      xs.sort(function(u, w){ return u - w; });
+      for (j = 0; j + 1 < xs.length; j += 2){
+        var c0 = Math.max(0, Math.ceil((xs[j] - x0) / px - 0.5)), c1 = Math.min(nx - 1, Math.floor((xs[j + 1] - x0) / px - 0.5));
+        for (p = c0; p <= c1; p++) m[y * nx + p] = 1;
+      }
+    }
+    return m;
+  }
+  function bestShift(A, B, nx, ny, lim){
+    /* The shift d that maximises sum A(x)·B(x+d), coarse (4x) first, then refined. A and B are
+       interior weights: 0 outside, growing inward, so the bodies line up before the fringes do. */
+    var C = 4, cx = Math.ceil(nx / C), cy = Math.ceil(ny / C);
+    function down(W){
+      var o = new Float32Array(cx * cy);
+      for (var y = 0; y < ny; y++) for (var x = 0; x < nx; x++) o[((y / C) | 0) * cx + ((x / C) | 0)] += W[y * nx + x];
+      return o;
+    }
+    function score(a, b, w, h, dx, dy){
+      var s = 0;
+      for (var y = Math.max(0, -dy); y < Math.min(h, h - dy); y++){
+        var ro = y * w, rb = (y + dy) * w;
+        for (var x = Math.max(0, -dx); x < Math.min(w, w - dx); x++){
+          var av = a[ro + x]; if (av) s += av * b[rb + x + dx];
+        }
+      }
+      return s;
+    }
+    var a = down(A), b = down(B), L = Math.ceil(lim / C), best = [0, 0], bs = -1, dx, dy;
+    for (dy = -L; dy <= L; dy++) for (dx = -L; dx <= L; dx++){
+      if (dx * dx + dy * dy > L * L) continue;
+      var s = score(a, b, cx, cy, dx, dy); if (s > bs){ bs = s; best = [dx, dy]; }
+    }
+    var fx = best[0] * C, fy = best[1] * C, fb = [fx, fy]; bs = -1;
+    for (dy = fy - C; dy <= fy + C; dy++) for (dx = fx - C; dx <= fx + C; dx++){
+      if (dx * dx + dy * dy > lim * lim) continue;
+      var t = score(A, B, nx, ny, dx, dy); if (t > bs){ bs = t; fb = [dx, dy]; }
+    }
+    return bs > 0 ? fb : [0, 0];
+  }
+  function sampleAt(S, nx, ny, x, y){
+    x = Math.max(0, Math.min(nx - 1.001, x)); y = Math.max(0, Math.min(ny - 1.001, y));
+    var i = x | 0, j = y | 0, fx = x - i, fy = y - j, o = j * nx + i;
+    return (S[o] * (1 - fx) + S[o + 1] * fx) * (1 - fy) + (S[o + nx] * (1 - fx) + S[o + nx + 1] * fx) * fy;
+  }
+  function sdfMesh(rings, res){
+    var byZ = {}, zs = [], minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, contours = 0;
+    (rings || []).forEach(function(r){
+      if (!r || !r.points || r.points.length < 3) return;
+      var z = Math.round(r.z), P = r.points.map(function(p){ return [p[0] * res[0], p[1] * res[1]]; });
+      P.forEach(function(p){ if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; });
+      if (!byZ[z]){ byZ[z] = []; zs.push(z); }
+      byZ[z].push(P); contours++;
+    });
+    zs.sort(function(a, b){ return a - b; });
+    if (zs.length < 2) return null;
+    var zu = zs.map(function(z){ return z * res[2]; });
+    var gaps = []; for (var gi = 1; gi < zu.length; gi++) gaps.push(zu[gi] - zu[gi - 1]);
+    var gs = gaps.slice().sort(function(a, b){ return a - b; }), gMed = gs[gs.length >> 1];
+    var pad = Math.max(2000, gMed), ext = Math.max(maxX - minX, maxY - minY) + 2 * pad;
+    var px = Math.max(200, ext / 180);
+    var x0 = minX - pad, y0 = minY - pad;
+    var nx = Math.ceil((maxX - minX + 2 * pad) / px) + 1, ny = Math.ceil((maxY - minY + 2 * pad) / px) + 1;
+    /* Signed distance per traced section, nm, negative inside. */
+    var S = zs.map(function(z){
+      var m = fillEvenOdd(byZ[z], nx, ny, x0, y0, px);
+      var dOut = edt2(m, nx, ny, false), dIn = edt2(m, nx, ny, true), o = new Float32Array(nx * ny);
+      for (var k = 0; k < o.length; k++) o[k] = m[k] ? -(Math.sqrt(dIn[k]) - 0.5) * px : (Math.sqrt(dOut[k]) - 0.5) * px;
+      return o;
+    });
+    var W = S.map(function(s){
+      var w = new Float32Array(s.length);
+      for (var k = 0; k < s.length; k++) w[k] = s[k] < 0 ? 0.5 + (-s[k] / px) : 0;
+      return w;
+    });
+    var SH = [];
+    for (var j = 0; j + 1 < S.length; j++) SH.push(bestShift(W[j], W[j + 1], nx, ny, 1.5 * gaps[j] / px));
+    var z0 = zu[0] - gMed / 2, z1 = zu[zu.length - 1] + gMed / 2;
+    var dz = Math.max(300, (z1 - z0) / 300), nzq = Math.ceil((z1 - z0) / dz) + 1, nz = nzq + 2;
+    var V = new Float32Array(nx * ny * nz), plane = nx * ny, k2, x, y;
+    for (k2 = 0; k2 < plane; k2++){ V[k2] = 5000; V[(nz - 1) * plane + k2] = 5000; }
+    var seg = 0;
+    for (var q = 0; q < nzq; q++){
+      var zz = z0 + q * dz, off = (q + 1) * plane;
+      if (zz <= zu[0] || zz >= zu[zu.length - 1]){
+        var e = zz <= zu[0] ? 0 : S.length - 1, dd = Math.abs(zz - zu[e]) * 2;
+        for (k2 = 0; k2 < plane; k2++) V[off + k2] = S[e][k2] + dd;
+        continue;
+      }
+      while (seg < zu.length - 2 && zz > zu[seg + 1]) seg++;
+      var t = (zz - zu[seg]) / (zu[seg + 1] - zu[seg]), D = SH[seg];
+      var A = S[seg], B = S[seg + 1];
+      for (y = 0; y < ny; y++) for (x = 0; x < nx; x++){
+        var a = sampleAt(A, nx, ny, x - t * D[0], y - t * D[1]);
+        var b = sampleAt(B, nx, ny, x + (1 - t) * D[0], y + (1 - t) * D[1]);
+        V[off + y * nx + x] = a * (1 - t) + b * t;
+      }
+    }
+    /* the outer ring of every plane is outside, so the surface closes on x and y as well */
+    for (q = 0; q < nz; q++){
+      off = q * plane;
+      for (x = 0; x < nx; x++){ V[off + x] = Math.max(V[off + x], 1); V[off + (ny - 1) * nx + x] = Math.max(V[off + (ny - 1) * nx + x], 1); }
+      for (y = 0; y < ny; y++){ V[off + y * nx] = Math.max(V[off + y * nx], 1); V[off + y * nx + nx - 1] = Math.max(V[off + y * nx + nx - 1], 1); }
+    }
+    /* Naive surface nets. */
+    var pos = [], idx = [], cell = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1);
+    var EDGES = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+    var vals = new Float32Array(8);
+    function at(i, j, k){ return V[k * plane + j * nx + i]; }
+    for (var k = 0; k < nz - 1; k++) for (var jj = 0; jj < ny - 1; jj++) for (var ii = 0; ii < nx - 1; ii++){
+      var mask = 0, c;
+      for (c = 0; c < 8; c++){ vals[c] = at(ii + (c & 1), jj + ((c >> 1) & 1), k + ((c >> 2) & 1)); if (vals[c] < 0) mask |= 1 << c; }
+      if (mask === 0 || mask === 255) continue;
+      var sx = 0, sy = 0, sz = 0, n = 0;
+      for (var eI = 0; eI < 12; eI++){
+        var e0 = EDGES[eI][0], e1 = EDGES[eI][1], v0 = vals[e0], v1 = vals[e1];
+        if ((v0 < 0) === (v1 < 0)) continue;
+        var tt = v0 / (v0 - v1);
+        sx += (e0 & 1) + tt * ((e1 & 1) - (e0 & 1));
+        sy += ((e0 >> 1) & 1) + tt * (((e1 >> 1) & 1) - ((e0 >> 1) & 1));
+        sz += ((e0 >> 2) & 1) + tt * (((e1 >> 2) & 1) - ((e0 >> 2) & 1));
+        n++;
+      }
+      cell[(k * (ny - 1) + jj) * (nx - 1) + ii] = pos.length / 3;
+      pos.push(x0 + (ii + sx / n + 0.5) * px, y0 + (jj + sy / n + 0.5) * px, z0 + (k + sz / n - 1) * dz);
+    }
+    function C(i, j, k){ return cell[(k * (ny - 1) + j) * (nx - 1) + i]; }
+    function quad(a, b, c2, d, flip){
+      if (a < 0 || b < 0 || c2 < 0 || d < 0) return;
+      if (flip) idx.push(a, c2, b, a, d, c2); else idx.push(a, b, c2, a, c2, d);
+    }
+    for (k = 1; k < nz - 1; k++) for (jj = 1; jj < ny - 1; jj++) for (ii = 1; ii < nx - 1; ii++){
+      var v = at(ii, jj, k) < 0;
+      if (ii + 1 < nx && v !== (at(ii + 1, jj, k) < 0))
+        quad(C(ii, jj - 1, k - 1), C(ii, jj, k - 1), C(ii, jj, k), C(ii, jj - 1, k), !v);
+      if (jj + 1 < ny && v !== (at(ii, jj + 1, k) < 0))
+        quad(C(ii - 1, jj, k - 1), C(ii - 1, jj, k), C(ii, jj, k), C(ii, jj, k - 1), !v);
+      if (k + 1 < nz && v !== (at(ii, jj, k + 1) < 0))
+        quad(C(ii - 1, jj - 1, k), C(ii, jj - 1, k), C(ii, jj, k), C(ii - 1, jj, k), !v);
+    }
+    if (!idx.length) return null;
+    return { positions: new Float32Array(pos), indices: new Uint32Array(idx),
+             sections: zs.length, contours: contours, capped: 0, holes: 0, method: "volume" };
+  }
   function loft(rings, resNm){
     var res = resNm || [1, 1, 1];
+    if (sdfSparse(rings, res)){
+      try { var vm = sdfMesh(rings, res); if (vm) return vm; } catch (_e){}
+    }
     var dense = densify(rings, res);
     rings = dense.rings;
     var byZ = {}, zs = [];
@@ -1716,7 +1940,7 @@ UJ.traceloft = (function(){
     chunks.forEach(function(c){ out.set(c, o); o += c.byteLength; });
     return out;
   }
-  return { loft: loft, volume: volume, shape: shape, shape3d: shape3d,
+  return { loft: loft, sdfMesh: sdfMesh, volume: volume, shape: shape, shape3d: shape3d,
            glb: glb, glbParts: glbParts, blenderPy: blenderPy,
            surfacePoints: surfacePoints, minSurfaceDistNm: minSurfaceDistNm,
            interpolate: interpolate, thinSections: thinSections,
