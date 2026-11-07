@@ -7260,6 +7260,21 @@ function padAiFixOpen(e){
     + "<span class=\"hint\">Saved for the next training.</span>"
     + "<button class=\"idbtn\" data-v=\"cancel\">Cancel</button></div>";
   document.body.appendChild(pop);
+  /* ── READY TO TYPE (2026-11-07) ── Søren: *"it would be nice if when you click to mark an organelle,
+     it has selected the dropdown so that you can start typing without having to select it first."*
+     The dropdown gets the focus as the form opens, so typing "ly" jumps to Lysosome straight away
+     (the browser's own type-ahead); Enter saves what it shows, Esc closes. The pad's own shortcuts
+     already ignore keys typed into a SELECT, so typing here cannot also switch a pad tool. */
+  var fixSel = pop.querySelector("select");
+  setTimeout(function(){ try { fixSel.focus({ preventScroll: true }); } catch (_e){ try { fixSel.focus(); } catch (_e2){} } }, 0);
+  pop.addEventListener("keydown", function(ev){
+    if (ev.key === "Escape"){ ev.preventDefault(); ev.stopPropagation(); padAiFixClose(); return; }
+    if (ev.key === "Enter" && ev.target === fixSel){
+      ev.preventDefault(); ev.stopPropagation();
+      var k = fixSel.value;
+      padAiFixSend(t, k, k === was ? "ok" : "kind", was, p);
+    }
+  });
   pop.addEventListener("click", function(ev){
     var b = ev.target.closest && ev.target.closest("button[data-v]");
     if (!b) return;
