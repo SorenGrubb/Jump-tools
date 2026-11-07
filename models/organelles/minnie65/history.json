@@ -616,5 +616,794 @@
    "glia_limitans": 30,
    "plasma_membrane": 27
   }
+ },
+ {
+  "trained": "2026-11-06T21:11",
+  "validation": [
+   {
+    "organelle": "lysosome",
+    "validation_examples": 1118,
+    "threshold": 0.5,
+    "precision": 0.95,
+    "recall": 0.93,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "mitochondria",
+    "validation_examples": 1503,
+    "threshold": 0.5,
+    "precision": 0.88,
+    "recall": 0.87,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "chromatin",
+    "validation_examples": 128,
+    "threshold": 0.75,
+    "precision": 0.71,
+    "recall": 0.38,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "myelin_sheath",
+    "validation_examples": 106,
+    "threshold": 0.8,
+    "precision": 0.7,
+    "recall": 0.54,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "centriole",
+    "validation_examples": 51,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "cilium",
+    "validation_examples": 66,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "golgi",
+    "validation_examples": 47,
+    "threshold": 0.5,
+    "precision": 0.86,
+    "recall": 0.64,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "er_smooth",
+    "validation_examples": 55,
+    "threshold": 0.85,
+    "precision": 0.71,
+    "recall": 0.27,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "imaging_artifact",
+    "validation_examples": 20,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "collagen",
+    "validation_examples": 12,
+    "threshold": 0.9,
+    "precision": 1.0,
+    "recall": 0.17,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_pore",
+    "validation_examples": 19,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "synapse",
+    "validation_examples": 22,
+    "threshold": 0.5,
+    "precision": 0.72,
+    "recall": 0.59,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_envelope",
+    "validation_examples": 13,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "glia_limitans",
+    "validation_examples": 18,
+    "threshold": 0.85,
+    "precision": 0.73,
+    "recall": 0.44,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "plasma_membrane",
+    "validation_examples": 13,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 0.08,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "gfap",
+    "validation_examples": 5,
+    "threshold": 0.8,
+    "precision": 1.0,
+    "recall": 0.2,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "basement_membrane",
+    "validation_examples": 8,
+    "threshold": 0.65,
+    "precision": 1.0,
+    "recall": 0.25,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "windows": [
+   {
+    "organelle": "centriole",
+    "windows": 157,
+    "held_out_to_find": 51,
+    "threshold": 0.925,
+    "found": 0.0,
+    "wrong_marks_per_window": 0.16,
+    "shown_on_pad": "no"
+   },
+   {
+    "organelle": "cilium",
+    "windows": 157,
+    "held_out_to_find": 26,
+    "threshold": 0.725,
+    "found": 0.0,
+    "wrong_marks_per_window": 0.2,
+    "shown_on_pad": "no"
+   }
+  ],
+  "show": [
+   "lysosome",
+   "mitochondria",
+   "chromatin",
+   "myelin_sheath",
+   "golgi",
+   "er_smooth",
+   "collagen",
+   "synapse",
+   "glia_limitans",
+   "plasma_membrane",
+   "gfap",
+   "basement_membrane"
+  ],
+  "examples": {
+   "background": 16871,
+   "lysosome": 5287,
+   "mitochondria": 3764,
+   "chromatin": 329,
+   "myelin_sheath": 323,
+   "centriole": 253,
+   "cilium": 173,
+   "golgi": 171,
+   "er_smooth": 135,
+   "imaging_artifact": 85,
+   "collagen": 55,
+   "nuclear_pore": 66,
+   "synapse": 61,
+   "nuclear_envelope": 53,
+   "glia_limitans": 43,
+   "plasma_membrane": 34,
+   "gfap": 19,
+   "basement_membrane": 28
+  }
+ },
+ {
+  "trained": "2026-11-07T04:28",
+  "validation": [
+   {
+    "organelle": "lysosome",
+    "validation_examples": 1077,
+    "threshold": 0.5,
+    "precision": 0.98,
+    "recall": 0.98,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "mitochondria",
+    "validation_examples": 1022,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "chromatin",
+    "validation_examples": 108,
+    "threshold": 0.8,
+    "precision": 0.75,
+    "recall": 0.43,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "myelin_sheath",
+    "validation_examples": 86,
+    "threshold": 0.5,
+    "precision": 0.77,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "centriole",
+    "validation_examples": 56,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "cilium",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.8,
+    "recall": 0.62,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "golgi",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.95,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "er_smooth",
+    "validation_examples": 53,
+    "threshold": 0.5,
+    "precision": 0.81,
+    "recall": 0.66,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "imaging_artifact",
+    "validation_examples": 21,
+    "threshold": 0.55,
+    "precision": 0.71,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "collagen",
+    "validation_examples": 17,
+    "threshold": 0.85,
+    "precision": 0.7,
+    "recall": 0.41,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "synapse",
+    "validation_examples": 16,
+    "threshold": 0.5,
+    "precision": 0.86,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_pore",
+    "validation_examples": 18,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "gfap",
+    "validation_examples": 6,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_envelope",
+    "validation_examples": 22,
+    "threshold": 0.5,
+    "precision": 0.88,
+    "recall": 0.64,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "glia_limitans",
+    "validation_examples": 9,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 0.67,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "plasma_membrane",
+    "validation_examples": 8,
+    "threshold": 0.5,
+    "precision": 0.75,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "basement_membrane",
+    "validation_examples": 12,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "windows": [
+   {
+    "organelle": "centriole",
+    "windows": 160,
+    "held_out_to_find": 56,
+    "threshold": 0.975,
+    "found": 0.0,
+    "wrong_marks_per_window": 0.06,
+    "shown_on_pad": "no"
+   },
+   {
+    "organelle": "cilium",
+    "windows": 160,
+    "held_out_to_find": 24,
+    "threshold": 0.6,
+    "found": 0.54,
+    "wrong_marks_per_window": 0.23,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "show": [
+   "lysosome",
+   "mitochondria",
+   "chromatin",
+   "myelin_sheath",
+   "cilium",
+   "golgi",
+   "er_smooth",
+   "imaging_artifact",
+   "collagen",
+   "synapse",
+   "gfap",
+   "nuclear_envelope",
+   "glia_limitans",
+   "plasma_membrane",
+   "basement_membrane"
+  ],
+  "examples": {
+   "background": 16786,
+   "lysosome": 5291,
+   "mitochondria": 3769,
+   "chromatin": 339,
+   "myelin_sheath": 331,
+   "centriole": 253,
+   "cilium": 173,
+   "golgi": 172,
+   "er_smooth": 135,
+   "imaging_artifact": 85,
+   "collagen": 55,
+   "synapse": 61,
+   "nuclear_pore": 66,
+   "gfap": 19,
+   "nuclear_envelope": 53,
+   "glia_limitans": 43,
+   "plasma_membrane": 34,
+   "basement_membrane": 28
+  }
+ },
+ {
+  "trained": "2026-11-07T08:07",
+  "validation": [
+   {
+    "organelle": "lysosome",
+    "validation_examples": 1077,
+    "threshold": 0.5,
+    "precision": 0.98,
+    "recall": 0.98,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "mitochondria",
+    "validation_examples": 1022,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "chromatin",
+    "validation_examples": 108,
+    "threshold": 0.8,
+    "precision": 0.75,
+    "recall": 0.43,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "myelin_sheath",
+    "validation_examples": 86,
+    "threshold": 0.5,
+    "precision": 0.77,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "centriole",
+    "validation_examples": 56,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "cilium",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.8,
+    "recall": 0.62,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "golgi",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.95,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "er_smooth",
+    "validation_examples": 53,
+    "threshold": 0.5,
+    "precision": 0.81,
+    "recall": 0.66,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "imaging_artifact",
+    "validation_examples": 21,
+    "threshold": 0.55,
+    "precision": 0.71,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "collagen",
+    "validation_examples": 17,
+    "threshold": 0.85,
+    "precision": 0.7,
+    "recall": 0.41,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "synapse",
+    "validation_examples": 16,
+    "threshold": 0.5,
+    "precision": 0.86,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_pore",
+    "validation_examples": 18,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "gfap",
+    "validation_examples": 6,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_envelope",
+    "validation_examples": 22,
+    "threshold": 0.5,
+    "precision": 0.88,
+    "recall": 0.64,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "glia_limitans",
+    "validation_examples": 9,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 0.67,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "plasma_membrane",
+    "validation_examples": 8,
+    "threshold": 0.5,
+    "precision": 0.75,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "basement_membrane",
+    "validation_examples": 12,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "windows": [
+   {
+    "organelle": "centriole",
+    "windows": 160,
+    "held_out_to_find": 56,
+    "threshold": 0.975,
+    "found": 0.0,
+    "wrong_marks_per_window": 0.07,
+    "shown_on_pad": "no"
+   },
+   {
+    "organelle": "cilium",
+    "windows": 160,
+    "held_out_to_find": 24,
+    "threshold": 0.625,
+    "found": 0.54,
+    "wrong_marks_per_window": 0.24,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "show": [
+   "lysosome",
+   "mitochondria",
+   "chromatin",
+   "myelin_sheath",
+   "cilium",
+   "golgi",
+   "er_smooth",
+   "imaging_artifact",
+   "collagen",
+   "synapse",
+   "gfap",
+   "nuclear_envelope",
+   "glia_limitans",
+   "plasma_membrane",
+   "basement_membrane"
+  ],
+  "examples": {
+   "background": 16786,
+   "lysosome": 5291,
+   "mitochondria": 3769,
+   "chromatin": 339,
+   "myelin_sheath": 331,
+   "centriole": 253,
+   "cilium": 173,
+   "golgi": 172,
+   "er_smooth": 135,
+   "imaging_artifact": 85,
+   "collagen": 55,
+   "synapse": 61,
+   "nuclear_pore": 66,
+   "gfap": 19,
+   "nuclear_envelope": 53,
+   "glia_limitans": 43,
+   "plasma_membrane": 34,
+   "basement_membrane": 28
+  }
+ },
+ {
+  "trained": "2026-11-07T08:23",
+  "validation": [
+   {
+    "organelle": "lysosome",
+    "validation_examples": 1077,
+    "threshold": 0.5,
+    "precision": 0.98,
+    "recall": 0.98,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "mitochondria",
+    "validation_examples": 1022,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "chromatin",
+    "validation_examples": 108,
+    "threshold": 0.8,
+    "precision": 0.75,
+    "recall": 0.43,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "myelin_sheath",
+    "validation_examples": 86,
+    "threshold": 0.5,
+    "precision": 0.77,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "centriole",
+    "validation_examples": 56,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "cilium",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.8,
+    "recall": 0.62,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "golgi",
+    "validation_examples": 39,
+    "threshold": 0.5,
+    "precision": 0.95,
+    "recall": 0.92,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "er_smooth",
+    "validation_examples": 53,
+    "threshold": 0.5,
+    "precision": 0.81,
+    "recall": 0.66,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "imaging_artifact",
+    "validation_examples": 21,
+    "threshold": 0.55,
+    "precision": 0.71,
+    "recall": 0.95,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "collagen",
+    "validation_examples": 17,
+    "threshold": 0.85,
+    "precision": 0.7,
+    "recall": 0.41,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "synapse",
+    "validation_examples": 16,
+    "threshold": 0.5,
+    "precision": 0.86,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_pore",
+    "validation_examples": 18,
+    "threshold": 0.95,
+    "precision": null,
+    "recall": null,
+    "shown_on_pad": "no (never 70% precise)"
+   },
+   {
+    "organelle": "gfap",
+    "validation_examples": 6,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "nuclear_envelope",
+    "validation_examples": 22,
+    "threshold": 0.5,
+    "precision": 0.88,
+    "recall": 0.64,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "glia_limitans",
+    "validation_examples": 9,
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 0.67,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "plasma_membrane",
+    "validation_examples": 8,
+    "threshold": 0.5,
+    "precision": 0.75,
+    "recall": 0.75,
+    "shown_on_pad": "yes"
+   },
+   {
+    "organelle": "basement_membrane",
+    "validation_examples": 12,
+    "threshold": 0.5,
+    "precision": 0.92,
+    "recall": 1.0,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "windows": [
+   {
+    "organelle": "centriole",
+    "windows": 160,
+    "held_out_to_find": 56,
+    "threshold": 0.975,
+    "found": 0.0,
+    "wrong_marks_per_window": 0.07,
+    "shown_on_pad": "no"
+   },
+   {
+    "organelle": "cilium",
+    "windows": 160,
+    "held_out_to_find": 24,
+    "threshold": 0.625,
+    "found": 0.54,
+    "wrong_marks_per_window": 0.24,
+    "shown_on_pad": "yes"
+   }
+  ],
+  "show": [
+   "lysosome",
+   "mitochondria",
+   "chromatin",
+   "myelin_sheath",
+   "cilium",
+   "golgi",
+   "er_smooth",
+   "imaging_artifact",
+   "collagen",
+   "synapse",
+   "gfap",
+   "nuclear_envelope",
+   "glia_limitans",
+   "plasma_membrane",
+   "basement_membrane"
+  ],
+  "examples": {
+   "background": 16786,
+   "lysosome": 5291,
+   "mitochondria": 3769,
+   "chromatin": 339,
+   "myelin_sheath": 331,
+   "centriole": 253,
+   "cilium": 173,
+   "golgi": 172,
+   "er_smooth": 135,
+   "imaging_artifact": 85,
+   "collagen": 55,
+   "synapse": 61,
+   "nuclear_pore": 66,
+   "gfap": 19,
+   "nuclear_envelope": 53,
+   "glia_limitans": 43,
+   "plasma_membrane": 34,
+   "basement_membrane": 28
+  }
  }
 ]
