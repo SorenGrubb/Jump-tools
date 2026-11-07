@@ -1386,8 +1386,17 @@ const SCENE_ID = (location.hash.match(/[#&]scene=([a-z0-9]+)/) || [])[1] || "";
 let CELLS = SCENE_ID ? [] : parseHash();
 if (!CELLS){ FROM_LINK = false; CELLS = readBasket().filter(e => VR_DATASETS[e.ds || "microns"] === DSX); }
 function prepCells(list){
-  return list.map((e, i) => Object.assign({ i, ds: e.ds || "microns" }, e,
-    { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" }));
+  return list.map((e, i) => {
+    const c = Object.assign({ i, ds: e.ds || "microns" }, e,
+      { label: String(e.label || "Cell").split("\u2197")[0].trim() || "Cell" });
+    /* A CELL KNOWN ONLY BY ITS PLACE (2026-11-07). µJump's "+ VR" on a cell outside the
+       segmentation -- no root id, no nucleus id -- files it as root "at:x_y_z" (voxels). It is
+       drawn from its traced outline (loadTracedBody), and keeps no root id here, so nothing asks
+       CAVE or the mesh store about it. */
+    const m = /^at:(-?\d+)_(-?\d+)_(-?\d+)$/.exec(String(c.root || ""));
+    if (m){ c.at = [+m[1], +m[2], +m[3]]; c.root = ""; c.tracedCell = true; }
+    return c;
+  });
 }
 CELLS = prepCells(CELLS);
 
@@ -1447,7 +1456,7 @@ function setColourMode(mode){
 }
 
 function headsetLink(){
-  const parts = CELLS.map(e => [e.ds, e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].concat(e.group ? [e.group] : []).map(encodeURIComponent).join("~"));
+  const parts = CELLS.map(e => [e.ds, e.at ? "at:" + e.at.join("_") : e.root, e.nuc || "", e.label || "", (e.extra || []).join("+")].concat(e.group ? [e.group] : []).map(encodeURIComponent).join("~"));
   return location.href.replace(/#.*$/, "") + "#c=" + parts.join(",") + (VR_DS !== "microns" ? "&ds=" + VR_DS : "")
     + (RBOX.list.length ? "&box=" + RBOX.list.map(b => b.join("~")).join(",") : "");
 }
@@ -1882,9 +1891,13 @@ async function loadNucleus(c, ds, token){
 async function loadTracedBody(c, ds, token){
   if (!ds.backend || !UJ.tracing || !UJ.traceloft) return;
   const nid = String(c.nuc || ""), rid = String(c.root || "");
-  if (!nid && !rid) return;
+  const atKey = c.at ? c.at.join(",") : "";
+  if (!nid && !rid && !atKey) return;
   let idx; try { idx = await trcIndex(); } catch (e){ return; }
-  const mine = idx.filter(t => (nid && String(t.nucleusId || "") === nid) || (rid && String(t.rootId || "") === rid));
+  /* By place, for a cell with no ids: only tracings that carry no id of their own (2026-11-07). */
+  const atOf = t => String(t.cellCoord || "").split(/[,\s]+/).filter(Boolean).map(v => Math.round(+v)).join(",");
+  const mine = idx.filter(t => (nid && String(t.nucleusId || "") === nid) || (rid && String(t.rootId || "") === rid)
+    || (atKey && !nid && !rid && !String(t.nucleusId || "").trim() && !String(t.rootId || "").trim() && atOf(t) === atKey));
   const body = mine.filter(t => t.kind === "cell"), nuc = c.nucMesh ? [] : mine.filter(t => t.kind === "nucleus");
   if (!body.length && !nuc.length){ if (!c.nucMesh) c.status = "nothing traced of this cell yet"; return; }
   c.status = "reading its tracings…"; renderList();

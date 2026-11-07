@@ -658,66 +658,174 @@ function tracedOnCellBox(){
   after.parentNode.insertBefore(host, after.nextSibling);
   return host;
 }
-/* ── A CELL OUTSIDE THE SEGMENTATION, IN 3D ─────────────────────────────  2026-11-07
+/* ── A CELL OUTSIDE THE SEGMENTATION: THE SAME BUTTONS AS ANY OTHER CELL ─────────  2026-11-07
    Søren, on the macrophage at 321708,79882,9856 in the Img35 imagery: *"the EM image is not shown and
-   there is no 3D view"*. Inside minnie65 the "Show in 3D" button draws the cell's MICrONS mesh, found
-   by its root id; out here there is no mesh and no root id. What there is, is what somebody traced:
-   the whole cell is lofted from its outlines (core/traceloft.js, the tracing pad's own loft) and
-   drawn see-through, with the nucleus and anything else traced on it inside, each in its own colour
-   -- the same picture core/mesh3d.js draws for a segmented cell with its organelles. */
-function panelTraced3d(host, mine){
-  if (!(window.UJ && UJ.mesh3d && UJ.mesh3d.show && UJ.mesh3d.prepare && UJ.traceloft && UJ.tracing
-        && UJ.tracing.fetchMany)) return;
+   there is no 3D view"*, then *"It should be all the normal features, not just 3D view. Also 3D model
+   and powerpoint download and compute volume and +VR."* Inside minnie65 those buttons work from the
+   cell's MICrONS mesh, found by its root id; out here there is no mesh and no root id. What there is,
+   is what somebody traced, so the same five buttons work from that: the whole cell is lofted from its
+   outlines (core/traceloft.js, the tracing pad's own loft), and that surface is what is drawn,
+   downloaded (core/mesh.js saveGlb / savePptx, the exporters the segmented cells use), measured
+   and sent to VR. The nucleus and anything else traced on the cell go inside it in the 3D view.
+   "+ VR" files the cell in the collection as "at:x_y_z", which vr.html reads as a cell with no ids
+   whose traced outline IS the cell -- the same path its hand-traced cells already take. */
+function panelTracedTools(host, mine){
+  if (!(window.UJ && UJ.traceloft && UJ.tracing && UJ.tracing.fetchMany)) return;
+  var pos = (window.CUR_POS || []).slice(0, 3);
+  var atTag = pos.join("_");
+  var kindOf = function(t){ return String(t.instanceOf || t.kind || "").toLowerCase(); };
+  var body = mine.filter(function(t){ return kindOf(t) === "cell"; });
   var row = document.createElement("div");
-  row.style.cssText = "margin:4px 0 2px";
-  var btn = document.createElement("button");
-  btn.className = "idbtn"; btn.type = "button";
-  btn.textContent = "Show in 3D";
-  btn.title = "Draw the traced cell in the page — lofted from its outlines, see-through, with its "
-            + "traced nucleus and organelles inside, each in the colour it was drawn in.";
+  row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 2px";
+  var mk = function(label, title){
+    var b = document.createElement("button"); b.className = "idbtn"; b.type = "button";
+    b.textContent = label; b.title = title; b.dataset.label = label; row.appendChild(b); return b;
+  };
+  var b3d = mk("Show in 3D", "Draw the traced cell in the page — lofted from its outlines, see-through, with its traced nucleus and organelles inside, each in the colour it was drawn in.");
+  var bGlb = mk("3D model", "Download the traced cell as a .glb (µm), lofted from its outlines — there is no MICrONS mesh for a cell outside the segmentation.");
+  var bPpt = mk("PowerPoint", "Download a PowerPoint slide with the traced cell as a live, spinning 3D model, labelled with its cell type and coordinate, with a scale bar.");
+  var bVol = mk("Compute volume", "The volume of the traced cell and of its traced nucleus, from their outlines.");
+  var bVr = mk("+ VR", "Add this cell to your VR collection — the viewer draws it from its traced outline.");
+  if (!body.length){ [bGlb, bPpt].forEach(function(b){ b.disabled = true; b.title = "No whole-cell outline is traced on this cell yet — trace one in the tracing card."; }); }
+  var volOut = document.createElement("span"); volOut.className = "hint"; row.appendChild(volOut);
   var box = document.createElement("div");
-  row.appendChild(btn); host.appendChild(row); host.appendChild(box);
-  btn.addEventListener("click", function(){
-    if (box.firstChild){ box.innerHTML = ""; btn.textContent = "Show in 3D"; return; }
-    btn.disabled = true; btn.textContent = "reading outlines\u2026";
+  host.appendChild(row); host.appendChild(box);
+
+  /* Read and lofted once per card, shared by every button. */
+  var LOFTS = null;
+  var lofts = function(){
+    if (LOFTS) return LOFTS;
     var ds = (typeof tracedOutlinesDsQS === "function") ? tracedOutlinesDsQS() : "";
-    Promise.resolve(UJ.tracing.fetchMany(REPORT_ENDPOINT, mine, ds)).then(function(res){
+    LOFTS = Promise.resolve(UJ.tracing.fetchMany(REPORT_ENDPOINT, mine, ds)).then(function(res){
       var resNm = (UJ.cfg && UJ.cfg.res) || [4, 4, 40];
-      var lofts = mine.map(function(t){
+      return mine.map(function(t){
         var x = res && res[t.structureId], rings = x && x.st && x.st.rings;
         if (!rings || !rings.length) return null;
-        try { var lg = UJ.traceloft.loft(rings, resNm); return lg && lg.positions && lg.positions.length ? { t: t, lg: lg } : null; }
-        catch (_e){ return null; }
+        try {
+          var lg = UJ.traceloft.loft(rings, resNm);
+          return lg && lg.positions && lg.positions.length ? { t: t, lg: lg, rings: rings } : null;
+        } catch (_e){ return null; }
       }).filter(Boolean);
-      if (!lofts.length){ box.innerHTML = '<p class="hint">None of the outlines could be read.</p>'; return; }
-      var kindOf = function(t){ return String(t.instanceOf || t.kind || "").toLowerCase(); };
-      var main = lofts.filter(function(o){ return kindOf(o.t) === "cell"; })[0] || lofts[0];
+    });
+    LOFTS.catch(function(){ LOFTS = null; });
+    return LOFTS;
+  };
+  /* The whole cell in µm, the unit core/mesh.js's exporters take (the loft is in nm). Several
+     whole-cell pieces of one cell are one surface. */
+  var cellUm = function(L){
+    var cells = L.filter(function(o){ return kindOf(o.t) === "cell"; });
+    var P = [], I = [], off = 0;
+    cells.forEach(function(o){
+      for (var k = 0; k < o.lg.positions.length; k++) P.push(o.lg.positions[k] / 1000);
+      for (k = 0; k < o.lg.indices.length; k++) I.push(o.lg.indices[k] + off);
+      off += o.lg.positions.length / 3;
+    });
+    return P.length ? { positions: new Float32Array(P), indices: new Uint32Array(I) } : null;
+  };
+  var busy = function(b, msg){ b.disabled = true; b.textContent = msg; };
+  var done = function(b, msg, ms){
+    b.textContent = msg || b.dataset.label;
+    setTimeout(function(){ b.textContent = b.dataset.label; b.disabled = false; }, msg ? (ms || 4000) : 0);
+  };
+  var fail = function(b, e){ console.warn("[traced cell]", e); done(b, "✗ " + String(e && e.message || e).slice(0, 60), 6000); };
+  var verdict = function(){ return window.CUR_CELLTYPE_DISPLAY || "Traced cell"; };
+  var name = "traced_cell_" + atTag;
+
+  b3d.addEventListener("click", function(){
+    if (box.firstChild){ box.innerHTML = ""; b3d.textContent = "Show in 3D"; b3d.dataset.label = "Show in 3D"; return; }
+    if (!(UJ.mesh3d && UJ.mesh3d.show && UJ.mesh3d.prepare)){ fail(b3d, "the 3D viewer did not load"); return; }
+    busy(b3d, "reading outlines…");
+    lofts().then(function(L){
+      if (!L.length){ box.innerHTML = '<p class="hint">None of the outlines could be read.</p>'; done(b3d); return; }
+      var main = L.filter(function(o){ return kindOf(o.t) === "cell"; })[0] || L[0];
       var geo = UJ.mesh3d.prepare(main.lg.positions, main.lg.indices, { unitNm: 1 });
       var hex = function(h, fb){
         var m = /^#?([0-9a-f]{6})$/i.exec(String(h || "")); if (!m) return fb;
         var n = parseInt(m[1], 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
       };
-      var ghosts = lofts.filter(function(o){ return o !== main; }).map(function(o){
+      var ghosts = L.filter(function(o){ return o !== main; }).map(function(o){
         var k = kindOf(o.t);
         return { geo: UJ.mesh3d.prepare(o.lg.positions, o.lg.indices, { unitNm: 1, frame: { mid: geo.mid, span: geo.span } }),
                  what: k === "nucleus" ? "nucleus" : "tracing", alpha: 1,
                  tint: k === "nucleus" ? [0x3a / 255, 0x72 / 255, 0xd8 / 255] : hex(o.t.color, [0.25, 0.89, 0.55]) };
       }).filter(function(g){ return !g.geo.empty; });
-      var at = (window.CUR_POS || []).join(", ");
       UJ.mesh3d.show(box, geo, {
         what: "cell", ghosts: ghosts, alpha: ghosts.length ? 0.30 : 1,
-        about: { verdict: window.CUR_CELLTYPE_DISPLAY || "", atVox: window.CUR_POS || null },
-        saveName: "traced_cell_" + String(at).replace(/[^0-9]+/g, "_"),
-        lead: "<span class='hint'>Lofted from the traced outlines (" + panelEsc(main.t.name || "whole cell")
-          + (ghosts.length ? "; " + ghosts.length + " traced structure" + (ghosts.length === 1 ? "" : "s")
-             + " inside \u2014 the nucleus in blue" : "")
-          + "). There is no MICrONS mesh for a cell outside the segmentation.</span>",
+        about: { verdict: verdict(), atVox: pos },
+        saveName: name,
+        lead: "<span class='hint'>Lofted from the traced outlines" + (ghosts.length ? "; " + ghosts.length
+          + " traced structure" + (ghosts.length === 1 ? "" : "s") + " inside — the nucleus in blue" : "")
+          + ". There is no MICrONS mesh for a cell outside the segmentation.</span>",
         emptyMessage: "The traced outlines gave no surface to draw." });
-      btn.textContent = "Hide 3D";
-    }).catch(function(e){
-      box.innerHTML = '<p class="hint" style="color:var(--bad)">Could not read the outlines: ' + panelEsc(e && e.message || e) + '</p>';
-      btn.textContent = "Show in 3D";
-    }).then(function(){ btn.disabled = false; });
+      b3d.dataset.label = "Hide 3D"; done(b3d);
+    }).catch(function(e){ fail(b3d, e); });
+  });
+
+  bGlb.addEventListener("click", function(){
+    if (!(UJ.mesh && UJ.mesh.saveGlb)){ fail(bGlb, "core/mesh.js is not loaded"); return; }
+    busy(bGlb, "reading outlines…");
+    lofts().then(function(L){
+      var g = cellUm(L); if (!g) throw new Error("no whole-cell outline could be read");
+      var saved = UJ.mesh.saveGlb(g, { name: name, filename: name + "_um" });
+      done(bGlb, "✓ saved (" + Math.round((saved && saved.vertices || g.positions.length / 3) / 1000) + "k verts)");
+    }).catch(function(e){ fail(bGlb, e); });
+  });
+
+  bPpt.addEventListener("click", function(){
+    if (!(UJ.mesh && UJ.mesh.savePptx)){ fail(bPpt, "core/mesh.js is not loaded"); return; }
+    busy(bPpt, "reading outlines…");
+    lofts().then(function(L){
+      var g = cellUm(L); if (!g) throw new Error("no whole-cell outline could be read");
+      return UJ.mesh.savePptx(g, { name: name, filename: name, title: verdict(),
+        subtitle: "Traced by hand   ·   voxel " + pos.join(", "),
+        onProgress: function(f, m){ bPpt.textContent = (m || "") + " " + Math.round(f * 100) + "%"; } });
+    }).then(function(out){
+      if (!out) return;
+      done(bPpt, "✓ saved (scale bar " + out.barLenUm + " µm, autoplays)");
+    }).catch(function(e){ fail(bPpt, e); });
+  });
+
+  bVol.addEventListener("click", function(){
+    busy(bVol, "measuring…");
+    lofts().then(function(L){
+      var resNm = (UJ.cfg && UJ.cfg.res) || [4, 4, 40];
+      var sum = function(kind){
+        var v = 0, n = 0;
+        L.forEach(function(o){
+          if (kindOf(o.t) !== kind) return;
+          var x = NaN;
+          try { x = UJ.traceloft.volume ? UJ.traceloft.volume(o.rings, resNm) : NaN; } catch (_e){}
+          if (typeof x === "object" && x) x = x.um3 != null ? x.um3 : x.volumeUm3;
+          if (!(x > 0)) x = Number(o.t.volumeUm3);
+          if (x > 0){ v += x; n++; }
+        });
+        return n ? v : null;
+      };
+      var vc = sum("cell"), vn = sum("nucleus");
+      var f = function(x){ return x >= 100 ? x.toFixed(0) : x.toFixed(1); };
+      volOut.textContent = (vc != null ? "cell " + f(vc) + " µm³" : "no whole-cell outline")
+        + (vn != null ? " · nucleus " + f(vn) + " µm³" + (vc ? " (" + (100 * vn / vc).toFixed(0) + "%)" : "") : "")
+        + " — from the traced outlines";
+      done(bVol);
+    }).catch(function(e){ fail(bVol, e); });
+  });
+
+  /* + VR: the collection keys a cell by its root id; this one's key is its place. */
+  var vrKey = "at:" + atTag;
+  var paintVr = function(){
+    var inB = !!(UJ.vrbasket && UJ.vrbasket.has(vrKey));
+    bVr.textContent = inB ? "✓ In VR" : "+ VR"; bVr.dataset.label = bVr.textContent;
+    bVr.title = inB ? "In your VR collection — click to remove"
+                    : "Add this cell to your VR collection — the viewer draws it from its traced outline.";
+  };
+  if (!UJ.vrbasket){ bVr.disabled = true; bVr.title = "The VR collection did not load on this page."; }
+  else paintVr();
+  bVr.addEventListener("click", function(){
+    if (!UJ.vrbasket) return;
+    if (UJ.vrbasket.has(vrKey)) UJ.vrbasket.remove(vrKey);
+    else UJ.vrbasket.merge({ ds: (UJ.cfg && UJ.cfg.id) || "microns", root: vrKey, nuc: "",
+                             label: verdict(), extra: [] });
+    paintVr();
   });
 }
 function loadTracedStructures(nid, root){
@@ -799,7 +907,7 @@ function loadTracedStructures(nid, root){
       + '</p>';
     /* A cell with no segmentation has no "Show in 3D" of its own -- that button draws the MICrONS
        mesh by root id. Its tracings are its shape, so they are what is drawn (2026-11-07). */
-    if (!nid && !root && mine.length) panelTraced3d(host, mine);
+    if (!nid && !root && mine.length) panelTracedTools(host, mine);
   };
   if (PANEL_TRACINGS && Date.now() - PANEL_TRACINGS_AT < 60000){
     render(PANEL_TRACINGS);
