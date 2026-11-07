@@ -1915,6 +1915,48 @@ function tracingPosEls(){
 function tracingPosNow(){
   return tracingPosEls().map(function(e){ return e ? String(e.value||"").trim() : ""; }).join(",");
 }
+/* ── A CELL WITH NO IDS IS FILED BY ITS PLACE ─────────────────────────────  2026-11-07
+   Søren, adding whole cells to the split pial macrophages in the Img35 imagery: *"it says not filed
+   against a cell in the database. How do I change that so that it is filed against the cell?"* The
+   centre box followed the cell only through tracingFollowIds, which returns when the ids do not
+   change -- and from one cell with no ids to the next they never do (empty to empty). So the box
+   kept the last cell's centre, or nothing, and the tracing went up with no nucleus, no root and no
+   coordinate. With no ids on screen the coordinate IS the cell, so it follows the cell on screen,
+   under the same guard as the ids: never under contours on an open pad. */
+var TRACING_AT_AUTO = "";
+function tracingFollowAt(){
+  var at = document.getElementById("tracingCellAt");
+  if (!at || !(window.CUR_POS && window.CUR_POS.length === 3)) return false;
+  var ids = tracingIdsOnScreen();
+  if (ids && (ids.nuc || ids.root)) return false;
+  var nucEl = document.getElementById("tracingNucId"), rootEl = document.getElementById("tracingRootId");
+  if ((nucEl && nucEl.value.trim()) || (rootEl && rootEl.value.trim())) return false;
+  var wrap = document.getElementById("tracePadWrap");
+  if (typeof PAD !== "undefined" && PAD && (PAD.rings || []).length && wrap && wrap.style.display !== "none")
+    return false;
+  var want = window.CUR_POS.map(function(n){ return Math.round(n); }).join(", ");
+  if (at.value.trim() === want) return false;
+  at.value = want; TRACING_AT_AUTO = want;
+  try { tracingSuggestType(); } catch (_e){}
+  return true;
+}
+/* The last chance, at Add: an empty centre on a structure with no ids is filled from the cell on
+   screen, or failing that from the pad's own position boxes. Returns the coordinate used, or "". */
+function tracingAtBeforeKeep(){
+  var at = document.getElementById("tracingCellAt");
+  if (!at || tracingCellAtVal()) return "";
+  var nucEl = document.getElementById("tracingNucId"), rootEl = document.getElementById("tracingRootId");
+  if ((nucEl && nucEl.value.trim()) || (rootEl && rootEl.value.trim())) return "";
+  var c = null;
+  if (window.CUR_POS && window.CUR_POS.length === 3) c = window.CUR_POS.map(Math.round);
+  else {
+    var p = tracingPosNow().split(",").map(function(v){ return v === "" ? NaN : Number(v); });
+    if (p.length === 3 && p.every(isFinite)) c = p.map(Math.round);
+  }
+  if (!c) return "";
+  at.value = c.join(", ");
+  return c.join(", ");
+}
 function tracingFillPos(force){
   const els = tracingPosEls();
   if (els.some(function(e){ return !e; })) return;
@@ -1962,6 +2004,8 @@ function tracingFillPos(force){
       set: function(v){
         held = v;
         try { tracingFillPos(false); } catch (e){}
+        /* after tracingFollowIds, which runs a tick later and owns the boxes for a segmented cell */
+        setTimeout(function(){ try { tracingFollowAt(); } catch (e){} }, 10);
       }
     });
   } catch (e){}
@@ -2681,8 +2725,16 @@ function tracingKeep(){
   /* ONE PRESS, EVERY STRUCTURE ON THE PAD. Søren, 2026-09-17: several organelles of the same type,
      each with its own number. They are separate tracings from here on -- separate rows, separate
      files, separate volumes -- and the only thing this loop shares between them is the press. */
+  const atFilled=tracingAtBeforeKeep();
   const all=tracingCurrentAll();
   if(!all.length)return;
+  /* Filed against nothing: no nucleus, no root, no centre, and not a vessel (which takes none on
+     purpose). Said, not refused -- the contours are still worth keeping, and opening it from the
+     list with a centre typed in files the next version under the cell. */
+  const noCell=all.filter(function(t){
+    const ves=!!(window.UJ&&UJ.tracing&&UJ.tracing.isVessel&&UJ.tracing.isVessel(t.kind));
+    return !ves&&!t.nucleus_id&&!t.root_id&&!t.cell_coord;
+  }).length;
   all.forEach(function(t){
     // Keeping the same tracing twice used to put the cell in the Blender scene twice.
     const at=TRACINGS_KEPT.findIndex(function(x){return x&&x.id&&x.id===t.id;});
@@ -2778,6 +2830,10 @@ function tracingKeep(){
      +(all.length===1?'It has':'They have')+' NOT reached the dataset yet — sign in with Google '
      +'(the account button, top right) and '+(all.length===1?'it goes':'they go')+' up on '
      +(all.length===1?'its':'their')+' own.')
+    +(atFilled?' Filed at the cell centre '+atFilled+' (the cell on screen).':'')
+    +(noCell?' '+(noCell===all.length&&all.length===1?'It is':noCell+' of them are')
+      +' NOT filed against a cell: there was no nucleus id, root id or cell centre. Open '
+      +(noCell===1?'it':'them')+' from the list, type the cell centre and add again.':'')
     +tracingSplitKeepSay(all));
   /* After the card's own sentence, because it appends to it (2026-09-27). */
   tracingNumberBareAfter(all);

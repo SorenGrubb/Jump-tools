@@ -5952,6 +5952,11 @@ function showNucleus(pos){
        far-nucleus warning above, this offers the "report a new cell" path unconditionally
        whenever this branch is reached at all, using the query coordinate itself as the
        estimate. Same ID_CTX.noNucleus path and "new_cell_no_nucleus" report as that warning. */
+    /* THE PLACE, EVEN WITH NO CELL ON RECORD (2026-11-07). A whole cell traced here -- Søren's split
+       pial macrophages in Img35 -- was filed against nothing, because CUR_POS still named the LAST
+       cell looked up (or nothing) and the tracing card's cell centre follows CUR_POS. The type is
+       cleared first: the card reads it when the centre is the cell on screen. */
+    window.CUR_CELLTYPE_DISPLAY="";window.CUR_POS=pos.slice(0,3);
     panel.classList.add("oob");
     panel.innerHTML='<div class="oobmsg"><b>No predictions for this part of the dataset.</b><br>This coordinate is outside the minnie65 predicted volume (e.g. the minnie35 / Img35 imagery).</div>'
       +'<div class="idcta warn" style="margin-top:10px"><div class="idcta-top"><span>Found a real cell here? The minnie35/Img35 imagery isn\'t covered by MICrONS\'s nucleus detector or verified-cell dataset at all yet.</span><button class="idbtn" id="idfNewCellGo">Report a new cell &rarr;</button></div>'
