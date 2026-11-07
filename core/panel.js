@@ -658,6 +658,68 @@ function tracedOnCellBox(){
   after.parentNode.insertBefore(host, after.nextSibling);
   return host;
 }
+/* ── A CELL OUTSIDE THE SEGMENTATION, IN 3D ─────────────────────────────  2026-11-07
+   Søren, on the macrophage at 321708,79882,9856 in the Img35 imagery: *"the EM image is not shown and
+   there is no 3D view"*. Inside minnie65 the "Show in 3D" button draws the cell's MICrONS mesh, found
+   by its root id; out here there is no mesh and no root id. What there is, is what somebody traced:
+   the whole cell is lofted from its outlines (core/traceloft.js, the tracing pad's own loft) and
+   drawn see-through, with the nucleus and anything else traced on it inside, each in its own colour
+   -- the same picture core/mesh3d.js draws for a segmented cell with its organelles. */
+function panelTraced3d(host, mine){
+  if (!(window.UJ && UJ.mesh3d && UJ.mesh3d.show && UJ.mesh3d.prepare && UJ.traceloft && UJ.tracing
+        && UJ.tracing.fetchMany)) return;
+  var row = document.createElement("div");
+  row.style.cssText = "margin:4px 0 2px";
+  var btn = document.createElement("button");
+  btn.className = "idbtn"; btn.type = "button";
+  btn.textContent = "Show in 3D";
+  btn.title = "Draw the traced cell in the page — lofted from its outlines, see-through, with its "
+            + "traced nucleus and organelles inside, each in the colour it was drawn in.";
+  var box = document.createElement("div");
+  row.appendChild(btn); host.appendChild(row); host.appendChild(box);
+  btn.addEventListener("click", function(){
+    if (box.firstChild){ box.innerHTML = ""; btn.textContent = "Show in 3D"; return; }
+    btn.disabled = true; btn.textContent = "reading outlines\u2026";
+    var ds = (typeof tracedOutlinesDsQS === "function") ? tracedOutlinesDsQS() : "";
+    Promise.resolve(UJ.tracing.fetchMany(REPORT_ENDPOINT, mine, ds)).then(function(res){
+      var resNm = (UJ.cfg && UJ.cfg.res) || [4, 4, 40];
+      var lofts = mine.map(function(t){
+        var x = res && res[t.structureId], rings = x && x.st && x.st.rings;
+        if (!rings || !rings.length) return null;
+        try { var lg = UJ.traceloft.loft(rings, resNm); return lg && lg.positions && lg.positions.length ? { t: t, lg: lg } : null; }
+        catch (_e){ return null; }
+      }).filter(Boolean);
+      if (!lofts.length){ box.innerHTML = '<p class="hint">None of the outlines could be read.</p>'; return; }
+      var kindOf = function(t){ return String(t.instanceOf || t.kind || "").toLowerCase(); };
+      var main = lofts.filter(function(o){ return kindOf(o.t) === "cell"; })[0] || lofts[0];
+      var geo = UJ.mesh3d.prepare(main.lg.positions, main.lg.indices, { unitNm: 1 });
+      var hex = function(h, fb){
+        var m = /^#?([0-9a-f]{6})$/i.exec(String(h || "")); if (!m) return fb;
+        var n = parseInt(m[1], 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+      };
+      var ghosts = lofts.filter(function(o){ return o !== main; }).map(function(o){
+        var k = kindOf(o.t);
+        return { geo: UJ.mesh3d.prepare(o.lg.positions, o.lg.indices, { unitNm: 1, frame: { mid: geo.mid, span: geo.span } }),
+                 what: k === "nucleus" ? "nucleus" : "tracing", alpha: 1,
+                 tint: k === "nucleus" ? [0x3a / 255, 0x72 / 255, 0xd8 / 255] : hex(o.t.color, [0.25, 0.89, 0.55]) };
+      }).filter(function(g){ return !g.geo.empty; });
+      var at = (window.CUR_POS || []).join(", ");
+      UJ.mesh3d.show(box, geo, {
+        what: "cell", ghosts: ghosts, alpha: ghosts.length ? 0.30 : 1,
+        about: { verdict: window.CUR_CELLTYPE_DISPLAY || "", atVox: window.CUR_POS || null },
+        saveName: "traced_cell_" + String(at).replace(/[^0-9]+/g, "_"),
+        lead: "<span class='hint'>Lofted from the traced outlines (" + panelEsc(main.t.name || "whole cell")
+          + (ghosts.length ? "; " + ghosts.length + " traced structure" + (ghosts.length === 1 ? "" : "s")
+             + " inside \u2014 the nucleus in blue" : "")
+          + "). There is no MICrONS mesh for a cell outside the segmentation.</span>",
+        emptyMessage: "The traced outlines gave no surface to draw." });
+      btn.textContent = "Hide 3D";
+    }).catch(function(e){
+      box.innerHTML = '<p class="hint" style="color:var(--bad)">Could not read the outlines: ' + panelEsc(e && e.message || e) + '</p>';
+      btn.textContent = "Show in 3D";
+    }).then(function(){ btn.disabled = false; });
+  });
+}
 function loadTracedStructures(nid, root){
   var host = tracedOnCellBox();
   if (!host) return;
@@ -735,6 +797,9 @@ function loadTracedStructures(nid, root){
       + (away ? ' ' + away + ' tracing' + (away === 1 ? '' : 's')
                 + ' filed at a different cell centre \u2014 not shown here.' : '')
       + '</p>';
+    /* A cell with no segmentation has no "Show in 3D" of its own -- that button draws the MICrONS
+       mesh by root id. Its tracings are its shape, so they are what is drawn (2026-11-07). */
+    if (!nid && !root && mine.length) panelTraced3d(host, mine);
   };
   if (PANEL_TRACINGS && Date.now() - PANEL_TRACINGS_AT < 60000){
     render(PANEL_TRACINGS);

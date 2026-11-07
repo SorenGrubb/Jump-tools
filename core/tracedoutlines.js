@@ -169,6 +169,10 @@ function tracedKindSets(force){
         var k = String((t && (t.instanceOf || t.kind)) || "").toLowerCase();
         if (k !== "cell" && k !== "nucleus") return;
         tracedKindIds(t).forEach(function(id){ sets[k][id] = 1; });
+        /* and by place, for a cell that has no ids (2026-11-07). Kept apart, so the counts below
+           still count cells with ids only. */
+        var at = tracedAtKey(t && t.cellCoord);
+        if (at && !tracedKindIds(t).length) (sets[k + "At"] = sets[k + "At"] || {})[at] = 1;
       });
       TRACED_KIND_SETS = sets; TRACED_KIND_WAIT = null;
       return sets;
@@ -179,13 +183,22 @@ function tracedKindSets(force){
     });
   return TRACED_KIND_WAIT;
 }
-/* Does THIS cell carry one? `value` is a __traced_ pseudo-kind; anything else is not ours. */
-function tracedKindHas(value, nucId, rootId){
+/* "x,y,z" in voxels, rounded -- how a cell with no ids is named (2026-11-07). */
+function tracedAtKey(v){
+  var p = String(v || "").split(/[,\s]+/).filter(function(s){ return s !== ""; }).map(Number);
+  if (p.length !== 3 || p.some(function(n){ return !isFinite(n); })) return "";
+  return p.map(function(n){ return Math.round(n); }).join(",");
+}
+/* Does THIS cell carry one? `value` is a __traced_ pseudo-kind; anything else is not ours.
+   `at` (optional): the cell's voxel, for a cell outside the segmentation that has no ids. */
+function tracedKindHas(value, nucId, rootId, at){
   var k = TRACED_KIND_VALUES[value];
   if (!k || !TRACED_KIND_SETS) return false;
   var set = TRACED_KIND_SETS[k] || {};
   var ids = tracedKindIds({ nucleusId: nucId, rootId: rootId });
   for (var i = 0; i < ids.length; i++) if (set[ids[i]]) return true;
+  var ak = tracedAtKey(at);
+  if (ak && !ids.length && TRACED_KIND_SETS[k + "At"] && TRACED_KIND_SETS[k + "At"][ak]) return true;
   return false;
 }
 /* CELLS, not tracings -- the unit every other number in that panel uses. */
@@ -233,12 +246,12 @@ function tracedPolylineViewer(){
     return "https://spelunker.cave-explorer.org/";
   } catch (_e){ return ""; }
 }
-function tracedCellNameLayers(nucId, rootId, base){
+function tracedCellNameLayers(nucId, rootId, base, at){
   if (typeof tracedKindHas !== "function" || typeof buildTracedOrganelleLayers !== "function")
     return Promise.resolve([]);
   var wants = [];
-  if (tracedKindHas("__traced_cell", nucId, rootId)) wants.push("__cells");
-  if (tracedKindHas("__traced_nucleus", nucId, rootId)) wants.push("__nuclei");
+  if (tracedKindHas("__traced_cell", nucId, rootId, at)) wants.push("__cells");
+  if (tracedKindHas("__traced_nucleus", nucId, rootId, at)) wants.push("__nuclei");
   if (!wants.length) return Promise.resolve([]);
   /* One kind at a time and in series: buildTracedOrganelleLayers answers for one pick, and two
      Drive reads of one cell in parallel buy nothing worth the second connection. */
@@ -250,7 +263,8 @@ function tracedCellNameLayers(nucId, rootId, base){
          the link can go somewhere else (2026-09-24). Since all_of_them_or_the_json.py the builder
          has no budget at all; `quiet` is still wanted, because the reads cap speaks in the filter's
          voice. */
-      return buildTracedOrganelleLayers({ nuc: [String(nucId || "")], root: [String(rootId || "")] },
+      return buildTracedOrganelleLayers({ nuc: [String(nucId || "")], root: [String(rootId || "")],
+                                          at: (nucId || rootId) ? [] : [String(at || "")] },
                                         w, function(){},
                                         { quiet: true, base: base || "" })
         .then(function(ls){ if (ls && ls.length) out.push.apply(out, ls); },
@@ -268,7 +282,8 @@ function tracedCellNameWire(){
     var a = (e.target && e.target.closest) ? e.target.closest("a.ctlink") : null;
     if (!a || !a.href) return;
     var nuc = a.getAttribute("data-nuc") || "", root = a.getAttribute("data-root") || "";
-    if (!nuc && !root) return;
+    var at = (nuc || root) ? "" : (a.getAttribute("data-at") || "");
+    if (!nuc && !root && !at) return;
     /* Asked of the index already in memory, so an untraced cell costs nothing: no request, no
        delay, and the anchor behaves exactly as it did before any of this existed.
 
@@ -281,8 +296,8 @@ function tracedCellNameWire(){
        link it would have opened anyway. See src/the_cell_name_waits_for_the_index.py. */
     if (typeof tracedKindHas !== "function") return;
     var known = (typeof TRACED_KIND_SETS !== "undefined") && !!TRACED_KIND_SETS;
-    if (known && !tracedKindHas("__traced_cell", nuc, root)
-              && !tracedKindHas("__traced_nucleus", nuc, root)) return;
+    if (known && !tracedKindHas("__traced_cell", nuc, root, at)
+              && !tracedKindHas("__traced_nucleus", nuc, root, at)) return;
     e.preventDefault();
     var href = a.href, win = null;
     try { win = window.open("", "_blank"); } catch (_e){}      // at the click, or it is a popup
@@ -307,7 +322,7 @@ function tracedCellNameWire(){
       if (win){ try { win.opener = null; } catch (_e){} win.location.href = url; }
       else window.open(url, "_blank", "noopener");
     };
-    ready.then(function(){ return tracedCellNameLayers(nuc, root); }).then(function(layers){
+    ready.then(function(){ return tracedCellNameLayers(nuc, root, "", at); }).then(function(layers){
       var here = compose("", layers);
       if (!here) return go(href);                       // nothing traced, or no state to add to
       if (here.length <= cap) return go(here);          // the ordinary case, and it costs nothing
@@ -321,7 +336,7 @@ function tracedCellNameWire(){
       if (ext) ext.innerHTML = "\u2026";
       /* Read again, because the shape is decided while the annotations are built. Only on this
          path; every cell that fits read its contours once. */
-      return tracedCellNameLayers(nuc, root, alt).then(function(pl){
+      return tracedCellNameLayers(nuc, root, alt, at).then(function(pl){
         var there = compose(alt, pl);
         if (!there || there.length > cap) return said(href, here.length, there ? there.length : 0);
         if (typeof showSubmitToast === "function")
@@ -1158,7 +1173,11 @@ async function buildTracedOrganelleLayers(ids,want,say,opts){
   const nucSet=new Set(),rootSet=new Set();
   ((ids&&ids.nuc)||[]).forEach(function(n){if(n)nucSet.add(String(n));});
   ((ids&&ids.root)||[]).forEach(function(r){if(r&&r!=="0")rootSet.add(String(r));});
-  if(!nucSet.size&&!rootSet.size)return [];
+  /* A cell outside the segmentation is named by its voxel (2026-11-07); only tracings that carry
+     no id of their own can be matched that way, so an id-bearing cell is never picked by place. */
+  const atSet=new Set();
+  ((ids&&ids.at)||[]).forEach(function(a){var k=tracedAtKey(a);if(k)atSet.add(k);});
+  if(!nucSet.size&&!rootSet.size&&!atSet.size)return [];
   let index=[];
   try{
     say&&say("Looking up traced outlines\u2026");
@@ -1190,7 +1209,8 @@ async function buildTracedOrganelleLayers(ids,want,say,opts){
   };
   let mine=index.filter(function(t){
     if(!t||!t.structureId||!takes(t))return false;
-    return nucSet.has(String(t.nucleusId||""))||rootSet.has(String(t.rootId||""));
+    if(nucSet.has(String(t.nucleusId||""))||rootSet.has(String(t.rootId||"")))return true;
+    return atSet.size>0&&!String(t.nucleusId||"").trim()&&!String(t.rootId||"").trim()&&atSet.has(tracedAtKey(t.cellCoord));
   });
   if(!mine.length)return [];
   /* THE CAP IS SAID, NOT SILENT. One Drive read per outline is right for a cell and wrong for a

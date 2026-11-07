@@ -4899,23 +4899,31 @@ async function drawPanelEmPlane(tok){
      already pointed it at minnie65's EM; re-pointing it here for a minnie35 point would silently
      move the pad to the other volume. A point outside the predicted volume says so instead. */
   var bb=window.MINNIE65_EM_BB,nx=pos[0]*UJ_RX,ny=pos[1]*UJ_RY,nz=pos[2]*UJ_RZ;
-  if(!bb||nx<bb.xmin||nx>bb.xmax||ny<bb.ymin||ny>bb.ymax||nz<bb.zmin||nz>bb.zmax){
+  var inBB=function(b){return !!b&&!(nx<b.xmin||nx>b.xmax||ny<b.ymin||ny>b.ymax||nz<b.zmin||nz>b.zmax);};
+  /* ── AND minnie35's IMAGERY WHERE minnie65's STOPS ──────────────────────────  2026-11-07
+     Søren, on a verified macrophage at 321708,79882,9856: "the EM image is not shown". It sits in
+     the Img35 imagery, outside Img65's. The same section is drawn from minnie35's EM, through the
+     same borrow-and-hand-back (withConfig) that keeps the pad's own reader where it was; minnie35
+     has no segmentation in this tool, so nothing is painted on it. */
+  var emSrcHere=inBB(bb)?SRC.em:(inBB(window.MINNIE35_EM_BB)?SRC.em35:null);
+  if(!emSrcHere){
     cv.style.display="none";
-    emPlaneSay(tok,"outside minnie65’s imagery, so there is no section to draw here");
+    emPlaneSay(tok,"outside the imaged volume, so there is no section to draw here");
     return;
   }
+  var in35=emSrcHere===SRC.em35;
   /* A quarter second before anything is fetched. Stepping through cells renders a panel per cell,
      and without this every one of them would open six connections that the next one invalidates. */
   emPlaneSay(tok,"…");
   await new Promise(function(r){setTimeout(r,250);});
   if(EM_PLANE_TOKEN!==tok)return;
   try{
-    var emMine={em:SRC.em,res:(typeof UJ.cfg!=="undefined"&&UJ.cfg)?UJ.cfg.res:[4,4,40]};
-    if(!UJ.emtiles.configured())UJ.emtiles.configure(emMine);
+    var emMine={em:emSrcHere,res:(typeof UJ.cfg!=="undefined"&&UJ.cfg)?UJ.cfg.res:[4,4,40]};
+    if(!UJ.emtiles.configured()&&!in35)UJ.emtiles.configure(emMine);
     emPlaneSay(tok,"reading the EM…");
     /* THE PAD MAY BE ON minnie35 NOW (2026-11-01): it points the shared reader at the volume of the
        cell it is tracing, so this panel borrows minnie65 for its one draw and hands it back. */
-    var emNow=(typeof UJ.emtiles.config==="function")?UJ.emtiles.config():null,emWant=(UJ.segread&&UJ.segread._httpBase)?UJ.segread._httpBase(SRC.em):SRC.em;
+    var emNow=(typeof UJ.emtiles.config==="function")?UJ.emtiles.config():null,emWant=(UJ.segread&&UJ.segread._httpBase)?UJ.segread._httpBase(emSrcHere):emSrcHere;
     var emDraw=function(){return UJ.emtiles.drawSection(cv,{centre:pos,w:EM_PLANE_W,h:EM_PLANE_H,
       mip:EM_PLANE_MIP,zoom:1,slabOk:true,
       /* ONE WINDOW FOR EVERY EM, 2026-09-18 -- EM_WINDOW is read from EM_SHADER_CONTROLS, which is
@@ -4927,7 +4935,7 @@ async function drawPanelEmPlane(tok){
          only narrow, so this view can never have LESS contrast than the plain window gave it. */
       tighten:true,
       onProgress:function(d,n){emPlaneSay(tok,"reading the EM… "+d+"/"+n);}});};
-    var view=(emNow&&emNow.em!==emWant&&UJ.emtiles.withConfig)?await UJ.emtiles.withConfig(emMine,emDraw):await emDraw();
+    var view=((in35||(emNow&&emNow.em!==emWant))&&UJ.emtiles.withConfig)?await UJ.emtiles.withConfig(emMine,emDraw):await emDraw();
     if(EM_PLANE_TOKEN!==tok)return;
     /* SHORT ENOUGH TO SIT ON THE CAPTION LINE. Every word here that wraps costs a whole row of
        the panel (see emPlaneBox's comment on why rows are expensive in this column), so the
@@ -4954,6 +4962,7 @@ async function drawPanelEmPlane(tok){
                         +view.windowAsked[1]+" Neuroglancer window, because a downsampled level\u2019s "
                         +"values do not fill it)":" \u2014 the Neuroglancer window")+".";}catch(_t){}
     if(!emPlaneSegOn()){emPlaneSay(tok,"segmentation off");return;}
+    if(in35){emPlaneSay(tok,"Img35 imagery \u2014 no segmentation to paint here");return;}
     var root=String(ids.root||"").trim(),nuc=String(ids.nuc||"").trim();
     if(!root&&!nuc){emPlaneSay(tok,"no IDs to paint here");return;}
     if(!UJ.segpaint){emPlaneSay(tok,"");return;}
@@ -5802,8 +5811,11 @@ function idSpan(v){
 function celltypeLink(pos,innerHtml,ids){
   const url=pos?neuroglancerLinkForPos(pos):null;
   if(!url)return innerHtml;
-  const mine=(ids&&(ids.nuc||ids.root))
-    ?' class="ctlink" data-nuc="'+escHtml(ids.nuc||"")+'" data-root="'+escHtml(ids.root||"")+'"'
+  /* ids.at (2026-11-07): a cell outside the segmentation has no nucleus or root id, and its tracings
+     are filed by its coordinate -- Søren: "The macrophage does list the whole cell and the nucleus,
+     but it does not show it in Neuroglancer". */
+  const mine=(ids&&(ids.nuc||ids.root||ids.at))
+    ?' class="ctlink" data-nuc="'+escHtml(ids.nuc||"")+'" data-root="'+escHtml(ids.root||"")+'" data-at="'+escHtml(ids.at||"")+'"'
     :'';
   return '<a href="'+url+'"'+mine+' target="_blank" rel="noopener" title="Open in Neuroglancer">'+innerHtml+' <span class="ext">&#8599;</span></a>';
 }
@@ -5821,7 +5833,7 @@ function renderStandalone(st,panel,outOfRegion){
   setNearestLine("");   /* a verified own point has no MICrONS nucleus detection to be nearest to */
   CUR_IS_NEURON=looksLikeNeuron(st.type);
   let oh='<span class="tag" style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)" title="From S\u00f8ren\u2019s own verified cell-type coordinates \u2014 there is no automated MICrONS prediction or segmentation to compare against here.">verified identification</span>';
-  oh+='<div class="celltype" id="ctHeadline">'+celltypeLink(st.pos,longName(st.type))+favStarHtml('','',st.pos[0],st.pos[1],st.pos[2])+(st.vloc?' <small style="color:var(--mut)">('+st.vloc+')</small>':'')+'</div>';
+  oh+='<div class="celltype" id="ctHeadline">'+celltypeLink(st.pos,longName(st.type),{at:st.pos.join(",")})+favStarHtml('','',st.pos[0],st.pos[1],st.pos[2])+(st.vloc?' <small style="color:var(--mut)">('+st.vloc+')</small>':'')+'</div>';
   if(st.fine)oh+='<div class="meta" style="margin-top:-6px">'+st.fine+'</div>';
   if(st.gl)oh+='<div class="meta" style="margin-top:-6px">'+st.gl+'</div>';
   oh+='<div class="meta">'+linkifyAuthors(st.authors)+'</div>';
