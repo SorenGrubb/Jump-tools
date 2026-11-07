@@ -6115,6 +6115,14 @@ function showNucleus(pos){
   }
   h+='<div class="ids">';
   h+='<div class="idrow"><span class="k">nucleus ID</span><span class="idval" title="click to copy" data-c="'+nid+'">'+nid+'</span></div>';
+  /* ── THE NUCLEUS CENTRE, ON THE CARD ─────────────────────────────  2026-11-07
+     Gary, reviewing filtered cells: the coordinate had to be fetched from the Jump tab. Since
+     2026-09-18 it was only in the lookup receipt under the coordinate box (#nearestLine), which is
+     not on screen in the filter tab and not part of the cell's own information anywhere. Søren:
+     "the nucleus volumetric center coordinates should be among the cell information on the cell
+     identity panel". The nucleus table's own position (NX/NY/NZ, voxels), the same point the
+     nearest-nucleus line and every Jump-to-nucleus button use; a pill, click to copy. */
+  h+='<div class="idrow"><span class="k">nucleus centre</span>'+coordSpan(NX[i],NY[i],NZ[i])+'<span class="nsub">voxel</span></div>';
   /* Nucleus volume: precomputed (see NV/nucVolumeStr near the top of the file, sourced from
      Søren's own nucleus_detection_v0 export), so this is free to show immediately -- unlike the
      mesh/cell-body volume below, which needs an on-demand mesh fetch. Only shown when non-blank

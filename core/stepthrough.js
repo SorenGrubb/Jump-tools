@@ -123,6 +123,11 @@
     }
     if(!pos||pos.length<3){ line.style.display="none"; return; }
     var txt=pos.slice(0,3).map(function(n){ return Math.round(n); }).join(", ");
+    /* Not twice: µJump's card shows the nucleus centre itself since 2026-11-07, so the line is only
+       for a tool whose panel does not already show this coordinate as a pill. */
+    var np=document.getElementById(nucPanelId()), shown=false;
+    if(np)Array.prototype.forEach.call(np.querySelectorAll(".idval[data-c]"),function(e){ if(e.dataset.c===txt)shown=true; });
+    if(shown){ line.style.display="none"; return; }
     line.style.display="";
     /* The coordinate IS the control, as on every other coordinate pill on the cell card (Søren,
        2026-11-07: "It should not have a button next to it that says copy, the coordinates should
