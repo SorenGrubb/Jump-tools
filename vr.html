@@ -301,6 +301,7 @@
     </select>
     <button id="nucBtn" class="on" title="Show the nuclei (blue)">Nuclei</button>
     <button id="skelBtn" title="Each MICrONS cell's skeleton, read from MICrONS' public files: red axon (proofread cells only), blue basal dendrites, purple apical dendrite, white soma">Skeletons</button>
+    <button id="aisBtn" title="Colour the axon initial segment orange on each neuron's own surface — where its action potentials start. Computed from the MICrONS skeleton, or traced from an axon-start mark in µJump">AIS</button>
     <button id="glassBtn" title="Make the cells see-through">See-through</button>
     <button id="glassOthers" title="Keep the picked cell (or the cells you have marked solid) as they are and make every other cell see-through — they stay in place as context">Others see-through</button>
     <button id="glassClear" title="Make every cell solid again">All solid</button>
@@ -920,7 +921,7 @@
 
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
-    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
+    sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], aisBtn: ["trace", "AIS"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
     layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
@@ -988,7 +989,7 @@
 
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
-    ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
+    ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
@@ -3572,6 +3573,31 @@ function somaNode(c, fallback){
   }
   return c.somaNode >= 0 ? c.somaNode : fallback;
 }
+/* ── WHERE A SPIKE STARTS, 2026-11-07 ──────────────────────────────────────────────────────────
+   Søren: *"for neurons with an AIS, the AP should start there."* A neuron that reaches threshold now
+   fires from its axon initial segment, not from the soma: the spike runs back into the soma and
+   dendrites and on out along the axon from there. The start is 75 % of the way along the AIS -- in
+   cortical pyramidal neurons the action potential begins in the distal part of the AIS, some
+   20–40 µm from the soma (Palmer & Stuart 2006, https://doi.org/10.1523/JNEUROSCI.5272-05.2006;
+   Kole et al. 2008, https://doi.org/10.1038/nn2040). Threshold is still read at the soma, as before.
+   A neuron whose AIS is not known (or not loaded yet) fires from its soma, as before. A touch with
+   Stimulate still starts the spike where you touch -- that is an electrode, not the cell's own spike. */
+const AIS_START = 0.75;
+function spikeNode(c, soma){
+  if (!c.aisLine){ if (!c.aisP) aisLineOf(c); return soma; }
+  if (c.aisNode == null || c.aisNodeG !== c.graph){
+    const L = c.aisLine; let tot = 0; for (let k = 1; k < L.length; k++) tot += Math.hypot(L[k][0]-L[k-1][0], L[k][1]-L[k-1][1], L[k][2]-L[k-1][2]);
+    let want = tot * AIS_START, p = L[L.length - 1];
+    for (let k = 1; k < L.length; k++){
+      const d = Math.hypot(L[k][0]-L[k-1][0], L[k][1]-L[k-1][1], L[k][2]-L[k-1][2]);
+      if (want <= d){ const t = d > 0 ? want / d : 0; p = [L[k-1][0] + t*(L[k][0]-L[k-1][0]), L[k-1][1] + t*(L[k][1]-L[k-1][1]), L[k-1][2] + t*(L[k][2]-L[k-1][2])]; break; }
+      want -= d;
+    }
+    const near = nearestNode(cellGraph(c), new THREE.Vector3(p[0], p[1], p[2]));
+    c.aisNode = near.dist <= 3 ? near.node : -1; c.aisNodeG = c.graph;
+  }
+  return c.aisNode >= 0 ? c.aisNode : soma;
+}
 function fireCell(c, node, t0){
   if (DRUG.ttx){ c.pendingFire = false; if (!fireCell._said || performance.now() - fireCell._said > 4000){ fireCell._said = performance.now(); ctxNote.textContent = "TTX: " + c.label + " cannot fire — its sodium channels are blocked (the synaptic and dendritic potentials remain)."; } return; }
   const G = cellGraph(c);
@@ -3665,8 +3691,10 @@ function checkCell(c, t){
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS){ if (!c.refrNoted){ noteWhy(c, "refr"); c.refrNoted = true; } return; }
   if (c.apNodeT && c.apNodeT[soma] < 1e8 && t < c.apNodeT[soma] + REF_MS + 1) return;
   if ((STIM.spikes || 0) >= MAX_SPIKES){ ctxNote.textContent = "⚡ " + MAX_SPIKES + " spikes in this run — stopping new ones here. Press Reset to start again."; return; }
-  fireCell(c, soma, t); w.fired++;
-  ctxNote.textContent = "⚡ " + c.label + " reached threshold (" + mV(v) + " mV ≥ " + mV(VM.thr) + ") and fired" + (c.nFired > 1 ? " (" + c.nFired + "×)" : "") + " — spike " + STIM.spikes + " in this run.";
+  const from = spikeNode(c, soma);
+  fireCell(c, from, t); w.fired++;
+  ctxNote.textContent = "⚡ " + c.label + " reached threshold (" + mV(v) + " mV ≥ " + mV(VM.thr) + ") and fired" + (c.nFired > 1 ? " (" + c.nFired + "×)" : "")
+    + (from !== soma ? " from its axon initial segment" : "") + " — spike " + STIM.spikes + " in this run.";
 }
 function stimulateWithRay(r){
   _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
@@ -3693,7 +3721,11 @@ async function stimulateCell(c){
     ctxNote.textContent = "Reading the synapses among these cells…";
     for (let k = 0; k < 150 && (STIM.synLoading || !STIM.syn); k++){ if (!STIM.synLoading && !STIM.syn) await loadSynapses(); else await new Promise(r => setTimeout(r, 100)); if (!STIM.synLoading && !STIM.syn) break; }
   }
-  stimulateAt(c, somaNode(c, 0));
+  /* From the AIS where it is known (2026-11-07): the cell's own spike, as when it reaches threshold. */
+  if (!c.aisLine && c.aisP === undefined){ try { await Promise.race([aisLineOf(c), new Promise(r => setTimeout(r, 4000))]); } catch (e){} }
+  const s0 = somaNode(c, 0), from = spikeNode(c, s0);
+  stimulateAt(c, from);
+  if (from !== s0) setTimeout(() => { ctxNote.textContent = "⚡ " + c.label + " fired from its axon initial segment — the spike runs back into the soma and on along the axon."; }, 0);
 }
 function stimulateAt(c, node){
   if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
@@ -4196,7 +4228,9 @@ function stackCards(){
 function setStim(v){
   STIM.on = v; document.getElementById("stimBtn").classList.toggle("on", v);
   try { if (v && CA.on) setCa(false); } catch (e){}
-  if (v){ if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses(); }
+  if (v){ if (MEAS.on) setMeasure(false); if (SPRAY.on) setSpray(false); if (CUT.mode === "hand" || CUT.mode === "frozen") setCut("off"); loadSynapses();
+    for (const c of CELLS) if (c.mesh && cellClass(c) !== "glia") aisLineOf(c);       // where each neuron's spikes start (2026-11-07)
+  }
   else if (STIM.electrode) setElectrode(false);
   MENU.dirty = true;
 }
@@ -8416,36 +8450,118 @@ function sklAisTube(line){
   o.userData.context = true; o.renderOrder = 3;
   return o;
 }
+/* One answer per cell, shared by the skeleton tube, the coloured surface and the spike's start
+   (2026-11-07): the cell's AIS as a µm polyline in the content frame, or null. */
+function aisLineOf(c){
+  if (c.aisP) return c.aisP;
+  if (!(window.UJ && UJ.ais) || VR_DS !== "microns" || !/^\d+$/.test(String(c.nuc || ""))) return Promise.resolve(null);
+  if (!SKL_AIS.conf){ UJ.ais.configure({ base: "data/ais/minnie65/" }); SKL_AIS.conf = true; }
+  c.aisP = (async () => {
+    let a = await UJ.ais.get(c.nuc);
+    if (!a){
+      const all = await sklAisMarks();
+      const mine = all.filter(o => o.kind === "axon_start" && String(o.nucleusId) === String(c.nuc));
+      if (mine.length){
+        let nucVox = null;
+        if (c.nucMesh){ const b = new THREE.Box3().setFromObject(c.nucMesh), m = b.getCenter(new THREE.Vector3()), r = DSX.res || [4, 4, 40];
+          nucVox = [m.x * 1000 / r[0], m.y * 1000 / r[1], m.z * 1000 / r[2]]; }
+        ctxNote.textContent = "Tracing the axon initial segment of " + (c.label || "a cell") + " from its axon-start mark…";
+        a = await UJ.ais.marks(c.nuc, mine, { root: c.root, nucVox });
+      }
+    }
+    const line = UJ.ais.lineUm(a);
+    c.aisInfo = line ? { L: +a.L, src: a.src } : null;
+    c.aisLine = line || null;
+    return c.aisLine;
+  })().catch(() => { c.aisLine = null; return null; });
+  return c.aisP;
+}
 function sklAisSync(){
   for (const [c, o] of SKL_AIS.objs) if (!SKL.on || !c.mesh || CELLS.indexOf(c) < 0){ content.remove(o); o.traverse(x => { if (x.geometry) x.geometry.dispose(); }); o.material.dispose(); SKL_AIS.objs.delete(c); }
   if (!SKL.on || !(window.UJ && UJ.ais) || VR_DS !== "microns") return;
-  if (!SKL_AIS.conf){ UJ.ais.configure({ base: "data/ais/minnie65/" }); SKL_AIS.conf = true; }
   for (const c of CELLS){
-    if (!c.mesh || SKL_AIS.objs.has(c) || c.aisAsked || c.aisNone || !/^\d+$/.test(String(c.nuc || ""))) continue;
+    if (!c.mesh || SKL_AIS.objs.has(c) || c.aisAsked || !/^\d+$/.test(String(c.nuc || ""))) continue;
     c.aisAsked = true;
-    (async () => {
-      let a = await UJ.ais.get(c.nuc);
-      if (!a){
-        const all = await sklAisMarks();
-        const mine = all.filter(o => o.kind === "axon_start" && String(o.nucleusId) === String(c.nuc));
-        if (mine.length){
-          let nucVox = null;
-          if (c.nucMesh){ const b = new THREE.Box3().setFromObject(c.nucMesh), m = b.getCenter(new THREE.Vector3()), r = DSX.res || [4, 4, 40];
-            nucVox = [m.x * 1000 / r[0], m.y * 1000 / r[1], m.z * 1000 / r[2]]; }
-          ctxNote.textContent = "Tracing the axon initial segment of " + (c.label || "a cell") + " from its axon-start mark…";
-          a = await UJ.ais.marks(c.nuc, mine, { root: c.root, nucVox });
-        }
-      }
-      c.aisAsked = false;
-      const line = UJ.ais.lineUm(a);
-      if (!line){ c.aisNone = true; return; }
-      if (!SKL.on || !c.mesh || SKL_AIS.objs.has(c)) return;
+    aisLineOf(c).then(line => {
+      if (!line || !SKL.on || !c.mesh || SKL_AIS.objs.has(c)) return;
       const o = sklAisTube(line); o.userData.aisOf = c.i;
       content.add(o); SKL_AIS.objs.set(c, o);
-      ctxNote.textContent = "Axon initial segment (orange) of " + (c.label || "the cell") + ": " + (+a.L).toFixed(0) + " µm" + (a.src === "mark" ? ", traced from the axon-start mark." : ", computed from the skeleton.");
-    })().catch(() => { c.aisAsked = false; c.aisNone = true; });
+      ctxNote.textContent = "Axon initial segment (orange) of " + (c.label || "the cell") + ": " + c.aisInfo.L.toFixed(0) + " µm" + (c.aisInfo.src === "mark" ? ", traced from the axon-start mark." : ", computed from the skeleton.");
+    });
   }
 }
+/* ── THE AIS ON THE CELL'S OWN SURFACE, 2026-11-07 ─────────────────────────────────────────────
+   Søren: *"It would be nice if we can have an option to color the segment of the AIS to show where
+   it is."* The AIS button paints the part of each neuron's mesh that lies along its AIS orange: every
+   triangle whose three corners are within AIS_R of the AIS centre line, from AIS_SKIP µm past its
+   start (so the soma surface beside the axon hillock stays uncoloured). It is a translucent skin laid
+   on the mesh -- the mesh itself is not recoloured -- so the white band of an action potential still
+   shows through it. A mesh reloaded at another detail gets a new skin. */
+const AIS_COL = { on: false, objs: new Map(), timer: 0 };
+const AIS_R = 2.0, AIS_SKIP = 1.0;      // µm
+function aisDist(line, x, y, z){
+  let best = Infinity, along = 0, at = 0;
+  for (let k = 1; k < line.length; k++){
+    const a = line[k - 1], b = line[k], ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], L2 = ux*ux + uy*uy + uz*uz || 1e-9;
+    let t = ((x - a[0]) * ux + (y - a[1]) * uy + (z - a[2]) * uz) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dx = a[0] + t * ux - x, dy = a[1] + t * uy - y, dz = a[2] + t * uz - z, d = dx*dx + dy*dy + dz*dz;
+    if (d < best){ best = d; at = along + t * Math.sqrt(L2); }
+    along += Math.sqrt(L2);
+  }
+  return { d: Math.sqrt(best), s: at };
+}
+function aisSkin(c, line){
+  const g = c.mesh.geometry, P = g.attributes.position.array, I = g.index ? g.index.array : null;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const p of line) for (let a = 0; a < 3; a++){ lo[a] = Math.min(lo[a], p[a] - AIS_R); hi[a] = Math.max(hi[a], p[a] + AIS_R); }
+  const n = P.length / 3, inside = new Uint8Array(n);
+  for (let v = 0; v < n; v++){
+    const x = P[v*3], y = P[v*3+1], z = P[v*3+2];
+    if (x < lo[0] || x > hi[0] || y < lo[1] || y > hi[1] || z < lo[2] || z > hi[2]) continue;
+    const q = aisDist(line, x, y, z);
+    if (q.d <= AIS_R && q.s >= AIS_SKIP) inside[v] = 1;
+  }
+  const out = [], nt = I ? I.length : n;
+  for (let t = 0; t < nt; t += 3){
+    const a = I ? I[t] : t, b = I ? I[t+1] : t + 1, d = I ? I[t+2] : t + 2;
+    if (inside[a] && inside[b] && inside[d]) out.push(a, b, d);
+  }
+  if (!out.length) return null;
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute("position", g.attributes.position);           // shared with the mesh, not copied
+  if (g.attributes.normal) sg.setAttribute("normal", g.attributes.normal);
+  sg.setIndex(out);
+  const m = new THREE.MeshStandardMaterial({ color: 0xff8c1a, emissive: 0x7a3a00, roughness: 0.55, transparent: true, opacity: 0.8,
+    depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, side: THREE.DoubleSide });
+  const o = new THREE.Mesh(sg, m); o.renderOrder = 4; o.userData.context = true; o.userData.aisSkinOf = c.i; o.userData.tris = out.length / 3;
+  return o;
+}
+function aisColSync(){
+  for (const [c, o] of AIS_COL.objs) if (!AIS_COL.on || !c.mesh || CELLS.indexOf(c) < 0 || o.parent !== c.mesh){
+    if (o.parent) o.parent.remove(o); o.geometry.setIndex(null); o.material.dispose(); AIS_COL.objs.delete(c); }
+  if (!AIS_COL.on) return;
+  for (const c of CELLS){
+    if (!c.mesh || AIS_COL.objs.has(c) || c.aisSkinBusy || cellClass(c) === "glia") continue;
+    c.aisSkinBusy = true;
+    aisLineOf(c).then(line => {
+      c.aisSkinBusy = false;
+      if (!line || !AIS_COL.on || !c.mesh || AIS_COL.objs.has(c)) return;
+      const o = aisSkin(c, line); if (!o) return;
+      c.mesh.add(o); AIS_COL.objs.set(c, o);
+      const n = AIS_COL.objs.size;
+      ctxNote.textContent = "AIS coloured orange on " + n + " neuron" + (n === 1 ? "" : "s") + " — " + (c.label || "a cell") + ": " + c.aisInfo.L.toFixed(0) + " µm"
+        + (c.aisInfo.src === "mark" ? ", traced from its axon-start mark." : ", computed from its skeleton.") + " Action potentials start here.";
+    });
+  }
+}
+function setAisColour(v){
+  AIS_COL.on = !!v; document.getElementById("aisBtn").classList.toggle("on", AIS_COL.on);
+  clearInterval(AIS_COL.timer); AIS_COL.timer = AIS_COL.on ? setInterval(aisColSync, 2000) : 0;
+  aisColSync();
+  if (AIS_COL.on && VR_DS !== "microns") ctxNote.textContent = "The axon initial segments are only known for MICrONS minnie65 cells.";
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+document.getElementById("aisBtn").addEventListener("click", () => setAisColour(!AIS_COL.on));
 function setSkeletons(v){
   SKL.on = v; document.getElementById("skelBtn").classList.toggle("on", v);
   clearInterval(SKL.timer); SKL.timer = v ? setInterval(() => { skelSync(); sklAisSync(); }, 2000) : 0;
@@ -8732,6 +8848,7 @@ function menuRows(){
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
     rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
     rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
+    if (VR_DS === "microns") rows.push({ label: "Axon initial segment (orange)", on: AIS_COL.on, act: () => setAisColour(!AIS_COL.on) });
     rows.push({ label: "Organelle reports" + (ORG.kind !== "all" ? ": " + ORG.kind.replace(/_/g, " ") : ""), on: ORG.on, act: () => setOrganelles(!ORG.on) });
     if (ORG.on){
       /* Step through the kinds actually in the box, from the panel's chooser. */
@@ -16638,7 +16755,7 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
