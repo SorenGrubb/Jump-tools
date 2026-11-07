@@ -70,21 +70,67 @@
      nucHomeNext are captured the FIRST time the panel is moved, so it can always be put back
      exactly where it started (nextSibling, not just "append to parent", so it lands back in the
      right place among its Jump-tab siblings rather than at the end). */
-  var nucHomeParent=null, nucHomeNext=null;
+  /* ── AND THE GUIDED-ID PANEL GOES WITH IT ────────────────────────────────  2026-11-07
+     Reported by a collaborator: *"When I'm in a filter group of cells ... I was unable to do a
+     guided identification of a cell that was incorrectly classified, within the filtered
+     dataset."* Only the cell panel was moved. The guided-identification tree renders into its own
+     panel (#idfpanel, UJ.cfg.tree.panelId), a SIBLING of #nucpanel that stayed behind on the
+     hidden Jump tab -- so the button opened the tree where nobody could see it. Both now move
+     together and go home together; a tree panel that already sits inside the cell panel (an
+     inline host) travels with it and is left alone. */
+  var homes={};
   function nucPanelId(){ return stepCfg().nucPanelId||"nucpanel"; }
+  function treePanelId(){ try{ return (UJ.cfg&&UJ.cfg.tree&&UJ.cfg.tree.panelId)||"idfpanel"; }catch(_e){ return "idfpanel"; } }
+  function movedIds(){
+    var ids=[nucPanelId()], np=document.getElementById(ids[0]), tp=document.getElementById(treePanelId());
+    if(tp&&!(np&&np.contains(tp)))ids.push(treePanelId());
+    return ids;
+  }
   function relocateNucPanel(){
-    var np=document.getElementById(nucPanelId()), mount=document.getElementById("stepNucMount");
-    if(!np||!mount)return;
-    if(!nucHomeParent){nucHomeParent=np.parentNode;nucHomeNext=np.nextSibling;}
-    if(np.parentNode!==mount)mount.appendChild(np);
+    var mount=document.getElementById("stepNucMount");
+    if(!mount)return;
+    movedIds().forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el)return;
+      if(!homes[id])homes[id]={parent:el.parentNode,next:el.nextSibling};
+      if(el.parentNode!==mount)mount.appendChild(el);
+    });
   }
   function restoreNucPanel(){
-    var np=document.getElementById(nucPanelId());
-    if(!np||!nucHomeParent)return;
-    if(np.parentNode!==nucHomeParent){
-      if(nucHomeNext&&nucHomeNext.parentNode===nucHomeParent)nucHomeParent.insertBefore(np,nucHomeNext);
-      else nucHomeParent.appendChild(np);
+    /* Back in reverse, so a panel whose home is "just before" the other finds it already there. */
+    movedIds().slice().reverse().forEach(function(id){
+      var el=document.getElementById(id), h=homes[id];
+      if(!el||!h||el.parentNode===h.parent)return;
+      if(h.next&&h.next.parentNode===h.parent)h.parent.insertBefore(el,h.next);
+      else h.parent.appendChild(el);
+    });
+  }
+  /* ── THE COORDINATE, WHERE THE CELL IS ─────────────────────────────────  2026-11-07
+     The same collaborator: *"when you're in the "filter" tab, you have to go back to the "Jump"
+     tab to see the XYZ coordinate information."* Since 2026-09-18 the lookup's coordinate line sits
+     under the coordinate box on the Jump tab (#nearestLine), which is where it belongs for a typed
+     lookup and nowhere to be seen while stepping through matches. So the step-through prints the
+     cell's own coordinate above the panel, with a copy button. */
+  function stepCoordLine(pos){
+    var mount=document.getElementById("stepNucMount");
+    if(!mount)return;
+    var line=document.getElementById("stepCoordLine");
+    if(!line){
+      line=document.createElement("div");
+      line.id="stepCoordLine"; line.className="meta";
+      line.style.cssText="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0";
+      mount.insertBefore(line,mount.firstChild);
     }
+    if(!pos||pos.length<3){ line.style.display="none"; return; }
+    var txt=pos.slice(0,3).map(function(n){ return Math.round(n); }).join(", ");
+    line.style.display="";
+    line.innerHTML='<span>Voxel <b style="font-family:var(--mono,monospace)">'+txt+'</b></span>'
+      +'<button type="button" class="idbtn" style="width:auto;padding:3px 10px;font-size:12px">Copy</button>';
+    var b=line.querySelector("button");
+    b.addEventListener("click",function(){
+      try{ navigator.clipboard&&navigator.clipboard.writeText(txt); }catch(_e){}
+      b.textContent="Copied"; setTimeout(function(){ b.textContent="Copy"; },1200);
+    });
   }
   UJ.stepthrough.relocateNucPanel=relocateNucPanel;
   UJ.stepthrough.restoreNucPanel=restoreNucPanel;
@@ -158,8 +204,9 @@
     if(!stepMatches||i<0||i>=stepMatches.length)return;
     stepIndex=i;
     if(stepVisited.indexOf(i)<0)stepVisited.push(i);
+    var pos=null;
     if(typeof rowPos==="function"&&typeof jumpToVoxel==="function"){
-      var pos=rowPos(stepMatches[i].row);
+      pos=rowPos(stepMatches[i].row);
       jumpToVoxel(pos[0],pos[1],pos[2]);
     }
     /* jumpToVoxel() above already re-filled #nucpanel (showNucleus()/showCell() synchronously
@@ -167,6 +214,7 @@
        freshly-loaded cell appears under the card, not back on the (currently hidden) Jump tab.
        Safe to call every step: a no-op once it's already sitting in the mount. */
     relocateNucPanel();
+    stepCoordLine(pos);
     saveStepState();
     updateStepUI();
   }
