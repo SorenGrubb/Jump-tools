@@ -9356,6 +9356,29 @@ renderer.xr.addEventListener("sessionend", () => {
 });
 
 /* ── the VR button ────────────────────────────────────────────────────────── */
+/* ── NO WEBXR LAYERS ──────────────────────────────────────────────────────  2026-11-08
+   After a Meta Horizon Link update, entering VR froze the page ("Siden svarer ikke") while the
+   official WebXR sample worked. The headset-session recorder above put the freeze exactly here:
+   three.js had been handed the session (12 ms after it was granted) and the first headset frame
+   never reached this page's code. Between those two, the one thing three.js does that the sample
+   does not is the WebXR Layers path: VRButton always asks for the optional "layers" feature, and
+   when the runtime grants it three draws through an XRProjectionLayer instead of the plain
+   XRWebGLLayer the sample uses. So the feature is taken out of every request this page makes
+   (the button's click and the browser's own offer alike), and three falls back to the plain
+   layer. Nothing visible depends on layers here. */
+if (navigator.xr){
+  for (const fn of ["requestSession", "offerSession"]){
+    const orig = navigator.xr[fn];
+    if (typeof orig !== "function") continue;
+    navigator.xr[fn] = function(mode, init){
+      if (init && Array.isArray(init.optionalFeatures))
+        init = Object.assign({}, init, { optionalFeatures: init.optionalFeatures.filter(f => f !== "layers") });
+      if (init && Array.isArray(init.requiredFeatures))
+        init = Object.assign({}, init, { requiredFeatures: init.requiredFeatures.filter(f => f !== "layers") });
+      return orig.call(navigator.xr, mode, init);
+    };
+  }
+}
 const vrBtn = VRButton.createButton(renderer, { optionalFeatures: ["hand-tracking"] });
 document.getElementById("vrslot").appendChild(vrBtn);
 vrBtn.addEventListener("click", () => { if (!renderer.xr.isPresenting) xrTraceStart("Enter VR pressed: waiting for the headset to grant a session"); }, true);
