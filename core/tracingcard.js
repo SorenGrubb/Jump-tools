@@ -6590,7 +6590,7 @@ function padInstances(){
     return '<button type="button" class="hist-chip padinst" data-inst="' + it.inst + '" '
       + 'style="display:inline-flex;align-items:center;gap:5px;'
       + (on ? "outline:2px solid var(--accent);" : "") + '" title="'
-      + (on ? "The one you are drawing now" : "Go back to this one") + ' — '
+      + (on ? "The one you are drawing now \u2014 click to go to it" : "Draw on this one, here \u2014 click again to go to it") + ' — '
       + it.contours + ' contour(s) on ' + it.sections + ' section(s)">'
       + '<span class="padswatch" style="width:9px;height:9px;border-radius:2px;background:'
       + escHtml(padInstColour(it.inst)) + '"></span>' + (it.inst + 1)
@@ -6618,6 +6618,13 @@ function padInstances(){
       /* What is in the type boxes belongs to the one being LEFT, and the one being arrived at puts
          its own there. Storing first is what makes the strip a set of tabs rather than a row of
          buttons that quietly copy one structure's type onto the next. */
+      /* ── FIRST CLICK CHOOSES, SECOND CLICK GOES (2026-11-08) ─────────────────────
+         Søren: "when you click one of the segmentations to change to it in the tracing pad, it jumps
+         to the middle of it. Sometimes I just want to segment it where I am. Perhaps it should
+         change to it first time you click it and then if you click it again it jumps to the
+         center?" A chip that is not the current one is now only made current; clicking the current
+         one is what moves the view to it. */
+      const again = (+b.dataset.inst === (PAD.inst || 0));
       tracingStoreKindOf(PAD.inst);
       UJ.tracepad.setInstance(PAD, +b.dataset.inst);
       tracingShowKindOf(PAD.inst);
@@ -6627,10 +6634,11 @@ function padInstances(){
       /* ...AND GOES TO IT. The tooltip on this chip has said "Go back to this one" since it was
          written; until 2026-09-23 it only changed the selection and left the view where it was,
          which on a cell forty sections deep is the difference between a click and a search. */
-      var went = padGoToInst(PAD.inst);
+      var went = again ? padGoToInst(PAD.inst) : null;
       padSay("Drawing number " + (PAD.inst + 1) + " now — anything you draw joins that one."
         + (went ? (went.moved ? " Moved to it, on section " + went.z + "."
-                              : " It is at " + went.at[0] + ", " + went.at[1] + " here.") : "")
+                              : " It is at " + went.at[0] + ", " + went.at[1] + " here.")
+                : (again ? "" : " Staying where you are \u2014 click it again to go to it."))
         + (tracingEachOwn() ? " The type box above is its own." : ""));
     });
   });
@@ -7224,6 +7232,52 @@ async function padAiFollow(dir){
   if (!from){
     var mine = padAiMine(PAD.z);
     if (mine.length) from = { z: PAD.z, points: mine[mine.length - 1].points };
+  }
+  /* ── GAPS FIRST (2026-11-08) ────────────────────────────────────────────────────────────
+     Søren: "When you have segmented every 3-5 segments and then press the Follow the last outline
+     either way. Then it should fill the gaps out with an interpolation between the segmentations
+     but take the AI prediction into consideration." If this structure has sections missing BETWEEN
+     two of its outlines (2 to 25 sections apart), either follow button fills them first -- by
+     UJ.organelleseg.fill(), which blends your outlines and lets the AI move the edge only as far as
+     it has shown, on your own sections, that it can be trusted on this organelle. A second press,
+     with no gaps left, follows on past the end as before. */
+  if (UJ.organelleseg && UJ.organelleseg.fill){
+    var mineAll = PAD.rings.filter(function(r){ return (r.inst || 0) === (PAD.inst || 0); });
+    var zset = {}; mineAll.forEach(function(r){ zset[Math.round(r.z)] = 1; });
+    var zl = Object.keys(zset).map(Number).sort(function(a, b){ return a - b; });
+    var gaps = 0;
+    for (var gi = 0; gi + 1 < zl.length; gi++){ var dz = zl[gi + 1] - zl[gi]; if (dz >= 2 && dz <= 25) gaps += dz - 1; }
+    if (gaps){
+      PAD_AI_FOLLOWING = true;
+      ["tracePadAiFollowBack", "tracePadAiFollowOn"].forEach(function(id){ var b = document.getElementById(id); if (b) b.disabled = true; });
+      padAiOutSay("Filling " + gaps + " section" + (gaps > 1 ? "s" : "") + " between your outlines\u2026");
+      try {
+        var chainKind0 = (mineAll.filter(function(r){ return r.aiKind; })[0] || {}).aiKind;
+        var filled = await UJ.organelleseg.fill(mineAll, {
+          model: PAD_AI_MODEL[String(PAD.inst || 0)] || padAiModel(), avoid: padAiOthers,
+          onEach: function(k, z){ padAiOutSay("Filling\u2026 " + k + " of " + gaps + " (z " + z + ")"); } });
+        filled.forEach(function(g){
+          PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points, aiKind: chainKind0 || undefined,
+                           filled: g.filled ? { w: g.w, skill: g.skill, agree: g.agree } : undefined,
+                           interpolated: g.interpolated || undefined });
+        });
+        padPaint(); padRings();
+        var nAi = filled.filter(function(g){ return g.filled; }).length;
+        var sk = filled.map(function(g){ return g.skill; }).filter(function(v){ return v != null; });
+        var skAvg = sk.length ? sk.reduce(function(a, b){ return a + b; }, 0) / sk.length : null;
+        padAiOutSay("Filled " + filled.length + " section" + (filled.length > 1 ? "s" : "") + " between your outlines: "
+          + nAi + " shaped by the AI as well, " + (filled.length - nAi) + " by your outlines alone"
+          + (skAvg != null ? " (the AI matched your own outlines at " + Math.round(skAvg * 100) + "% overlap"
+              + (skAvg < 0.5 ? ", too little to be given a say" : "") + ")" : "")
+          + ". Your own outlines were not changed. Step through with , and . to check; press follow again to go on past the end.");
+      } catch (err){
+        padAiOutSay(String(err && err.message || err), true);
+      } finally {
+        PAD_AI_FOLLOWING = false;
+        ["tracePadAiFollowBack", "tracePadAiFollowOn"].forEach(function(id){ var b = document.getElementById(id); if (b) b.disabled = false; });
+      }
+      return;
+    }
   }
   if (!from){ padAiOutSay("Click an organelle first (AI outline on), or draw one contour, then follow it.", true); return; }
   var step = Math.max(1, parseInt((document.getElementById("tracePadStep") || {}).value, 10) || 1);
