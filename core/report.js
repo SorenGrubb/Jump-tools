@@ -62,19 +62,24 @@ UJ.report = UJ.report || {};
 UJ.report.BUILD = "2026-08-18 stage-P5";
 
 /* ==== submit toast  (was ujump.html lines 4375-4388) ==== */
+/* FADED IS NOT GONE (2026-11-08). Both toasts fade to opacity 0 and stay in the page, centred near the
+   bottom at z-index 99999 -- invisible, and still catching every tap on that strip. Søren, on a
+   phone: "When doing the walkthrough on a phone, the next button can only be clicked in the right
+   side of the button" -- the walkthrough's bubble docks at the bottom of a narrow screen, under
+   exactly that strip. A toast now lets taps through whenever it is not showing. */
 function showSubmitToast(ok,msg){
   var t=document.getElementById("submitToast");
   if(!t){t=document.createElement("div");t.id="submitToast";
-    t.style.cssText="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;max-width:90vw;padding:12px 18px;border-radius:10px;font:14px/1.4 -apple-system,Segoe UI,sans-serif;color:#fff;box-shadow:0 6px 24px var(--shadow);opacity:0;transition:opacity .2s";
+    t.style.cssText="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;max-width:90vw;padding:12px 18px;border-radius:10px;font:14px/1.4 -apple-system,Segoe UI,sans-serif;color:#fff;box-shadow:0 6px 24px var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s";
     document.body.appendChild(t);}
   // var(--ok)/var(--danger) rather than a fixed hex -- both stay dark/saturated enough in EITHER
   // theme for the toast's always-white text to stay readable (see the "THEME ARCHITECTURE" note
   // above :root for why the light-theme status colors are deliberately darker, not just faded).
   t.style.background=ok?"var(--ok)":"var(--danger)";
   t.textContent=(ok?"✓ ":"✗ ")+msg;
-  t.style.opacity="1";
+  t.style.opacity="1";t.style.pointerEvents="auto";
   clearTimeout(showSubmitToast._h);
-  showSubmitToast._h=setTimeout(function(){t.style.opacity="0";},ok?4500:8000);
+  showSubmitToast._h=setTimeout(function(){t.style.opacity="0";t.style.pointerEvents="none";},ok?4500:8000);
 }
 
 /* ==== undo + restore a classification  (was ujump.html lines 4389-4439) ==== */
@@ -119,15 +124,15 @@ function showUndoToast(nucleusId,rootId,pos){
   }
   var coord=pos?pos.join(","):"";
   t.innerHTML='<span>Submitted.</span><button id="undoToastBtn" class="idbtn" style="padding:3px 10px;font-size:12px">Undo</button>';
-  t.style.opacity="1";
+  t.style.opacity="1";t.style.pointerEvents="auto";
   document.getElementById("undoToastBtn").onclick=function(){
     restoreClassification(nucleusId,{undoLast:true,rootId:rootId,coord:coord,reason:"Undo (misclick) via the post-submission Undo toast."});
     t.innerHTML='<span>Undo submitted — refreshing history…</span>';
-    setTimeout(()=>{t.style.opacity="0";},2000);
+    setTimeout(()=>{t.style.opacity="0";t.style.pointerEvents="none";},2000);
     setTimeout(()=>{if(typeof loadClassificationHistory==="function")loadClassificationHistory(nucleusId);},2500);
   };
   clearTimeout(showUndoToast._h);
-  showUndoToast._h=setTimeout(function(){t.style.opacity="0";},UNDO_TOAST_MS);
+  showUndoToast._h=setTimeout(function(){t.style.opacity="0";t.style.pointerEvents="none";},UNDO_TOAST_MS);
 }
 
 /* ==== merged-nucleus reporting (one detection is actually N nuclei)  (was ujump.html lines 6551-6840) ==== */
