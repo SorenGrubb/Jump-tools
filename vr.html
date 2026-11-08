@@ -9474,7 +9474,13 @@ addEventListener("keydown", e => {
 });
 addEventListener("keyup", e => {
   const k = KEY_CODE[e.code]; if (k) KEYS.delete(k);
-  if (![..."wasdqe"].some(x => KEYS.has(x))){ if (KEYS.held && ORBIT.mode === "cell") orbitAim(); KEYS.held = 0; }
+  /* NO SWING BACK (2026-11-08). On release in "around the picked cell" mode this used to call
+     orbitAim(), which turned the pivot back to the cell's nucleus -- the eye stayed where the keys
+     had taken it but the view swung round to face the cell again, which reads as snapping back
+     ("it doesn't stay fixed in the new position I move to"). The keys move eye and pivot together,
+     exactly as a left-drag pan does, and a pan was never pulled back; neither is a walk now. Picking
+     a cell (select) or the Orbit menu still re-aims at the cell. */
+  if (![..."wasdqe"].some(x => KEYS.has(x))) KEYS.held = 0;
   if (e.key === "Shift") KEYS.delete("shift");
   if (e.key === "Alt" || e.key === "AltGraph"){ KEYS.delete("alt"); if (!typing()) e.preventDefault(); }   // no menu bar on release
 });
