@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VR entry test</title>
+<style>
+  body{margin:0;background:#0d1117;color:#e6edf3;font:14px system-ui,sans-serif}
+  #box{position:fixed;left:12px;top:12px;max-width:520px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 12px;z-index:5}
+  #box a{color:#58a6ff;margin-right:10px}
+  #log{font:12px ui-monospace,monospace;white-space:pre-wrap;margin-top:6px;max-height:40vh;overflow:auto}
+</style>
+</head>
+<body>
+<!-- A STRIPPED-DOWN ENTRY TEST (2026-11-08). The VR viewer freezes when entering VR through Link after a
+     Meta update, even with an empty scene, while the immersive-web sample does not. This page is the
+     same three.js and the same VRButton the viewer uses, with one spinning cube and nothing else, so
+     each difference from the sample can be switched off on its own from the address:
+       ?hand=0      no "hand-tracking" optional feature (the viewer asks for it)
+       ?layers=0    no "layers" optional feature (VRButton always asks for it)
+       ?floor=0     no "local-floor"/"bounded-floor" (VRButton always asks; the reference space is then "local")
+       ?offer=0     the browser is not offered the session on load (VRButton calls navigator.xr.offerSession)
+       ?xrc=1       the WebGL context is created xrCompatible (the viewer does this since today)
+       ?gsi=1       Google's sign-in script is loaded, as on the viewer
+       ?aa=0        no antialiasing
+     The log below and localStorage "vrtest_trace" keep the last steps, as the viewer's recorder does. -->
+<div id="box">
+  <b>VR entry test</b> — one cube, three.js r169 as in the viewer.<br>
+  <span id="cfg"></span>
+  <div style="margin-top:6px">
+    <a href="?">viewer's options</a><a href="?offer=0">offer=0</a><a href="?hand=0">hand=0</a>
+    <a href="?floor=0">floor=0</a><a href="?layers=0">layers=0</a><a href="?xrc=1">xrc=1</a>
+    <a href="?gsi=1">gsi=1</a><a href="?offer=0&hand=0&floor=0&layers=0">all off</a>
+  </div>
+  <div id="vrslot" style="margin-top:8px;position:relative;height:40px"></div>
+  <div id="log"></div>
+</div>
+<script type="importmap">
+{ "imports": {
+    "three": "./core/vendor/three/three.module.min.js",
+    "three/addons/": "./core/vendor/three/addons/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { VRButton } from "three/addons/webxr/VRButton.js";
+
+const Q = new URLSearchParams(location.search);
+const opt = k => Q.get(k);
+const CFG = {
+  hand: opt("hand") !== "0", layers: opt("layers") !== "0", floor: opt("floor") !== "0",
+  offer: opt("offer") !== "0", xrc: opt("xrc") === "1", gsi: opt("gsi") === "1", aa: opt("aa") !== "0"
+};
+document.getElementById("cfg").textContent = Object.entries(CFG).map(([k, v]) => k + "=" + (v ? 1 : 0)).join("  ");
+
+/* the trail, kept across a freeze */
+const T = { t0: performance.now(), log: [] };
+function mark(s){
+  const line = Math.round(performance.now() - T.t0) + "ms " + s;
+  T.log.push(line); if (T.log.length > 40) T.log.shift();
+  try { localStorage.setItem("vrtest_trace", JSON.stringify({ cfg: CFG, at: new Date().toISOString(), last: T.log })); } catch (e){}
+  const el = document.getElementById("log"); el.textContent = T.log.slice(-12).join("\n");
+}
+try {
+  const old = JSON.parse(localStorage.getItem("vrtest_trace") || "null");
+  if (old){ console.warn("[vrtest] previous run (" + JSON.stringify(old.cfg) + ", " + old.at + "):\n  " + old.last.join("\n  ")); localStorage.removeItem("vrtest_trace"); }
+} catch (e){}
+let beats = 0;
+setInterval(() => { beats++; if (beats % 10 === 0) mark("heartbeat " + beats); }, 100);
+addEventListener("blur", () => mark("window lost focus"));
+document.addEventListener("visibilitychange", () => mark("visibility " + document.visibilityState));
+
+if (CFG.gsi){ const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.async = true; document.head.appendChild(s); mark("loading Google sign-in script"); }
+
+/* feature filtering, as the viewer does for "layers" */
+if (navigator.xr){
+  if (!CFG.offer) navigator.xr.offerSession = undefined;
+  for (const fn of ["requestSession", "offerSession"]){
+    const orig = navigator.xr[fn];
+    if (typeof orig !== "function") continue;
+    navigator.xr[fn] = function(mode, init){
+      init = Object.assign({}, init || {});
+      const drop = f => (!CFG.layers && f === "layers") || (!CFG.floor && (f === "local-floor" || f === "bounded-floor")) || (!CFG.hand && f === "hand-tracking");
+      if (init.optionalFeatures) init.optionalFeatures = init.optionalFeatures.filter(f => !drop(f));
+      mark(fn + "(" + mode + ", optional: " + (init.optionalFeatures || []).join("+") + ")");
+      return orig.call(navigator.xr, mode, init).then(s => { mark(fn + " granted"); return s; }, e => { mark(fn + " refused: " + e.message); throw e; });
+    };
+  }
+}
+
+let renderer;
+if (CFG.xrc){
+  const cv = document.createElement("canvas");
+  const gl = cv.getContext("webgl2", { antialias: CFG.aa, alpha: true, xrCompatible: true });
+  renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: CFG.aa });
+} else renderer = new THREE.WebGLRenderer({ antialias: CFG.aa });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType(CFG.floor ? "local-floor" : "local");
+document.body.appendChild(renderer.domElement);
+const _set = renderer.xr.setSession.bind(renderer.xr);
+renderer.xr.setSession = async s => {
+  if (s){
+    mark("three: session handed over");
+    const raf = s.requestAnimationFrame.bind(s); let n = 0;
+    s.requestAnimationFrame = cb => raf((t, f) => { if (++n <= 3 || n % 90 === 0) mark("headset frame " + n); cb(t, f); });
+  }
+  await _set(s);
+  mark("three: session running");
+};
+
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202a36);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 50); camera.position.set(0, 1.6, 1.2);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2));
+const cube = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xf0a742 }));
+cube.position.set(0, 1.4, -0.8); scene.add(cube);
+scene.add(new THREE.GridHelper(4, 16, 0x557, 0x334));
+
+const opts = CFG.hand ? { optionalFeatures: ["hand-tracking"] } : {};
+const btn = VRButton.createButton(renderer, opts);
+btn.addEventListener("click", () => mark("Enter VR clicked"), true);
+document.getElementById("vrslot").appendChild(btn);
+mark("ready");
+
+renderer.setAnimationLoop(() => { cube.rotation.y += 0.01; cube.rotation.x += 0.005; renderer.render(scene, camera); });
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+</script>
+</body>
+</html>
