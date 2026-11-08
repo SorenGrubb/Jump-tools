@@ -875,6 +875,14 @@ function tracingRenderList(){
                  +'dataset yet. Sign in with Google and it goes up on its own.">waiting for sign-in</span>'
                 :'<span style="opacity:.55" title="In the shared dataset — anyone can open it and add '
                  +'to it.">in the dataset</span>')
+            /* The two things one does with a tracing already in the dataset, beside the tracing
+               (2026-11-08, Hesham: "I can't find an option to open them in the pad again, only to
+               open them in a neuroglancer viewer or delete them"). Both lived only in the dataset
+               list further down the card. */
+            +(!t.pending_share&&t.id
+                ?'<button class="idbtn tracingopenkept" aria-label="Open it in the pad" title="Open it in the pad \u2014 opens this tracing on the pad, as the next version of it." data-sid="'+escHtml(t.id)+'" '+TRACING_ICOBTN+'>'+TRACING_ICON.pad+'</button>'
+                 +'<button class="idbtn tracingmovekept" aria-label="Move to another cell" data-sid="'+escHtml(t.id)+'" data-name="'+escHtml(t.name||"traced")+'" '+TRACING_ICOBTN+' title="Move to another cell \u2014 files this tracing under a different cell: type that cell\u2019s nucleus ID, root ID or x, y, z. It becomes the next version of the same tracing; nothing is deleted.">\u21c4</button>'
+                :'')
             +'<button class="idbtn tracingview" aria-label="Neuroglancer" data-n="'+i+'" ' + TRACING_ICOBTN + ' '
             +'title="Neuroglancer \u2014 Open this tracing in the viewer — its contours as an annotation layer in its '
             +'own colour.">' + TRACING_ICON.ngl + '</button>'
@@ -903,6 +911,12 @@ function tracingRenderList(){
       if(t&&!t.pending_share)tracingSay("Removed \u201c"+(t.name||"that tracing")+"\u201d from this page. It is still in the dataset"
         +(tracingCanDelete(tracingSharedRow(t.id))?" \u2014 to delete it for everyone, use its \u201call\u201d bin in the dataset list.":"."));
     });
+  });
+  host.querySelectorAll(".tracingopenkept").forEach(function(b){
+    b.addEventListener("click",function(){tracingOpenShared(b.dataset.sid,b);});
+  });
+  host.querySelectorAll(".tracingmovekept").forEach(function(b){
+    b.addEventListener("click",function(){tracingMoveToCell(b.dataset.sid,b,b.dataset.name);});
   });
   host.querySelectorAll(".tracingdelkept").forEach(function(b){
     b.addEventListener("click",function(){
@@ -5390,6 +5404,7 @@ function tracingRenderShared(){
                   + ((t.versions > 1) ? " &middot; v" + t.versions : "") + '</span>'
                 + '<button class="idbtn tracingopen" aria-label="Open it in the pad" title="Open it in the pad \u2014 opens this tracing on the pad, as the next version of it." data-sid="' + escHtml(t.structureId) + '" '
                   + TRACING_ICOBTN + '>' + TRACING_ICON.pad + '</button>'
+                + '<button class="idbtn tracingmove" aria-label="Move to another cell" data-sid="' + escHtml(t.structureId) + '" data-name="' + escHtml(t.name || t.structureId) + '" ' + TRACING_ICOBTN + ' title="Move to another cell \u2014 files this tracing under a different cell: type that cell\u2019s nucleus ID, root ID or x, y, z. It becomes the next version of the same tracing; nothing is deleted.">\u21c4</button>'
                 /* Looking is not editing: see tracingSharedInViewer. */
                 + '<button class="idbtn tracingngl" aria-label="Neuroglancer" data-sid="' + escHtml(t.structureId) + '" '
                   + TRACING_ICOBTN + ' title="Neuroglancer \u2014 Open this tracing in the viewer, as an annotation layer in '
@@ -5419,6 +5434,9 @@ function tracingRenderShared(){
   tracingSplitMarkWire(host);
   [].slice.call(host.querySelectorAll(".tracingopen")).forEach(function(b){
     b.addEventListener("click", function(){ tracingOpenShared(b.dataset.sid, b); });
+  });
+  [].slice.call(host.querySelectorAll(".tracingmove")).forEach(function(b){
+    b.addEventListener("click", function(){ tracingMoveToCell(b.dataset.sid, b, b.dataset.name); });
   });
   [].slice.call(host.querySelectorAll(".tracingdel")).forEach(function(b){
     b.addEventListener("click", function(){
@@ -6124,6 +6142,46 @@ function padJumpTo(){
     var w = document.getElementById("tracePadWrap");
     if (w && w.style.display !== "none" && w.scrollIntoView) w.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 60);
+}
+/* ── MOVE A TRACING TO ANOTHER CELL ──────────────────────────────────────────  2026-11-08
+   Hesham: *"Is there an easy way to edit and reattribute an organelle to a different cell? I
+   accidentally added a few lysosome tracings under the wrong microglia."* The long way existed --
+   open it in the pad, retype the three cell boxes, add it again -- but the pad button was only in
+   the dataset list and the boxes are deliberately frozen while a pad holds contours. This is that
+   long way in one press: ask which cell, open the tracing (so its contours, kind, colour, number
+   and structureId come with it), set the three boxes to the answer and clear the rest -- they are
+   ONE fact, as tracingOpenShared says -- and add it. The result is the next version of the same
+   tracing, filed under the new cell; the old cell's card stops listing it, and the earlier version
+   stays in the record. */
+async function tracingMoveToCell(sid, btn, name){
+  const ans = window.prompt("Move \u201c" + (name || "this tracing") + "\u201d to which cell?\n\n"
+    + "Type the right cell\u2019s nucleus ID, its root ID (the long 8646\u2026 number), "
+    + "or its x, y, z voxel coordinate.");
+  if (ans == null) return;
+  const parts = String(ans).trim().split(/[\s,;]+/).filter(Boolean);
+  let nuc = "", root = "", at = "";
+  if (parts.length === 3 && parts.every(function(p){ return isFinite(Number(p)); }))
+    at = parts.map(function(p){ return Math.round(Number(p)); }).join(", ");
+  else if (parts.length === 1 && /^\d+$/.test(parts[0])){
+    if (parts[0].length >= 15) root = parts[0]; else nuc = parts[0];
+  } else {
+    tracingSay("Not moved: \u201c" + ans + "\u201d is not a nucleus ID, a root ID or three numbers x, y, z.", true);
+    return;
+  }
+  await tracingOpenShared(sid, btn);
+  if (String(PAD_EDIT_ID || "") !== String(sid)) return;      // it did not open; that already said why
+  const nucBox = document.getElementById("tracingNucId");
+  const rootBox = document.getElementById("tracingRootId");
+  const ca = document.getElementById("tracingCellAt");
+  if (nucBox) nucBox.value = nuc;
+  if (rootBox) rootBox.value = root;
+  if (ca) ca.value = at;
+  tracingKeep();
+  const to = nuc ? "nucleus " + nuc : root ? "root ID " + root : "the cell at " + at;
+  setTimeout(function(){
+    tracingSay("Moved \u201c" + (name || "the tracing") + "\u201d to " + to + ". It is the next version of the "
+      + "same tracing; the cell it was under no longer lists it (reload that cell if its card was already open).");
+  }, 50);
 }
 async function tracingOpenShared(sid, btn){
   const label = btn ? btn.innerHTML : "";
