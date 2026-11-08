@@ -1463,7 +1463,36 @@ function headsetLink(){
 
 /* ── scene ────────────────────────────────────────────────────────────────── */
 const view = document.getElementById("view");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+/* XR-COMPATIBLE FROM THE START (2026-11-08). Entering VR froze the page ("Siden svarer ikke") while
+   the official WebXR sample worked. The headset recorder showed ~12 s of normal desktop frames, the
+   window going hidden as Link took over, and then nothing: not one more step, not even the 100 ms
+   heartbeat -- the page's thread stuck before three.js got the session. The one thing this page
+   did differently from the sample at that moment: its WebGL context was NOT created XR-compatible,
+   so the browser had to make it compatible while handing the session over (three.js then also
+   calls gl.makeXRCompatible()), which on some systems means losing and rebuilding the context with
+   everything already uploaded to the graphics card. The sample asks for an XR-compatible context
+   when it creates it. Now this page does too, and three.js, seeing the attribute, skips its own
+   makeXRCompatible. Falls back to three's own context if the browser refuses the attributes. */
+const renderer = (() => {
+  const cv = document.createElement("canvas");
+  let gl = null;
+  try {
+    gl = cv.getContext("webgl2", { alpha: true, depth: true, stencil: false, antialias: true, premultipliedAlpha: true,
+                                   preserveDrawingBuffer: false, powerPreference: "default", xrCompatible: true });
+  } catch (e){ gl = null; }
+  return gl ? new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true }) : new THREE.WebGLRenderer({ antialias: true });
+})();
+/* …and if the browser created it without (it only can when a headset is already there), it is made
+   compatible now, while it holds almost nothing, rather than at Enter VR with every mesh uploaded. */
+try {
+  if (navigator.xr && navigator.xr.isSessionSupported){
+    navigator.xr.isSessionSupported("immersive-vr").then(ok => {
+      const gl = renderer.getContext();
+      if (ok && gl.makeXRCompatible && !(gl.getContextAttributes() || {}).xrCompatible)
+        gl.makeXRCompatible().then(() => console.info("[vr] graphics context made VR-compatible at start-up")).catch(e => console.warn("[vr] makeXRCompatible:", e));
+    }).catch(() => {});
+  }
+} catch (e){}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
