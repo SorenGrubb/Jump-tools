@@ -9712,6 +9712,25 @@ renderer.xr.setSession = async session => {
       session.requestAnimationFrame = cb => _raf((t, f) => { xrMark("headset frame arrived (before three.js)"); cb(t, f); });
     } catch (e){ xrMark("could not watch the headset's frames: " + e.message); }
     try { xrMark("session: blend " + session.environmentBlendMode + ", layers API " + (session.renderState && session.renderState.layers !== undefined) + ", features " + (session.enabledFeatures ? [...session.enabledFeatures].join("+") : "?")); } catch (e){}
+    /* ── PLAIN XRWebGLLayer, ALWAYS (2026-11-08) ─────────────────────────────────────────────────
+       vrtest.html through Link: "WebXR Layers API present; features local+viewer+bounded-floor+
+       local-floor" -- the API is there but the "layers" FEATURE was not granted -- and three.js
+       (r169) still drew through an XRProjectionLayer, because it chooses that path whenever
+       session.renderState.layers exists, without asking whether the feature was granted. The
+       session then ran with not one headset frame, and Link reported the page as not responding.
+       The WebXR sample, which works, draws through a plain XRWebGLLayer. So three.js is shown a
+       renderState without the layers list, and takes the XRWebGLLayer path too. */
+    try {
+      const proto = Object.getPrototypeOf(session), desc = Object.getOwnPropertyDescriptor(proto, "renderState");
+      if (desc && desc.get && session.renderState && session.renderState.layers !== undefined){
+        Object.defineProperty(session, "renderState", { configurable: true, get(){
+          const r = desc.get.call(session);
+          return { baseLayer: r.baseLayer, depthNear: r.depthNear, depthFar: r.depthFar,
+                   inlineVerticalFieldOfView: r.inlineVerticalFieldOfView, layers: undefined };
+        } });
+        xrMark("WebXR Layers hidden from three.js: drawing through XRWebGLLayer");
+      }
+    } catch (e){ xrMark("could not hide WebXR Layers: " + e.message); }
   }
   let floor = true;
   try { if (session) await session.requestReferenceSpace("local-floor"); } catch (e){ floor = false; }
