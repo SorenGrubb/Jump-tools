@@ -9321,8 +9321,34 @@ function menuFrame(){
 }
 function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
 
+/* ── WHERE A HEADSET SESSION STOPPED ─────────────────────────────────────────  2026-11-08
+   Søren: entering VR from the headset now ends in "Siden svarer ikke" (page not responding), and
+   once the page hangs nothing can be read from it -- not the console, not the task manager (its
+   row was blank). So the first 30 s of every headset session leave a trail in this browser's own
+   storage: which step of entering, and which part of which frame, was started last. A session
+   that ends normally wipes it. The next time the page opens after a hang, the step it hung in is
+   shown in the status line and printed to the console (starts with "[vr] last headset session"),
+   so the culprit is named instead of guessed. Written for at most 30 s, then left alone. */
+const XRDBG = { on: false, n: 0, t0: 0 };
+function xrMark(step){
+  if (!XRDBG.on) return;
+  if (performance.now() - XRDBG.t0 > 30000){ XRDBG.on = false; try { localStorage.removeItem("vr_xr_trace"); } catch (e){} return; }
+  try { localStorage.setItem("vr_xr_trace", JSON.stringify({ step, frame: XRDBG.n, ms: Math.round(performance.now() - XRDBG.t0), at: new Date().toISOString() })); } catch (e){}
+}
+function xrTraceStart(why){ XRDBG.on = true; XRDBG.n = 0; XRDBG.t0 = performance.now(); xrMark(why); }
+try {
+  const tr = JSON.parse(localStorage.getItem("vr_xr_trace") || "null");
+  if (tr){
+    localStorage.removeItem("vr_xr_trace");
+    const msg = "[vr] last headset session stopped responding at: " + tr.step + " (frame " + tr.frame + ", " + (tr.ms / 1000).toFixed(1) + " s after entering, " + tr.at + ")";
+    console.warn(msg);
+    setTimeout(() => { try { ctxNote.textContent = msg.replace("[vr] ", "") + " — please send this line to Søren/Claude."; } catch (e){} }, 4000);
+  }
+} catch (e){}
 renderer.xr.addEventListener("sessionstart", () => {
+  xrMark("sessionstart: first handler");
   resetStage();
+  xrMark("sessionstart: stage reset");
 });
 renderer.xr.addEventListener("sessionend", () => {
   if (MENU.open) toggleMenu();
@@ -9332,6 +9358,7 @@ renderer.xr.addEventListener("sessionend", () => {
 /* ── the VR button ────────────────────────────────────────────────────────── */
 const vrBtn = VRButton.createButton(renderer, { optionalFeatures: ["hand-tracking"] });
 document.getElementById("vrslot").appendChild(vrBtn);
+vrBtn.addEventListener("click", () => { if (!renderer.xr.isPresenting) xrTraceStart("Enter VR pressed: waiting for the headset to grant a session"); }, true);
 /* "VR NOT SUPPORTED" means the browser HAS WebXR but no headset runtime answered. On a PC that is
    almost always the OpenXR runtime (Air Link / Link not set as active, or SteamVR holding it);
    inside the headset the Meta Quest Browser always has it. Say so where the button is. */
@@ -9610,10 +9637,13 @@ function floatMenu(){
 /* No floor? Fall back to the head-centred space, lowered to where a floor would be. */
 const _setSession = renderer.xr.setSession.bind(renderer.xr);
 renderer.xr.setSession = async session => {
+  if (session) xrTraceStart("session granted: asking for the floor");
   let floor = true;
   try { if (session) await session.requestReferenceSpace("local-floor"); } catch (e){ floor = false; }
   renderer.xr.setReferenceSpaceType(floor ? "local-floor" : "local");
+  xrMark("handing the session to three.js (" + (floor ? "floor" : "no floor") + ")");
   await _setSession(session);
+  xrMark("three.js has the session");
   if (session && !floor){
     try {
       const base = await session.requestReferenceSpace("local");
@@ -9621,7 +9651,8 @@ renderer.xr.setSession = async session => {
     } catch (e){}
   }
 };
-renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false; });
+renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false;
+  XRDBG.on = false; try { localStorage.removeItem("vr_xr_trace"); } catch (e){} });
 
 /* ── 15. A MOVIE OF THE VIEW, straight to the user's own disk ────────────────  2026-10-15
    Søren: "Is there a way that a user can generate a movie from the VR and download it immediately to
@@ -16156,18 +16187,21 @@ renderer.domElement.addEventListener("pointerup", e => {
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = recDt(Math.min(clock.getDelta(), 0.1));        // while a movie is built: at most one movie frame
+  if (XRDBG.on){ XRDBG.n++; xrMark("frame: start"); }
   flyFrame(dt); recFrame(dt);
-  if (renderer.xr.isPresenting){ inputFrame(); sticks(dt); grabUpdate(); menuFrame(); }
+  if (renderer.xr.isPresenting){ xrMark("frame: controllers"); inputFrame(); sticks(dt); grabUpdate(); xrMark("frame: palette"); menuFrame(); }
   else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
   placeLabel();
   try { recGuide(); } catch (e){}
   cutFrame();
   scaleBarFrame();
   measureFrame();
+  xrMark("frame: brain clock and activity");
   const sdt = simStep(TL.frozen ? 0 : dt);                  // brain time this frame (section 29)
   stimFrame(dt, sdt);                                       // a freeze effect holds every clock
   caFrame(sdt);
   raFrame(sdt); raPlace();                                  // the recorded activity (section 21)
+  xrMark("frame: vessels and models");
   try { nvFrame(); nvPlace(); } catch (e){ console.warn("[vr] vessels:", e); }
   try { slFrame(sdt); } catch (e){ console.warn("[vr] sleep:", e); }
   try { csdFrame(sdt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
@@ -16186,11 +16220,14 @@ renderer.setAnimationLoop(() => {
      beginning of the video" again): the blood was hidden only by the flow model's own step, which does not run in
      every frame -- the sphincter rings, jams and cells made while the film prepared were drawn before it next ran */
   if (typeof bloodVis === "function") try { bloodVis(); } catch (e){}
+  xrMark("frame: drawing the scene");
   if (domeActive()) domeRender(null); else if (dofActive()) dofRender(); else renderer.render(scene, camera);
+  xrMark("frame: drawn");
   renderLogo();
   try { gizmoFrame(); } catch (e){ console.warn("[vr] view gizmo:", e); }
   try { simUi(); } catch (e){ console.warn("[vr] clock:", e); }
   if (REC.on && REC.vf && !BLOCK.loading) recCapture(dt);
+  xrMark("frame: finished (waiting for the next frame from the headset)");
 });
 addEventListener("resize", () => {
   if (typeof REC !== "undefined" && REC.on && REC.saved) return;      // a fixed-size recording keeps its size
