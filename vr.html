@@ -9329,19 +9329,35 @@ function setSize(f){ stage.scale.setScalar(FIT_SCALE * f); USER_MOVED = true; }
    that ends normally wipes it. The next time the page opens after a hang, the step it hung in is
    shown in the status line and printed to the console (starts with "[vr] last headset session"),
    so the culprit is named instead of guessed. Written for at most 30 s, then left alone. */
-const XRDBG = { on: false, n: 0, t0: 0 };
+/* Round 2 (same day): the trail stopped at "three.js has the session" with no frame of ours ever
+   started. So it now keeps the last 25 steps, not only the last, and adds three witnesses: the
+   headset's own frame callback BEFORE three.js handles it, a heartbeat every 100 ms that only runs
+   while the page's thread is free, and the window losing focus or visibility (which entering VR
+   through Link does to the desktop window). Together they say whether the thread hangs, and if so
+   whether in three.js's frame, in ours, or outside any frame. */
+const XRDBG = { on: false, n: 0, t0: 0, log: [], beat: null, hb: 0 };
 function xrMark(step){
   if (!XRDBG.on) return;
-  if (performance.now() - XRDBG.t0 > 30000){ XRDBG.on = false; try { localStorage.removeItem("vr_xr_trace"); } catch (e){} return; }
-  try { localStorage.setItem("vr_xr_trace", JSON.stringify({ step, frame: XRDBG.n, ms: Math.round(performance.now() - XRDBG.t0), at: new Date().toISOString() })); } catch (e){}
+  if (performance.now() - XRDBG.t0 > 30000){ XRDBG.on = false; clearInterval(XRDBG.beat); try { localStorage.removeItem("vr_xr_trace"); } catch (e){} return; }
+  const ms = Math.round(performance.now() - XRDBG.t0);
+  XRDBG.log.push(ms + "ms f" + XRDBG.n + " " + step); if (XRDBG.log.length > 25) XRDBG.log.shift();
+  try { localStorage.setItem("vr_xr_trace", JSON.stringify({ step, frame: XRDBG.n, ms, at: new Date().toISOString(), last: XRDBG.log })); } catch (e){}
 }
-function xrTraceStart(why){ XRDBG.on = true; XRDBG.n = 0; XRDBG.t0 = performance.now(); xrMark(why); }
+function xrTraceStart(why){
+  if (!XRDBG.on){ XRDBG.log = []; XRDBG.n = 0; XRDBG.t0 = performance.now(); XRDBG.hb = 0; }
+  XRDBG.on = true; xrMark(why);
+  clearInterval(XRDBG.beat);
+  XRDBG.beat = setInterval(() => { if (!XRDBG.on){ clearInterval(XRDBG.beat); return; } XRDBG.hb++; xrMark("heartbeat " + XRDBG.hb + " (page thread free)"); }, 100);
+}
+addEventListener("blur", () => xrMark("window lost focus"));
+addEventListener("focus", () => xrMark("window got focus"));
+document.addEventListener("visibilitychange", () => xrMark("page visibility: " + document.visibilityState));
 try {
   const tr = JSON.parse(localStorage.getItem("vr_xr_trace") || "null");
   if (tr){
     localStorage.removeItem("vr_xr_trace");
     const msg = "[vr] last headset session stopped responding at: " + tr.step + " (frame " + tr.frame + ", " + (tr.ms / 1000).toFixed(1) + " s after entering, " + tr.at + ")";
-    console.warn(msg);
+    console.warn(msg + (tr.last ? "\n  last steps:\n  " + tr.last.join("\n  ") : ""));
     setTimeout(() => { try { ctxNote.textContent = msg.replace("[vr] ", "") + " — please send this line to Søren/Claude."; } catch (e){} }, 4000);
   }
 } catch (e){}
@@ -9660,13 +9676,20 @@ function floatMenu(){
 /* No floor? Fall back to the head-centred space, lowered to where a floor would be. */
 const _setSession = renderer.xr.setSession.bind(renderer.xr);
 renderer.xr.setSession = async session => {
-  if (session) xrTraceStart("session granted: asking for the floor");
+  if (session){
+    xrTraceStart("session granted: asking for the floor");
+    try {
+      const _raf = session.requestAnimationFrame.bind(session);
+      session.requestAnimationFrame = cb => _raf((t, f) => { xrMark("headset frame arrived (before three.js)"); cb(t, f); });
+    } catch (e){ xrMark("could not watch the headset's frames: " + e.message); }
+    try { xrMark("session: blend " + session.environmentBlendMode + ", layers API " + (session.renderState && session.renderState.layers !== undefined) + ", features " + (session.enabledFeatures ? [...session.enabledFeatures].join("+") : "?")); } catch (e){}
+  }
   let floor = true;
   try { if (session) await session.requestReferenceSpace("local-floor"); } catch (e){ floor = false; }
   renderer.xr.setReferenceSpaceType(floor ? "local-floor" : "local");
   xrMark("handing the session to three.js (" + (floor ? "floor" : "no floor") + ")");
   await _setSession(session);
-  xrMark("three.js has the session");
+  xrMark("three.js has the session (" + (renderer.xr.getBaseLayer && renderer.xr.getBaseLayer() ? (renderer.xr.getBaseLayer().constructor.name) : "?") + ")");
   if (session && !floor){
     try {
       const base = await session.requestReferenceSpace("local");
