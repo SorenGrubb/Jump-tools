@@ -23,6 +23,8 @@
        ?xrc=1       the WebGL context is created xrCompatible (the viewer does this since today)
        ?gsi=1       Google's sign-in script is loaded, as on the viewer
        ?aa=0        no antialiasing
+       ?base=1      three.js is made to draw through a plain XRWebGLLayer (as the WebXR sample does) even
+                    where the browser has the WebXR Layers API (three then uses a projection layer)
      The log below and localStorage "vrtest_trace" keep the last steps, as the viewer's recorder does. -->
 <div id="box">
   <b>VR entry test</b> — one cube, three.js r169 as in the viewer.<br>
@@ -30,7 +32,7 @@
   <div style="margin-top:6px">
     <a href="?">viewer's options</a><a href="?offer=0">offer=0</a><a href="?hand=0">hand=0</a>
     <a href="?floor=0">floor=0</a><a href="?layers=0">layers=0</a><a href="?xrc=1">xrc=1</a>
-    <a href="?gsi=1">gsi=1</a><a href="?offer=0&hand=0&floor=0&layers=0">all off</a>
+    <a href="?gsi=1">gsi=1</a><a href="?base=1">base=1</a><a href="?base=1&offer=0">base=1&amp;offer=0</a><a href="?offer=0&hand=0&floor=0&layers=0">all off</a>
   </div>
   <div id="vrslot" style="margin-top:8px;position:relative;height:40px"></div>
   <div id="log"></div>
@@ -49,24 +51,29 @@ const Q = new URLSearchParams(location.search);
 const opt = k => Q.get(k);
 const CFG = {
   hand: opt("hand") !== "0", layers: opt("layers") !== "0", floor: opt("floor") !== "0",
-  offer: opt("offer") !== "0", xrc: opt("xrc") === "1", gsi: opt("gsi") === "1", aa: opt("aa") !== "0"
+  offer: opt("offer") !== "0", xrc: opt("xrc") === "1", gsi: opt("gsi") === "1", aa: opt("aa") !== "0",
+  base: opt("base") === "1"
 };
 document.getElementById("cfg").textContent = Object.entries(CFG).map(([k, v]) => k + "=" + (v ? 1 : 0)).join("  ");
 
 /* the trail, kept across a freeze */
-const T = { t0: performance.now(), log: [] };
-function mark(s){
+/* everything except heartbeats is kept (the first 60 of them), heartbeats only the last 5: the start of
+   a session is what matters, and an idle minute of heartbeats used to push it out of the record */
+const T = { t0: performance.now(), log: [], beats: [] };
+function mark(s, beat){
   const line = Math.round(performance.now() - T.t0) + "ms " + s;
-  T.log.push(line); if (T.log.length > 40) T.log.shift();
-  try { localStorage.setItem("vrtest_trace", JSON.stringify({ cfg: CFG, at: new Date().toISOString(), last: T.log })); } catch (e){}
-  const el = document.getElementById("log"); el.textContent = T.log.slice(-12).join("\n");
+  if (beat){ T.beats.push(line); if (T.beats.length > 5) T.beats.shift(); }
+  else if (T.log.length < 60) T.log.push(line);
+  const all = T.log.concat(T.beats.length ? ["…", ...T.beats] : []);
+  try { localStorage.setItem("vrtest_trace", JSON.stringify({ cfg: CFG, at: new Date().toISOString(), last: all })); } catch (e){}
+  const el = document.getElementById("log"); el.textContent = all.slice(-16).join("\n");
 }
 try {
   const old = JSON.parse(localStorage.getItem("vrtest_trace") || "null");
   if (old){ console.warn("[vrtest] previous run (" + JSON.stringify(old.cfg) + ", " + old.at + "):\n  " + old.last.join("\n  ")); localStorage.removeItem("vrtest_trace"); }
 } catch (e){}
 let beats = 0;
-setInterval(() => { beats++; if (beats % 10 === 0) mark("heartbeat " + beats); }, 100);
+setInterval(() => { beats++; if (beats % 10 === 0) mark("heartbeat " + beats, true); }, 100);
 addEventListener("blur", () => mark("window lost focus"));
 document.addEventListener("visibilitychange", () => mark("visibility " + document.visibilityState));
 
@@ -102,12 +109,26 @@ document.body.appendChild(renderer.domElement);
 const _set = renderer.xr.setSession.bind(renderer.xr);
 renderer.xr.setSession = async s => {
   if (s){
-    mark("three: session handed over");
+    mark("three: session handed over; WebXR Layers API " + (s.renderState && s.renderState.layers !== undefined ? "present" : "absent")
+      + "; features " + (s.enabledFeatures ? [...s.enabledFeatures].join("+") : "?") + "; blend " + s.environmentBlendMode);
+    if (CFG.base){
+      /* three.js picks the projection-layer path whenever renderState.layers exists; hide it so it uses the
+         plain XRWebGLLayer the WebXR sample uses */
+      const proto = Object.getPrototypeOf(s), desc = Object.getOwnPropertyDescriptor(proto, "renderState");
+      if (desc && desc.get) Object.defineProperty(s, "renderState", { configurable: true, get(){
+        const r = desc.get.call(s); return { baseLayer: r.baseLayer, depthNear: r.depthNear, depthFar: r.depthFar,
+          inlineVerticalFieldOfView: r.inlineVerticalFieldOfView, layers: undefined }; } });
+      mark("base=1: Layers API hidden from three.js");
+    }
+    s.addEventListener("visibilitychange", () => mark("session visibility " + s.visibilityState));
+    s.addEventListener("end", () => mark("session ended"));
     const raf = s.requestAnimationFrame.bind(s); let n = 0;
     s.requestAnimationFrame = cb => raf((t, f) => { if (++n <= 3 || n % 90 === 0) mark("headset frame " + n); cb(t, f); });
   }
-  await _set(s);
-  mark("three: session running");
+  try { await _set(s); }
+  catch (e){ mark("three: setSession FAILED: " + (e && e.message)); throw e; }
+  let how = "?"; try { const bl = renderer.xr.getBaseLayer(); how = bl ? bl.constructor.name : "none"; } catch (e){}
+  mark("three: session running, drawing through " + how + "; visibility " + (s ? s.visibilityState : "-"));
 };
 
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202a36);
