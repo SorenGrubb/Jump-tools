@@ -472,7 +472,10 @@ UJ.traceloft = (function(){
       return w;
     });
     var SH = [];
-    for (var j = 0; j + 1 < S.length; j++) SH.push(bestShift(W[j], W[j + 1], nx, ny, 1.5 * gaps[j] / px));
+    /* Capped at a third of the grid (2026-11-08): two sections far apart in z would otherwise ask
+       for a search wider than the picture, which costs seconds and finds nothing a third can't. */
+    var limMax = Math.max(nx, ny) / 3;
+    for (var j = 0; j + 1 < S.length; j++) SH.push(bestShift(W[j], W[j + 1], nx, ny, Math.min(limMax, 1.5 * gaps[j] / px)));
     var z0 = zu[0] - gMed / 2, z1 = zu[zu.length - 1] + gMed / 2;
     var dz = Math.max(300, (z1 - z0) / 300), nzq = Math.ceil((z1 - z0) / dz) + 1, nz = nzq + 2;
     var V = new Float32Array(nx * ny * nz), plane = nx * ny, k2, x, y;

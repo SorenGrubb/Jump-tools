@@ -1888,6 +1888,40 @@ async function loadNucleus(c, ds, token){
    picked, coloured, hidden, made see-through, stimulated and recorded like a segmentation mesh. Its
    "nucleus" tracings become c.nucMesh when there is no nucleus volume. Several pieces of one cell
    are one mesh. drawTraced then leaves those structures out (c.traceUsed), so nothing is drawn twice. */
+/* ── LOFTS ARE CACHED AND NEVER RUN BACK TO BACK ─────────────────────────────  2026-11-08
+   Søren, entering VR from the headset: *"it loads a bit and gives the page is not responding
+   error"*. Every traced structure is lofted on the main thread, and since 2026-11-07 a sparsely
+   traced one (sections a micrometre or more apart, like the split pial macrophages) is built as a
+   volume surface (traceloft.sdfMesh), 0.1-0.5 s each. Done one after another inside one task, a
+   collection of traced cells holds the thread for seconds; the headset then gets no frames and
+   reports the page as hung. Now each loft is computed ONCE per structure (drawTraced re-ran all of
+   them on every toggle, filter and refresh) and the async loaders hand the thread back between
+   lofts, so the headset keeps getting frames while they are built. The time of any loft over
+   250 ms goes to the console, to find the culprit if it ever happens again. */
+const LOFTS = new Map();
+function loftKey(id, rings, res){
+  let n = 0; for (const r of rings) n += (r.points || []).length;
+  return id + "|" + rings.length + "|" + n + "|" + res.join(",");
+}
+function loftOf(id, rings, res){
+  const k = loftKey(id, rings, res);
+  if (LOFTS.has(k)) return LOFTS.get(k);
+  const t0 = performance.now();
+  let L = null; try { L = UJ.traceloft.loft(rings, res); } catch (e){ L = null; }
+  const ms = performance.now() - t0;
+  if (ms > 250) console.info("[vr] lofting " + id + " took " + ms.toFixed(0) + " ms (" + rings.length + " contours" + (L && L.method ? ", " + L.method : "") + ")");
+  LOFTS.set(k, L);
+  return L;
+}
+const yieldThread = () => new Promise(r => setTimeout(r, 0));
+async function loftAhead(list, res){
+  for (const t of list){
+    const rings = TRC.rings[t.structureId];
+    if (!rings || !rings.length || LOFTS.has(loftKey(t.structureId, rings, res))) continue;
+    await yieldThread();
+    loftOf(t.structureId, rings, res);
+  }
+}
 async function loadTracedBody(c, ds, token){
   if (!ds.backend || !UJ.tracing || !UJ.traceloft) return;
   const nid = String(c.nuc || ""), rid = String(c.root || "");
@@ -1904,11 +1938,13 @@ async function loadTracedBody(c, ds, token){
   await fetchRings(body.concat(nuc), "this cell's tracings");
   if (token !== LOAD_TOKEN) return;
   const res = ds.res || [4, 4, 40];
-  function lofted(list){
+  async function lofted(list){
     const P = [], I = []; let off = 0, n = 0;
     for (const t of list){
       const rings = TRC.rings[t.structureId]; if (!rings || !rings.length) continue;
-      let L; try { L = UJ.traceloft.loft(rings, res); } catch (e){ continue; }
+      await yieldThread();
+      if (token !== LOAD_TOKEN) return null;
+      const L = loftOf(t.structureId, rings, res);
       if (!L || !L.positions || !L.indices || !L.indices.length) continue;
       for (let k = 0; k < L.positions.length; k++) P.push(L.positions[k] / 1000);      // nm -> µm
       for (let k = 0; k < L.indices.length; k++) I.push(L.indices[k] + off);
@@ -1917,7 +1953,8 @@ async function loadTracedBody(c, ds, token){
     return n ? geometryFrom(new Float32Array(P), new Uint32Array(I)) : null;
   }
   c.traceUsed = [];
-  const g = body.length ? lofted(body) : null;
+  const g = body.length ? await lofted(body) : null;
+  if (token !== LOAD_TOKEN) return;
   if (g){
     addActivityAttributes(g);
     const mesh = new THREE.Mesh(g, cellMaterial(cellTint(c, c.colour))); mesh.material.side = THREE.DoubleSide;
@@ -1925,7 +1962,8 @@ async function loadTracedBody(c, ds, token){
     content.add(mesh); c.mesh = mesh; c.graph = null; c.tris += g.index.count / 3;
     body.forEach(t => c.traceUsed.push(t.structureId));
   }
-  const gn = nuc.length ? lofted(nuc) : null;
+  const gn = nuc.length ? await lofted(nuc) : null;
+  if (token !== LOAD_TOKEN) return;
   if (gn){
     const nm = new THREE.Mesh(gn, new THREE.MeshStandardMaterial({ color: NUC_COLOR, roughness: 0.5, side: THREE.DoubleSide }));
     nm.userData.cell = c.i; nm.userData.nucleus = true;
@@ -2998,11 +3036,14 @@ async function setTraced(v){
     await trcIndex();
     /* This collection's tracings first, then the cell-less ones, which need their contours to know
        whether they are in the box. */
-    const mine = TRC.index.filter(t => trcCell(t));
+    const mine = TRC.index.filter(t => trcCell(t)), resT = ds.res || [4, 4, 40];
     await fetchRings(mine, "this collection's tracings");
+    await loftAhead(mine, resT);
     if (TRC.on) drawTraced();
     const loose = TRC.index.filter(t => !t.nucleusId && !t.rootId);
     await fetchRings(loose, "structures outside cells");
+    const bx = CELL_BOX ? regionBox() : null;
+    await loftAhead(loose.filter(t => { const ctr = trcCentre(t); return ctr && bx && bx.containsPoint(ctr); }), resT);
     if (TRC.on) drawTraced();
   } catch (e){ ctxNote.textContent = "Traced structures could not be read: " + (e.message || e); }
   TRC.busy = false;
@@ -3020,8 +3061,7 @@ function drawTraced(){
     const rings = TRC.rings[t.structureId];
     if (!rings || !rings.length) continue;
     if (loose){ const ctr = trcCentre(t); if (!ctr || !b || !b.containsPoint(ctr)) continue; }
-    let L;
-    try { L = UJ.traceloft.loft(rings, res); } catch (e){ continue; }
+    const L = loftOf(t.structureId, rings, res);
     if (!L || !L.positions || !L.indices || !L.indices.length) continue;
     const pos = new Float32Array(L.positions.length);
     for (let k = 0; k < pos.length; k++) pos[k] = L.positions[k] / 1000;      // nm -> µm
