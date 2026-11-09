@@ -5569,6 +5569,45 @@ function tracingKindValue(kind, name){
   const has = what && [].slice.call(what.options).some(function(o){ return o.value === kind; });
   return (kind && kind !== "other" && has) ? kind : "__other";
 }
+/* ── AND THE CARD FOR THE CELL IT WAS TRACED ON ─────────────────────────────  2026-11-09
+   Søren: *"When opening a cell traced in the dataset in the pad. It would be neat if the cell
+   identity card for that cell is also opened."* Opening a tracing put its contours on the pad and
+   its ids in the boxes, and left the card above showing whatever cell was looked up last.
+
+   So the page jumps to the cell the tracing is filed under: its own coordinate first (that is the
+   point the card showed when it was traced, so the Organelles list matches it exactly), else the
+   nucleus centroid the page knows for its nucleus id. Through the page's own jumpToVoxel, the same
+   navigation a typed coordinate takes, so history, Back and the Neuroglancer link all follow. A
+   page without one (ωJump, χJump, ηJump) is left as it is.
+
+   Nothing on the pad moves: the boxes follow the cell on screen only when the pad is empty
+   (tracingFollowIds / tracingFollowAt), and this runs after the pad has its contours. The scroll
+   position is put back, so the pad stays where he is looking. */
+function tracingShowCellOf(st, t){
+  try {
+    if (typeof jumpToVoxel !== "function") return;
+    st = st || {}; t = t || {};
+    var nid = String(st.nucleusId || t.nucleusId || "").replace(/^[^:]*:/, "");
+    var cc = String(st.cellCoord || t.cellCoord || "");
+    var v = cc.split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (!(v.length === 3 && v.every(isFinite))){
+      v = null;
+      if (nid && typeof window.tracedMeasureOpts === "function"){
+        var c = window.tracedMeasureOpts().nucCentroid(nid);
+        if (c) v = [c.xVox, c.yVox, c.zVox];
+      }
+    }
+    if (!v) return;
+    v = v.map(Math.round);
+    /* Already the cell on the card: nothing to do, and no extra entry in the history. */
+    var here = window.CUR_POS;
+    if (here && here.length === 3 && here.map(Math.round).join(",") === v.join(",")) return;
+    if (nid && typeof CUR_NUCID !== "undefined" && String(CUR_NUCID || "") === nid) return;
+    var y = window.scrollY;
+    jumpToVoxel(v[0], v[1], v[2]);
+    setTimeout(function(){ try { window.scrollTo(0, y); } catch (_e){} }, 0);
+  } catch (e){ try { console.warn("[tracing] could not open the cell card", e); } catch (_e){} }
+}
 async function tracingOpenCellShared(sids, btn){
   if (!sids.length) return;
   if (sids.length === 1) return tracingOpenShared(sids[0], btn);
@@ -5630,6 +5669,7 @@ async function tracingOpenCellShared(sids, btn){
       + "press “Use these contours” and add them again: each becomes the next version of itself, and "
       + "nothing of the old ones is deleted." + tracingFailedSay(got));
     if (PAD3D_ON){ PAD3D_MESHES = null; pad3DSoon(); }
+    tracingShowCellOf(first.st, first.t);
   } catch (e){
     tracingSay("Could not open that cell's tracings: " + String(e && e.message || e), true);
   }
@@ -6294,6 +6334,7 @@ async function tracingOpenShared(sid, btn){
       + ", and . step between the sections it was drawn on. Press “Use these contours” and "
       + "then add it again to make your version the current one — nothing of theirs is deleted.");
     if (PAD3D_ON){ PAD3D_MESHES = null; pad3DSoon(); }
+    tracingShowCellOf(st, t);
   } catch (e){
     tracingSay("Could not open that tracing: " + String(e && e.message || e), true);
   }
