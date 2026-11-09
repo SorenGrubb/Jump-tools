@@ -1146,8 +1146,42 @@ function panelCellHere(nid, root){
   catch (_e){ at = ""; }
   return { nuc: String(nid || ""), root: String(root || ""), at: at };
 }
+/* ── NEAR THE SAME NUCLEUS IS THE SAME CELL ─────────────────────────────  2026-11-09
+   Søren's card for nucleus 285648: "ORGANELLES — 0 OUTLINED, 16 LOGGED", with twelve outlines
+   traced on that very cell. Each was filed with the coordinate the card showed when he traced it
+   (191215,92434,18790), and the card compares against the point that was QUERIED this time —
+   window.CUR_POS is where the click or the typed coordinate landed, not the nucleus. Two points
+   in one cell, a few hundred nm apart, and the exact-match rule said "another cell".
+
+   So: when the NUCLEUS ID matches, a coordinate within PANEL_NEAR_UM of the point queried or of
+   the nucleus's own centre is this cell too. Two cases stay exact, because there the coordinate
+   is the only thing that tells cells apart:
+     - a merged nucleus (window.CUR_NUC_MERGED): one detection, several real cells, one id;
+     - no nucleus at all: the vascular cells share root 6198781614 and nothing else.
+   A tracing filed against a different nucleus id never gets here. */
+var PANEL_NEAR_UM = 8;
+function panelNearHere(t, nid){
+  try {
+    if (!nid || window.CUR_NUC_MERGED) return false;
+    var mine = UJ.tracing.cellOf(t);
+    if (!mine || String(mine.nuc || "") !== String(nid)) return false;
+    var a = String(mine.at || "").split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (a.length !== 3 || !a.every(isFinite)) return false;
+    var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
+    var pts = [window.CUR_POS, window.CUR_NUC_CENTER_VOX];
+    for (var j = 0; j < pts.length; j++){
+      var b = pts[j];
+      if (!b || b.length !== 3) continue;
+      var d2 = 0;
+      for (var k = 0; k < 3; k++){ var dk = (a[k] - Number(b[k])) * res[k] / 1000; d2 += dk * dk; }
+      if (isFinite(d2) && d2 <= PANEL_NEAR_UM * PANEL_NEAR_UM) return true;
+    }
+  } catch (_e){}
+  return false;
+}
 function panelSameCell(t, nid, root){
-  try { return UJ.tracing.sameCell(UJ.tracing.cellOf(t), panelCellHere(nid, root)); }
+  try { return UJ.tracing.sameCell(UJ.tracing.cellOf(t), panelCellHere(nid, root))
+            || panelNearHere(t, nid); }
   catch (_e){
     /* A page whose core/tracing.js has not loaded keeps the old behaviour rather than showing
        nothing: wrong is better than blank only when the alternative is blank. */
@@ -1170,7 +1204,7 @@ function panelElsewhere(t, nid, root){
     var mine = UJ.tracing.cellOf(t);
     var wouldHave = (nid && String(t.nucleusId || "") === String(nid))
                  || (root && String(t.rootId || "") === String(root));
-    return !!wouldHave && UJ.tracing.elsewhereByCoord(mine, here);
+    return !!wouldHave && UJ.tracing.elsewhereByCoord(mine, here) && !panelNearHere(t, nid);
   } catch (_e){ return false; }
 }
 function organIsOrganelle(t){
@@ -1288,7 +1322,15 @@ function renderOrganelleSection(nid, root){
      are fetched on the click by the same organFetchRings() the list uses, which now hands back a
      promise so the click can wait for it. */
   if (window.UJ && UJ.mesh3d && typeof UJ.mesh3d.offerTraced === "function")
-    UJ.mesh3d.offerTraced(root, trs.length ? { n: trs.length, get: function(){
+    UJ.mesh3d.offerTraced(root, trs.length ? { n: trs.length, kinds: (function(){
+      /* The types for the 3D viewer's chooser, counted from the index (no contours needed). */
+      var k = {};
+      trs.concat(body).forEach(function(t){
+        var n = String((t && (t.instanceOf || t.kind)) || "other").toLowerCase();
+        k[n] = (k[n] || 0) + 1;
+      });
+      return k;
+    })(), get: function(){
       return Promise.resolve(organFetchRings(nid, root, trs.concat(body))).then(function(){
         trs.forEach(fromCache); body.forEach(fromCache);
         /* The cell and its nucleus first, so the outermost outlines are read first, exactly as

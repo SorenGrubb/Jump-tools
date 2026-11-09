@@ -1443,6 +1443,11 @@ UJ.mesh3d = (function(){
      into pages it cannot edit has to bring its own. Everything is expressed in the host page's
      CSS variables, so it takes on each tool's palette rather than imposing one. */
   var STYLE = ".m3d{margin-top:10px}"
+    + ".m3d-kinds{margin-top:8px;padding:8px 10px;border:1px solid var(--line,#30363d);border-radius:8px;"
+    +   "font-size:12px;line-height:1.6}"
+    + ".m3d-kinds label{display:inline-flex;align-items:center;gap:4px;margin:0 12px 2px 0;cursor:pointer}"
+    + ".m3d-kinds .m3d-kact{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}"
+    + ".m3d-kinds a{cursor:pointer;color:var(--acc,#58a6ff)}"
     + ".m3d-canvas{display:block;width:100%;height:300px;border:1px solid var(--line,#333);"
     + "border-radius:10px;background:var(--bg,#111);cursor:grab;touch-action:none}"
     + ".m3d-canvas:active{cursor:grabbing}"
@@ -1584,7 +1589,9 @@ UJ.mesh3d = (function(){
 
      KEYED BY ROOT ID, because the card is rebuilt for every cell and an offer left over from the
      last one would promise organelles belonging to somebody else. Offering null withdraws it. */
-  var TRACED = {}, TRACED_SYNC = [];
+  var TRACED = {}, TRACED_SYNC = [], KIND_PICK = {};
+  try { KIND_PICK = JSON.parse(localStorage.getItem("m3d_kind_pick") || "{}") || {}; } catch (_e){ KIND_PICK = {}; }
+  function saveKindPick(){ try { localStorage.setItem("m3d_kind_pick", JSON.stringify(KIND_PICK)); } catch (_e){} }
   function offerTraced(root, offer){
     root = String(root || "");
     if (!root) return;
@@ -1662,11 +1669,21 @@ UJ.mesh3d = (function(){
                  + "colour it was drawn in, inside the see-through cell.";
       var host = document.createElement("div");
       host.className = "m3d-host";
+      /* ── WHICH KINDS GO IN ─────────────────────────────────────────────  2026-11-09
+         Søren: *"There should also be a button to add organelles, where you can specify what type
+         of organelles you want to add. Not the individual organelles, just the types."* The
+         organelle button now opens this list first: one tick per kind with its count, all ticked
+         the first time, and the last choice remembered for the next cell. It stays open above the
+         picture so a kind can be added or taken out and drawn again. */
+      var kindsBox = document.createElement("div");
+      kindsBox.className = "m3d-kinds";
+      kindsBox.style.display = "none";
       /* After the ROW the button sits in, not after the button: these panels are flex rows, and a
          300 px canvas dropped inside one lays out as a very tall column. */
       var row = dl.parentNode;
       if (row && row.parentNode) row.parentNode.insertBefore(host, row.nextSibling);
       else if (dl.parentNode) dl.parentNode.appendChild(host);
+      if (host.parentNode) host.parentNode.insertBefore(kindsBox, host);
       /* BEFORE the download button, not after. Søren, 2026-09-01: "the Show in 3D should come
          before the download 3D model". Looking at a cell in the page is the cheap thing you do
          first; downloading a .glb is what you do once you know you want it. */
@@ -1690,8 +1707,10 @@ UJ.mesh3d = (function(){
         var d = dl.style ? dl.style.display : "";
         btn2.disabled = !!dl.disabled;
         btn2.style.display = (t && d !== "none") ? d : "none";
-        if (t) btn2.textContent = "Show in 3D with " + t.n + " organelle"
-                                + (t.n === 1 ? "" : "s");
+        if (t) btn2.textContent = "Show in 3D with organelles (" + t.n + ")\u2026";
+        if (!t) kindsBox.style.display = "none";
+        else if (kindsBox.style.display !== "none" && kindsBox.getAttribute("data-for") !== kindsSig(t))
+          renderKinds();
       }
       function mirror(){
         btn.disabled = !!dl.disabled;
@@ -1711,9 +1730,48 @@ UJ.mesh3d = (function(){
          simplified and skipped notes, the verdict, the file name — is the same work. Two
          handlers would be two chances for the plain view and the organelle view to disagree
          about what cell they are showing. */
-      var runShow = function(btn, withTraced){
+      function kindsOf(t){ return (t && t.kinds) || {}; }
+      function kindsSig(t){ var k = kindsOf(t); return Object.keys(k).sort().map(function(n){ return n + ":" + k[n]; }).join("|"); }
+      function renderKinds(){
+        var t = TRACED[root]; if (!t){ kindsBox.style.display = "none"; return; }
+        var k = kindsOf(t), names = Object.keys(k).sort(function(a, b){
+          var r = function(n){ n = n.toLowerCase(); return n === "cell" ? 0 : n === "nucleus" ? 1 : 2; };
+          return (r(a) - r(b)) || a.localeCompare(b); });
+        kindsBox.setAttribute("data-for", kindsSig(t));
+        var h = "<b>Organelle types to draw</b><br>";
+        names.forEach(function(n){
+          var on = KIND_PICK[n.toLowerCase()] !== false;
+          h += "<label><input type='checkbox' data-kind='" + esc(n) + "'" + (on ? " checked" : "") + "> "
+             + esc(n.charAt(0).toUpperCase() + n.slice(1)) + " <span style='color:var(--mut,#888)'>("
+             + k[n] + ")</span></label>";
+        });
+        if (!names.length) h += "<span class='hint'>The types are read when you draw.</span>";
+        h += "<div class='m3d-kact'><button type='button' class='" + esc(btn2.className.replace(/\bm3d-btn\b/, "")) + "' data-kdraw='1'>Draw</button>"
+           + "<a data-kall='1'>all</a><a data-knone='1'>none</a></div>";
+        kindsBox.innerHTML = h;
+        kindsBox.style.display = "";
+      }
+      kindsBox.addEventListener("change", function(e){
+        var el = e.target; if (!el || !el.getAttribute) return;
+        var n = el.getAttribute("data-kind"); if (n) KIND_PICK[n.toLowerCase()] = !!el.checked; saveKindPick();
+      });
+      kindsBox.addEventListener("click", function(e){
+        var el = e.target; if (!el || !el.getAttribute) return;
+        if (el.getAttribute("data-kall") || el.getAttribute("data-knone")){
+          var on = !!el.getAttribute("data-kall");
+          Array.prototype.forEach.call(kindsBox.querySelectorAll("input[data-kind]"), function(c){
+            c.checked = on; KIND_PICK[c.getAttribute("data-kind").toLowerCase()] = on; }); saveKindPick();
+        } else if (el.getAttribute("data-kdraw")){
+          var pick = {};
+          Array.prototype.forEach.call(kindsBox.querySelectorAll("input[data-kind]"), function(c){
+            pick[c.getAttribute("data-kind").toLowerCase()] = !!c.checked; });
+          runShow(btn2, true, pick, el);
+        }
+      });
+      var runShow = function(btn, withTraced, pick, drawBtn){
         if (btn.disabled) return;
         btn.disabled = true;
+        if (drawBtn) drawBtn.disabled = true;
         var label = btn.textContent;
         UJ.busy(btn, 0, "loading");
         host.innerHTML = "<div class='m3d'><div class='m3d-note'>fetching the mesh…</div></div>";
@@ -1803,6 +1861,8 @@ UJ.mesh3d = (function(){
               var res = (window.UJ && UJ.cfg && UJ.cfg.res) || [4, 4, 40];
               var gh = (opts2.ghosts || []).slice(), drawn = 0, lost = 0;
               (list || []).forEach(function(s){
+                var kn = String((s && (s.instanceOf || s.kind)) || "other").toLowerCase();
+                if (pick && pick[kn] === false) return;
                 var lg = null;
                 try {
                   if (s && (s.rings || []).length && window.UJ && UJ.traceloft)
@@ -1831,10 +1891,15 @@ UJ.mesh3d = (function(){
         }).catch(function(e){
           host.innerHTML = "<div class='m3d'><div class='m3d-err'>Could not load the mesh: "
             + esc(e && e.message ? e.message : e) + "</div></div>";
-        }).then(function(){ btn.disabled = false; btn.textContent = label; });
+        }).then(function(){ btn.disabled = false; btn.textContent = label;
+                            if (drawBtn) drawBtn.disabled = false; });
       };
       btn.addEventListener("click", function(){ runShow(btn, false); });
-      btn2.addEventListener("click", function(){ runShow(btn2, true); });
+      /* First click opens the types list; the list's Draw draws. A second click closes it. */
+      btn2.addEventListener("click", function(){
+        if (kindsBox.style.display !== "none") { kindsBox.style.display = "none"; return; }
+        renderKinds();
+      });
     }
 
     function sweep(){

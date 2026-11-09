@@ -5896,7 +5896,7 @@ function setNearestLine(html){
 function showNucleus(pos){
   const[vx,vy,vz]=pos,panel=document.getElementById("nucpanel");
   LAST_OOB_QUERY++;
-  panel.className="nuc show";CUR_ROOT=null;CUR_NUCID=null;CUR_NUC_ROOT=null;CUR_IS_NEURON=false;
+  panel.className="nuc show";window.CUR_NUC_MERGED=false;CUR_ROOT=null;CUR_NUCID=null;CUR_NUC_ROOT=null;CUR_IS_NEURON=false;
   /* CUR_ID_SOURCE/CUR_HAS_CELL feed the navigation-history "Recently viewed cells" panel (see
      pushNavHistory() above) -- CUR_HAS_CELL stays false through the "no predictions for this
      part of the dataset" fallback below, so a search that lands on empty space is never recorded
@@ -5990,6 +5990,7 @@ function showNucleus(pos){
   CUR_IS_NEURON=ti.cls==="excitatory_neuron"||ti.cls==="inhibitory_neuron";
   const ciBroad=CELLTYPE_INFO[ti.name],ciFine=ti.mtype?MTYPE_INFO[ti.mtype]:null;
   const own=ownOverride(i),merged=mergedInfo(i);
+  window.CUR_NUC_MERGED=!!merged; // core/panel.js: a merged nucleus keeps the exact-coordinate rule
   let h="";
   if(merged){
     h+='<span class="tag" style="background:#3a2a10;color:#f0883e;border:1px solid #f0883e" title="MICrONS\u2019s automatic nucleus detector merged 2+ real, distinct nuclei into a single detection here \u2014 confirmed by S\u00f8ren against his own coordinates.">merged nucleus segmentation</span>';
