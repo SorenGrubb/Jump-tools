@@ -147,9 +147,29 @@ function organelleOwnStructs(groups){
                   source: s.source || "",
                   fromStructureId: organelleFromId(s),
                   by: s.by || (g && g.by) || "" };
+      /* ── AND BY THE NAME IT WAS OUTLINED UNDER ─────────────────────────────  2026-11-09
+         Søren: *"Why does it say that I have added more than 1 GFAP, when I have only updated the 1
+         GFAP tracing I have added? The same with the last mitochondria."* The tracing list showed one
+         GFAP 1; the card showed four centres for it, 67, 119, 357 and 356 sections -- one per save --
+         so the id they carried did not tie them together. A centre computed from an outline also
+         names that outline in its own comment ("Volumetric centre of the outlined “GFAP 1”"), and a
+         cell never has two outlines of one kind under one numbered name: so for points FROM AN
+         OUTLINE, the same person, kind and outlined name is the same organelle too, and the newest
+         row is its current centre. Hand-placed points are untouched -- two people pointing at one
+         lysosome are still two opinions. */
+      var bits = organelleCentreBits(one.comment);
+      var key2 = (organelleIsFromOutline(one) && bits && bits.name)
+        ? "name|" + one.kind + "|" + one.by + "|" + bits.name : "";
       var key = one.fromStructureId;
-      if (key && at[key] !== undefined){ out[at[key]] = one; return; }
+      var hit = (key && at[key] !== undefined) ? at[key] : (key2 && at[key2] !== undefined) ? at[key2] : undefined;
+      if (hit !== undefined){
+        out[hit] = one;
+        if (key) at[key] = hit;
+        if (key2) at[key2] = hit;
+        return;
+      }
       if (key) at[key] = out.length;
+      if (key2) at[key2] = out.length;
       out.push(one);
     });
   });
