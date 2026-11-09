@@ -158,7 +158,9 @@ function organelleOwnStructs(groups){
          row is its current centre. Hand-placed points are untouched -- two people pointing at one
          lysosome are still two opinions. */
       var bits = organelleCentreBits(one.comment);
-      var key2 = (organelleIsFromOutline(one) && bits && bits.name)
+      /* the comment alone is enough to know it came from an outline: these rows carry neither a
+         source nor an id, which is why the id rule above never caught them */
+      var key2 = (bits && bits.name)
         ? "name|" + one.kind + "|" + one.by + "|" + bits.name : "";
       var key = one.fromStructureId;
       var hit = (key && at[key] !== undefined) ? at[key] : (key2 && at[key2] !== undefined) ? at[key2] : undefined;
