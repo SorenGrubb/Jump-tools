@@ -1383,7 +1383,22 @@ function renderOrganelleSection(nid, root){
     } } : null);
 
   organFindDuplicates(withRings);
-  var r = UJ.organellelink.pair(anns, withRings);
+  /* ── AN OUTLINE AND ITS OWN CENTRE ARE ONE ORGANELLE ────────────────────────  2026-11-10
+     Hesham: *"I think it's not necessary to store midpoint as a separate entity from the tracings
+     ... the whole outlined vs logged vs paired thing is very confusing."* He is right about what
+     the card shows. The centre an outline registers is still written (the filters, the master list
+     and the statistics count organelle points), but on this card it is the outline's own and is
+     never listed apart from it -- not even while the contours are still being read, which is
+     when "outlined, not logged" and "logged, not outlined" used to appear for the same lysosome.
+     Only a point somebody PLACED by hand stays a point of its own: "point only" until outlined. */
+  var mineById = {}, ownCentre = {};
+  trs.forEach(function(t){ if (t && t.structureId) mineById[String(t.structureId)] = t; });
+  var annsHand = anns.filter(function(a){
+    var f = a && a.fromStructureId ? String(a.fromStructureId) : "";
+    if (f && mineById[f]){ ownCentre[f] = a; return false; }
+    return true;
+  });
+  var r = UJ.organellelink.pair(annsHand, withRings);
 
   var rows = [];
   /* 1. PAIRED: the shape, and the point it now answers for. */
@@ -1432,7 +1447,7 @@ function renderOrganelleSection(nid, root){
     var elsewhere = null;
     try {
       var fid = a.fromStructureId;
-      if (fid) (PANEL_TRACINGS || []).forEach(function(t){
+      if (fid && !mineById[String(fid)]) (PANEL_TRACINGS || []).forEach(function(t){
         if (t && String(t.structureId) === String(fid)) elsewhere = t; });
     } catch (_e){}
     if (elsewhere){
@@ -1448,14 +1463,18 @@ function renderOrganelleSection(nid, root){
           + (elsewhere.nucleusId ? 'nucleus ' + panelEsc(elsewhere.nucleusId) : 'another cell') + '</span>'
         + '<span style="flex:0 0 auto">centre (' + pt.join(", ") + ')'
           + organJump(pt, { name: elsewhere.name || organCap(organKindLabel(a.kind)) }) + '</span>'
-        + '<span style="opacity:.7;flex:1 1 80px;min-width:0">' + panelEsc(a.by || "") + '</span></div>');
+        + '<span style="opacity:.7;flex:1 1 80px;min-width:0">' + panelEsc(a.by || "") + '</span>'
+        + '<button type="button" class="organmovehere" data-sid="' + panelEsc(elsewhere.structureId) + '" '
+          + 'data-name="' + panelEsc(elsewhere.name || "") + '" style="flex:0 0 auto;padding:1px 8px;font-size:11px" '
+          + 'title="Files the outline on THIS cell, as the next version of the same tracing. Nothing is deleted.">'
+          + '\u21c4 Move the outline here</button></div>');
       return;
     }
     rows.push('<div class="organrow" style="border-top:1px solid var(--line);padding:5px 0;'
       + 'font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       + '<span style="width:10px;height:10px;border-radius:2px;flex:0 0 auto;border:1px solid var(--line)"></span>'
       + '<b style="flex:0 0 auto">' + panelEsc(organCap(organKindLabel(a.kind))) + '</b>'
-      + '<span style="opacity:.7;flex:0 0 auto">logged, not outlined</span>'
+      + '<span style="opacity:.7;flex:0 0 auto" title="Somebody marked this organelle with a point but nobody has outlined it yet.">point only</span>'
       /* No outline exists for this one, so the jump carries a point and says so rather than
          pretending to a shape nobody has drawn. */
       + '<span style="flex:0 0 auto">(' + pt.join(", ") + ')'
@@ -1465,13 +1484,17 @@ function renderOrganelleSection(nid, root){
         + 'data-kind="' + panelEsc(a.kind || "") + '" style="flex:0 0 auto;padding:1px 8px;'
         + 'font-size:11px" title="Opens the tracing pad here, with this organelle already chosen. '
         + 'Its outline gives it a volume, a 3D shape and a more precise centre than a point can.">'
-        + 'Segment it</button></div>');
+        + 'Outline it</button></div>');
   });
   /* 3. A SEGMENTATION WITH NO ANNOTATION. After today a new one registers its own centre, so this
         is older work -- and the centre is computed here anyway, so it can be said. */
   r.unannotatedTracings.concat(noRings).forEach(function(t){
-    var c = t.rings ? UJ.organellelink.centre(t.rings) : null;
+    var c = (t.rings && t.rings.length) ? UJ.organellelink.centre(t.rings) : null;
     var best = c && c.point;
+    /* contours not read yet: its own registered centre says where it is */
+    var own = ownCentre[String(t.structureId || "")];
+    if (!best && own) best = UJ.organellelink.parsePoint(own.point || own.pointA);
+    var who = (t.contributors && t.contributors.length) ? t.contributors.join(", ") : (t.tracedBy || "");
     rows.push('<div class="organrow" style="border-top:1px solid var(--line);padding:5px 0;'
       + 'font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       + '<span style="width:10px;height:10px;border-radius:2px;flex:0 0 auto;background:'
@@ -1479,9 +1502,12 @@ function renderOrganelleSection(nid, root){
       + '<b style="flex:0 0 auto">' + panelEsc(t.name || organKindLabel(t.instanceOf || t.kind)) + '</b>'
       + (organVol(t.volumeUm3) ? '<span style="flex:0 0 auto">' + organVol(t.volumeUm3)
           + ' µm³</span>' : "")
-      + '<span style="opacity:.7;flex:0 0 auto">outlined, not logged</span>'
+      + (t.contours ? '<span style="opacity:.7;flex:0 0 auto">' + t.contours + ' contour'
+          + (t.contours === 1 ? "" : "s") + ' on ' + (t.sections || 0) + ' section'
+          + (t.sections === 1 ? "" : "s") + '</span>' : "")
       + organSplitNote(t) + organDupNote(t)
       + (best ? '<span style="flex:0 0 auto">centre (' + best.join(", ") + ')' + organJump(best, t) + '</span>' : "")
+      + '<span style="opacity:.7;flex:1 1 90px;min-width:0">' + panelEsc(who) + '</span>'
       + (t.fileUrl ? '<a href="' + panelEsc(t.fileUrl) + '" target="_blank" rel="noopener" '
           + 'style="opacity:.7;flex:0 0 auto">file</a>' : "")
       + '</div>');
@@ -1519,20 +1545,19 @@ function renderOrganelleSection(nid, root){
       + '>'
       + 'Show the cell with all ' + withRings.length + ' organelle'
       + (withRings.length === 1 ? "" : "s") + andSay + ' \u2197</button></div>';
-  var nSeg = trs.length, nAnn = anns.length;
+  var nSeg = trs.length, nPointOnly = r.untracedAnnotations.length;
   host.innerHTML = '<details id="cellOrganDetails"' + (window.__organOpen ? " open" : "") + '>'
     + '<summary style="cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;'
-    + 'color:var(--mut);font-weight:600">Organelles — ' + nSeg + ' outlined, ' + nAnn
-    + ' logged' + (r.paired.length ? ", " + r.paired.length + " paired" : "") + '</summary>'
+    + 'color:var(--mut);font-weight:600">Organelles — ' + nSeg + ' outlined'
+    + (nPointOnly ? ', ' + nPointOnly + ' marked by a point only' : '') + '</summary>'
     + '<div style="margin-top:4px">' + rows.join("") + allBtn
     + (noRings.length ? '<p class="hint" style="margin-top:4px">'
         + (PANEL_ORGAN_BUSY ? "Reading " + noRings.length + " outline(s)\u2026"
-           : noRings.length + " outline(s) not read here, so nothing is paired against them.")
+           : noRings.length + " outline(s) could not be read here, so their shapes are not shown.")
         + '</p>' : "")
-    + '<p class="hint" style="margin-top:4px">A logged point says where; an outline says what shape, '
-    + 'how big, and where more precisely. A point inside an outline is the same organelle — '
-    + 'within half a section step of the outermost contour, with a contour drawn inside another '
-    + 'counting as a hole.</p></div></details>';
+    + '<p class="hint" style="margin-top:4px">Each outline is one organelle, with its centre. A '
+    + 'point marked by hand without an outline is listed as \u201cpoint only\u201d until somebody '
+    + 'outlines it; a hand-marked point inside an outline is the same organelle and is noted under it.</p></div></details>';
   var det = host.querySelector("#cellOrganDetails");
   if (det) det.addEventListener("toggle", function(){
     window.__organOpen = det.open;
@@ -1559,6 +1584,14 @@ function renderOrganelleSection(nid, root){
     b.addEventListener("click", function(){
       if (typeof organShowAllInViewer === "function")
         organShowAllInViewer(bodyWith.concat(withRings), nid, root, noRings.length + bodyNo.length);
+    });
+  });
+  [].slice.call(host.querySelectorAll(".organmovehere")).forEach(function(b){
+    b.addEventListener("click", function(){
+      if (typeof tracingMoveToCell !== "function"){ alert("The tracing card is not on this page."); return; }
+      var tgt = { nuc: String(nid || ""), root: String(root || "") };
+      if (!tgt.nuc && !tgt.root){ alert("This cell has no nucleus or root ID to file the outline under."); return; }
+      tracingMoveToCell(b.dataset.sid, b, b.dataset.name, tgt);
     });
   });
   [].slice.call(host.querySelectorAll(".organtrace")).forEach(function(b){

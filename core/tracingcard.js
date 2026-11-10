@@ -1803,6 +1803,16 @@ function tracingCurrentAll(){
          own and no number is handed out twice. */
       if(!index&&tracingKindNumbered(g.w.kind))
         index=tracingBareNumberFor(idOf(g),g.w.kind,g.w.name,nid,rid,tracingCellAtVal());
+      /* ── A MOVED ORGANELLE TAKES THE NEW CELL'S LOWEST FREE NUMBER ──────  2026-11-10
+         Hesham: *"the numbering thing is still not defaulting to the lowest number, so there are
+         cells where it starts from 'lysosome 10' instead of 'lysosome 1'."* Those were his moves:
+         a lysosome keeps its number everywhere else, so Lysosome 21 moved to a cell with no
+         lysosomes stayed Lysosome 21. Moving it is the one time it joins another cell's series, so
+         it is numbered there: the lowest number no other structure of its kind on that cell has. */
+      if(TRACING_MOVE_RENUMBER[String(idOf(g)||"")]&&tracingKindNumbered(g.w.kind)){
+        const nx=tracingNextIndex(g.w.kind,g.w.name,nid,rid,[idOf(g)],tracingCellAtVal());
+        index=tracingFreeIndices(g.w.kind,nx,1)[0]||nx;
+      }
       /* IT IS NAMED THE WAY IT WAS PUBLISHED, whatever else is on the pad (2026-09-27). With a
          number it keeps that number — dropping it would rename "Lysosome 3" to "Lysosome" and make
          the same object look like a different one. With none, it is given the one it is owed
@@ -6244,12 +6254,14 @@ function padJumpTo(){
    ONE fact, as tracingOpenShared says -- and add it. The result is the next version of the same
    tracing, filed under the new cell; the old cell's card stops listing it, and the earlier version
    stays in the record. */
-var TRACING_MOVING = false, TRACING_MOVE_FROM = {};
-async function tracingMoveToCell(sid, btn, name){
-  const ans = window.prompt("Move \u201c" + (name || "this tracing") + "\u201d to which cell?\n\n"
+var TRACING_MOVING = false, TRACING_MOVE_FROM = {}, TRACING_MOVE_RENUMBER = {};
+/* `to` (optional) is the cell already decided -- the identity card's "Move the outline here"
+   passes {nuc, root}, and then there is nothing to ask. */
+async function tracingMoveToCell(sid, btn, name, to){
+  const ans = to ? (to.nuc || to.root || "") : window.prompt("Move \u201c" + (name || "this tracing") + "\u201d to which cell?\n\n"
     + "Type the right cell\u2019s nucleus ID, its root ID (the long 8646\u2026 number), "
     + "or its x, y, z voxel coordinate.");
-  if (ans == null) return;
+  if (ans == null || ans === "") return;
   const parts = String(ans).trim().split(/[\s,;]+/).filter(Boolean);
   let nuc = "", root = "", at = "";
   if (parts.length === 3 && parts.every(function(p){ return isFinite(Number(p)); }))
@@ -6271,13 +6283,15 @@ async function tracingMoveToCell(sid, btn, name){
      nucleus it is moving FROM. Hesham's moves were all refused for want of it. */
   const fromNuc = nucBox ? String(nucBox.value || "").trim() : "";
   if (fromNuc && nuc && fromNuc !== nuc) TRACING_MOVE_FROM[String(sid)] = fromNuc;
+  if (to && to.nuc && to.root) root = to.root;
   if (nucBox) nucBox.value = nuc;
   if (rootBox) rootBox.value = root;
   if (ca) ca.value = at;
-  tracingKeep();
-  const to = nuc ? "nucleus " + nuc : root ? "root ID " + root : "the cell at " + at;
+  TRACING_MOVE_RENUMBER[String(sid)] = 1;
+  try { tracingKeep(); } finally { delete TRACING_MOVE_RENUMBER[String(sid)]; }
+  const toSay = nuc ? "nucleus " + nuc : root ? "root ID " + root : "the cell at " + at;
   setTimeout(function(){
-    tracingSay("Moved \u201c" + (name || "the tracing") + "\u201d to " + to + ". It is the next version of the "
+    tracingSay("Moved \u201c" + (name || "the tracing") + "\u201d to " + toSay + " (numbered as that cell\u2019s next free one). It is the next version of the "
       + "same tracing; the cell it was under no longer lists it (reload that cell if its card was already open).");
   }, 50);
 }
