@@ -3353,7 +3353,11 @@ function tracingPublish(t,quiet){
      taken off, so it is sent on the next sign-in, and the card says why it was not. */
   if(ok&&typeof ok.then==="function"){
     ok.then(function(d){
-      if(!(d&&d.ok===false)){ if(t.move_from){ delete t.move_from; tracingWrite(TRACINGS_KEPT); } return; }
+      if(!(d&&d.ok===false)){
+        if(t.move_from){ delete t.move_from; }
+        tracingCentreAfterYes(t);
+        return;
+      }
       /* The signature is what says "this is already up there". A refusal means it is not, so it
          goes with the rest or the retry would be declined as an unchanged re-send. */
       t.shared_at=""; t.shared_sig="";
@@ -3391,6 +3395,16 @@ function tracingPublish(t,quiet){
      now, and the test is whether the centre has MOVED rather than whether anything was pressed:
      an unchanged re-add posts nothing, and an edited outline posts its new centre, which the
      backend files over the old one rather than beside it. */
+  /* ONLY AFTER THE SERVER SAID YES (2026-11-10). Hesham's Lysosomes 7 and 12: their moves were
+     refused, but the centre was registered at once anyway -- under the NEW nucleus, filed over the
+     old point. The outline stayed on the old cell and its centre went to the new one, so the new
+     cell listed "logged, not outlined" and the old one an outline with no point. A promise waits
+     for the answer; a page whose postReport answers plainly true keeps registering at once. */
+  if(!(ok&&typeof ok.then==="function"))tracingCentreAfterYes(t);
+  tracingWrite(TRACINGS_KEPT);
+  return true;
+}
+function tracingCentreAfterYes(t){
   const centreNow=tracingCentreAt(t);
   /* A RECORD THAT SAYS REGISTERED BUT NOT WHERE is every tracing kept before today, and treating
      "place unknown" as "moved" would have re-registered all of them at once. So: never registered
@@ -3407,7 +3421,6 @@ function tracingPublish(t,quiet){
     t.centre_at=centreNow;
   }
   tracingWrite(TRACINGS_KEPT);
-  return true;
 }
 
 var TRACING_FLUSH_TIMER=null;

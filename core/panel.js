@@ -1423,6 +1423,34 @@ function renderOrganelleSection(nid, root){
   r.untracedAnnotations.forEach(function(a){
     var pt = UJ.organellelink.parsePoint(a.point || a.pointA);
     if (!pt) return;
+    /* ── A CENTRE WHOSE OUTLINE IS FILED ON ANOTHER CELL ────────────────  2026-11-10
+       Hesham: *"what does it mean if it says the opposite 'logged, not outlined' ... It's like it
+       removes my tracings and just puts a midpoint instead."* It was his Lysosomes 7 and 12: the
+       move of the outline was refused, the centre went to the new cell anyway. The outline is
+       there, on the old cell. The row now says so, and names it, rather than offering to trace
+       an organelle that already has an outline. */
+    var elsewhere = null;
+    try {
+      var fid = a.fromStructureId;
+      if (fid) (PANEL_TRACINGS || []).forEach(function(t){
+        if (t && String(t.structureId) === String(fid)) elsewhere = t; });
+    } catch (_e){}
+    if (elsewhere){
+      rows.push('<div class="organrow" style="border-top:1px solid var(--line);padding:5px 0;'
+        + 'font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="width:10px;height:10px;border-radius:2px;flex:0 0 auto;border:1px solid var(--warn)"></span>'
+        + '<b style="flex:0 0 auto">' + panelEsc(elsewhere.name || organCap(organKindLabel(a.kind))) + '</b>'
+        + '<span style="color:var(--warn);flex:0 0 auto" title="This point is the volumetric centre of '
+          + 'that outline, and it is filed on this cell, but the outline itself is filed on '
+          + (elsewhere.nucleusId ? 'nucleus ' + panelEsc(elsewhere.nucleusId) : 'another cell')
+          + '. Open the outline in the tracing card and use \u21c4 Move to another cell to bring it here '
+          + '(or, if it belongs there, move it back).">\u26a0 outline filed on '
+          + (elsewhere.nucleusId ? 'nucleus ' + panelEsc(elsewhere.nucleusId) : 'another cell') + '</span>'
+        + '<span style="flex:0 0 auto">centre (' + pt.join(", ") + ')'
+          + organJump(pt, { name: elsewhere.name || organCap(organKindLabel(a.kind)) }) + '</span>'
+        + '<span style="opacity:.7;flex:1 1 80px;min-width:0">' + panelEsc(a.by || "") + '</span></div>');
+      return;
+    }
     rows.push('<div class="organrow" style="border-top:1px solid var(--line);padding:5px 0;'
       + 'font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       + '<span style="width:10px;height:10px;border-radius:2px;flex:0 0 auto;border:1px solid var(--line)"></span>'
