@@ -129,7 +129,10 @@ function organelleFromId(s){
   var f = String((s && s.fromStructureId) || "");
   if (f) return f;
   var src = String((s && s.source) || "");
-  return /^[A-Za-z0-9-]+_\d{6,}(__i\d+)*$/.test(src) ? src : "";
+  /* kind_<time>_<random>[__iN]: the random part was left out of this pattern, so no centre
+     written since the ids gained it (2026-09-19) was recognised as coming from an outline -- the
+     card called Hesham's own traced centres "logged points" the outline "replaces" (2026-11-10). */
+  return /^[A-Za-z0-9-]+_\d{6,}(_[A-Za-z0-9]+)?(__i\d+)*$/.test(src) ? src : "";
 }
 /* And a point whose source is an id came FROM an outline, whatever the word in the column says --
    which is what decides whether an outline supersedes it or the panel lists them side by side. */
@@ -1233,6 +1236,45 @@ function organBodyRank(t){
    The scan in the tracing card reads the whole dataset on a button; this costs nothing, because
    the Organelles section has already fetched these contours to pair them. Warning only — the
    number is the same one tracingSplitSay prints, from the same function. */
+/* ── THE SAME ORGANELLE OUTLINED TWICE ─────────────────────────────────  2026-11-10
+   Hesham's Lysosomes 13–20 are 6–12 drawn again: same cell, centres a few voxels apart, volumes
+   within a few per cent. Nothing on the card said so. Two outlines of one kind on one cell whose
+   centres each lie inside the other and whose volumes agree within 25 % are named here, on the
+   newer one, so the duplicate can be deleted from the tracing card. Nothing is changed. */
+var ORGAN_DUP_OF = {};
+function organFindDuplicates(list){
+  ORGAN_DUP_OF = {};
+  try {
+    var L = UJ.organellelink, items = [];
+    (list || []).forEach(function(t){
+      if (!t || !(t.rings || []).length) return;
+      var c = L.centre(t.rings);
+      if (c && c.point) items.push({ t: t, c: c.point, k: String(t.instanceOf || t.kind || "").toLowerCase(),
+                                     n: Number(t.instanceIndex) || 0, v: Number(t.volumeUm3) });
+    });
+    items.sort(function(a, b){ return a.n - b.n; });
+    for (var i = 0; i < items.length; i++){
+      for (var j = 0; j < i; j++){
+        var a = items[j], b = items[i];
+        if (a.k !== b.k) continue;
+        if (isFinite(a.v) && isFinite(b.v) && a.v > 0 && b.v > 0){
+          var r = b.v / a.v; if (r < 0.8 || r > 1.25) continue;
+        }
+        if (!L.inside(b.c, a.t.rings) || !L.inside(a.c, b.t.rings)) continue;
+        ORGAN_DUP_OF[String(b.t.structureId || "")] = a.t.name || "another outline";
+        break;
+      }
+    }
+  } catch (_e){}
+}
+function organDupNote(t){
+  var of = t && ORGAN_DUP_OF[String(t.structureId || "")];
+  if (!of) return "";
+  return '<span style="flex:0 0 auto;color:var(--warn)" title="This outline and \u201c' + panelEsc(of)
+    + '\u201d are the same kind, on the same cell, each centre inside the other and the volumes '
+    + 'within 25 %. That is usually one organelle outlined twice. Nothing has been changed; delete '
+    + 'the one you do not want from the tracing card.">\u26a0 same as ' + panelEsc(of) + '</span>';
+}
 function organSplitNote(t){
   if (!t || !(t.rings || []).length) return "";
   if (!(window.UJ && UJ.tracing && typeof UJ.tracing.splitOf === "function")) return "";
@@ -1340,6 +1382,7 @@ function renderOrganelleSection(nid, root){
       });
     } } : null);
 
+  organFindDuplicates(withRings);
   var r = UJ.organellelink.pair(anns, withRings);
 
   var rows = [];
@@ -1357,7 +1400,7 @@ function renderOrganelleSection(nid, root){
       + '<b style="flex:0 0 auto">' + panelEsc(t.name || organKindLabel(t.instanceOf || t.kind)) + '</b>'
       + (organVol(t.volumeUm3) ? '<span style="flex:0 0 auto">' + organVol(t.volumeUm3)
           + ' µm³</span>' : "")
-      + organSplitNote(t)
+      + organSplitNote(t) + organDupNote(t)
       + '<span style="opacity:.7;flex:0 0 auto">' + (t.contours || 0) + " contour"
         + ((t.contours === 1) ? "" : "s") + " on " + (t.sections || 0) + " section"
         + ((t.sections === 1) ? "" : "s") + '</span>'
@@ -1409,7 +1452,7 @@ function renderOrganelleSection(nid, root){
       + (organVol(t.volumeUm3) ? '<span style="flex:0 0 auto">' + organVol(t.volumeUm3)
           + ' µm³</span>' : "")
       + '<span style="opacity:.7;flex:0 0 auto">outlined, not logged</span>'
-      + organSplitNote(t)
+      + organSplitNote(t) + organDupNote(t)
       + (best ? '<span style="flex:0 0 auto">centre (' + best.join(", ") + ')' + organJump(best, t) + '</span>' : "")
       + (t.fileUrl ? '<a href="' + panelEsc(t.fileUrl) + '" target="_blank" rel="noopener" '
           + 'style="opacity:.7;flex:0 0 auto">file</a>' : "")

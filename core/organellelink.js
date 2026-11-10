@@ -194,9 +194,19 @@ UJ.organellelink = (function(){
     var kindOf = function(x){ return String((x && (x.kind || x.instanceOf)) || "").toLowerCase(); };
     var pairs = trs.map(function(t){ return { tracing: t, annotations: [] }; });
     var loose = [];
+    /* ── A CENTRE GOES BACK TO THE OUTLINE IT WAS COMPUTED FROM ────────────  2026-11-10
+       Hesham: *"some organelles will become 'outlined, not logged' randomly while others aren't
+       despite them all being recorded the same way."* His Lysosomes 13–20 are second outlines of
+       Lysosomes 6–12, on the same cell, a few voxels apart. Each centre sits inside BOTH outlines,
+       and the first-inside rule handed both centres to the older one. A point that names its
+       outline (fromStructureId) goes to that outline first; the geometry decides only for the rest. */
+    var byId = {};
+    trs.forEach(function(t, i){ if (t && t.structureId) byId[String(t.structureId)] = i; });
     anns.forEach(function(a){
       var pt = parsePoint(a && (a.point || a.pointA));
       var hit = -1;
+      var own = a && a.fromStructureId ? byId[String(a.fromStructureId)] : undefined;
+      if (own !== undefined){ pairs[own].annotations.push(a); return; }
       if (pt) for (var i = 0; i < trs.length; i++){
         if (!anyKind && kindOf(a) && kindOf(trs[i]) && kindOf(a) !== kindOf(trs[i])) continue;
         if (inside(pt, trs[i].rings, opts)){ hit = i; break; }

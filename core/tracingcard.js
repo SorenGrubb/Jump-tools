@@ -870,7 +870,11 @@ function tracingRenderList(){
               +(isFinite(t.volume_um3)?' &middot; '+volFmt(t.volume_um3)+' µm³':'')+'</span>'
             /* A tracing that has not reached the dataset says so HERE, where the tracing is, rather
                than in a status line that the next action overwrites. */
-            +(t.pending_share
+            +(t.share_refused
+                ?'<span style="color:var(--bad,#f85149);font-weight:600" title="'+escHtml(t.share_refused)+'">not accepted</span>'
+                 +(t.move_offer?'<button class="idbtn tracingmoveyes" data-n="'+i+'" title="Move it from nucleus '
+                   +escHtml(t.move_offer)+' to '+escHtml(t.nucleus_id||"this cell")+' in the dataset \u2014 the next version of the same tracing; nothing is deleted.">move it</button>':'')
+              :t.pending_share
                 ?'<span style="color:var(--warn);font-weight:600" title="Kept here, not in the shared '
                  +'dataset yet. Sign in with Google and it goes up on its own.">waiting for sign-in</span>'
                 :'<span style="opacity:.55" title="In the shared dataset — anyone can open it and add '
@@ -914,6 +918,17 @@ function tracingRenderList(){
   });
   host.querySelectorAll(".tracingopenkept").forEach(function(b){
     b.addEventListener("click",function(){tracingOpenShared(b.dataset.sid,b);});
+  });
+  host.querySelectorAll(".tracingmoveyes").forEach(function(b){
+    b.addEventListener("click",function(){
+      const t=TRACINGS_KEPT[Number(b.dataset.n)];
+      if(!t||!t.move_offer)return;
+      t.move_from=t.move_offer; t.move_offer=""; t.share_refused="";
+      tracingWrite(TRACINGS_KEPT);
+      if(tracingPublish(t,false))tracingSay("Moving \u201c"+(t.name||"the tracing")+"\u201d from nucleus "
+        +t.move_from+" to "+(t.nucleus_id||"this cell")+"\u2026");
+      tracingRenderList();
+    });
   });
   host.querySelectorAll(".tracingmovekept").forEach(function(b){
     b.addEventListener("click",function(){tracingMoveToCell(b.dataset.sid,b,b.dataset.name);});
@@ -3295,6 +3310,11 @@ function tracingPublish(t,quiet){
                                                 tracingPublishMeasurements above */
                                              measurements:tracingPublishMeasurements(t)});
   if(!sub.contours.length)return false;
+  /* A MOVE SAYS WHERE FROM (2026-11-10) -- see tracingMoveToCell. Kept on the record until the
+     server has taken it, so a move queued while signed out still goes as a move. */
+  const moveFrom=t.move_from||TRACING_MOVE_FROM[String(t.id||"")]||"";
+  if(moveFrom){ t.move_from=moveFrom; sub.moveFrom=moveFrom; delete TRACING_MOVE_FROM[String(t.id||"")]; }
+  t.share_refused="";
   /* NOTHING NEW, NOTHING SENT (2026-09-23). The same test tracingPublish already applies to the
      centre annotation below -- whether it MOVED, not whether anything was pressed -- applied to the
      tracing itself. pending_share is cleared as well, or an unchanged tracing sits in the queue and
@@ -3333,15 +3353,33 @@ function tracingPublish(t,quiet){
      taken off, so it is sent on the next sign-in, and the card says why it was not. */
   if(ok&&typeof ok.then==="function"){
     ok.then(function(d){
-      if(!(d&&d.ok===false))return;
+      if(!(d&&d.ok===false)){ if(t.move_from){ delete t.move_from; tracingWrite(TRACINGS_KEPT); } return; }
       /* The signature is what says "this is already up there". A refusal means it is not, so it
          goes with the rest or the retry would be declined as an unchanged re-send. */
-      t.pending_share=true; t.shared_at=""; t.shared_sig="";
+      t.shared_at=""; t.shared_sig="";
+      const err=String(d.error||"the server refused it");
+      /* ── SIGNED OUT IS ONE REFUSAL, "NO" IS ANOTHER ────────────────────  2026-11-10
+         Hesham: *"it flashed this red error message and prompts me to log in when I'm already
+         logged in."* Every refusal was put back on the sign-in queue, labelled "waiting for
+         sign-in", and re-sent every four seconds -- to be refused again, with the same red
+         message, forever. Only a lapsed sign-in waits for one now. Anything else the server said
+         no to is marked as refused, with its reason, and is not sent again by itself. */
+      if(/unauthenticated|sign.?in|credential|token/i.test(err)&&!/already in the dataset/i.test(err)){
+        t.pending_share=true;
+        tracingWrite(TRACINGS_KEPT); tracingRenderList();
+        tracingSay("\u201c"+(t.name||"The tracing")+"\u201d did NOT reach the dataset: "+err
+          +" It is kept here and goes up on its own once you are signed in.",true);
+        tracingFlushSoon();
+        return;
+      }
+      t.pending_share=false; t.share_refused=err;
+      /* the one refusal with an obvious remedy: it is on another nucleus in the dataset */
+      const m=/on nucleus (\S+?), and this one says nucleus (\S+?)\./.exec(err);
+      t.move_offer=(m&&!t.move_from)?m[1]:"";
       tracingWrite(TRACINGS_KEPT); tracingRenderList();
-      tracingSay("\u201c"+(t.name||"The tracing")+"\u201d did NOT reach the dataset: "
-        +String(d.error||"the server refused it")+" It is kept here and goes up on its own once "
-        +"you are signed in.");
-      tracingFlushSoon();
+      tracingSay("\u201c"+(t.name||"The tracing")+"\u201d was NOT accepted: "+err
+        +(t.move_offer?" If you meant to move it from nucleus "+t.move_offer+" to "+m[2]
+          +", press \u201cmove it\u201d beside it in the list.":""),true);
     },function(){});
   }
   /* AFTER the tracing, and only if the tracing went: an annotation pointing at an outline that was
@@ -6193,6 +6231,7 @@ function padJumpTo(){
    ONE fact, as tracingOpenShared says -- and add it. The result is the next version of the same
    tracing, filed under the new cell; the old cell's card stops listing it, and the earlier version
    stays in the record. */
+var TRACING_MOVING = false, TRACING_MOVE_FROM = {};
 async function tracingMoveToCell(sid, btn, name){
   const ans = window.prompt("Move \u201c" + (name || "this tracing") + "\u201d to which cell?\n\n"
     + "Type the right cell\u2019s nucleus ID, its root ID (the long 8646\u2026 number), "
@@ -6208,11 +6247,17 @@ async function tracingMoveToCell(sid, btn, name){
     tracingSay("Not moved: \u201c" + ans + "\u201d is not a nucleus ID, a root ID or three numbers x, y, z.", true);
     return;
   }
-  await tracingOpenShared(sid, btn);
+  TRACING_MOVING = true;
+  try { await tracingOpenShared(sid, btn); } finally { TRACING_MOVING = false; }
   if (String(PAD_EDIT_ID || "") !== String(sid)) return;      // it did not open; that already said why
   const nucBox = document.getElementById("tracingNucId");
   const rootBox = document.getElementById("tracingRootId");
   const ca = document.getElementById("tracingCellAt");
+  /* THE NUCLEUS IT IS ON NOW, said out loud (2026-11-10). The backend refuses a known structure
+     arriving with another nucleus -- that is how a mix-up looks -- unless the request names the
+     nucleus it is moving FROM. Hesham's moves were all refused for want of it. */
+  const fromNuc = nucBox ? String(nucBox.value || "").trim() : "";
+  if (fromNuc && nuc && fromNuc !== nuc) TRACING_MOVE_FROM[String(sid)] = fromNuc;
   if (nucBox) nucBox.value = nuc;
   if (rootBox) rootBox.value = root;
   if (ca) ca.value = at;
@@ -6334,7 +6379,7 @@ async function tracingOpenShared(sid, btn){
       + ", and . step between the sections it was drawn on. Press “Use these contours” and "
       + "then add it again to make your version the current one — nothing of theirs is deleted.");
     if (PAD3D_ON){ PAD3D_MESHES = null; pad3DSoon(); }
-    tracingShowCellOf(st, t);
+    if (!TRACING_MOVING) tracingShowCellOf(st, t);
   } catch (e){
     tracingSay("Could not open that tracing: " + String(e && e.message || e), true);
   }
