@@ -7609,29 +7609,74 @@ document.addEventListener("click", function(e){
   var b = e.target && e.target.closest && e.target.closest("#tracePadVerify");
   if (b){ e.preventDefault(); padVerifyOpen(); }
 });
-function padCoinAfter(sent, at){
+/* WHICH ANSWER A COIN IS FOR (2026-11-12, evening). Søren: *"The gold coin comes so long after my
+   annotation that I don't even know what it was for."* Apps Script takes a few seconds to answer, and
+   by then you are on the next mark. So the moment you answer, a small gold ring starts turning ON the
+   mark you answered; when the server's reply comes, the coin jumps out of that ring, labelled with
+   what it was for, and when there is no coin the ring just fades. The ring is fixed to where you
+   clicked, so the coin starts from that mark even if you have moved on to another. */
+function padCoinRing(at){
+  if (!at || at.x == null) return null;
+  if (!document.getElementById("padCoinRingStyle")){
+    var st = document.createElement("style"); st.id = "padCoinRingStyle";
+    st.textContent = "@keyframes padCoinSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}"
+      + ".padcoinring{position:fixed;width:22px;height:22px;border-radius:50%;pointer-events:none;z-index:2147483500;"
+      + "border:2.5px solid rgba(255,205,70,.95);border-right-color:transparent;transform:translate(-50%,-50%);"
+      + "animation:padCoinSpin .8s linear infinite;box-shadow:0 0 8px rgba(255,200,60,.55);transition:opacity .5s}"
+      + ".padcoinnote{position:fixed;pointer-events:none;z-index:2147483500;font:700 12px system-ui,sans-serif;"
+      + "color:#e3b341;text-shadow:0 1px 3px #000;transform:translate(-50%,-50%);transition:transform 1.4s ease-out,opacity 1.4s ease-out;white-space:nowrap}";
+    document.head.appendChild(st);
+  }
+  var r = document.createElement("div"); r.className = "padcoinring";
+  r.style.left = at.x + "px"; r.style.top = at.y + "px";
+  document.body.appendChild(r);
+  r.__t = setTimeout(function(){ padCoinRingGone(r); }, 25000);      // a reply that never comes
+  return r;
+}
+function padCoinRingGone(r){
+  if (!r || r.__gone) return; r.__gone = true; clearTimeout(r.__t);
+  r.style.opacity = "0"; setTimeout(function(){ if (r.parentNode) r.parentNode.removeChild(r); }, 520);
+}
+function padCoinNote(at, text){
+  if (!at || at.x == null) return;
+  var n = document.createElement("div"); n.className = "padcoinnote"; n.textContent = text;
+  n.style.left = at.x + "px"; n.style.top = (at.y - 16) + "px";
+  document.body.appendChild(n);
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ n.style.transform = "translate(-50%,-260%)"; n.style.opacity = "0"; }); });
+  setTimeout(function(){ if (n.parentNode) n.parentNode.removeChild(n); }, 1500);
+}
+function padCoinAfter(sent, at, what){
   if (!sent || typeof sent.then !== "function") return;
   padCoinLib();                                   // start loading while the server thinks
+  var ring = padCoinRing(at);
+  what = what || {};
   sent.then(function(res){
-    if (!res || !res.ok) return;
+    if (!res || !res.ok){ padCoinRingGone(ring); return; }
     /* A reply with neither "coin" nor "pending" comes from a backend without Coins.gs -- say so once,
        or coins just silently never come (2026-11-12). */
     if (!("coin" in res) && !res.pending){
+      padCoinRingGone(ring);
       if (!padCoinAfter.said){ padCoinAfter.said = true;
-        padAiSay("Saved. (No coins yet: the server is still running the old backend \u2014 Coins.gs and the new Code.gs need deploying.)"); }
+        padAiSay("Saved. (No coins yet: the server is still running the old backend — Coins.gs and the new Code.gs need deploying.)"); }
       return;
     }
     var nm = function(k){ try { return UJ.organelleml.nameOf(k); } catch (_e){ return k; } };
     if (res.coin){
-      var lbl = res.coin.amount > 1 ? "rare: " + nm(res.coin.kind) : nm(res.coin.kind);
-      padCoinLib().then(function(C){ if (C) C.fly({ x: at && at.x, y: at && at.y, amount: res.coin.amount, label: lbl }); });
+      var k = res.coin.kind || what.kind || "";
+      var lbl = (what.verdict === "missed" ? "found: " + nm(k) : nm(k) + " ✓") + (res.coin.amount > 1 ? " · rare" : "");
+      padCoinLib().then(function(C){
+        padCoinRingGone(ring);
+        if (C) C.fly({ x: at && at.x, y: at && at.y, amount: res.coin.amount, label: lbl });
+      });
     } else if (res.pending){
+      padCoinRingGone(ring);
+      padCoinNote(at, "+" + res.pending.amount + " pending");
       if (window.MYSTATS) MYSTATS.pendingPoints = (MYSTATS.pendingPoints || 0) + res.pending.amount;
       try { if (typeof renderChip === "function") renderChip(); } catch (_e){}
-      padAiSay("+" + res.pending.amount + " points pending \u2014 paid when "
+      padAiSay("+" + res.pending.amount + " points pending for " + nm(what.kind || "") + " — paid when "
         + (res.pending.needs > 1 ? res.pending.needs + " other people confirm" : "somebody else confirms") + " it.");
-    }
-  });
+    } else padCoinRingGone(ring);
+  }, function(){ padCoinRingGone(ring); });
 }
 function padAiFixSend(t, kind, verdict, was, p){
   var m = UJ.organelleml.meta() || {};
@@ -7644,7 +7689,7 @@ function padAiFixSend(t, kind, verdict, was, p){
       + " · model trained " + (m.trained || "?") };
   var sent = (typeof postReport === "function") ? postReport(payload, "Thank you \u2014 saved for the next training round.") : false;
   if (!sent){ padAiSay("Not saved \u2014 sign in with Google (top right), then click it again.", true); return; }
-  padCoinAfter(sent, PAD_COIN_AT);
+  padCoinAfter(sent, PAD_COIN_AT, { kind: kind, verdict: verdict, was: was });
   UJ.organelleml.correct({ t: t, k: kind, was: was, p: p, verdict: verdict });
   padAiFixClose();
   padPaint();
