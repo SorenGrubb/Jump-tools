@@ -82,7 +82,21 @@
     if (sparks.length) requestAnimationFrame(drawSparks); else { drawing = false; ctx.clearRect(0, 0, innerWidth, innerHeight); }
   }
 
+  /* WHERE IT FLIES. A counter marked data-coin-target that is on screen wins -- the tracing pad has
+     one beside its AI tools (2026-11-12: Søren, scrolled down to the pad: *"the points are not
+     showing here, so it is difficult to make the animation that goes there"*). Otherwise the chip
+     in the top right. */
+  function onScreen(el){
+    if (!el || el.offsetParent === null) return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+  }
   function chipTarget(){
+    var near = [].slice.call(document.querySelectorAll("[data-coin-target]")).filter(onScreen)[0];
+    if (near){
+      var rn = (near.querySelector(".pts") || near).getBoundingClientRect();
+      return { x: rn.left + rn.width / 2, y: rn.top + rn.height / 2, pts: near.querySelector(".pts"), chip: near, own: true };
+    }
     var pts = document.querySelector("#gameChip .pts"), chip = document.querySelector("#gameChip .chipbtn") || document.getElementById("gameChip");
     var el = pts || chip;
     if (!el){ return { x: innerWidth - 60, y: 28, pts: null, chip: null }; }
@@ -103,6 +117,7 @@
      by the server's figure, not trusted. */
   function land(target, amount){
     var chip = target.chip, pts = target.pts;
+    setTimeout(function(){ try { window.dispatchEvent(new CustomEvent("ujcoin-landed", { detail: { amount: amount } })); } catch (_e){} }, 1600);
     if (chip){ chip.classList.remove("ujcoin-glow"); void chip.offsetWidth; chip.classList.add("ujcoin-glow");
                setTimeout(function(){ chip.classList.remove("ujcoin-glow"); }, 1200); }
     if (window.MYSTATS && typeof MYSTATS.points === "number"){

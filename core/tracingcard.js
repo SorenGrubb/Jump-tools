@@ -6876,6 +6876,7 @@ function padAiTickSync(){
   var fx = document.getElementById("tracePadAiFix");
   if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
   var vqb = document.getElementById("tracePadVerify"); if (vqb) vqb.style.display = ok ? "" : "none";
+  var ppb = document.getElementById("tracePadPts"); if (ppb){ ppb.style.display = ok ? "" : "none"; padPtsRender(); }
   if (!ok) box.checked = false;
   else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
   try { padCpSync(); } catch (_e){}
@@ -7595,6 +7596,26 @@ function padCoinLib(){
   });
   return padCoinLib.p;
 }
+/* YOUR POINTS BESIDE THE PAD (2026-11-12). Søren: *"the points are not showing here, so it is difficult
+   to make the animation that goes there. Perhaps the points could also show there next to the tracing
+   pad when you do the AI verification?"* The same number as the chip in the top right, and the coin
+   flies here when this is on screen (core/coin.js picks the [data-coin-target] in view). */
+function padPtsRender(){
+  var el = document.getElementById("tracePadPts"); if (!el) return;
+  var signed = false, pts = null, pend = 0;
+  try { signed = !!(typeof GOOGLE_VERIFIED !== "undefined" && GOOGLE_VERIFIED); } catch (_e){}
+  try { if (typeof MYSTATS !== "undefined" && MYSTATS){
+          pts = (typeof combinedPoints === "function") ? combinedPoints().points : MYSTATS.points;
+          pend = MYSTATS.pendingPoints || 0; } } catch (_e){}
+  var fmt = function(n){ try { return UJ.points.text(n); } catch (_e){ return String(Math.round(n)); } };
+  var h = !signed ? "\ud83e\ude99 sign in to earn coins"
+        : pts == null ? "\ud83e\ude99 \u2026"
+        : "\ud83e\ude99 <span class=\"pts\">" + fmt(pts) + " pts</span>"
+          + (pend > 0 ? " <span style=\"color:#e3b341\">+" + fmt(pend) + " pending</span>" : "");
+  if (el.__h !== h){ el.__h = h; el.innerHTML = h; }
+}
+window.addEventListener("ujcoin-landed", function(){ setTimeout(padPtsRender, 50); });
+setInterval(function(){ var el = document.getElementById("tracePadPts"); if (el && el.offsetParent !== null) padPtsRender(); }, 3000);
 /* "Check others' finds" (core/verifyqueue.js, loaded the first time the button is pressed). */
 function padVerifyOpen(){
   if (UJ.verifyq){ UJ.verifyq.open(); return; }
@@ -7611,6 +7632,13 @@ function padCoinAfter(sent, at){
   padCoinLib();                                   // start loading while the server thinks
   sent.then(function(res){
     if (!res || !res.ok) return;
+    /* A reply with neither "coin" nor "pending" comes from a backend without Coins.gs -- say so once,
+       or coins just silently never come (2026-11-12). */
+    if (!("coin" in res) && !res.pending){
+      if (!padCoinAfter.said){ padCoinAfter.said = true;
+        padAiSay("Saved. (No coins yet: the server is still running the old backend \u2014 Coins.gs and the new Code.gs need deploying.)"); }
+      return;
+    }
     var nm = function(k){ try { return UJ.organelleml.nameOf(k); } catch (_e){ return k; } };
     if (res.coin){
       var lbl = res.coin.amount > 1 ? "rare: " + nm(res.coin.kind) : nm(res.coin.kind);
@@ -9490,6 +9518,7 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"The suggestions look at this section AND the sections about 80 nm above and below, and average what the model sees on the three: a mark the neighbouring sections agree with keeps its score, a one-section flicker loses half of it. Three runs instead of one. (2026-11-06)\"><input type=\"checkbox\" id=\"tracePadAi3d\"> use the sections above and below</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<button class=\"idbtn\" id=\"tracePadVerify\" style=\"flex:0 0 auto\" title=\"Other people's corrections of the AI and new finds wait for somebody else to confirm them before they earn points. For people who know this tissue well; you answer blind. 1 point for every 5 answers.\">&#128270; Check others' finds</button>",
+    "<span id=\"tracePadPts\" data-coin-target=\"1\" style=\"flex:0 0 auto;font-size:12px;border:1px solid var(--line,#30363d);border-radius:999px;padding:3px 10px;white-space:nowrap\" title=\"Your points. Checking the AI's marks can drop a coin here -- more often for rare organelles and in places you have not answered before.\"></span>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
