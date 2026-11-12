@@ -337,7 +337,19 @@ function openDashboard(){
       +stat(s.longestStreak,"longest streak")+stat(s.newCells,"new cells found")+stat(s.organelles,"organelles","Every centriole, primary cilium, microglia plug, astrocyte hole, and other logged organelle/extracellular structure counts here — cilia and centrioles just earn more points per report (see the point-system notes), they're not the only thing tallied.")
       +stat(s.rootProposals,"root IDs proposed")+stat(s.computedVolumes,"volumes computed")+stat(s.votesGiven,"votes given","Identity or root-ID votes you've cast on other people's reports — distinct from \"upvotes received\" below, which counts votes cast BY OTHERS on your own reports.")+stat(s.notNucleusFlags,"\"not a nucleus\" flags","Detections you flagged as segmentation artifacts rather than real cells — no cell identity is given for these, so they aren't counted in \"total reports\".")
       +stat(s.meshContactsComputed,"cell contacts computed","Cell-pairs you've checked with “Find cell contacts” — mesh proximity (touching membranes), not synapses. Not counted in “total reports”.")
-      +stat(s.upvotesReceived,"upvotes received")+stat(s.favourites,"favourites")+'</div>';
+      +stat(s.upvotesReceived,"upvotes received")+stat(s.favourites,"favourites")
+      /* COINS AND TRUST (Coins.gs, 2026-11-12). Søren, on the hidden known-answer checks: "Yes, but
+         tell them." So the accuracy is here, with what it does to your coins said in plain words. */
+      +stat(s.coins,"coins","Coins dropped for checking the AI on the tracing pad.")
+      +stat(s.pendingPoints,"points pending","Corrections of the AI and new finds waiting for somebody else to confirm them. Paid when they do.")
+      +stat(s.verifications,"finds checked","Other people's finds you have checked in \u201cCheck others\u2019 finds\u201d \u2014 1 point for every 5.")
+      +(s.trust?stat((s.trust.checks?Math.round(s.trust.accuracy*100)+"%":"\u2013"),"accuracy on known answers",
+          "Now and then, without saying which, an AI mark you answer or a find you check is one whose answer is already known "
+          +"(the Jump Academy bank, or a find other people have confirmed). "
+          +(s.trust.checks?"You have met "+s.trust.checks+" and got "+s.trust.right+" right. ":"You have not met one yet. ")
+          +"At 80% or better your answers earn coins at the full rate; below 70% they stop earning coins until your accuracy comes back up. "
+          +"Practise in Jump Academy to get better \u2014 practice is never scored here."):"")
+      +'</div>';
     if(s.cellTypes&&s.cellTypes.length){h+='<h3>Cell types you identify most</h3><div style="font-size:13px">'
       +s.cellTypes.map(function(c){return escHtml(c[0])+' <b>'+c[1]+'</b>';}).join(' &nbsp; ')+'</div>';}
     /* Placeholder filled asynchronously by loadProfileTotals() below -- the combined figure comes

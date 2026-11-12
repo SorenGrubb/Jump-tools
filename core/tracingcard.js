@@ -7675,7 +7675,16 @@ function padCoinAfter(sent, at, what){
       try { if (typeof renderChip === "function") renderChip(); } catch (_e){}
       padAiSay("+" + res.pending.amount + " points pending for " + nm(what.kind || "") + " — paid when "
         + (res.pending.needs > 1 ? res.pending.needs + " other people confirm" : "somebody else confirms") + " it.");
-    } else padCoinRingGone(ring);
+    } else {
+      padCoinRingGone(ring);
+      /* Told, not hidden (Søren: "Yes, but tell them"): below 70% on the known answers there are no coins. */
+      if (res.trust != null && res.trust < 1 && !padCoinAfter.trustSaid){
+        padCoinAfter.trustSaid = true;
+        padAiSay(res.trust === 0
+          ? "Saved. No coins for now: your accuracy on the hidden known answers is below 70% \u2014 practise in Jump Academy and it comes back."
+          : "Saved. Coins come a little less often for now: your accuracy on the hidden known answers is under 80%.");
+      }
+    }
   }, function(){ padCoinRingGone(ring); });
 }
 function padAiFixSend(t, kind, verdict, was, p){
