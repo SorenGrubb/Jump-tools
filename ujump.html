@@ -808,12 +808,14 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "at": "#randomTypeSelect",
      "tab": "jump",
      "title": "Start from a type",
-     "say": "Thirty-three cell types, from pyramidal neurons down to pericytes. Picking one here does not filter anything yet &mdash; it just says which type the three buttons below should fetch."
+     "say": "Thirty-three cell types, from pyramidal neurons down to pericytes. Picking one here does not filter anything yet &mdash; it just says which type the three buttons below should fetch.",
+     "optional": true
     },
     {
      "at": "#randomOfType",
      "title": "Show",
-     "say": "A random cell of that type, and a different one on every press. This is the fastest way to learn what a type actually looks like: press it six or seven times for one type before you try to identify anything."
+     "say": "A random cell of that type, and a different one on every press. This is the fastest way to learn what a type actually looks like: press it six or seven times for one type before you try to identify anything.",
+     "optional": true
     },
     {
      "at": "#nucpanel",
@@ -837,12 +839,14 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "press “Show”",
      "title": "Say what you think it is",
-     "say": "This opens a decision tree &mdash; one question at a time about what you can see, rather than a list of 33 names to choose between. Every question is backed by a reference you can open from the <b>Refs</b> tab."
+     "say": "This opens a decision tree &mdash; one question at a time about what you can see, rather than a list of 33 names to choose between. Every question is backed by a reference you can open from the <b>Refs</b> tab.",
+     "optional": "submit"
     },
     {
      "at": "#randomUnclassified",
      "title": "Identify",
-     "say": "A cell nobody has named yet, of any type. This is the actual work: these cells have no prediction at all, so whatever you say is the first thing anyone has said about them."
+     "say": "A cell nobody has named yet, of any type. This is the actual work: these cells have no prediction at all, so whatever you say is the first thing anyone has said about them.",
+     "optional": "submit"
     },
     {
      "at": "#unclCount",
@@ -852,17 +856,20 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#randomCommunityId",
      "title": "Review",
-     "say": "A cell somebody else has already identified. You either confirm their call or challenge it, and agreement between independent readers is what turns a pile of opinions into data worth using."
+     "say": "A cell somebody else has already identified. You either confirm their call or challenge it, and agreement between independent readers is what turns a pile of opinions into data worth using.",
+     "optional": "submit"
     },
     {
      "at": "#coordPanel",
      "title": "Arriving from somewhere else",
-     "say": "Paste an <code>x, y, z</code> out of Neuroglancer &mdash; or off a figure in a paper &mdash; and this says which cell is there and what type it is. All three boxes fill from one paste."
+     "say": "Paste an <code>x, y, z</code> out of Neuroglancer &mdash; or off a figure in a paper &mdash; and this says which cell is there and what type it is. All three boxes fill from one paste.",
+     "optional": true
     },
     {
      "at": "#rootNucSearchPanel",
      "title": "Or by id",
-     "say": "A root ID or a nucleus ID, if you already have one. Root IDs change whenever a cell is re-proofread, which is why a coordinate is the more durable way to refer to a cell here."
+     "say": "A root ID or a nucleus ID, if you already have one. Root IDs change whenever a cell is re-proofread, which is why a coordinate is the more durable way to refer to a cell here.",
+     "optional": true
     },
     {
      "at": "#recentlyViewedPanel",
@@ -904,9 +911,10 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "needs": ".organshowall",
      "example": "organelles",
      "exampleLabel": "Take me to a cell with outlined organelles",
-     "after": "open a cell with outlined organelles \u2014 the button below picks one for you",
+     "after": "open a cell with outlined organelles — the button below picks one for you",
      "title": "See them in 3D",
-     "say": "This button opens Neuroglancer with the cell and all its outlined organelles, so you can see them in 3D."
+     "say": "This button opens Neuroglancer with the cell and all its outlined organelles, so you can see them in 3D.",
+     "optional": true
     },
     {
      "at": "#commOrganelleToggle, #idfOrganelleToggle",
@@ -915,7 +923,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "exampleLabel": "Show me where",
      "after": "show a cell first",
      "title": "Record one yourself",
-     "say": "To record an organelle yourself, press <b>Log one &rarr;</b>. It opens a small form for the cell you are looking at."
+     "say": "To record an organelle yourself, press <b>Log one &rarr;</b>. It opens a small form for the cell you are looking at.",
+     "optional": "submit"
     },
     {
      "at": "#organRows",
@@ -923,9 +932,10 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle, #commOrganelleToggle",
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
-     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
+     "after": "press “Log one” — on Identify’s result screen, or under the cell’s community reports",
      "title": "One row per organelle",
-     "say": "Each row is one organelle: choose what it is and give its position (x, y, z). Paste “x, y, z” into the first box and all three fill in. A cilium needs <b>two</b> points: base and tip."
+     "say": "Each row is one organelle: choose what it is and give its position (x, y, z). Paste “x, y, z” into the first box and all three fill in. A cilium needs <b>two</b> points: base and tip.",
+     "optional": true
     },
     {
      "at": "#organAddRow",
@@ -933,9 +943,10 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle, #commOrganelleToggle",
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
-     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
+     "after": "press “Log one” — on Identify’s result screen, or under the cell’s community reports",
      "title": "More than one",
-     "say": "<b>+ Add another structure</b> adds a row, so you can record several organelles in one go."
+     "say": "<b>+ Add another structure</b> adds a row, so you can record several organelles in one go.",
+     "optional": true
     },
     {
      "at": ".organ-paste-box",
@@ -943,9 +954,10 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle, #commOrganelleToggle",
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
-     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
+     "after": "press “Log one” — on Identify’s result screen, or under the cell’s community reports",
      "title": "Or click them in Neuroglancer",
-     "say": "Faster for many: Ctrl+click each organelle in Neuroglancer, paste the Neuroglancer link here, and every click becomes a row."
+     "say": "Faster for many: Ctrl+click each organelle in Neuroglancer, paste the Neuroglancer link here, and every click becomes a row.",
+     "optional": true
     },
     {
      "at": "#organSubmit",
@@ -953,20 +965,23 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#idfOrganelleToggle, #commOrganelleToggle",
      "example": "organelleForm",
      "exampleLabel": "Open the organelle form for me",
-     "after": "press “Log one” \u2014 on Identify\u2019s result screen, or under the cell\u2019s community reports",
+     "after": "press “Log one” — on Identify’s result screen, or under the cell’s community reports",
      "title": "Submit",
-     "say": "Press <b>Submit</b> to save all rows. You can add a comment if something was unclear."
+     "say": "Press <b>Submit</b> to save all rows. You can add a comment if something was unclear.",
+     "optional": "submit"
     },
     {
      "at": "#bulkOrganPanel",
      "tab": "jump",
      "title": "Many cells at once",
-     "say": "<b>Bulk organelle annotation</b> is for marking one kind of organelle in many cells at once: mark them all in Neuroglancer and paste the link here."
+     "say": "<b>Bulk organelle annotation</b> is for marking one kind of organelle in many cells at once: mark them all in Neuroglancer and paste the link here.",
+     "optional": true
     },
     {
      "at": "#bulkOrganResolve",
      "title": "Which cell is each mark in?",
-     "say": "<b>Find the cells</b> works out which cell each mark belongs to. Tick the rows that look right and submit them."
+     "say": "<b>Find the cells</b> works out which cell each mark belongs to. Tick the rows that look right and submit them.",
+     "optional": "submit"
     },
     {
      "at": "#tracingCard",
@@ -975,7 +990,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "needs": "#tracingCard",
      "after": "show a cell, so there is a plane to draw on",
      "title": "Drawing outlines",
-     "say": "This is where you <b>draw outlines</b> on the EM image of the cell you are looking at."
+     "say": "This is where you <b>draw outlines</b> on the EM image of the cell you are looking at.",
+     "optional": true
     },
     {
      "at": "#tracePadOpen",
@@ -991,7 +1007,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
      "title": "Freehand",
-     "say": "With <b>Pen</b> you draw the outline freehand instead &mdash; easiest with a drawing tablet."
+     "say": "With <b>Pen</b> you draw the outline freehand instead &mdash; easiest with a drawing tablet.",
+     "optional": true
     },
     {
      "at": "#tracePadGhosts",
@@ -999,7 +1016,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
      "title": "Check the cell",
-     "say": "This shows the cell's segmentation under your drawing, so you can check you are inside the right cell."
+     "say": "This shows the cell's segmentation under your drawing, so you can check you are inside the right cell.",
+     "optional": true
     },
     {
      "at": "#tracePadDraft",
@@ -1007,7 +1025,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
      "title": "Save a draft",
-     "say": "<b>Save draft</b> keeps your drawing in this browser, so closing the pad does not lose it."
+     "say": "<b>Save draft</b> keeps your drawing in this browser, so closing the pad does not lose it.",
+     "optional": true
     },
     {
      "at": "#tracePad3D",
@@ -1015,7 +1034,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tracePadOpen",
      "after": "open the pad with “Trace it here”",
      "title": "Make it 3D",
-     "say": "Outline the same organelle on several sections and this turns the outlines into a 3D shape."
+     "say": "Outline the same organelle on several sections and this turns the outlines into a 3D shape.",
+     "optional": true
     },
     {
      "at": "#tracingRead",
@@ -1023,7 +1043,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "show a cell, so the tracing card is there",
      "title": "Export",
-     "say": "<b>Read the contours</b> gives you the outlines as numbers, for use in other programs."
+     "say": "<b>Read the contours</b> gives you the outlines as numbers, for use in other programs.",
+     "optional": true
     },
     {
      "at": "#mainTabs",
@@ -1048,7 +1069,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "show a cell, so there is a card to read",
      "title": "Connectivity — who it is wired to",
-     "say": "Shut by default, because it asks something of you. Opened, it queries <b>CAVE's own synapse table</b> for every synapse onto and out of this cell, and groups them by partner. This is the only one of the three that reports synapses as such."
+     "say": "Shut by default, because it asks something of you. Opened, it queries <b>CAVE's own synapse table</b> for every synapse onto and out of this cell, and groups them by partner. This is the only one of the three that reports synapses as such.",
+     "optional": true
     },
     {
      "at": "#connToken",
@@ -1056,7 +1078,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#connToggle",
      "after": "open the Connectivity panel",
      "title": "It needs your own CAVE token",
-     "say": "The synapse table is not public the way the meshes are, so this asks for <b>your</b> token — the panel links to where to get one. <b>Remember in this browser</b> keeps it here and nowhere else; nothing about the token reaches this site's own backend."
+     "say": "The synapse table is not public the way the meshes are, so this asks for <b>your</b> token — the panel links to where to get one. <b>Remember in this browser</b> keeps it here and nowhere else; nothing about the token reaches this site's own backend.",
+     "optional": true
     },
     {
      "at": "#connTopN",
@@ -1064,7 +1087,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#connToggle",
      "after": "open the Connectivity panel",
      "title": "What to ask for",
-     "say": "<b>Inputs</b>, <b>outputs</b> or both; how many partners to keep; and a <b>minimum synapse count</b>, which is the one that matters most — a single synapse between two cells is as likely to be a segmentation error as a connection, and raising this to three or four changes what the answer looks like."
+     "say": "<b>Inputs</b>, <b>outputs</b> or both; how many partners to keep; and a <b>minimum synapse count</b>, which is the one that matters most — a single synapse between two cells is as likely to be a segmentation error as a connection, and raising this to three or four changes what the answer looks like.",
+     "optional": true
     },
     {
      "at": "#connGo",
@@ -1072,7 +1096,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#connToggle",
      "after": "open the Connectivity panel",
      "title": "What comes back",
-     "say": "Partners ranked by synapse count, each looked up for its <b>cell type</b> and its soma depth, with graphs underneath. A cell whose root ID was proposed by the community is queried as one cell with its fragments, so a split neuron is not counted as several poorly-connected ones."
+     "say": "Partners ranked by synapse count, each looked up for its <b>cell type</b> and its soma depth, with graphs underneath. A cell whose root ID was proposed by the community is queried as one cell with its fragments, so a split neuron is not counted as several poorly-connected ones.",
+     "optional": true
     },
     {
      "at": "#connVR",
@@ -1080,7 +1105,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#connToggle",
      "after": "open the Connectivity panel",
      "title": "...and into VR, with its synapses on it",
-     "say": "<b>🥽 + VR</b> puts this cell in the collection <b>carrying the synapses of the partners shown</b> — inputs one colour, outputs another, drawn on the cell where they actually sit. Nothing is fetched by pressing it; it hands over what the query already found. In the scene you can walk to a synapse instead of reading its coordinate."
+     "say": "<b>🥽 + VR</b> puts this cell in the collection <b>carrying the synapses of the partners shown</b> — inputs one colour, outputs another, drawn on the cell where they actually sit. Nothing is fetched by pressing it; it hands over what the query already found. In the scene you can walk to a synapse instead of reading its coordinate.",
+     "optional": true
     },
     {
      "at": "#cellContactsPanel_details",
@@ -1088,7 +1114,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "show a cell, so there is a card to read",
      "title": "Cell contacts — membranes that touch",
-     "say": "A different claim, and a weaker one: this measures where this cell's mesh comes within a chosen gap of another cell's mesh. <b>Touching is not synapsing.</b> It is the right question for glia, for a pericyte on an endothelial cell, for anything whose relationship is physical rather than synaptic."
+     "say": "A different claim, and a weaker one: this measures where this cell's mesh comes within a chosen gap of another cell's mesh. <b>Touching is not synapsing.</b> It is the right question for glia, for a pericyte on an endothelial cell, for anything whose relationship is physical rather than synaptic.",
+     "optional": true
     },
     {
      "at": "#cellContactsPanel_type_check",
@@ -1096,7 +1123,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#cellContactsPanel_details",
      "after": "open the Cell contacts panel",
      "title": "Pick a type, then check",
-     "say": "You name a cell type and it fetches those neighbours' meshes and measures. The <b>maximum gap</b> below is adjustable and its default is provisional — the panel says so. Every “Check” also feeds the contact statistics in <b>Stats</b>, so a check you run is a number somebody else can see."
+     "say": "You name a cell type and it fetches those neighbours' meshes and measures. The <b>maximum gap</b> below is adjustable and its default is provisional — the panel says so. Every “Check” also feeds the contact statistics in <b>Stats</b>, so a check you run is a number somebody else can see.",
+     "optional": true
     },
     {
      "at": "#cellContactsPanel_type_vr",
@@ -1104,7 +1132,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#cellContactsPanel_details",
      "after": "open the Cell contacts panel",
      "title": "The touch points, in the scene",
-     "say": "<b>🥽 + VR</b> attaches every touch point found to this cell. They are drawn as <b>marks</b> rather than synapses, deliberately — the viewer keeps the two apart because the claims are different, and a figure that colours them alike is a figure that overstates one of them."
+     "say": "<b>🥽 + VR</b> attaches every touch point found to this cell. They are drawn as <b>marks</b> rather than synapses, deliberately — the viewer keeps the two apart because the claims are different, and a figure that colours them alike is a figure that overstates one of them.",
+     "optional": true
     },
     {
      "at": "#tripartitePanel_details",
@@ -1112,7 +1141,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "show a cell, so there is a card to read",
      "title": "Astrocyte–synapse proximity — the weakest claim, and said so",
-     "say": "Marked <b>experimental</b>, and it earns the label. It takes this cell's synapses from the same CAVE query and asks whether an astrocyte process is near each one. That is a <b>structural proxy</b> for a tripartite synapse: distance only. It does not show the process ensheathing anything."
+     "say": "Marked <b>experimental</b>, and it earns the label. It takes this cell's synapses from the same CAVE query and asks whether an astrocyte process is near each one. That is a <b>structural proxy</b> for a tripartite synapse: distance only. It does not show the process ensheathing anything.",
+     "optional": true
     },
     {
      "at": "#tripartitePanel_x_astrodist",
@@ -1120,7 +1150,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tripartitePanel_details",
      "after": "open the Astrocyte–synapse panel",
      "title": "The number you are really choosing",
-     "say": "The gap that counts as a match. EM puts most astrocyte–synapse contacts between roughly 10 and 1100 nm, averaging around 50 — and the default here sits inside that range <b>without being derived from one authoritative source</b>, which the panel states rather than hides. Move it and watch how much the answer depends on it."
+     "say": "The gap that counts as a match. EM puts most astrocyte–synapse contacts between roughly 10 and 1100 nm, averaging around 50 — and the default here sits inside that range <b>without being derived from one authoritative source</b>, which the panel states rather than hides. Move it and watch how much the answer depends on it.",
+     "optional": true
     },
     {
      "at": "#tripartitePanel_x_vr",
@@ -1128,7 +1159,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#tripartitePanel_details",
      "after": "open the Astrocyte–synapse panel",
      "title": "Both points, so you can judge the gap yourself",
-     "say": "<b>🥽 + VR</b> sends the synapse <b>and</b> the astrocyte's nearest point — a synapse row and an astrocyte mark a few tens of nanometres apart. In the scene that is two points you can stand between, which is a better way to judge a 200 nm claim than a number in a table."
+     "say": "<b>🥽 + VR</b> sends the synapse <b>and</b> the astrocyte's nearest point — a synapse row and an astrocyte mark a few tens of nanometres apart. In the scene that is two points you can stand between, which is a better way to judge a 200 nm claim than a number in a table.",
+     "optional": true
     },
     {
      "at": "#vrb-pill",
@@ -1154,52 +1186,62 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "at": "#filterSecSelect",
      "tab": "filter",
      "title": "Start with what counts as a cell",
-     "say": "Which types are in play. Everything below this narrows that set, so if nothing is ticked here nothing else matters. Tick several and you get them all; the table says which is which."
+     "say": "Which types are in play. Everything below this narrows that set, so if nothing is ticked here nothing else matters. Tick several and you get them all; the table says which is which.",
+     "optional": true
     },
     {
      "at": "#filterIncludeUnclassified",
      "title": "And the ones with no prediction",
-     "say": "Fifty thousand of the 144,118 cells carry no machine guess at all. They are off by default because they would swamp a count &mdash; but when you are after something the predictor is bad at, which around vessels is most things, this is the tick that finds it."
+     "say": "Fifty thousand of the 144,118 cells carry no machine guess at all. They are off by default because they would swamp a count &mdash; but when you are after something the predictor is bad at, which around vessels is most things, this is the tick that finds it.",
+     "optional": true
     },
     {
      "at": "#filterSecBorders",
      "title": "How close to a vessel, or to the edge",
-     "say": "Distance to the vasculature, to the glia limitans, or to the white matter. This is the condition most of the papers on this site were written from: &ldquo;every pericyte within 5&nbsp;&micro;m of a penetrating arteriole&rdquo; is a question you can ask here and almost nowhere else."
+     "say": "Distance to the vasculature, to the glia limitans, or to the white matter. This is the condition most of the papers on this site were written from: &ldquo;every pericyte within 5&nbsp;&micro;m of a penetrating arteriole&rdquo; is a question you can ask here and almost nowhere else.",
+     "optional": true
     },
     {
      "at": "#filterSecNear",
      "title": "Or close to another kind of cell",
-     "say": "Cells of one type within a chosen distance of another &mdash; microglia near endothelium, say. The distance is between nucleus centres, not surfaces, so set it wider than the contact you actually have in mind."
+     "say": "Cells of one type within a chosen distance of another &mdash; microglia near endothelium, say. The distance is between nucleus centres, not surfaces, so set it wider than the contact you actually have in mind.",
+     "optional": true
     },
     {
      "at": "#filterSecLayer",
      "title": "Where in the cortex",
-     "say": "Cortical layer, fitted to this volume rather than assumed from depth. <b>Which visual area</b> just below does the same across V1 and the higher areas, and the <b>V1 column</b> section restricts you to the Allen Institute's hand-proofread ground truth — the subset to use when you need to be certain."
+     "say": "Cortical layer, fitted to this volume rather than assumed from depth. <b>Which visual area</b> just below does the same across V1 and the higher areas, and the <b>V1 column</b> section restricts you to the Allen Institute's hand-proofread ground truth — the subset to use when you need to be certain.",
+     "optional": true
     },
     {
      "at": "#filterSecVol",
      "title": "How big, and what is around it",
-     "say": "Cell volume in cubic micrometres, measured from the mesh. <b>Perivascular space</b> below it filters on the depth of the space around a vessel, which is how the waste-clearance work picked its arterioles."
+     "say": "Cell volume in cubic micrometres, measured from the mesh. <b>Perivascular space</b> below it filters on the depth of the space around a vessel, which is how the waste-clearance work picked its arterioles.",
+     "optional": true
     },
     {
      "at": "#filterSecOrganelle",
      "title": "What people have found inside it",
-     "say": "Filter on organelles the community has logged &mdash; a cilium, a centriole, a lysosome. This is the part that compounds: every identification anyone makes in the Jump tab becomes a condition you can select on here."
+     "say": "Filter on organelles the community has logged &mdash; a cilium, a centriole, a lysosome. This is the part that compounds: every identification anyone makes in the Jump tab becomes a condition you can select on here.",
+     "optional": true
     },
     {
      "at": "#filterSecRec",
      "title": "Whether it was watched while alive",
-     "say": "About 1,900 excitatory neurons in this volume were imaged with two-photon calcium before the tissue was fixed, and matched to their EM cell by hand. You can ask for only those &mdash; and for the ones active during a particular second of a particular movie clip."
+     "say": "About 1,900 excitatory neurons in this volume were imaged with two-photon calcium before the tissue was fixed, and matched to their EM cell by hand. You can ask for only those &mdash; and for the ones active during a particular second of a particular movie clip.",
+     "optional": true
     },
     {
      "at": "#filterSecRegion",
      "title": "Inside a box you draw",
-     "say": "One or more bounding boxes, typed in or pasted from Neuroglancer. A box is also what the Blender and Colab downloads cut out, so this is usually where a figure starts."
+     "say": "One or more bounding boxes, typed in or pasted from Neuroglancer. A box is also what the Blender and Colab downloads cut out, so this is usually where a figure starts.",
+     "optional": true
     },
     {
      "at": "#filterSecViewer",
      "title": "Scenery, not conditions",
-     "say": "Extra layers for the 3D view &mdash; the pia, the white matter, the vasculature. The heading says it does not change which cells match, and that is worth believing: it only changes what you see around them."
+     "say": "Extra layers for the 3D view &mdash; the pia, the white matter, the vasculature. The heading says it does not change which cells match, and that is worth believing: it only changes what you see around them.",
+     "optional": true
     },
     {
      "at": "#filterRun",
@@ -1215,7 +1257,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#filterDownload",
      "title": "Then take it away",
-     "say": "An Excel sheet of every match: coordinates, ids, type, layer, volume, and whatever else your conditions touched. It stays disabled until you have previewed, so the sheet and the number on the button are always the same population."
+     "say": "An Excel sheet of every match: coordinates, ids, type, layer, volume, and whatever else your conditions touched. It stays disabled until you have previewed, so the sheet and the number on the button are always the same population.",
+     "optional": true
     },
     {
      "at": "#stepThroughCard",
@@ -1231,7 +1274,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#filterRun",
      "after": "press “Preview matches”",
      "title": "...without leaving the tab",
-     "say": "<b>Next →</b> loads the next match, and the cell panel and the whole identification screen move <b>into this card</b> rather than sending you back to the Jump tab. The counter above says where you are and how many you have checked. This is the shape to use for a survey: describe the population once, then work down it."
+     "say": "<b>Next →</b> loads the next match, and the cell panel and the whole identification screen move <b>into this card</b> rather than sending you back to the Jump tab. The counter above says where you are and how many you have checked. This is the shape to use for a survey: describe the population once, then work down it.",
+     "optional": true
     },
     {
      "at": "#stepReset",
@@ -1239,12 +1283,14 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#filterRun",
      "after": "press “Preview matches”",
      "title": "It remembers, per set of matches",
-     "say": "Your position is kept in this browser <b>for this exact set of matches</b>, so you can close the tab and resume tomorrow. Change the conditions and preview again and the count starts fresh &mdash; which is right: it is a different population, so being “half way” through the old one means nothing. <b>Reset progress</b> does it deliberately."
+     "say": "Your position is kept in this browser <b>for this exact set of matches</b>, so you can close the tab and resume tomorrow. Change the conditions and preview again and the count starts fresh &mdash; which is right: it is a different population, so being “half way” through the old one means nothing. <b>Reset progress</b> does it deliberately.",
+     "optional": true
     },
     {
      "at": "#filterVR",
      "title": "Or look at all of them at once",
-     "say": "<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; <b>Show in VR</b> opens them as meshes you can walk through. The <b>region</b> walkthrough does the same for a <b>cube of the volume</b> rather than a set of cells &mdash; exported to a notebook or straight to Blender."
+     "say": "<b>Open all matches in Neuroglancer</b> puts the whole set in the viewer; <b>Show in VR</b> opens them as meshes you can walk through. The <b>region</b> walkthrough does the same for a <b>cube of the volume</b> rather than a set of cells &mdash; exported to a notebook or straight to Blender.",
+     "optional": true
     }
    ]
   },
@@ -1278,7 +1324,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#refreshBtn",
      "title": "“Live” means live",
-     "say": "The charts are built when you first open this tab. <b>↻ Refresh live data</b> fetches again, so an identification somebody submitted ten minutes ago is in it. The line beside the button says what state it is in."
+     "say": "The charts are built when you first open this tab. <b>↻ Refresh live data</b> fetches again, so an identification somebody submitted ten minutes ago is in it. The line beside the button says what state it is in.",
+     "optional": true
     },
     {
      "at": "#plotCellsPerType",
@@ -1319,7 +1366,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "after": "let the charts finish drawing",
      "pageWait": true,
      "title": "Charts you can re-aim",
-     "say": "Several charts have a picker above them &mdash; this one chooses whose <b>5 nearest physical neighbours</b> you are looking at. The same goes for the volume charts, the connectivity ones and the synapse ones: the question is fixed, the cell type is yours."
+     "say": "Several charts have a picker above them &mdash; this one chooses whose <b>5 nearest physical neighbours</b> you are looking at. The same goes for the volume charts, the connectivity ones and the synapse ones: the question is fixed, the cell type is yours.",
+     "optional": true
     },
     {
      "at": "#connectivityArea",
@@ -1340,7 +1388,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#dashXlsxBtn",
      "title": "Take the numbers, not a screenshot",
-     "say": "<b>Download the numbers as Excel</b> gives you every chart's underlying figures in one workbook, a sheet per chart. If a number from here is going into a paper or a talk, take it from this file &mdash; then the figure and your source agree, and you can say which day you pulled it."
+     "say": "<b>Download the numbers as Excel</b> gives you every chart's underlying figures in one workbook, a sheet per chart. If a number from here is going into a paper or a talk, take it from this file &mdash; then the figure and your source agree, and you can say which day you pulled it.",
+     "optional": true
     },
     {
      "at": "#mainTabs",
@@ -1367,7 +1416,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
     {
      "at": "#regionAddBox",
      "title": "One box, or several",
-     "say": "<b>+ Add another box</b> gives you a second region, and a third. Boxes are independent, so you can sample three cortical layers at once, or the same column at three depths, and keep them apart in what comes out."
+     "say": "<b>+ Add another box</b> gives you a second region, and a third. Boxes are independent, so you can sample three cortical layers at once, or the same column at three depths, and keep them apart in what comes out.",
+     "optional": true
     },
     {
      "at": ".rbox-colab",
@@ -1375,7 +1425,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#regionAddBox",
      "after": "add a box, so there is a region to export",
      "title": "A notebook for that box",
-     "say": "Each box carries its own <b>Colab notebook</b> &mdash; a ready-made notebook with that box's coordinates already filled in. You do not install anything: it opens in the browser and runs against the public CAVE service, the same one this tool uses."
+     "say": "Each box carries its own <b>Colab notebook</b> &mdash; a ready-made notebook with that box's coordinates already filled in. You do not install anything: it opens in the browser and runs against the public CAVE service, the same one this tool uses.",
+     "optional": true
     },
     {
      "at": ".colab-blender",
@@ -1383,7 +1434,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#regionAddBox",
      "after": "add a box, so there is a region to export",
      "title": "...including one that writes a .blend",
-     "say": "The flavours differ in what they fetch: <b>EM</b> gives the raw image stack, <b>seg</b> the labels, <b>meshes</b> the surfaces, <b>nuclei</b> and <b>vasculature</b> those alone. <b>Blender</b> is the one to take if you want a figure &mdash; it writes the meshes out ready to open, which is the short way to a 3D render or a file you can print."
+     "say": "The flavours differ in what they fetch: <b>EM</b> gives the raw image stack, <b>seg</b> the labels, <b>meshes</b> the surfaces, <b>nuclei</b> and <b>vasculature</b> those alone. <b>Blender</b> is the one to take if you want a figure &mdash; it writes the meshes out ready to open, which is the short way to a 3D render or a file you can print.",
+     "optional": true
     },
     {
      "at": "#mainTabs",
@@ -1408,7 +1460,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#randomOfType",
      "after": "show a cell, so there is something to collect",
      "title": "+ VR, beside every mesh",
-     "say": "Wherever this tool offers a cell's mesh, there is a <b>+ VR</b> beside it. Pressing it adds that cell to the collection and the button turns into <b>✓ In VR</b> — press it again to take it out. Nothing is fetched by pressing it: you are building a list."
+     "say": "Wherever this tool offers a cell's mesh, there is a <b>+ VR</b> beside it. Pressing it adds that cell to the collection and the button turns into <b>✓ In VR</b> — press it again to take it out. Nothing is fetched by pressing it: you are building a list.",
+     "optional": true
     },
     {
      "at": "#vrb-pill",
@@ -1432,7 +1485,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#vrb-pill",
      "after": "press the collection pill",
      "title": "Opening the scene on this machine",
-     "say": "<b>Open VR viewer</b> opens the scene in a new tab with this collection in it. On a PC with Quest Link that is the route to take: open it here, then press <b>Enter VR</b> in the scene. On a plain monitor it is still the 3D viewer, with the mouse."
+     "say": "<b>Open VR viewer</b> opens the scene in a new tab with this collection in it. On a PC with Quest Link that is the route to take: open it here, then press <b>Enter VR</b> in the scene. On a plain monitor it is still the 3D viewer, with the mouse.",
+     "optional": true
     },
     {
      "at": "[data-act=\"copy\"]",
@@ -1440,13 +1494,15 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "press": "#vrb-pill",
      "after": "press the collection pill",
      "title": "...or on a standalone headset",
-     "say": "A standalone Quest has its own browser, which cannot see this collection. <b>Copy headset link</b> puts the list in a URL to send yourself. One limitation the tray states: synapses and contact points are too many for a link — for those, open the scene here, press <b>💾 Save scene</b>, and open the saved scene’s link in the headset instead."
+     "say": "A standalone Quest has its own browser, which cannot see this collection. <b>Copy headset link</b> puts the list in a URL to send yourself. One limitation the tray states: synapses and contact points are too many for a link — for those, open the scene here, press <b>💾 Save scene</b>, and open the saved scene’s link in the headset instead.",
+     "optional": true
     },
     {
      "at": "#filterVR",
      "tab": "filter",
      "title": "Or send a whole population at once",
-     "say": "Back in <b>Filter</b>: once you have previewed a set of matches, <b>🥽 Show in VR</b> sends them straight to the scene without collecting them one at a time — and <b>without touching the collection you just built</b>, because those cells travel in the link instead. The dropdown beside it caps how many, evenly spread through the list when there are more: thirty for a headset or a laptop, several hundred on a strong PC."
+     "say": "Back in <b>Filter</b>: once you have previewed a set of matches, <b>🥽 Show in VR</b> sends them straight to the scene without collecting them one at a time — and <b>without touching the collection you just built</b>, because those cells travel in the link instead. The dropdown beside it caps how many, evenly spread through the list when there are more: thirty for a headset or a laptop, several hundred on a strong PC.",
+     "optional": true
     },
     {
      "at": ".vrb-go",
@@ -1455,7 +1511,8 @@ function toggleTheme(){setTheme(currentTheme()==="light"?"dark":"light");}
      "handoff": "vrscene",
      "after": "press the collection pill",
      "title": "Go on, then",
-     "say": "Press <b>Open VR viewer</b>. The walkthrough carries on in the scene itself — moving about, seeing inside the cells, and finding the tracings and organelles from earlier drawn on them. If the scene opens and does not offer to continue, its own <b>Tutorial</b> button has it."
+     "say": "Press <b>Open VR viewer</b>. The walkthrough carries on in the scene itself — moving about, seeing inside the cells, and finding the tracings and organelles from earlier drawn on them. If the scene opens and does not offer to continue, its own <b>Tutorial</b> button has it.",
+     "optional": "<b>Optional.</b> Only if you want to carry on in VR — Jump Academy only needs the first two walkthroughs."
     }
    ]
   }

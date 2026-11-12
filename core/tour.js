@@ -199,6 +199,8 @@ var UJ = UJ || {};
     ".tour-bubble .tour-wait{margin:0 0 10px;font-size:13px;color:var(--accent,#2f6f8f)}",
     ".tour-bubble .tour-gone{margin:0 0 10px;font-size:13px;color:var(--warn,var(--accent,#b45309))}",
     ".tour-bubble .tour-example{margin:-4px 0 10px}",
+    ".tour-bubble .tour-optional{margin:-2px 0 10px;font-size:12.5px;padding:5px 9px;border-radius:7px;"
+      + "border-left:3px solid var(--accent,#2f6f8f);background:rgba(127,127,127,.12)}",
     ".tour-bubble.tour-dock{max-width:min(760px,calc(100vw - 24px))}",
     /* THE WAY ON, on the last step of a part.                                      2026-10-23
        Søren: "There should be a small link to the next tutorial in the last step." Small is the
@@ -293,7 +295,7 @@ var UJ = UJ || {};
     EL.bubble.setAttribute("aria-live", "polite");
     EL.bubble.hidden = true;
     EL.bubble.innerHTML =
-      '<h4 class="tour-title"></h4><p class="tour-say"></p>' +
+      '<h4 class="tour-title"></h4><p class="tour-say"></p><p class="tour-optional" hidden></p>' +
       '<p class="tour-wait" hidden></p><p class="tour-gone" hidden></p>' +
       '<p class="tour-example" hidden><button type="button" class="tour-btn go"></button></p>' +
       '<p class="tour-onward" hidden></p>' +
@@ -629,6 +631,17 @@ var UJ = UJ || {};
     b.querySelector(".tour-title").textContent = s.title || PART.title || "";
     b.querySelector(".tour-title").hidden = !(s.title || PART.title);
     b.querySelector(".tour-say").innerHTML = s.say || "";
+    /* ── NOT EVERYTHING SHOWN IS ASKED OF YOU ─────────────────────────────────  2026-11-12
+       Søren, at "Press Submit to save all rows": *"I don't want every user to submit a new report,
+       please make sure that every step in the tutorial that is not required says so."* A step may
+       carry `optional`: true for the plain line, "submit" for a step whose control writes to the
+       dataset, or a sentence of its own. Next never needs the control to be used. */
+    var opt = b.querySelector(".tour-optional"), o = s.optional;
+    opt.hidden = !o;
+    if (o) opt.innerHTML = o === "submit"
+      ? "<b>Not required.</b> Don\u2019t submit anything now \u2014 this only shows you where it is. Press <b>Next</b> to go on."
+      : o === true ? "<b>Optional.</b> You don\u2019t need to use this now. Press <b>Next</b> to go on."
+      : String(o);
     b.querySelector(".tour-count").textContent = (IX + 1) + " of " + PART.steps.length;
     b.querySelector(".tour-back").disabled = IX === 0;
     b.querySelector(".tour-next").textContent =

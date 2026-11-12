@@ -393,7 +393,7 @@
       + '</div><div>' + scoreHtml()
       + '<div class="ja-sub" style="margin-bottom:6px">' + (T.part === "cells"
           ? 'What kind of cell is this? Drag to turn it, scroll to zoom.'
-          : 'What is inside the ring? Scroll through the sections and zoom; the ring stays on the marked spot.')
+          : 'What is under the small ring, where the four lines point? Scroll through the sections and zoom; the mark stays on the spot.')
       + '</div><div class="ja-choices">'
       + T.choices.map(function(c){ return '<button class="ja-btn" data-a="' + esc(c.value) + '">' + esc(c.label) + '</button>'; }).join("")
       + '<button class="ja-btn" data-a="skip" style="opacity:.8">⏭ Skip — ' + (T.part === "cells" ? "bad segmentation / not sure" : "can’t tell / not sure") + '</button>'
@@ -452,12 +452,18 @@
 
   /* ── 3. organelles: the pad's EM, a ring, eight kinds ──────────────────────────────────── */
   var VIEWS = [ { mip: 0, zoom: 2 }, { mip: 0, zoom: 1 }, { mip: 1, zoom: 1 }, { mip: 2, zoom: 1 } ];
-  var RING_NM = 700;   // measured on the live pad 2026-11-12: a lysosome sits well inside it
+  /* ── A SMALL RING AND FOUR POINTERS, NOT A BIG CIRCLE ───────────────────────────────  2026-11-12
+     Søren, on a 1.4 µm-wide ring round a myelinated axon: *"The ring is too big, it is hard to know
+     what you are focused on."* A 700 nm ring held several structures. The mark is a POINT on the
+     organelle, so the target is now a 250 nm ring on that point (smaller than a lysosome is wide) with
+     four short ticks pointing in at it from 350-650 nm out, which leave the structure itself uncovered.
+     Never drawn smaller than 10 px across or the ticks shorter than 10 px, however far out you zoom. */
+  var RING_NM = 250, TICK_IN_NM = 350, TICK_OUT_NM = 650;
   function renderOrganelles(){
     if (!canTest()){ renderElsewhere("organelles"); return; }
     var s = STATUS || {};
     body('<h3>3. Organelles on the tracing pad</h3><p>Ten organelles, one at a time, on the same EM sections the tracing pad '
-      + 'shows. A ring marks each one; nothing else gives away what it is. Move up and down through the sections, zoom, and '
+      + 'shows. A small ring with four pointers marks a spot on each one; nothing else gives away what it is. Move up and down through the sections, zoom, and '
       + 'pick what it is. Skip anything you cannot tell — a skip costs nothing. <b>8 right out of 10 answered</b> passes. '
       + 'Each was named by a person or is an AI suggestion a person checked.</p>'
       + (s.organelles && s.organelles.passed ? '<div class="ja-done">✓ Passed (' + esc(s.organelles.score) + '). You can '
@@ -479,10 +485,14 @@
         var info = await UJ.emtiles.drawSection(cv, { centre: [it.pos[0], it.pos[1], it.pos[2] + V.z], mip: vw.mip,
                                                       zoom: vw.zoom, w: 512, h: 512, tighten: true });
         if (my !== V.gen || !T) return;
-        var r = Math.max(6, RING_NM / info.effNmPerPx);
-        var on = V.z === 0;
-        svg.innerHTML = '<circle cx="256" cy="256" r="' + r.toFixed(1) + '" fill="none" stroke="#ffd75a" stroke-width="3"'
-          + (on ? '' : ' stroke-dasharray="8 7" opacity=".7"') + '/>';
+        var px = function(nm){ return nm / info.effNmPerPx; };
+        var r = Math.max(5, px(RING_NM)), a = Math.max(r + 4, px(TICK_IN_NM)), b2 = Math.max(a + 10, px(TICK_OUT_NM));
+        var on = V.z === 0, st = ' stroke="#ffd75a" stroke-width="2.5" stroke-linecap="round"'
+          + (on ? '' : ' stroke-dasharray="5 5" opacity=".7"');
+        svg.innerHTML = '<circle cx="256" cy="256" r="' + r.toFixed(1) + '" fill="none"' + st + '/>'
+          + [[0, -1], [0, 1], [-1, 0], [1, 0]].map(function(d){
+              return '<line x1="' + (256 + d[0] * a).toFixed(1) + '" y1="' + (256 + d[1] * a).toFixed(1)
+                + '" x2="' + (256 + d[0] * b2).toFixed(1) + '" y2="' + (256 + d[1] * b2).toFixed(1) + '"' + st + '/>'; }).join("");
         load.textContent = "";
         cap.textContent = (info.umAcross).toFixed(1) + " µm across · "
           + (on ? "the marked section" : (V.z > 0 ? "+" : "") + V.z + " section" + (Math.abs(V.z) === 1 ? "" : "s") + " from the mark");
