@@ -165,10 +165,10 @@
       ".ja-lic .f{position:absolute;left:5%;top:36%;font-size:clamp(11px,2.4vw,14px);line-height:1.7}",
       ".ja-lic .f b{display:inline-block;min-width:7.5em;opacity:.75;font-weight:500}",
       ".ja-lic .sig{position:absolute;left:5%;bottom:8%;font:clamp(18px,4.4vw,28px) 'Segoe Script','Brush Script MT','Snell Roundhand',cursive}",
-      ".ja-lic .stamp{position:absolute;right:6%;bottom:9%;width:28%;aspect-ratio:1;border-radius:50%;border:3px solid rgba(255,215,90,.95);",
+      ".ja-lic .stamp{position:absolute;right:4%;top:24%;width:17%;aspect-ratio:1;border-radius:50%;border:3px solid rgba(255,215,90,.95);",
       " color:rgba(255,215,90,.95);display:flex;align-items:center;justify-content:center;text-align:center;font:800 clamp(9px,2vw,13px)/1.15 system-ui;",
       " transform:rotate(-14deg);animation:jaStamp .5s 1.1s cubic-bezier(.3,1.8,.5,1) both}",
-      ".ja-lic .diver{position:absolute;right:7%;top:8%;width:22%}",
+      ".ja-lic .diver{position:absolute;right:2%;bottom:5%;width:57%;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45))}",
       "@keyframes jaIn{from{transform:scale(.2) rotate(-8deg);opacity:0}to{transform:none;opacity:1}}",
       "@keyframes jaStamp{from{transform:scale(3) rotate(-14deg);opacity:0}to{transform:scale(1) rotate(-14deg);opacity:1}}",
       "@keyframes jaShine{from{transform:translateX(-60%)}to{transform:translateX(60%)}}",
@@ -583,11 +583,20 @@
     b.querySelector("#jaParty").onclick = confetti;
     confetti();
   }
+  /* ── THE DIVER ─────────────────────────────────────────────────────────────────────  2026-11-12
+     Søren: *"I liked the one jumping into the pool of EM. Here I have a picture of an astrocyte. I
+     would like if the stick figure could have the arrow in the logo as an indicator of where he has
+     jumped from."* -- and then: *"The whole logo should be a part of it."* core/academy_dive.png:
+     the µJump wordmark (µ in the accent teal, Jump, ↗), the dotted arc leaving from its ↗, and the
+     stick figure of the µJump dive logo going head first, with a splash, into his render of an
+     astrocyte round an EM cube (its dark background keyed out). Made by academy_dive_make.py. Found beside this script, so it works from any page that loads it. */
+  var ART = (function(){
+    try { var src = (document.currentScript && document.currentScript.src) || "";
+          return src ? src.replace(/[^\/]*$/, "") + "academy_dive.png" : "core/academy_dive.png"; }
+    catch (_e){ return "core/academy_dive.png"; }
+  })();
   function diverSvg(){
-    /* a stick figure diving into a stack of sections -- the Jump logo's idea, drawn small */
-    return '<svg class="diver" viewBox="0 0 120 100" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round">'
-      + '<circle cx="78" cy="14" r="7"/><path d="M74 21 L58 44 M66 32 L84 30 M66 32 L50 26 M58 44 L70 58 M58 44 L46 56"/>'
-      + '<path d="M18 70 h84 M24 80 h84 M30 90 h84" stroke="#ffd75a" stroke-width="5"/></svg>';
+    return '<img class="diver" src="' + esc(ART) + '" alt="A stick figure diving from the \u00b5Jump arrow into a block of EM with an astrocyte">';
   }
   function confetti(){
     var c = document.getElementById("jaConfetti");
