@@ -234,7 +234,37 @@ function profileTotalsHtml(t){
     +escHtml(when&&!isNaN(when.getTime())?when.toLocaleString("en-GB"):"the last rebuild")
     +' &mdash; this page&rsquo;s own numbers above update immediately.</div>';
 }
-function loadMyStats(cb){gamifyGet("myStats",function(d){if(d&&!d.error){MYSTATS=d;}renderChip();if(cb)cb(d);});}
+function loadMyStats(cb){gamifyGet("myStats",function(d){if(d&&!d.error){MYSTATS=d;}renderChip();if(d&&d.news&&d.news.length)gamifyNews(d.news);if(cb)cb(d);});}
+/* YOUR FINDS, DECIDED WHILE YOU WERE AWAY (Coins.gs "Coin news", 2026-11-12). Somebody else confirms
+   a find long after it was made, so the finder hears it on their next visit: a coin labelled with
+   what was confirmed flies to the chip (the points are already in the total, so the count runs up
+   to it), and a find two checkers disagreed with gets a quiet note instead. Each is shown once. */
+var GAMIFY_DIR=(function(){try{var s=document.currentScript&&document.currentScript.src;return(s&&/gamify\.js(\?.*)?$/.test(s))?s.replace(/gamify\.js(\?.*)?$/,""):"core/";}catch(_e){return "core/";}})();
+function gamifyToast(html,tone){
+  var t=document.createElement("div");
+  t.style.cssText="position:fixed;top:60px;right:14px;z-index:9450;max-width:340px;background:var(--panel,#161b22);color:var(--ink,#e6edf3);"
+    +"border:1px solid "+(tone==="good"?"#e3b341":"var(--line,#30363d)")+";border-radius:10px;padding:9px 12px;font:13px/1.4 system-ui,sans-serif;"
+    +"box-shadow:0 8px 24px rgba(0,0,0,.45);transition:opacity .6s,transform .6s;opacity:0;transform:translateY(-6px)";
+  t.innerHTML=html;document.body.appendChild(t);
+  requestAnimationFrame(function(){t.style.opacity="1";t.style.transform="none";});
+  setTimeout(function(){t.style.opacity="0";setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},700);},6500);
+}
+function gamifyNews(list){
+  var nm=function(k){try{if(window.UJ&&UJ.organelleml&&UJ.organelleml.nameOf)return UJ.organelleml.nameOf(k);}catch(_e){}
+    if(k==="not_an_organelle")return "\u201cnot an organelle\u201d";if(k==="imaging_artifact")return "imaging artifact";return String(k).replace(/_/g," ");};
+  var go=function(){
+    list.forEach(function(n,i){setTimeout(function(){
+      if(n.state==="paid"){
+        gamifyToast("\u2713 Your <b>"+escHtml(nm(n.kind))+"</b> was confirmed by another annotator: <b style=\"color:#e3b341\">+"+n.amount+"</b>","good");
+        if(window.UJ&&UJ.coin)UJ.coin.fly({x:innerWidth/2,y:innerHeight*0.35,amount:n.amount,label:"confirmed: "+nm(n.kind),already:true});
+      }else if(n.state==="rejected"){
+        gamifyToast("Two checkers saw something else where you marked <b>"+escHtml(nm(n.kind))+"</b>, so it is set aside \u2014 no points. It happens to everyone; the Academy\u2019s practice can help.");
+      }
+    },900+i*2400);});
+  };
+  if(window.UJ&&UJ.coin){go();return;}
+  var sc=document.createElement("script");sc.src=GAMIFY_DIR+"coin.js";sc.onload=go;sc.onerror=go;document.head.appendChild(sc);
+}
 function loadFavourites(cb){gamifyGet("favourites",function(d){window.FAV_SET=new Set();((d&&d.favourites)||[]).forEach(function(f){if(f.nucleusId)window.FAV_SET.add(String(f.nucleusId));if(f.coord)window.FAV_SET.add(String(f.coord));});refreshFavStars();if(cb)cb(d);});}
 function refreshFavStars(){
   document.querySelectorAll(".favstar").forEach(function(b){

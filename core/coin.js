@@ -115,14 +115,16 @@
   /* The number on the chip counts up rather than jumping, and the chip glows as the coin lands.
      The real total is redrawn from MYSTATS afterwards, so whatever the count-up showed is replaced
      by the server's figure, not trusted. */
-  function land(target, amount){
+  /* already: the points are in MYSTATS already (news of a find somebody confirmed while you were
+     away), so the count runs up TO the total rather than past it. */
+  function land(target, amount, already){
     var chip = target.chip, pts = target.pts;
     setTimeout(function(){ try { window.dispatchEvent(new CustomEvent("ujcoin-landed", { detail: { amount: amount } })); } catch (_e){} }, 1600);
     if (chip){ chip.classList.remove("ujcoin-glow"); void chip.offsetWidth; chip.classList.add("ujcoin-glow");
                setTimeout(function(){ chip.classList.remove("ujcoin-glow"); }, 1200); }
     if (window.MYSTATS && typeof MYSTATS.points === "number"){
       var from = MYSTATS.points;
-      MYSTATS.points = from + amount;
+      if (already) from = from - amount; else MYSTATS.points = from + amount;
       if (pts){
         var fmt = (UJ.points && UJ.points.text) ? UJ.points.text : function(n){ return String(Math.round(n)); };
         var base = 0;
@@ -156,7 +158,7 @@
 
     if (reduce){
       put(target.x, target.y, 1, 1); coin.style.opacity = "0";
-      await land(target, amount); coin.remove(); return;
+      await land(target, amount, o.already); coin.remove(); return;
     }
 
     /* 1. JUMP OUT: up and a little to the side, growing from nothing, landing in a hover. */
@@ -187,7 +189,7 @@
     });
     coin.remove();
     for (var k = 0; k < 14; k++){ var a = Math.random() * 6.28; spark(tx, ty, Math.cos(a) * 3, Math.sin(a) * 3); }
-    await land(target, amount);
+    await land(target, amount, o.already);
   }
 
   /* Several rewards at once go one after another, a third of a second apart, not as one blob. */
