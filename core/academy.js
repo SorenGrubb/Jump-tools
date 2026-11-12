@@ -201,7 +201,7 @@
       pb.textContent = "\ud83c\udfaf Practice";
       pb.title = "Practise identifying organelles and cells on known answers. Nothing goes into the dataset and it earns no points \u2014 only your accuracy is kept.";
       pb.style.cssText = "cursor:pointer;border:1px solid var(--acc,#58a6ff);background:transparent;color:var(--acc,#58a6ff);"
-        + "border-radius:999px;padding:4px 12px;font:600 12px system-ui,sans-serif;margin-left:6px;white-space:nowrap";
+        + "border-radius:999px;padding:4px 12px;font:600 12px system-ui,sans-serif;white-space:nowrap";
       pb.addEventListener("click", function(){ open(null, 5); });
       if (b.parentNode && !b.classList.contains("float")) b.parentNode.insertBefore(pb, b.nextSibling);
       else { pb.style.position = "fixed"; pb.style.left = "12px"; pb.style.top = "44px"; pb.style.zIndex = "9990";
@@ -209,9 +209,13 @@
     }
     var lic = licensed();
     b.classList.toggle("lic", lic);
-    b.textContent = lic ? "🪪 Licence to Jump" + (STATUS.licenceNo ? " · " + STATUS.licenceNo : "")
+    /* "Licence", not "Licence to Jump", on the button (2026-11-12): with 🎯 Practice beside it the full
+       words pushed Practice onto a second line of µJump's 760 px tab bar. The full name is in the title. */
+    /* 🎓, not 🪪: the ID-card emoji draws as an empty box on Søren's Windows PC. */
+    /* No licence number on the button either (Søren, same evening) -- it is in the title and on the licence. */
+    b.textContent = lic ? "🎓 Licence to Jump"
                         : "🎓 Jump Academy";
-    b.title = lic ? "You have your Licence to Jump. Open it to see your licence."
+    b.title = lic ? "You have your Licence to Jump" + (STATUS.licenceNo ? " (" + STATUS.licenceNo + ")" : "") + ". Open it to see your licence."
                   : "Before you log anything: sign the agreement, do the tutorial and pass two short tests.";
   }
 
