@@ -35,6 +35,13 @@ function gamifyStyle(){
    +"#gameChip .chipbtn{display:inline-flex;align-items:center;gap:8px;background:var(--panel,#161b22);color:var(--ink,#e6edf3);border:1px solid var(--accent,#27e0b3);border-radius:20px;padding:6px 13px;cursor:pointer;box-shadow:0 2px 12px color-mix(in srgb,var(--accent,#27e0b3) 25%,transparent)}"
    +"#gameChip .lvl{font-weight:600;color:var(--accent,#3d6f92)}"
    +"#gameChip .pts{color:var(--mut,#8b949e)}"
+    /* FLOATING ONCE THE HEADER HAS SCROLLED AWAY (2026-11-12). Søren: *"maybe we could have the points
+       menu floating always, so that is constantly in the top right corner."* Only then, so the
+       2026-08-17 mobile overlap with the theme button cannot come back: at the top of the page the
+       chip stays in the header where it was. */
+   +"#gameChip.float{position:fixed;top:10px;right:14px;z-index:9400;animation:gameChipIn .25s ease-out}"
+   +"#gameChip.float .chipbtn{box-shadow:0 6px 20px rgba(0,0,0,.45)}"
+   +"@keyframes gameChipIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}"
    +"#gameDash{position:fixed;inset:0;z-index:9500;background:var(--scrim,rgba(0,0,0,.45));display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:32px 12px}"
    +"#gameDash .card{background:var(--panel,#161b22);color:var(--ink,#e6edf3);max-width:640px;width:100%;border-radius:14px;padding:22px 22px 26px;box-shadow:0 12px 40px var(--shadow,rgba(0,0,0,.3))}"
    +"#gameDash h2{margin:0 0 2px;font-size:20px}#gameDash h3{margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut,#8b949e)}"
@@ -60,8 +67,27 @@ function gamifyInjectUI(){
     var slot=document.getElementById("gameChipSlot");
     (slot||document.body).appendChild(c);
   }
+  gamifyFloat();
   if(!document.getElementById("gameDash")){var d=document.createElement("div");d.id="gameDash";
     d.addEventListener("click",function(e){if(e.target===d)closeDashboard();});document.body.appendChild(d);}
+}
+/* The chip floats in the top-right corner while its place in the header is off screen, and only when
+   it shows points (signed out it is a sign-in button and the terms -- too big to pin over the page).
+   The slot keeps its width while the chip is away, so the header does not jump when it comes back. */
+function gamifyFloat(){
+  var c=document.getElementById("gameChip"),slot=document.getElementById("gameChipSlot");
+  if(!c||!slot||gamifyFloat.on||typeof IntersectionObserver!=="function")return;
+  gamifyFloat.on=true;
+  var away=false;
+  function apply(){
+    var want=away&&!!c.querySelector(".pts");
+    if(want===c.classList.contains("float"))return;
+    if(want){slot.style.minWidth=slot.offsetWidth+"px";slot.style.minHeight=slot.offsetHeight+"px";c.classList.add("float");}
+    else{c.classList.remove("float");slot.style.minWidth="";slot.style.minHeight="";}
+  }
+  new IntersectionObserver(function(es){away=!es[0].isIntersecting;apply();},{threshold:0}).observe(slot);
+  /* the chip is redrawn on sign-in and after every coin; check again when it changes */
+  try{new MutationObserver(apply).observe(c,{childList:true});}catch(_e){}
 }
 /* Combined points, live. Søren, 2026-08-16: opening ηJump showed "1 pts" when µJump showed
    hundreds, which reads as data loss even though it is the per-dataset figure behaving exactly as

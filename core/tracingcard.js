@@ -6876,7 +6876,6 @@ function padAiTickSync(){
   var fx = document.getElementById("tracePadAiFix");
   if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
   var vqb = document.getElementById("tracePadVerify"); if (vqb) vqb.style.display = ok ? "" : "none";
-  var ppb = document.getElementById("tracePadPts"); if (ppb){ ppb.style.display = ok ? "" : "none"; padPtsRender(); }
   if (!ok) box.checked = false;
   else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
   try { padCpSync(); } catch (_e){}
@@ -7184,13 +7183,13 @@ function padCpSync(){
   if (PAD_TOOL === "hand" && on("tracePadPen")) PAD_TOOL = "pen";
   if (PAD_TOOL === "pen" && !on("tracePadPen")){ PAD_TOOL = "hand"; PAD_SUB = false; }
   var seg = padAiOutAvailable(), sug = padAiAvailable();
-  var show = { ai: seg, aiadd: seg, followback: seg, followon: seg, fix: sug, suggest: sug, dark: sug,
+  var show = { ai: seg, aiadd: seg, followback: seg, followon: seg, fix: sug, suggest: sug, dark: sug, three: sug && !!document.getElementById("tracePadAi3d"),
                seg: !!document.getElementById("tracePadSeg") && (function(){ var b = document.getElementById("tracePadSeg"),
                      l = b.closest && b.closest("label"); return !l || l.style.display !== "none"; })(),
                pen: !!document.getElementById("tracePadPen") };
   var active = { hand: PAD_TOOL === "hand", ai: PAD_TOOL === "ai", aiadd: PAD_TOOL === "aiadd", fix: PAD_TOOL === "fix",
                  delpt: PAD_TOOL === "delpt", delring: PAD_TOOL === "delring", clearz: PAD_SUB,
-                 pen: PAD_TOOL === "pen" && !PAD_SUB, suggest: on("tracePadAi"), dark: on("tracePadAiDark"), seg: on("tracePadSeg"),
+                 pen: PAD_TOOL === "pen" && !PAD_SUB, suggest: on("tracePadAi"), dark: on("tracePadAiDark"), three: on("tracePadAi3d"), seg: on("tracePadSeg"),
                  help: box.dataset.caps === "1" };
   [].slice.call(box.querySelectorAll("[data-cp]")).forEach(function(b){
     var k = b.getAttribute("data-cp");
@@ -7596,26 +7595,9 @@ function padCoinLib(){
   });
   return padCoinLib.p;
 }
-/* YOUR POINTS BESIDE THE PAD (2026-11-12). Søren: *"the points are not showing here, so it is difficult
-   to make the animation that goes there. Perhaps the points could also show there next to the tracing
-   pad when you do the AI verification?"* The same number as the chip in the top right, and the coin
-   flies here when this is on screen (core/coin.js picks the [data-coin-target] in view). */
-function padPtsRender(){
-  var el = document.getElementById("tracePadPts"); if (!el) return;
-  var signed = false, pts = null, pend = 0;
-  try { signed = !!(typeof GOOGLE_VERIFIED !== "undefined" && GOOGLE_VERIFIED); } catch (_e){}
-  try { if (typeof MYSTATS !== "undefined" && MYSTATS){
-          pts = (typeof combinedPoints === "function") ? combinedPoints().points : MYSTATS.points;
-          pend = MYSTATS.pendingPoints || 0; } } catch (_e){}
-  var fmt = function(n){ try { return UJ.points.text(n); } catch (_e){ return String(Math.round(n)); } };
-  var h = !signed ? "\ud83e\ude99 sign in to earn coins"
-        : pts == null ? "\ud83e\ude99 \u2026"
-        : "\ud83e\ude99 <span class=\"pts\">" + fmt(pts) + " pts</span>"
-          + (pend > 0 ? " <span style=\"color:#e3b341\">+" + fmt(pend) + " pending</span>" : "");
-  if (el.__h !== h){ el.__h = h; el.innerHTML = h; }
-}
-window.addEventListener("ujcoin-landed", function(){ setTimeout(padPtsRender, 50); });
-setInterval(function(){ var el = document.getElementById("tracePadPts"); if (el && el.offsetParent !== null) padPtsRender(); }, 3000);
+/* (2026-11-12, evening) A points counter beside the pad was added and taken out the same hour: the chip
+   in the top right now floats while the header is scrolled away (core/gamify.js), so the coin always
+   has the real number to fly to. */
 /* "Check others' finds" (core/verifyqueue.js, loaded the first time the button is pressed). */
 function padVerifyOpen(){
   if (UJ.verifyq){ UJ.verifyq.open(); return; }
@@ -8734,6 +8716,25 @@ function wirePad(){
     }
     padPaint(); padAiRun();
   });
+  /* THE TICKS LIVE IN THE ☰ MENU NOW (2026-11-12). Søren, on the rows of ticks above the pad:
+     *"this looks super messy now. The ticks can be removed, because they are in the tracing pad menu
+     now."* The inputs stay -- every tool reads its state from them, and the menu flips them -- but
+     their labels are hidden for good (!important, because the availability code above sets
+     style.display on them). "Use the sections above and below" got its own menu button (≡). */
+  (function(){
+    if (!document.getElementById("padTickHide")){
+      const st = document.createElement("style"); st.id = "padTickHide";
+      st.textContent = ".padtick-hidden{display:none!important}";
+      document.head.appendChild(st);
+    }
+    ["tracePadPen", "tracePadSeg", "tracePadAi", "tracePadAiDark", "tracePadAi3d", "tracePadAiFix", "tracePadAiOut"].forEach(function(id){
+      const el = document.getElementById(id), l = el && el.closest && el.closest("label");
+      if (l) l.classList.add("padtick-hidden");
+    });
+    ["tracePadAiFollowBack", "tracePadAiFollowOn"].forEach(function(id){
+      const el = document.getElementById(id); if (el) el.classList.add("padtick-hidden");
+    });
+  })();
   const pad_3d = document.getElementById("tracePadAi3d");
   if (pad_3d) pad_3d.addEventListener("change", function(){
     if (UJ.organelleml.setThreeD) UJ.organelleml.setThreeD(pad_3d.checked);
@@ -8776,12 +8777,13 @@ function wirePad(){
       else if (k === "newinst") click("tracePadNewInst");
       else if (k === "suggest") flip("tracePadAi");
       else if (k === "dark") flip("tracePadAiDark");
+      else if (k === "three") flip("tracePadAi3d");
       else if (k === "seg") flip("tracePadSeg");
       else if (k === "help"){ cpBox.dataset.caps = cpBox.dataset.caps === "1" ? "0" : "1";
         try { localStorage.setItem("ujump_pad_panel_caps_v1", cpBox.dataset.caps); } catch (_e){} }
       padCpSync();
     });
-    ["tracePadAi", "tracePadAiDark", "tracePadSeg", "tracePadPen", "tracePadAiOut", "tracePadAiFix"].forEach(function(id){
+    ["tracePadAi", "tracePadAiDark", "tracePadAi3d", "tracePadSeg", "tracePadPen", "tracePadAiOut", "tracePadAiFix"].forEach(function(id){
       const el = document.getElementById(id); if (el) el.addEventListener("change", function(){ setTimeout(padCpSync, 0); });
     });
     window.addEventListener("resize", padCpPlace);
@@ -9518,7 +9520,6 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"The suggestions look at this section AND the sections about 80 nm above and below, and average what the model sees on the three: a mark the neighbouring sections agree with keeps its score, a one-section flicker loses half of it. Three runs instead of one. (2026-11-06)\"><input type=\"checkbox\" id=\"tracePadAi3d\"> use the sections above and below</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<button class=\"idbtn\" id=\"tracePadVerify\" style=\"flex:0 0 auto\" title=\"Other people's corrections of the AI and new finds wait for somebody else to confirm them before they earn points. For people who know this tissue well; you answer blind. 1 point for every 5 answers.\">&#128270; Check others' finds</button>",
-    "<span id=\"tracePadPts\" data-coin-target=\"1\" style=\"flex:0 0 auto;font-size:12px;border:1px solid var(--line,#30363d);border-radius:999px;padding:3px 10px;white-space:nowrap\" title=\"Your points. Checking the AI's marks can drop a coin here -- more often for rare organelles and in places you have not answered before.\"></span>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
@@ -9595,6 +9596,7 @@ function tracingCardHtml(){
     "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Show\"></div>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"suggest\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Suggest organelles (AI marks) (key 8)\" aria-label=\"suggest\"><span>&#128161;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">suggest</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"dark\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Dark-cell mode for the suggestions\" aria-label=\"dark cell\"><span>&#9681;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">dark cell</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"three\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Use the sections above and below for the suggestions\" aria-label=\"3 sections\"><span>&#8801;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">3 sections</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"seg\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Show the segmentation\" aria-label=\"segm.\"><span>&#9638;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">segm.</span></button>",
     "</div>",
     "</div>",
