@@ -6875,6 +6875,7 @@ function padAiTickSync(){
             d3b.checked = ok && !!(UJ.organelleml.threeD && UJ.organelleml.threeD()); }
   var fx = document.getElementById("tracePadAiFix");
   if (fx){ var fl = (fx.closest && fx.closest("label")) || fx; fl.style.display = ok ? "" : "none"; if (!ok) fx.checked = false; }
+  var vqb = document.getElementById("tracePadVerify"); if (vqb) vqb.style.display = ok ? "" : "none";
   if (!ok) box.checked = false;
   else if (UJ.organelleml.on() && !box.checked){ box.checked = true; padAiRun(); }
   try { padCpSync(); } catch (_e){}
@@ -7594,6 +7595,17 @@ function padCoinLib(){
   });
   return padCoinLib.p;
 }
+/* "Check others' finds" (core/verifyqueue.js, loaded the first time the button is pressed). */
+function padVerifyOpen(){
+  if (UJ.verifyq){ UJ.verifyq.open(); return; }
+  var sc = document.createElement("script"); sc.src = PAD_COIN_SRC.replace(/coin\.js$/, "verifyqueue.js");
+  sc.onload = function(){ if (UJ.verifyq) UJ.verifyq.open(); };
+  document.head.appendChild(sc);
+}
+document.addEventListener("click", function(e){
+  var b = e.target && e.target.closest && e.target.closest("#tracePadVerify");
+  if (b){ e.preventDefault(); padVerifyOpen(); }
+});
 function padCoinAfter(sent, at){
   if (!sent || typeof sent.then !== "function") return;
   padCoinLib();                                   // start loading while the server thinks
@@ -9477,6 +9489,7 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"For dark cells -- endothelial cells, dark microglia, a pericyte -- where the model sees nothing: every voxel is measured against its own 2 um surroundings before the model looks, so a dark cytoplasm lands on the grey the model knows. Leave it off in ordinary tissue.\"><input type=\"checkbox\" id=\"tracePadAiDark\"> dark-cell mode</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"The suggestions look at this section AND the sections about 80 nm above and below, and average what the model sees on the three: a mark the neighbouring sections agree with keeps its score, a one-section flicker loses half of it. Three runs instead of one. (2026-11-06)\"><input type=\"checkbox\" id=\"tracePadAi3d\"> use the sections above and below</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
+    "<button class=\"idbtn\" id=\"tracePadVerify\" style=\"flex:0 0 auto\" title=\"Other people's corrections of the AI and new finds wait for somebody else to confirm them before they earn points. For people who know this tissue well; you answer blind. 1 point for every 5 answers.\">&#128270; Check others' finds</button>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
