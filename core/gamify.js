@@ -154,7 +154,7 @@ function renderChipInner(){
          +". This page's own "+pointsText(MYSTATS.points)+" update immediately; the others come from the 4-hourly rebuild.")
       : "Points on this dataset only. The combined cross-tool total appears once rebuildProfileTotals() has run — see installProfileTotalsTrigger() in Datasets.gs.";
     c.innerHTML='<div class="chipbtn" id="chipOpen" title="'+escHtml(tip)+'"><span>'+escHtml(MYSTATS.handle||"you")+'</span>'
-      +'<span class="lvl">'+escHtml(cp.level||MYSTATS.level||"")+'</span><span class="pts">'+pointsText(cp.points)+' pts</span>'+((MYSTATS.downvoted>0)?'<span style="color:#e3b341" title="You have '+MYSTATS.downvoted+' down-voted report(s) to review">⚠ '+MYSTATS.downvoted+'</span>':'')+'</div>';
+      +'<span class="lvl">'+escHtml(cp.level||MYSTATS.level||"")+'</span><span class="pts">'+pointsText(cp.points)+' pts</span>'+((MYSTATS.pendingPoints>0)?'<span class="pend" style="color:#e3b341;font-size:.85em" title="Points waiting for somebody else to confirm your answer (Coins.gs)">+'+pointsText(MYSTATS.pendingPoints)+' pending</span>':'')+((MYSTATS.downvoted>0)?'<span style="color:#e3b341" title="You have '+MYSTATS.downvoted+' down-voted report(s) to review">⚠ '+MYSTATS.downvoted+'</span>':'')+'</div>';
     var o=document.getElementById("chipOpen");if(o)o.addEventListener("click",openDashboard);
   } else if(GOOGLE_VERIFIED){
     c.innerHTML='<div class="chipbtn" id="chipOpen"><span>signed in</span><span class="pts">loading…</span></div>';

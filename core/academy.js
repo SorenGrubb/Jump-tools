@@ -241,7 +241,10 @@
       return '<button type="button" data-jastep="' + i + '" class="' + (stepDone(i) ? "ok " : "") + (i === STEP ? "on" : "") + '"'
         + (can ? ' title="Open ' + t.toLowerCase() + '"' : ' disabled title="Finish the steps before this one first"') + '>'
         + (stepDone(i) ? "\u2713 " : (i + 1) + ". ") + t + '</button>';
-    }).join("") + '</div>';
+    }).join("")
+      /* PRACTICE (2026-11-12) is always open: no agreement, no licence, nothing saved but your score. */
+      + '<button type="button" data-jastep="5" class="' + (STEP === 5 ? "on" : "") + '" title="Practise on known answers \u2014 nothing goes into the dataset, no points">\ud83c\udfaf Practice</button>'
+      + '</div>';
     return h;
   }
   function body(html){
@@ -277,7 +280,7 @@
     stopTest();
   }
   function render(){
-    [renderAgreement, renderTutorial, renderOrganelles, renderCells, renderLicence][STEP]();
+    [renderAgreement, renderTutorial, renderOrganelles, renderCells, renderLicence, renderPractice][STEP]();
   }
   function go(i){ STEP = i; render(); }
 
@@ -378,16 +381,22 @@
   var T = null;   // {part, attemptId, items, choices, k (index into items), dots:[], busy}
   function stopTest(){ if (T){ T.stopped = true; } T = null; }
 
-  async function startTest(part){
+  async function startTest(part, practice){
     var host = document.getElementById("jaTest");
-    host.innerHTML = '<p class="ja-sub">Getting ten things to identify…</p>';
-    var d = await api({ action: "start", part: part });
+    host.innerHTML = '<p class="ja-sub">' + (practice ? "Getting twenty to practise on…" : "Getting ten things to identify…") + '</p>';
+    var d = await api({ action: "start", part: part, practice: !!practice });
     if (!d || !d.ok){ host.innerHTML = '<div class="ja-fb wrong">' + esc((d && d.error) || "no answer from the server") + '</div>'; return; }
     T = { part: part, attemptId: d.attemptId, items: d.items, choices: d.choices, k: 0, need: d.need, pass: d.pass,
-          answered: 0, correct: 0, skipped: 0, dots: [], busy: false };
+          answered: 0, correct: 0, skipped: 0, dots: [], busy: false, practice: !!d.practice };
     showItem();
   }
   function scoreHtml(){
+    if (T.practice){
+      var pd = ""; for (var j = 0; j < T.need; j++) pd += '<i class="' + (T.dots[j] || "") + '"></i>';
+      return '<div class="ja-dots">' + pd + '</div><div class="ja-score">Practice \u00b7 ' + T.answered + ' answered \u00b7 '
+        + T.correct + ' right' + (T.answered ? ' (' + Math.round(100 * T.correct / T.answered) + '%)' : '') + ' \u00b7 '
+        + T.skipped + ' skipped \u00b7 not saved to the dataset, no points</div>';
+    }
     var dots = "";
     for (var i = 0; i < T.need; i++) dots += '<i class="' + (T.dots[i] || "") + '"></i>';
     return '<div class="ja-dots">' + dots + '</div><div class="ja-score">' + T.answered + ' of ' + T.need + ' answered · '
@@ -434,6 +443,7 @@
       return;
     }
     T.answered = d.answered; T.correct = d.correctCount; T.skipped = d.skippedCount;
+    if (d.skipped && T.practice) T.dots.push("");
     if (d.skipped){ fb.className = "ja-fb"; fb.textContent = auto ? "Skipped automatically \u2014 that one could not be shown properly." : "Skipped \u2014 that does not count against you."; }
     else {
       T.dots.push(d.correct ? "r" : "w");
@@ -451,6 +461,7 @@
     }, d.skipped ? 500 : 1600);
   }
   function finished(d){
+    if (T.practice){ practiceDone(d); return; }
     var host = document.getElementById("jaTest"), part = T.part;
     var label = part === "cells" ? "cells" : "organelles";
     if (d.passed){
@@ -465,6 +476,63 @@
         + ', so try again whenever you like.</div><div class="ja-row"><button class="ja-btn go" id="jaAgain">Try again</button></div>';
       host.querySelector("#jaAgain").onclick = function(){ startTest(part); };
     }
+  }
+
+  /* ── PRACTICE ───────────────────────────────────────────────────────────────  2026-11-12
+     Søren: *"a practice mode, where your accuracy is measured but you are not contributing to the
+     dataset or earning real points."* The test's own questions and banks, twenty at a time, with no
+     pass mark. Every answer is told right or wrong at once; the round ends with how you did per
+     type, and the panel shows your score over every practice round so far (backend Academy.gs keeps
+     the rounds in "Academy attempts" -- that is the measuring -- and never writes a report). */
+  function practiceTable(o){
+    var ks = Object.keys(o.byKind || {}).sort(function(a, b){ return o.byKind[b][1] - o.byKind[a][1]; });
+    if (!ks.length) return "";
+    return '<table class="ja-pt" style="border-collapse:collapse;margin-top:6px;font-size:12.5px">'
+      + ks.map(function(k){ var b = o.byKind[k], pc = Math.round(100 * b[0] / b[1]);
+          return '<tr><td style="padding:2px 12px 2px 0">' + esc(k) + '</td><td style="padding:2px 8px;text-align:right">'
+            + b[0] + ' / ' + b[1] + '</td><td style="padding:2px 0;min-width:90px"><span style="display:inline-block;height:8px;border-radius:4px;width:'
+            + Math.max(4, pc) + 'px;background:' + (pc >= 80 ? "#3fb950" : pc >= 50 ? "#e3b341" : "#f85149") + '"></span> ' + pc + '%</td></tr>'; }).join("")
+      + '</table>';
+  }
+  async function practiceStats(){
+    var el = document.getElementById("jaPStats"); if (!el) return;
+    var d = await api({ action: "practiceStats" });
+    if (!document.body.contains(el)) return;
+    if (!d || !d.ok){ el.innerHTML = ""; return; }
+    var h = "";
+    ["organelles", "cells"].forEach(function(w){
+      var o = d.practice[w]; if (!o || !o.rounds) return;
+      h += '<div style="margin-top:10px"><b>' + (w === "cells" ? "Cells" : "Organelles") + '</b> \u2014 ' + o.rounds + ' round'
+        + (o.rounds === 1 ? "" : "s") + ', ' + o.correct + ' of ' + o.answered + ' right (' + (o.answered ? Math.round(100 * o.correct / o.answered) : 0) + '%)'
+        + practiceTable(o) + '</div>';
+    });
+    el.innerHTML = h ? '<div class="ja-sub" style="margin-top:12px">Your practice so far:</div>' + h : '';
+  }
+  function renderPractice(){
+    if (!canTest()){
+      body('<h3>\ud83c\udfaf Practice</h3><div class="ja-done">Practice uses MICrONS imagery and meshes, so it runs in <b>\u00b5Jump</b>. '
+        + '<a href="' + esc(ujumpUrl()) + '">Practise in \u00b5Jump \u2192</a></div>');
+      return;
+    }
+    body('<h3>\ud83c\udfaf Practice</h3><p>The same kind of questions as the tests, twenty at a time, on things experts or '
+      + 'checked AI suggestions have already identified. You are told straight away whether you were right. '
+      + '<b>Nothing you answer here goes into the dataset and it earns no points</b> \u2014 only your score is kept, so you '
+      + 'can see how you improve. You do not need the agreement or the licence to practise.</p>'
+      + '<div id="jaTest"><div class="ja-row"><button class="ja-btn go" id="jaPO">Practise organelles</button>'
+      + '<button class="ja-btn go" id="jaPC">Practise cells in 3D</button></div><div id="jaPStats"></div></div>');
+    document.getElementById("jaPO").onclick = function(){ startTest("organelles", true); };
+    document.getElementById("jaPC").onclick = function(){ startTest("cells", true); };
+    practiceStats();
+  }
+  function practiceDone(d){
+    var host = document.getElementById("jaTest"), part = T.part;
+    host.innerHTML = scoreHtml() + '<div class="ja-done"><b>' + d.correctCount + ' of ' + d.answered + ' right'
+      + (d.answered ? ' (' + Math.round(100 * d.correctCount / d.answered) + '%)' : '') + '</b> this round.'
+      + practiceTable({ byKind: d.byKind || {} }) + '</div>'
+      + '<div class="ja-row"><button class="ja-btn go" id="jaAgain">Practise ' + (part === "cells" ? "cells" : "organelles") + ' again</button>'
+      + '<button class="ja-btn" id="jaPBack">Back</button></div>';
+    host.querySelector("#jaAgain").onclick = function(){ startTest(part, true); };
+    host.querySelector("#jaPBack").onclick = function(){ stopTest(); go(5); };
   }
 
   /* ── 3. organelles: the pad's EM, a ring, eight kinds ──────────────────────────────────── */

@@ -7475,6 +7475,7 @@ function padAiFixPop(e, html){
 }
 /* ONE OF YOUR OWN ANSWERS, clicked: undo it, or change it. 2026-10-31. */
 function padAiFixMine(e, c){
+  PAD_COIN_AT = { x: e.clientX, y: e.clientY };
   var nm = function(k){ return UJ.organelleml.nameOf(k); };
   var said = c.verdict === "ok" ? "\u2713 " + nm(c.k) : c.verdict === "no" ? "\u2717 not an organelle" : "\u2192 " + nm(c.k);
   var pop = padAiFixPop(e,
@@ -7510,6 +7511,7 @@ function padAiFixRetract(c){
 }
 function padAiFixOpen(e){
   padAiFixClose();
+  PAD_COIN_AT = { x: e.clientX, y: e.clientY };
   if (!PAD_VIEW || !PAD) return;
   var px = e.offsetX, py = e.offsetY;
   var mk = UJ.organelleml.markAt(PAD_VIEW, px, py, PAD.z);
@@ -7572,17 +7574,55 @@ function padAiFixOpen(e){
     }
   });
 }
+/* ── COINS (2026-11-12) ── Hesham's idea, Søren's rules. The SERVER decides whether an answer earns a
+   coin (backend Coins.gs) and says so in its reply; this only flies the coin from where you
+   clicked to your points. A correction of the AI, or a type it cannot learn yet, comes back as
+   PENDING instead: it is paid when somebody else confirms it. core/coin.js is loaded the first time
+   it is needed, from beside this file, so no page has to list it. */
+var PAD_COIN_AT = null;
+var PAD_COIN_SRC = (function(){ try { var s = document.currentScript && document.currentScript.src;
+  /* A page that inlines this file (ωJump, χJump) has no script URL to go by: core/ beside the page. */
+  return (s && /tracingcard\.js(\?.*)?$/.test(s)) ? s.replace(/tracingcard\.js(\?.*)?$/, "coin.js") : "core/coin.js"; }
+  catch (_e){ return "core/coin.js"; } })();
+function padCoinLib(){
+  if (UJ.coin) return Promise.resolve(UJ.coin);
+  if (!PAD_COIN_SRC) return Promise.resolve(null);
+  if (!padCoinLib.p) padCoinLib.p = new Promise(function(res){
+    var sc = document.createElement("script"); sc.src = PAD_COIN_SRC;
+    sc.onload = function(){ res(UJ.coin || null); }; sc.onerror = function(){ res(null); };
+    document.head.appendChild(sc);
+  });
+  return padCoinLib.p;
+}
+function padCoinAfter(sent, at){
+  if (!sent || typeof sent.then !== "function") return;
+  padCoinLib();                                   // start loading while the server thinks
+  sent.then(function(res){
+    if (!res || !res.ok) return;
+    var nm = function(k){ try { return UJ.organelleml.nameOf(k); } catch (_e){ return k; } };
+    if (res.coin){
+      var lbl = res.coin.amount > 1 ? "rare: " + nm(res.coin.kind) : nm(res.coin.kind);
+      padCoinLib().then(function(C){ if (C) C.fly({ x: at && at.x, y: at && at.y, amount: res.coin.amount, label: lbl }); });
+    } else if (res.pending){
+      if (window.MYSTATS) MYSTATS.pendingPoints = (MYSTATS.pendingPoints || 0) + res.pending.amount;
+      try { if (typeof renderChip === "function") renderChip(); } catch (_e){}
+      padAiSay("+" + res.pending.amount + " points pending \u2014 paid when "
+        + (res.pending.needs > 1 ? res.pending.needs + " other people confirm" : "somebody else confirms") + " it.");
+    }
+  });
+}
 function padAiFixSend(t, kind, verdict, was, p){
   var m = UJ.organelleml.meta() || {};
   var payload = { type: "organelle_location", timestamp: new Date().toISOString(),
     nucleusId: "", rootId: "", coord: "",
     groupId: "aifix_" + Date.now().toString(36), subIndex: 1, subCount: 1,
     kind: kind, pointA: t[0] + "," + t[1] + "," + t[2], pointB: "", identified: "",
-    path: "ai-correction", source: "ai_correction",
+    path: "ai-correction", source: "ai_correction", verdict: verdict, was: was || "",
     comment: (was ? "model said " + was + (p != null ? " " + Math.round(p * 100) + "%" : "") : "missed by the model")
       + " · model trained " + (m.trained || "?") };
   var sent = (typeof postReport === "function") ? postReport(payload, "Thank you \u2014 saved for the next training round.") : false;
   if (!sent){ padAiSay("Not saved \u2014 sign in with Google (top right), then click it again.", true); return; }
+  padCoinAfter(sent, PAD_COIN_AT);
   UJ.organelleml.correct({ t: t, k: kind, was: was, p: p, verdict: verdict });
   padAiFixClose();
   padPaint();
