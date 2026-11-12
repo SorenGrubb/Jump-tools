@@ -193,6 +193,20 @@
       if (tab && tab.parentNode){ tab.parentNode.appendChild(b); }
       else { b.className = "float"; document.body.appendChild(b); }
     }
+    /* PRACTICE GETS ITS OWN BUTTON (2026-11-12). Søren: *"I don't see a practice mode button?"* It was
+       only the last tab inside the Academy window, which you only see after opening the Academy. Now
+       it sits beside the badge and opens straight onto the Practice tab. */
+    if (!document.getElementById("jaPracticeBtn")){
+      var pb = document.createElement("button"); pb.id = "jaPracticeBtn"; pb.type = "button";
+      pb.textContent = "\ud83c\udfaf Practice";
+      pb.title = "Practise identifying organelles and cells on known answers. Nothing goes into the dataset and it earns no points \u2014 only your accuracy is kept.";
+      pb.style.cssText = "cursor:pointer;border:1px solid var(--acc,#58a6ff);background:transparent;color:var(--acc,#58a6ff);"
+        + "border-radius:999px;padding:4px 12px;font:600 12px system-ui,sans-serif;margin-left:6px;white-space:nowrap";
+      pb.addEventListener("click", function(){ open(null, 5); });
+      if (b.parentNode && !b.classList.contains("float")) b.parentNode.insertBefore(pb, b.nextSibling);
+      else { pb.style.position = "fixed"; pb.style.left = "12px"; pb.style.top = "44px"; pb.style.zIndex = "9990";
+             pb.style.background = "var(--card,#161b22)"; document.body.appendChild(pb); }
+    }
     var lic = licensed();
     b.classList.toggle("lic", lic);
     b.textContent = lic ? "🪪 Licence to Jump" + (STATUS.licenceNo ? " · " + STATUS.licenceNo : "")
