@@ -127,8 +127,12 @@
       "#jaBox .ja-sub{color:var(--mut,#8b949e);font-size:13px}",
       "#jaClose{position:absolute;right:12px;top:10px;background:none;border:0;color:var(--mut,#8b949e);font-size:22px;cursor:pointer}",
       ".ja-steps{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px}",
-      ".ja-steps span{flex:1 1 120px;text-align:center;padding:6px 4px;border-radius:8px;font-size:12px;border:1px solid var(--line,#30363d);color:var(--mut,#8b949e)}",
-      ".ja-steps span.on{border-color:var(--acc,#58a6ff);color:var(--ink,#e6edf3)}.ja-steps span.ok{border-color:#3fb950;color:#3fb950}",
+      ".ja-steps button{flex:1 1 120px;text-align:center;padding:6px 4px;border-radius:8px;font:12px system-ui,sans-serif;cursor:pointer;",
+      " background:transparent;border:1px solid var(--line,#30363d);color:var(--mut,#8b949e)}",
+      ".ja-steps button:hover:not([disabled]){background:rgba(127,127,127,.12)}.ja-steps button[disabled]{cursor:default;opacity:.55}",
+      ".ja-steps button.ok{border-color:#3fb950;color:#3fb950}",
+      ".ja-steps button.on{border-color:var(--acc,#58a6ff);color:var(--ink,#e6edf3);box-shadow:inset 0 0 0 1px var(--acc,#58a6ff)}",
+      ".ja-steps button.ok.on{border-color:#3fb950;color:#3fb950;box-shadow:inset 0 0 0 1px #3fb950;background:rgba(46,160,67,.10)}",
       ".ja-btn{cursor:pointer;border:1px solid var(--line,#30363d);background:var(--bg2,#21262d);color:var(--ink,#e6edf3);border-radius:8px;padding:7px 14px;font:600 13px system-ui,sans-serif}",
       ".ja-btn:hover{border-color:var(--acc,#58a6ff)}.ja-btn[disabled]{opacity:.45;cursor:default}",
       ".ja-btn.go{background:#238636;border-color:#2ea043;color:#fff}",
@@ -225,14 +229,27 @@
       + 'organelles that experts or checked AI suggestions have already identified. Pass both and you get your '
       + '<b>Licence to Jump</b> — for every Jump tool.</div>';
     if (WHY) h += '<div class="ja-fb ' + (WHY_TONE === "info" ? "info" : "wrong") + '" style="margin-top:8px">' + esc(WHY) + '</div>';
+    /* ── THE STEPS ARE TABS ──────────────────────────────────────────────────────────  2026-11-12
+       Gary: *"I accidentally clicked forward too fast without reading the agreement. Can you make it
+       so that you can go back if you want to view the previous tab?"* Every step already reached --
+       anything done, and the first one not yet done -- can be opened again by clicking its tab;
+       later ones stay shut until the ones before them are done. Leaving a test half-way only drops
+       that round; a new round starts when you come back. */
+    var reach = firstOpenStep();
     h += '<div class="ja-steps">' + STEPS.map(function(t, i){
-      return '<span class="' + (stepDone(i) ? "ok" : (i === STEP ? "on" : "")) + '">' + (stepDone(i) ? "✓ " : (i + 1) + ". ") + t + '</span>';
+      var can = i <= reach || stepDone(i);
+      return '<button type="button" data-jastep="' + i + '" class="' + (stepDone(i) ? "ok " : "") + (i === STEP ? "on" : "") + '"'
+        + (can ? ' title="Open ' + t.toLowerCase() + '"' : ' disabled title="Finish the steps before this one first"') + '>'
+        + (stepDone(i) ? "\u2713 " : (i + 1) + ". ") + t + '</button>';
     }).join("") + '</div>';
     return h;
   }
   function body(html){
     var b = document.getElementById("jaBody");
     b.innerHTML = head() + html;
+    b.querySelectorAll("[data-jastep]").forEach(function(x){
+      x.onclick = function(){ var i = +x.getAttribute("data-jastep"); if (i === STEP) return; WHY = ""; stopTest(); go(i); };
+    });
     return b;
   }
 
@@ -403,7 +420,7 @@
     /* the next cell is fetched while this one is looked at */
     if (T.part === "cells" && T.items[T.k + 1]) prefetch(T.items[T.k + 1].rootId);
   }
-  async function answer(a, btn){
+  async function answer(a, btn, auto){
     if (!T || T.busy) return;
     T.busy = true;
     var mine = T;
@@ -417,7 +434,7 @@
       return;
     }
     T.answered = d.answered; T.correct = d.correctCount; T.skipped = d.skippedCount;
-    if (d.skipped){ fb.className = "ja-fb"; fb.textContent = "Skipped — that does not count against you."; }
+    if (d.skipped){ fb.className = "ja-fb"; fb.textContent = auto ? "Skipped automatically \u2014 that one could not be shown properly." : "Skipped \u2014 that does not count against you."; }
     else {
       T.dots.push(d.correct ? "r" : "w");
       fb.className = "ja-fb " + (d.correct ? "right" : "wrong");
@@ -543,14 +560,29 @@
     prefetch(it.rootId);
     MESHES[it.rootId].then(function(m){
       if (mine !== T || !document.body.contains(stage)) return;
+      /* ── A NUCLEUS IS NOT A CELL ────────────────────────────────────────────  2026-11-12
+         Søren, after taking the test: *"I got a nucleus without rootID which would have been
+         impossible for anyone else."* The bank is checked (backend/Academy.gs drops every root whose
+         mesh is not a whole cell), but segmentations change, so the page checks too: a mesh that
+         did not load, or whose largest extent is under 20 µm -- a nucleus or a bare soma -- is not
+         put in front of anybody. It is skipped on their behalf, and a skip costs nothing. */
+      var P = m.positions || [], mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (var i = 0; i < P.length; i += 3) for (var k = 0; k < 3; k++){
+        var v = P[i + k]; if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v; }
+      var ext = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]);
+      if (!(P.length >= 300 && ext >= 20)){ autoSkip(stage, "this cell\u2019s segmentation is only a fragment (" + (isFinite(ext) ? ext.toFixed(0) + " \u00b5m" : "empty") + ")"); return; }
       var geo = UJ.mesh3d.prepare(m.positions, m.indices, { unitNm: 1000 });
       stage.innerHTML = "";
       UJ.mesh3d.show(stage, geo, { emptyMessage: "This cell’s mesh came back empty — skip it." });
     }, function(e){
       if (mine !== T) return;
-      stage.innerHTML = '<div class="ja-fb wrong" style="margin:10px">The mesh could not be loaded (' + esc(e && e.message || e)
-        + '). Skip this one — a skip costs nothing.</div>';
+      autoSkip(stage, "its mesh could not be loaded (" + (e && e.message || e) + ")");
     });
+  }
+  function autoSkip(stage, why){
+    stage.innerHTML = '<div class="ja-fb info" style="margin:10px">Skipped for you: ' + esc(why)
+      + '. It does not count. Fetching the next cell\u2026</div>';
+    setTimeout(function(){ if (T && !T.busy) answer("skip", null, true); }, 1400);
   }
 
   function renderElsewhere(what){
