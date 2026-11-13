@@ -28,19 +28,41 @@
   function reply(payload, status) {
     return new Response(JSON.stringify(payload), { status: status || 200, headers: { 'Content-Type': 'application/json' } });
   }
+  /* Said out loud, once: signed in, but this table is being kept in this browser only, so it earns no
+     point and is not on your account. Søren, 13 Nov: "Not getting any points for Lightpath levels." --
+     the server had not been redeployed, and nothing on the page said so. */
+  var saidOffline = false;
+  function offline(why) {
+    try { console.warn('[lightpath] kept in this browser only:', why); } catch (e) {}
+    if (saidOffline) return; saidOffline = true;
+    var put = function () {
+      var hd = document.querySelector('header'); if (!hd) return;
+      var n = document.createElement('div');
+      n.style.cssText = 'margin-top:4px;font-size:.7rem;color:#f2c14e';
+      n.textContent = '\u26A0 Not saved to your account and no points: ' + why + '. Your progress is kept in this browser.';
+      hd.appendChild(n);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', put); else put();
+  }
   function ask(body, fallback) {
     body.type = 'lightpath'; body.credential = cred();
     return inner(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         /* an expired sign-in or an Apps Script without Lightpath.gs yet: play on in this browser */
-        if (!d || d.error === 'unauthenticated' || (d.ok === false && d.error && !d.status)) return fallback();
+        if (!d || d.error === 'unauthenticated' || (d.ok === false && d.error && !d.status)){
+          offline(!d ? 'no answer from the server'
+                : d.error === 'unauthenticated' ? 'your sign-in has expired \u2014 sign in again (top right)'
+                : /unknown report type|not in this Apps Script/.test(d.error) ? 'the server does not have the game yet (Lightpath.gs)'
+                : d.error);
+          return fallback();
+        }
         var st = d && d.status ? d.status : 200;
         if (d) delete d.status;
         /* after a clear, the Academy page (if this is framed in it) may want to redraw its badges */
         try { if (body.action === 'clear' && window.parent !== window) window.parent.dispatchEvent(new CustomEvent('lightpath-clear', { detail: d })); } catch (e) {}
         return reply(d, st);
-      }, function () { return fallback(); });
+      }, function () { offline('the server could not be reached'); return fallback(); });
   }
 
   window.fetch = function (input, init) {
