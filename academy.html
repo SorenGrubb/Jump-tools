@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+/* Same theme key as every tool, resolved before the first paint. */
+(function(){
+  var t = null;
+  try { t = localStorage.getItem("ujump_theme"); } catch(e){}
+  if (t !== "light" && t !== "dark")
+    t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
+<title>Jump Academy · grubblab</title>
+<meta name="description" content="Jump Academy: get your Licence to Jump, practise identifying organelles and cells in electron microscopy, learn from atlases of organelles and cell types, play, and earn badges.">
+<!--
+  JUMP ACADEMY (2026-11-12). Gary Morris: "Could we create a separate Jump Academy platform hosted in
+  grubblab? It could be the very first platform listed. Within it you could build some of the gamified
+  ideas you have had, but you could also have a separate tab for pure learning that doesn't require any
+  gaming ... You could earn multiple badges over time ... It would also mean you can take it out of the
+  other Jump platforms interfaces, because it will start to clog them up otherwise." Søren: "I think
+  that's a great idea. I'd put my Lightpath game there also."
+
+  FIVE TABS
+    Licence   the agreement, the tutorial (run in µJump, where its walkthroughs point at real controls),
+              and the two tests -- core/academy.js, drawn into #jaHost instead of over a tool.
+    Practice  the same banks, 20 at a time, never scored for anything but your own accuracy.
+    Learn     NO points, NO games: an organelle atlas (real EM, community-checked examples), a cell-type
+              atlas (3D meshes and the soma in EM), the cell key (the guided-identification tree, to
+              walk without submitting), and a reading list.
+    Games     The Light Path (lightpath/, 100 tables solo, then together), "Check others' finds", and how the coins work.
+    Badges    earned over time, from what you already do in the tools.
+  The data is MICrONS minnie65, the same as µJump's, and the licence is the same licence: one account,
+  every tool.
+-->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='86'>%F0%9F%8E%93</text></svg>">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#fbfaf8; --ink:#1b1e22; --mut:#5f6873; --line:#e4e1da; --card:#ffffff; --panel:#ffffff;
+    --accent:#0f766e; --acc:#0f766e; --on-accent:#ffffff; --bad:#c62828; --chip:#eef2f1; --gold:#b7791f;
+  }
+  [data-theme="dark"]{
+    --bg:#0d1117; --ink:#e6edf3; --mut:#8b949e; --line:#30363d; --card:#161b22; --panel:#161b22;
+    --accent:#27e0b3; --acc:#58a6ff; --on-accent:#0d1117; --bad:#f85149; --chip:#1f2a2e; --gold:#e3b341;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 16px 70px}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  header.top{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:20px 0 6px}
+  .brand{flex:1 1 auto;min-width:0}
+  .brand h1{margin:0;font-size:30px;letter-spacing:-.01em}
+  .brand .sub{color:var(--mut);font-size:14px;margin-top:2px}
+  .brand .home{font-size:13px}
+  .topbar-right{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
+  #themeBtn{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px}
+  nav.atabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px;border-bottom:1px solid var(--line);padding-bottom:12px}
+  nav.atabs button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;font:inherit;font-size:14px}
+  nav.atabs button.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+  .panel{display:none}.panel.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 14px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .mut{color:var(--mut)} .small{font-size:13px}
+  .btn{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px}
+  .btn:hover{border-color:var(--accent)} .btn.go{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+  .subnav{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .subnav button{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;font:inherit;font-size:13px}
+  .subnav button.on{color:var(--ink);border-color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .em{position:relative;width:100%;max-width:440px;aspect-ratio:1;background:#000;border-radius:10px;overflow:hidden}
+  .em canvas,.em svg{position:absolute;inset:0;width:100%;height:100%}
+  .em .ld{position:absolute;left:8px;top:6px;font-size:12px;color:#ffd75a}
+  .em .cp{position:absolute;left:8px;bottom:6px;font-size:11.5px;color:#ddd;text-shadow:0 1px 2px #000}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .kinds{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .kinds button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;font:inherit;font-size:13px}
+  .kinds button.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+  .look{margin:6px 0 0;padding-left:18px} .look li{margin:2px 0}
+  .stage3d{width:100%;height:360px;background:#0b0f14;border-radius:10px;overflow:hidden;position:relative}
+  .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+  .badge{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card);text-align:center}
+  .badge .ic{font-size:30px;line-height:1.1;filter:grayscale(1);opacity:.35}
+  .badge.got{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+  .badge.got .ic{filter:none;opacity:1}
+  .badge b{display:block;font-size:13.5px;margin-top:4px}
+  .badge .how{font-size:11.5px;color:var(--mut);margin-top:3px}
+  .badge .bar{height:5px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:6px}
+  .badge .bar i{display:block;height:100%;background:var(--gold)}
+  .bgroup{margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+  /* the cell key (core/tree.js's classes) */
+  #keyPanel .idf-title{font-weight:700;font-size:16px}
+  #keyPanel .idf-crumbs{display:none}
+  #keyPanel .idf-q{font-weight:600;margin:12px 0 8px}
+  #keyPanel .idf-opts{display:flex;flex-direction:column;gap:6px}
+  #keyPanel .idf-opt{text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit;font-size:14px}
+  #keyPanel .idf-opt:hover{border-color:var(--accent)}
+  #keyPanel .idf-back{color:var(--accent);cursor:pointer;font-size:13px;display:inline-block;margin-top:8px}
+  #keyPanel input{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
+  .refs li{margin:8px 0}
+</style>
+<script>
+window.UJ = window.UJ || {};
+/* MICrONS minnie65, as in µJump: the tests, the practice and the atlases all show this volume. */
+UJ.cfg = {
+  predictedBy: "MICrONS", id: "microns", label: "MICrONS minnie65", dataset: "ujump",
+  res: [4, 4, 40],
+  tracing: { lsKey: "ujump_tracings_v1", draftsKey: "ujump_tracing_drafts_v2", draftKey: "ujump_tracing_draft_v1", penKey: "ujump_tracing_pen_v1" },
+  tree: { panelId: "keyPanel", modal: false, startNode: "q2", suggestionSource: null }
+};
+var UJ_RX = 4, UJ_RY = 4, UJ_RZ = 40;
+UJ.cfg.backend = {
+  endpoint: "https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec",
+  clientId: "240227117082-gmiv0s37qdqngo3t3ph0lmthg4t4t47p.apps.googleusercontent.com",
+  ownerEmail: "", ds: "ujump"
+};
+UJ.cfg.mesh = {
+  notFoundKey: "ujump_mesh_notfound_v1",
+  meshBase: "https://storage.googleapis.com/iarpa_microns/minnie/minnie65/seg_m1300/mesh/",
+  meshBaseAlt: "https://storage.googleapis.com/storage/v1/b/iarpa_microns/o/minnie%2Fminnie65%2Fseg_m1300%2Fmesh%2F",
+  meshBaseAltSuffix: ".shard?alt=media",
+  preshiftBits: 6, minishardBits: 8, shardBits: 13, vertexQuantizationBits: 16,
+  transform: [16,0,0,0, 0,16,0,0, 0,0,40,0],
+  dracoWrapper: "https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_wasm_wrapper.js",
+  dracoWasm: "https://www.gstatic.com/draco/versioned/decoders/1.5.6/draco_decoder.wasm"
+};
+UJ.cfg.em = {
+  emSource: "gs://iarpa_microns/minnie/minnie65/em", segSource: "gs://iarpa_microns/minnie/minnie65/seg_m1300",
+  nucSource: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei"
+};
+UJ.toNm  = function(v){ return [v[0]*UJ_RX, v[1]*UJ_RY, v[2]*UJ_RZ]; };
+UJ.toVox = function(p){ return [p[0]/UJ_RX, p[1]/UJ_RY, p[2]/UJ_RZ]; };
+const SRC = { em: "precomputed://https://storage.googleapis.com/iarpa_microns/minnie/minnie65/em",
+              seg: "precomputed://gs://iarpa_microns/minnie/minnie65/seg_m1300",
+              nuc: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/nuclei" };
+/* What core/academy.js hands to UJ.emtiles.configure() (the tracing card's own version of this needs the
+   whole card; the Academy only ever reads minnie65's EM). */
+function tracingSources(){ return { em: SRC.em, seg: SRC.seg, nuc: SRC.nuc, res: [4, 4, 40], skipScales: [], decoders: null,
+                                    segInfo: "", nucInfo: "", segOffsetNm: null, nucOffsetNm: null, u16: null }; }
+
+/* ── sign-in: the same Google client and the same backend as every tool, so the licence, the points and
+   the badges are the account's, wherever it signs in. Kept in this page's memory only. */
+const REPORT_ENDPOINT = UJ.cfg.backend.endpoint;
+const GOOGLE_CLIENT_ID = UJ.cfg.backend.clientId;
+let REPORTER_NAME = "", REPORTER_EMAIL = "", GOOGLE_VERIFIED = false, GOOGLE_CREDENTIAL = "", GOOGLE_EXP = 0;
+function handleGoogleCred(resp){
+  try{
+    const payload = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")).split("").map(c=>"%"+("00"+c.charCodeAt(0).toString(16)).slice(-2)).join("")));
+    REPORTER_NAME = payload.name || ""; REPORTER_EMAIL = payload.email || "";
+    if (payload.email){ GOOGLE_VERIFIED = true; GOOGLE_CREDENTIAL = resp.credential; GOOGLE_EXP = payload.exp || 0;
+      if (typeof gamifyOnSignIn === "function") gamifyOnSignIn(); }
+    try { window.dispatchEvent(new CustomEvent("academy-signin")); } catch (_e){}
+  }catch(_){}
+}
+/* The Light Path (lightpath/, framed in the Games tab) asks for this: `let` globals are not on window. */
+window.lpCred = function(){ return GOOGLE_VERIFIED ? GOOGLE_CREDENTIAL : ""; };
+function handleGoogleExpiry(){ if (!GOOGLE_VERIFIED) return; GOOGLE_VERIFIED = false; GOOGLE_CREDENTIAL = ""; if (typeof renderChip === "function") renderChip(); }
+setInterval(function(){ if (GOOGLE_VERIFIED && GOOGLE_EXP && Date.now()/1000 > GOOGLE_EXP - 90) handleGoogleExpiry(); }, 60000);
+function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]; }); }
+</script>
+<script src="core/volumes.js"></script>
+<script src="core/mesh.js"></script>
+<script src="core/mesh3d.js"></script>
+<script src="core/points.js"></script>
+<script src="core/gamify.js"></script>
+<script src="core/segread.js"></script>
+<script src="core/jxl.js"></script>
+<script src="core/emtiles.js"></script>
+<script src="core/ontology.js"></script>
+<script src="core/tree.js"></script>
+<script src="core/academy.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <a class="home" href="/index.html">&larr; grubblab</a>
+      <h1>🎓 Jump Academy</h1>
+      <div class="sub">Learn to read the brain in electron microscopy &mdash; and get your Licence to Jump for every Jump tool.</div>
+    </div>
+    <div class="topbar-right">
+      <button id="themeBtn" type="button">🌙 Dark</button>
+      <div id="gameChipSlot"></div>
+    </div>
+  </header>
+
+  <nav class="atabs" aria-label="Jump Academy">
+    <button type="button" data-p="licence">🪪 Licence</button>
+    <button type="button" data-p="practice">🎯 Practice</button>
+    <button type="button" data-p="learn">📖 Learn</button>
+    <button type="button" data-p="games">🎮 Games</button>
+    <button type="button" data-p="badges">🏅 Badges</button>
+  </nav>
+
+  <!-- Licence and Practice share core/academy.js's host -->
+  <section class="panel" id="p-licence-practice">
+    <div class="card" id="licIntro"></div>
+    <div id="jaHost"></div>
+  </section>
+
+  <section class="panel" id="p-learn">
+    <p class="mut small" style="margin-top:0">Just learning: nothing here is scored, saved or rewarded.</p>
+    <div class="subnav" id="learnNav">
+      <button type="button" data-l="org" class="on">Organelle atlas</button>
+      <button type="button" data-l="cell">Cell-type atlas</button>
+      <button type="button" data-l="key">The cell key</button>
+      <button type="button" data-l="read">Reading list</button>
+    </div>
+    <div id="l-org"></div>
+    <div id="l-cell" style="display:none"></div>
+    <div id="l-key" style="display:none">
+      <div class="card"><h3>The cell key</h3>
+        <p class="mut small" style="margin-top:0">The same questions the tools ask in <i>Guided identification</i>, to walk through
+        without a cell or a submit button: answer what you can see, and the key narrows down to a cell type. Use it
+        with the cell-type atlas, or beside a cell open in &micro;Jump.</p>
+        <div class="row" style="margin:0 0 6px"><button class="btn" id="keyRestart">&#8634; Start again</button></div>
+        <div id="keyPanel"></div>
+      </div>
+    </div>
+    <div id="l-read" style="display:none"></div>
+  </section>
+
+  <section class="panel" id="p-games">
+    <div class="card lpcard"><h3>💡 The Light Path</h3>
+      <p class="mut" style="margin:0 0 8px">Søren's two-photon puzzle: steer the laser through mirrors, dichroics and filters to the
+      right detectors. <b>Clear all 100 tables yourself</b> to earn the Light Path badge &mdash; then you join the
+      <b>Jump community's campaign</b>, where everybody plays the same tables and whoever clears one unlocks the next for all.
+      <span id="lpWho"></span></p>
+      <iframe id="lpFrame" title="The Light Path" data-src="lightpath/index.html" style="width:100%;height:min(88vh,900px);border:0;border-radius:10px;background:#000"></iframe>
+    </div>
+    <div class="card"><h3>🔎 Check others' finds</h3>
+      <p style="margin-top:0">When somebody corrects the AI or finds an organelle it cannot learn yet, their points wait
+      until somebody else agrees. You look at the spot <b>blind</b> &mdash; without being told what they called it &mdash;
+      and say what you see. For people who know the tissue well; "Can't tell" is always fine. 1 point for every 5
+      answers. Needs your Licence to Jump.</p>
+      <button class="btn go" id="vqOpen">Check others' finds</button>
+    </div>
+    <div class="card"><h3>🪙 How the coins work</h3>
+      <ul class="look">
+        <li>On the tracing pad, with the AI's suggestions on, <b>check its marks</b>: right, wrong, or what it really is.
+            A gold coin sometimes jumps out &mdash; often for rare organelles (centrioles, cilia), seldom for
+            mitochondria or chromatin.</li>
+        <li>The same spot again earns nothing, and many answers in one small area earn less: move around the cell.</li>
+        <li>Correcting the AI earns <b>2 points</b>, and finding a type it cannot learn yet earns <b>10</b>, once
+            somebody else confirms it.</li>
+        <li>Now and then a mark or a find has a known answer. Your accuracy on those is shown in your stats; below 70%
+            the coins stop until it comes back up. Practice here is never scored that way.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel" id="p-badges">
+    <div id="badgesBody"><p class="mut">Sign in (top right) to see your badges.</p></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s, r){ return (r || document).querySelector(s); };
+  var esc = escHtml;
+
+  /* ── theme ── */
+  function setTheme(t){ document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("ujump_theme", t); } catch (_e){}
+    $("#themeBtn").textContent = t === "dark" ? "☀️ Light" : "🌙 Dark"; }
+  setTheme(document.documentElement.getAttribute("data-theme") || "dark");
+  $("#themeBtn").onclick = function(){ setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"); };
+
+  /* ── tabs, remembered in the address (#practice, #learn …) so a link can open one ── */
+  var PANELS = { licence: "p-licence-practice", practice: "p-licence-practice", learn: "p-learn", games: "p-games", badges: "p-badges" };
+  var CUR = "";
+  function show(p){
+    if (!PANELS[p]) p = "licence";
+    CUR = p;
+    document.querySelectorAll("nav.atabs button").forEach(function(b){ b.classList.toggle("on", b.dataset.p === p); });
+    document.querySelectorAll(".panel").forEach(function(x){ x.classList.toggle("on", x.id === PANELS[p]); });
+    try { history.replaceState(null, "", "#" + p); } catch (_e){}
+    if (p === "licence" || p === "practice"){
+      $("#licIntro").innerHTML = p === "licence"
+        ? "<h3>Your Licence to Jump</h3><p class='mut' style='margin:0'>Everything logged in the Jump tools becomes part of shared "
+          + "scientific datasets. Before you add to them: an agreement, the tutorial, and two short tests on organelles and "
+          + "cells that experts or checked AI suggestions have already identified. About 15 minutes, once &mdash; and the "
+          + "licence counts in every Jump tool.</p>"
+        : "<h3>Practice</h3><p class='mut' style='margin:0'>The same kind of questions as the tests, twenty at a time, with the "
+          + "answer straight after each one. Nothing goes into the dataset and it earns no points &mdash; only your accuracy "
+          + "is kept, so you can see yourself improve.</p>";
+      if (UJ.academy) UJ.academy.open(null, p === "practice" ? 5 : null);
+    }
+    if (p === "learn") learn(LEARN);
+    if (p === "badges") badges();
+    if (p === "games") lightpath();
+  }
+  /* The game loads when its tab is first opened, and again on sign-in so its progress switches from this
+     browser to the account (lightpath/grubblab.js asks window.lpCred() for the credential). */
+  var LP_FOR = null;
+  function lightpath(){
+    var f = $("#lpFrame"), who = GOOGLE_VERIFIED ? REPORTER_EMAIL : "";
+    $("#lpWho").innerHTML = GOOGLE_VERIFIED ? "" : " <i>Signed out, your progress is kept in this browser only &mdash; sign in (top right) to keep it with your account and play together.</i>";
+    if (LP_FOR === who) return;
+    LP_FOR = who; f.src = f.dataset.src + "?v=" + Date.now();
+  }
+  var LP = null;      // the newest progress the game reported, for the badges
+  window.addEventListener("lightpath-clear", function(e){ if (e.detail && e.detail.ok){ LP = e.detail; if (CUR === "badges") badges(); } });
+  document.querySelectorAll("nav.atabs button").forEach(function(b){ b.onclick = function(){ show(b.dataset.p); }; });
+  window.addEventListener("academy-status", function(){ if (CUR === "badges") badges(); });
+  window.addEventListener("academy-signin", function(){ if (CUR === "licence" || CUR === "practice") show(CUR); if (CUR === "games") lightpath(); if (CUR === "badges") setTimeout(badges, 2500); });
+
+  /* ── EM, with the Academy's small ring and four pointers on a spot ── */
+  var VIEWS = [ { mip: 0, zoom: 2 }, { mip: 0, zoom: 1 }, { mip: 1, zoom: 1 }, { mip: 2, zoom: 1 } ];
+  function emView(host, pos, opt){
+    opt = opt || {};
+    host.innerHTML = '<div class="em"><canvas width="512" height="512"></canvas><svg viewBox="0 0 512 512"></svg><div class="ld"></div><div class="cp"></div></div>'
+      + '<div class="row"><button class="btn" data-z="-1">▲ section</button><button class="btn" data-z="1">▼ section</button>'
+      + '<button class="btn" data-zoom="1">＋</button><button class="btn" data-zoom="-1">－</button><button class="btn" data-home="1">↺</button></div>';
+    try { if (!UJ.emtiles.configured()) UJ.emtiles.configure(tracingSources()); } catch (_e){}
+    var cv = host.querySelector("canvas"), svg = host.querySelector("svg"), ld = host.querySelector(".ld"), cp = host.querySelector(".cp");
+    var V = { z: 0, view: opt.view != null ? opt.view : 1, gen: 0 };
+    async function draw(){
+      var my = ++V.gen, vw = VIEWS[V.view]; ld.textContent = "loading…";
+      try {
+        var info = await UJ.emtiles.drawSection(cv, { centre: [pos[0], pos[1], pos[2] + V.z], mip: vw.mip, zoom: vw.zoom, w: 512, h: 512, tighten: true });
+        if (my !== V.gen) return;
+        if (opt.ring !== false){
+          var px = function(nm){ return nm / info.effNmPerPx; };
+          var r = Math.max(5, px(250)), a = Math.max(r + 4, px(350)), b2 = Math.max(a + 10, px(650));
+          var on = V.z === 0, st = ' stroke="#ffd75a" stroke-width="2.5" stroke-linecap="round"' + (on ? '' : ' stroke-dasharray="5 5" opacity=".7"');
+          svg.innerHTML = '<circle cx="256" cy="256" r="' + r.toFixed(1) + '" fill="none"' + st + '/>'
+            + [[0,-1],[0,1],[-1,0],[1,0]].map(function(d){ return '<line x1="' + (256 + d[0]*a).toFixed(1) + '" y1="' + (256 + d[1]*a).toFixed(1)
+              + '" x2="' + (256 + d[0]*b2).toFixed(1) + '" y2="' + (256 + d[1]*b2).toFixed(1) + '"' + st + '/>'; }).join("");
+        } else svg.innerHTML = "";
+        ld.textContent = "";
+        cp.textContent = info.umAcross.toFixed(1) + " µm across" + (V.z ? " · " + (V.z > 0 ? "+" : "") + V.z + " sections" : "");
+      } catch (e){ if (my === V.gen) ld.textContent = "could not read the section: " + (e && e.message || e); }
+    }
+    host.querySelectorAll("[data-z]").forEach(function(b){ b.onclick = function(){ V.z += +b.dataset.z; draw(); }; });
+    host.querySelectorAll("[data-zoom]").forEach(function(b){ b.onclick = function(){ V.view = Math.max(0, Math.min(3, V.view - (+b.dataset.zoom))); draw(); }; });
+    host.querySelector("[data-home]").onclick = function(){ V.z = 0; draw(); };
+    host.querySelector(".em").addEventListener("wheel", function(e){ e.preventDefault(); V.z += e.deltaY > 0 ? 1 : -1; draw(); }, { passive: false });
+    draw();
+  }
+
+  /* ════════════════ LEARN ════════════════ */
+  var LEARN = "org";
+  document.querySelectorAll("#learnNav button").forEach(function(b){ b.onclick = function(){ learn(b.dataset.l); }; });
+  function learn(which){
+    LEARN = which;
+    document.querySelectorAll("#learnNav button").forEach(function(b){ b.classList.toggle("on", b.dataset.l === which); });
+    ["org", "cell", "key", "read"].forEach(function(k){ $("#l-" + k).style.display = k === which ? "" : "none"; });
+    if (which === "org") orgAtlas();
+    if (which === "cell") cellAtlas();
+    if (which === "key") cellKey();
+    if (which === "read") reading();
+  }
+
+  /* The organelles the tests ask about. What to look for is standard EM morphology; see the Jastrow
+     atlas and "Brain Ultrastructure: Putting the Pieces Together" (PMC7930431) for pictures and more. */
+  var JASTROW = "http://www.drjastrow.de/WAI/EM/EMAtlas.html";
+  var ORGS = [
+    { k: "mitochondria", n: "Mitochondrion", look: [
+      "Two membranes; the inner one folds into cristae that run across the profile like stripes or tubes.",
+      "Round or elongated profiles, typically 0.2–0.5 µm wide, with a matrix darker than the cytoplasm around it.",
+      "Everywhere: in somata, dendrites, axons and boutons — in boutons often beside the synaptic vesicles."] },
+    { k: "lysosome", n: "Lysosome", look: [
+      "One membrane around dense, uneven content: dark granules, membrane whorls, pale lipid droplets.",
+      "Round to irregular, a few hundred nm to about 1 µm. Older ones collect lipofuscin.",
+      "Many in microglia and perivascular macrophages; also in neuronal and glial somata."] },
+    { k: "myelin_sheath", n: "Myelin sheath", look: [
+      "Concentric dark rings — tightly wrapped membrane — around an axon.",
+      "The axon inside is pale; the sheath is the darkest structure in the field.",
+      "Made by oligodendrocytes; thickest in deep layers and white matter."] },
+    { k: "golgi", n: "Golgi apparatus", look: [
+      "A stack of flattened, slightly curved cisternae, with small vesicles budding at the ends.",
+      "Usually in the soma, close to the nucleus.",
+      "Unlike rough ER: no ribosomes on the membranes, and the cisternae are stacked."] },
+    { k: "er_smooth", n: "Smooth endoplasmic reticulum", look: [
+      "Tubes and flat sacs of membrane without ribosomes.",
+      "Often just under the plasma membrane (subsurface cisternae) and in dendrites, axons and spines (the spine apparatus).",
+      "Easy to confuse with Golgi: smooth ER is not stacked into a curved pile."] },
+    { k: "synapse", n: "Synapse", look: [
+      "A presynaptic bouton full of small round vesicles (~40 nm), a narrow cleft, and a postsynaptic density.",
+      "Thick density on the postsynaptic side: asymmetric, usually excitatory. Thin and even: symmetric, usually inhibitory.",
+      "Follow it over a few sections: the cleft and density run as a line across several."] },
+    { k: "centriole", n: "Centriole", look: [
+      "A short cylinder, about 0.2 µm across and 0.4 µm long, its wall of nine microtubule triplets.",
+      "Often a pair at right angles, near the nucleus. One may be the basal body of a primary cilium.",
+      "Small and rare: scroll through the sections — it only shows on a few."] },
+    { k: "nuclear_envelope", n: "Nuclear envelope", look: [
+      "Two membranes with a thin space between them, around the nucleus.",
+      "Interrupted by nuclear pores; the outer membrane continues into rough ER.",
+      "Infoldings are common in some cell types (e.g. many inhibitory neurons)."] }
+  ];
+  var ORG_DATA = null, ORG_K = "mitochondria", ORG_I = {};
+  async function orgData(){
+    if (ORG_DATA) return ORG_DATA;
+    var r = await fetch(REPORT_ENDPOINT + "?allOrganelles=1&ds=ujump").then(function(x){ return x.json(); });
+    var by = {}, bad = { rejected: 1, retracted: 1, undo: 1, pending: 1 };
+    (r.organelles || []).forEach(function(o){
+      var k = String(o.kind || ""); if (!ORGS.some(function(x){ return x.k === k; })) return;
+      if (bad[o.rewardState]) return;
+      if (o.path === "ai-correction" && !(String(o.comment || "").indexOf("model said " + k) === 0)) return;   // only marks a person said were right
+      var p = String(o.pointA || "").split(",").map(Number);
+      if (p.length !== 3 || p.some(isNaN) || p[2] < 15000) return;                                            // minnie65 only
+      (by[k] = by[k] || []).push(p);
+    });
+    Object.keys(by).forEach(function(k){ var a = by[k];
+      for (var i = a.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; }
+      by[k] = a.slice(0, 30); });
+    return (ORG_DATA = by);
+  }
+  async function orgAtlas(){
+    var host = $("#l-org");
+    if (!host.dataset.built){
+      host.dataset.built = "1";
+      host.innerHTML = '<div class="kinds">' + ORGS.map(function(o){ return '<button type="button" data-k="' + o.k + '">' + esc(o.n) + '</button>'; }).join("")
+        + '</div><div class="card"><div class="grid2"><div id="orgEm"></div><div id="orgTxt"></div></div></div>';
+      host.querySelectorAll("[data-k]").forEach(function(b){ b.onclick = function(){ ORG_K = b.dataset.k; orgShow(); }; });
+    }
+    orgShow();
+  }
+  async function orgShow(){
+    var host = $("#l-org"), o = ORGS.filter(function(x){ return x.k === ORG_K; })[0];
+    host.querySelectorAll("[data-k]").forEach(function(b){ b.classList.toggle("on", b.dataset.k === ORG_K); });
+    $("#orgTxt").innerHTML = '<h3>' + esc(o.n) + '</h3><b class="small">What to look for</b><ul class="look">'
+      + o.look.map(function(t){ return '<li>' + esc(t) + '</li>'; }).join("") + '</ul>'
+      + '<p class="small mut">More pictures: <a href="' + JASTROW + '" target="_blank" rel="noopener">Jastrow’s EM atlas</a> · '
+      + '<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7930431/" target="_blank" rel="noopener">Brain Ultrastructure: Putting the Pieces Together</a></p>'
+      + '<div class="row" id="orgNav"></div>';
+    $("#orgEm").innerHTML = '<p class="mut small">Fetching examples the community has marked…</p>';
+    var d; try { d = await orgData(); } catch (e){ $("#orgEm").innerHTML = '<p class="mut small">Could not read the examples (' + esc(e.message || e) + ').</p>'; return; }
+    var list = d[ORG_K] || [];
+    if (!list.length){ $("#orgEm").innerHTML = '<p class="mut small">No checked examples of this one yet.</p>'; return; }
+    var i = (ORG_I[ORG_K] || 0) % list.length;
+    emView($("#orgEm"), list[i], { view: 1 });
+    $("#orgNav").innerHTML = '<button class="btn" id="orgPrev">←</button><span class="small mut">example ' + (i + 1) + ' of ' + list.length
+      + ' — marked by a Jump annotator</span><button class="btn" id="orgNext">→</button>'
+      + '<a class="btn" style="text-decoration:none" target="_blank" rel="noopener" href="ujump.html?at=' + list[i].join(",") + '">Open in µJump ↗</a>';
+    $("#orgPrev").onclick = function(){ ORG_I[ORG_K] = (i - 1 + list.length) % list.length; orgShow(); };
+    $("#orgNext").onclick = function(){ ORG_I[ORG_K] = (i + 1) % list.length; orgShow(); };
+  }
+
+  /* One example of each type: from the Allen Institute's hand-classified V1 column (Elabbady et al. 2025)
+     or verified by Søren's group. These cells are left out of the Academy's tests. */
+  var CELLS = [
+    { g: "Excitatory neurons", items: [
+      { n: "Layer 2/3 pyramidal (23P)", nuc: 294548, root: "864691135572202733", pos: [183936,131280,21625],
+        t: "A pyramidal soma with one thick apical dendrite climbing towards the pia and several basal dendrites, all covered in spines. Large round, pale nucleus." },
+      { n: "Layer 4 pyramidal (4P)", nuc: 262691, root: "864691135562004193", pos: [174400,161696,20530],
+        t: "Smaller, often star-like soma; the apical dendrite is thin or short. Spiny dendrites." },
+      { n: "Layer 5 IT pyramidal (5P-IT)", nuc: 303169, root: "864691135346975135", pos: [190352,200160,22227],
+        t: "Mid-sized layer 5 pyramidal cell with a slender apical dendrite; projects within the cortex." },
+      { n: "Layer 6 IT pyramidal (6P-IT)", nuc: 344563, root: "864691135781417296", pos: [202064,253296,24490],
+        t: "Deep-layer pyramidal cell; often a short apical dendrite and a more irregular soma." } ] },
+    { g: "Inhibitory neurons", items: [
+      { n: "Basket cell (BC)", nuc: 301227, root: "864691135867826966", pos: [189456,177392,22310],
+        t: "Smooth (spine-poor) dendrites radiating from the soma; the axon targets other cells' somata. Inhibitory neurons tend to have an infolded nucleus and many synapses on their own soma." },
+      { n: "Martinotti cell (MC)", nuc: 269485, root: "864691136195284556", pos: [173184,217472,21929],
+        t: "Its axon climbs to layer 1; dendrites smooth to sparsely spiny." },
+      { n: "Bipolar cell (BPC)", nuc: 264898, root: "864691135511632080", pos: [172192,189648,21784],
+        t: "A narrow, vertically oriented cell with two main dendrites, up and down." },
+      { n: "Neurogliaform cell (NGC)", nuc: 294561, root: "864691135274631397", pos: [185472,130880,21521],
+        t: "Small round soma with many short, thin, highly branched dendrites." } ] },
+    { g: "Glia", items: [
+      { n: "Astrocyte", nuc: 251777, root: "864691135334662633", pos: [172800,92528,20392],
+        t: "Irregular soma with pale cytoplasm and glycogen; a bushy territory of very fine processes, and endfeet on blood vessels." },
+      { n: "Oligodendrocyte", nuc: 303146, root: "864691136023822905", pos: [185008,200592,21899],
+        t: "Small round nucleus with clumped dark chromatin and a dark cytoplasm; processes go off to myelin sheaths." },
+      { n: "Microglia", nuc: 302974, root: "864691136194411734", pos: [187120,206128,20428],
+        t: "Small elongated nucleus with dense chromatin at its rim, little cytoplasm with lysosomes, and thin, ramified processes." },
+      { n: "OPC (oligodendrocyte precursor)", nuc: 309252, root: "864691135988307200", pos: [187248,251136,23085],
+        t: "Irregular, fairly pale nucleus; long thin processes; receives synapses from neurons." } ] },
+    { g: "Vascular cells", items: [
+      { n: "Pericyte", nuc: 294676, root: "864691135266228034", pos: [188672,132944,21818],
+        t: "Wraps capillaries inside the vascular basement membrane; a 'bump on a log' nucleus on the vessel wall." },
+      { n: "Endothelial cell", nuc: 163448, root: "864691136229438871", pos: [123440,177056,27771],
+        t: "Lines the lumen of the vessel; a thin, flat cell with an elongated nucleus." },
+      { n: "Smooth muscle cell", nuc: 257937, root: "864691135278214049", pos: [172528,139360,19344],
+        t: "Bands around arterioles; contractile cytoplasm wrapped around the vessel." },
+      { n: "Perivascular fibroblast", nuc: 401037, root: "864691135915477094", pos: [230928,204000,20158],
+        t: "In the perivascular space of larger vessels, outside the vessel wall itself." } ] }
+  ];
+  var CELL_SEL = null;
+  function cellAtlas(){
+    var host = $("#l-cell");
+    if (host.dataset.built) return;
+    host.dataset.built = "1";
+    host.innerHTML = CELLS.map(function(g, gi){
+      return '<div class="bgroup">' + esc(g.g) + '</div><div class="kinds">' + g.items.map(function(c, ci){
+        return '<button type="button" data-c="' + gi + ':' + ci + '">' + esc(c.n) + '</button>'; }).join("") + '</div>';
+    }).join("") + '<div class="card" id="cellCard"><p class="mut" style="margin:0">Pick a cell type above.</p></div>'
+      + '<p class="small mut">Cell types as classified in the MICrONS V1 column (<a href="https://doi.org/10.1038/s41586-024-07765-7" target="_blank" rel="noopener">Elabbady et al., Nature 2025</a>) or verified by hand. These examples are left out of the Academy’s tests.</p>';
+    host.querySelectorAll("[data-c]").forEach(function(b){ b.onclick = function(){
+      host.querySelectorAll("[data-c]").forEach(function(x){ x.classList.toggle("on", x === b); });
+      var ix = b.dataset.c.split(":").map(Number); cellShow(CELLS[ix[0]].items[ix[1]]); }; });
+  }
+  function cellShow(c){
+    CELL_SEL = c;
+    var card = $("#cellCard");
+    card.innerHTML = '<h3>' + esc(c.n) + '</h3><p style="margin-top:0">' + esc(c.t) + '</p>'
+      + '<div class="grid2"><div><b class="small">The whole cell, in 3D</b><div class="stage3d" id="cell3d"><p class="mut small" style="padding:12px">Fetching the mesh…</p></div>'
+      + '<div class="small mut">Drag to turn, scroll to zoom.</div></div>'
+      + '<div><b class="small">Its soma, in EM</b><div id="cellEm"></div></div></div>'
+      + '<div class="row"><a class="btn" style="text-decoration:none" target="_blank" rel="noopener" href="ujump.html?at=' + c.pos.join(",") + '">Open this cell in µJump ↗</a></div>';
+    emView($("#cellEm"), c.pos, { view: 3, ring: false });
+    UJ.mesh.fetchCombinedMesh(c.root, function(){}, false, [], true).then(function(m){
+      if (CELL_SEL !== c) return;
+      var st = $("#cell3d"); st.innerHTML = "";
+      UJ.mesh3d.show(st, UJ.mesh3d.prepare(m.positions, m.indices, { unitNm: 1000 }), { emptyMessage: "This cell’s mesh came back empty." });
+    }, function(e){ var st = $("#cell3d"); if (st && CELL_SEL === c) st.innerHTML = '<p class="mut small" style="padding:12px">Could not load the mesh (' + esc(e && e.message || e) + ').</p>'; });
+  }
+
+  /* The guided-identification tree (core/tree.js), with a result screen that names the type and says what
+     it is often confused with -- and submits nothing. */
+  window.renderResult = function(slug){
+    var p = $("#keyPanel"), name = (typeof LEAF_NAMES !== "undefined" && LEAF_NAMES[slug]) || slug;
+    var conf = (typeof CONFUSED_WITH !== "undefined" && CONFUSED_WITH[slug]) || null;
+    var confTxt = "";
+    if (conf){
+      var arr = Array.isArray(conf) ? conf : [conf];
+      confTxt = '<p class="small"><b>Often confused with:</b> ' + arr.map(function(x){
+        if (typeof x === "string") return esc(LEAF_NAMES[x] || x);
+        return esc(LEAF_NAMES[x.leaf] || x.leaf || x.name || "") + (x.note ? ' — <span class="mut">' + esc(x.note) + '</span>' : '');
+      }).join("; ") + '</p>';
+    }
+    p.innerHTML = '<div class="idf-title">→ ' + esc(name) + '</div>'
+      + '<p class="mut small">That is where your answers lead. In the tools this is where you would submit it; here it is just the answer.</p>'
+      + confTxt + '<span class="idf-back" id="keyBack">&larr; back one step</span>';
+    $("#keyBack").onclick = function(){ if (typeof goBack === "function") goBack(); };
+  };
+  function cellKey(){
+    if (!$("#keyPanel").dataset.started){ $("#keyPanel").dataset.started = "1"; openIdentify({}); }
+  }
+  $("#keyRestart").onclick = function(){ openIdentify({}); };
+
+  function reading(){
+    var host = $("#l-read"); if (host.dataset.built) return; host.dataset.built = "1";
+    var R = [
+      { t: "Jastrow’s Electron Microscopic Atlas of cells, tissues and organs", u: JASTROW,
+        w: "Labelled EM pictures of every organelle and many cell types. The quickest way to check what something looks like." },
+      { t: "“Brain Ultrastructure: Putting the Pieces Together”", u: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7930431/",
+        w: "A review of brain ultrastructure: neurons, glia, synapses and the vasculature as they look in EM, with how to tell them apart." },
+      { t: "Elabbady et al., “Perisomatic ultrastructure efficiently classifies cells in mouse cortex,” Nature 640, 478–486 (2025)", u: "https://doi.org/10.1038/s41586-024-07765-7",
+        w: "Shows that the soma and its nucleus alone — what the Academy’s cell test asks you to look at — tell cell types apart. The source of the V1 column cell types." },
+      { t: "“Public Volume Electron Microscopy Data: An Essential Resource to Study the Brain Microvasculature,” Frontiers in Cell and Developmental Biology (2022)", u: "https://www.frontiersin.org/journals/cell-and-developmental-biology/articles/10.3389/fcell.2022.849469/full",
+        w: "The vascular cells — pericytes, smooth muscle, endothelium, fibroblasts — and where to find them in public EM volumes like MICrONS." },
+      { t: "MICrONS Consortium, “Functional connectomics spanning multiple areas of mouse visual cortex,” Nature 640, 435–447 (2025)", u: "https://doi.org/10.1038/s41586-025-08790-w",
+        w: "The dataset behind µJump and this Academy: how it was imaged, segmented and released." }
+    ];
+    host.innerHTML = '<div class="card"><h3>Reading list</h3><ul class="refs">' + R.map(function(r){
+      return '<li><a href="' + r.u + '" target="_blank" rel="noopener">' + esc(r.t) + '</a><div class="small mut">' + esc(r.w) + '</div></li>'; }).join("") + '</ul></div>';
+  }
+
+  /* ════════════════ GAMES ════════════════ */
+  $("#vqOpen").onclick = function(){
+    var go = function(){ if (UJ.verifyq) UJ.verifyq.open(); };
+    if (UJ.verifyq){ go(); return; }
+    var load = function(src, cb){ var s = document.createElement("script"); s.src = src; s.onload = cb; document.head.appendChild(s); };
+    load("core/coin.js", function(){ load("core/verifyqueue.js", go); });
+  };
+
+  /* ════════════════ BADGES ════════════════ */
+  var LEVELS = [[100, "Contributor"], [500, "Skilled"], [2000, "Expert"], [10000, "Master"], [100000, "Godlike"]];
+  var PRACTICE = null, PRACTICE_FOR = "";
+  async function badges(){
+    var host = $("#badgesBody");
+    if (!GOOGLE_VERIFIED){ host.innerHTML = '<p class="mut">Sign in (top right) to see your badges.</p>'; return; }
+    var s = window.MYSTATS;
+    if (!s){ host.innerHTML = '<p class="mut">Reading your stats…</p>'; setTimeout(badges, 1500); return; }
+    if (PRACTICE_FOR !== REPORTER_EMAIL){ PRACTICE_FOR = REPORTER_EMAIL; PRACTICE = null;
+      UJ.academy.api({ action: "practiceStats" }).then(function(d){ if (d && d.ok){ PRACTICE = d.practice; if (CUR === "badges") badges(); } }); }
+    var st = (UJ.academy && UJ.academy.status && UJ.academy.status()) || {};
+    var bc = s.badgeCounts || {}, tr = s.trust || {};
+    var pts = (typeof combinedPoints === "function") ? combinedPoints().points : (s.points || 0);
+    var chat = 0; try { chat = +localStorage.getItem("jump_chat_sent_v1") || 0; } catch (_e){}
+    var B = [];
+    var add = function(group, ic, name, how, have, need){ B.push({ group: group, ic: ic, name: name, how: how, have: Math.min(have || 0, need), need: need, got: (have || 0) >= need }); };
+    add("Licence", "🪪", "Licence to Jump", "Pass Jump Academy", st.licensed ? 1 : 0, 1);
+    LEVELS.forEach(function(l){ add("Levels", "⭐", l[1], l[0].toLocaleString() + " points", pts, l[0]); });
+    add("Contributions", "🪙", "First coin", "A coin for checking the AI", s.coins, 1);
+    add("Contributions", "💰", "Coin collector", "100 coins", s.coins, 100);
+    add("Contributions", "✅", "Confirmed find", "A find of yours confirmed by somebody else", bc.findsConfirmed, 1);
+    add("Contributions", "💎", "Rare find", "A centriole or cilium of yours confirmed", bc.rareConfirmed, 1);
+    add("Contributions", "🔎", "Checker", "25 of other people’s finds checked", s.verifications, 25);
+    add("Contributions", "🧐", "Head checker", "100 finds checked", s.verifications, 100);
+    add("Trust", "🛡️", "Trusted annotator", "20 hidden known answers met, 90% or more right",
+        (tr.checks >= 20 && tr.accuracy >= 0.9) ? 1 : 0, 1);
+    add("Tracing", "✏️", "First outline", "Share a tracing", bc.tracings, 1);
+    add("Tracing", "🖊️", "Tracer", "25 tracings shared", bc.tracings, 25);
+    add("Community", "💬", "First word", "A post in Discussion", bc.forumPosts, 1);
+    add("Community", "🗣️", "Discussant", "10 posts in Discussion", bc.forumPosts, 10);
+    add("Community", "📨", "Chatty", "A message in the chat (counted in this browser)", chat, 1);
+    add("Community", "📣", "Regular", "50 chat messages (this browser)", chat, 50);
+    add("Community", "🗳️", "Voter", "10 votes on identities or root IDs", s.votesGiven, 10);
+    add("Community", "🏛️", "Elector", "100 votes", s.votesGiven, 100);
+    var lpSolo = Math.max(bc.lpSolo || 0, LP ? (LP.phase === "together" ? 100 : (LP.done || 0)) : 0);
+    add("Games", "💡", "Light Path", "Clear all 100 tables of The Light Path yourself", lpSolo, 100);
+    add("Games", "🤝", "Lighting it together", "10 tables cleared in the community campaign", bc.lpTogether, 10);
+    add("Games", "🌟", "Torch bearer", "100 tables cleared in the community campaign", bc.lpTogether, 100);
+    add("Streaks", "📅", "A week of it", "Active on 7 different days", s.daysActive, 7);
+    add("Streaks", "🗓️", "A month of it", "Active on 30 different days", s.daysActive, 30);
+    add("Streaks", "🔥", "On a roll", "7 days in a row", s.longestStreak, 7);
+    if (PRACTICE){
+      ["organelles", "cells"].forEach(function(w){
+        var o = PRACTICE[w] || {}, bk = o.byKind || {};
+        Object.keys(bk).forEach(function(k){
+          var b = bk[k], ok = b[0] >= 20 && b[0] / b[1] >= 0.9;
+          add("Specialists (practice: 20 right, 90%+)", w === "cells" ? "🧠" : "🔬", k + " specialist", b[0] + " right of " + b[1] + " in practice", ok ? 1 : 0, 1);
+        });
+      });
+    }
+    var got = B.filter(function(b){ return b.got; }).length;
+    var groups = [];
+    B.forEach(function(b){ if (groups.indexOf(b.group) < 0) groups.push(b.group); });
+    host.innerHTML = '<p class="mut" style="margin-top:0">' + got + ' of ' + B.length + ' badges earned. They come from what you already do in the Jump tools'
+      + (PRACTICE ? '' : ' (specialist badges appear once your practice rounds are read)') + '.</p>'
+      + groups.map(function(g){
+        return '<div class="bgroup">' + esc(g) + '</div><div class="badges">' + B.filter(function(b){ return b.group === g; }).map(function(b){
+          return '<div class="badge' + (b.got ? ' got' : '') + '"><div class="ic">' + b.ic + '</div><b>' + esc(b.name) + '</b><div class="how">' + esc(b.how) + '</div>'
+            + (b.got || b.need === 1 ? '' : '<div class="bar"><i style="width:' + Math.round(100 * b.have / b.need) + '%"></i></div><div class="how">' + Math.floor(b.have) + ' / ' + b.need + '</div>')
+            + '</div>'; }).join("") + '</div>';
+      }).join("");
+  }
+
+  /* ── start ── */
+  function start(){
+    if (typeof gamifyInit === "function") gamifyInit(12);
+    show((location.hash || "").replace("#", "") || "licence");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){ setTimeout(start, 0); });
+  else setTimeout(start, 0);
+})();
+</script>
+</body>
+</html>

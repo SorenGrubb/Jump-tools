@@ -275,6 +275,13 @@
       :root[data-theme="dark"] .feature.chi{--teal:#4ade80;--teal-soft:#0b2416}
     /* dark text on the light green fill, not white -- same reason as ω and λ above */
     :root[data-theme="dark"] .feature.chi .cta{background:#4ade80;color:#04240f}
+  /* Jump Academy (academy.html, Gary's idea, 2026-11-12): first in the list, a slimmer card -- no volume box,
+     because it is not a dataset. Gold: #8a5a00 on white is 6.4:1; #f5c451 on the dark card 11:1. */
+  .feature.academy{--teal:#8a5a00;--teal-soft:#fbf1dc;padding:24px 30px 22px}
+  .feature.academy .cta{background:#8a5a00;color:#ffffff}
+      :root[data-theme="dark"] .feature.academy{--teal:#f5c451;--teal-soft:#2a2108}
+    :root[data-theme="dark"] .feature.academy .cta{background:#f5c451;color:#2a1a00}
+  .feature.academy .logo::after{content:none}
   .feature.lambda{--teal:#1d4ed8;--teal-soft:#e6edfd}
   .feature.lambda .cta{background:#1d4ed8;color:#ffffff}
       :root[data-theme="dark"] .feature.lambda{--teal:#7aa2ff;--teal-soft:#121d38}
@@ -454,6 +461,7 @@
         <li><details class="navtools"><summary>The tools</summary>
           <ul class="toolmenu">
             <li><a href="#tools"><span class="tname">All eight</span><span class="tds">on this page</span></a></li>
+          <li><a href="/academy.html"><span class="tname">🎓 Academy</span><span class="tds">licence, learning, games, badges</span></a></li>
           <li><a href="/ujump.html"><span class="tname">µJump</span><span class="tds">MICrONS minnie65</span></a></li>
           <li><a href="/djump.html"><span class="tname">δJump</span><span class="tds">V1DD</span></a></li>
           <li><a href="/pjump.html"><span class="tname">πJump</span><span class="tds">MICrONS pinky100</span></a></li>
@@ -509,6 +517,21 @@
 </svg>
 <div class="wrap" id="tools">
   <h2 class="sectionhead">The tools</h2>
+  <a class="feature academy" href="/academy.html">
+    <div class="kicker">Start here &middot; for every tool</div>
+    <div class="logo"><span class="mu">🎓&nbsp;</span><span class="jm">Jump Academy</span></div>
+    <p class="desc">Your Licence to Jump, practice rounds with the answers straight after, an organelle and cell-type atlas,
+    the cell key, a reading list, The Light Path game and your badges &mdash; one place, the same Google sign-in as the tools.</p>
+    <div class="chips">
+      <span class="chip">Licence to Jump</span>
+      <span class="chip">Practice</span>
+      <span class="chip">Organelle &amp; cell atlas</span>
+      <span class="chip">The Light Path: 100 tables, then together</span>
+      <span class="chip">Badges</span>
+    </div>
+    <span class="cta">Open Jump Academy &rarr;</span>
+  </a>
+
   <a class="feature" href="/ujump.html">
     <figure class="volbox">
       <svg viewBox="0 0 138.8 82.7" width="139" height="83" role="img">

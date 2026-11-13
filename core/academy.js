@@ -48,6 +48,18 @@
     xjump_nuclei_found:1, xjump_nucleus_join:1 };
 
   var STATUS = null, STATUS_FOR = "", OPEN = false, STEP = 0, WHY = "", WHY_TONE = "";
+  /* ── TWO WAYS TO RUN (2026-11-12) ────────────────────────────────────────────────────────────
+     Gary Morris: *"Could we create a separate Jump Academy platform hosted in grubblab? It could be
+     the very first platform listed … It would also mean you can take it out of the other Jump
+     platforms interfaces, because it will start to clog them up otherwise."* Søren agreed.
+       PAGE  academy.html has a #jaHost: the licence and practice render INTO the page, not over it.
+       TOOL  every Jump tool: one small "🎓 Academy" link to academy.html, and -- when somebody
+             without a licence tries to log something -- a short note with that link. No overlay. */
+  var PAGE = false;
+  function academyUrl(hash){
+    var p = location.pathname.replace(/[^\/]*$/, "");
+    return location.origin + p + "academy.html" + (hash ? "#" + hash : "");
+  }
 
   /* ── the page's own things, found rather than assumed ─────────────────────────────────── */
   function endpoint(){
@@ -67,6 +79,7 @@
     return "";
   }
   function canTest(){
+    if (PAGE) return !!(UJ.emtiles && UJ.mesh && UJ.mesh3d);
     try {
       return !!(UJ.emtiles && UJ.mesh && UJ.mesh.fetchCombinedMesh && UJ.mesh3d && UJ.mesh3d.show
                 && typeof tracingSources === "function"
@@ -115,6 +128,8 @@
     if (document.getElementById("jaStyle")) return;
     var s = document.createElement("style"); s.id = "jaStyle";
     s.textContent = [
+      "#jaBadge{text-decoration:none;display:inline-flex;align-items:center}",
+      "#jaBox.ja-inpage{width:100%;box-shadow:none;border:0;padding:0;background:transparent;border-radius:0}",
       "#jaBadge{cursor:pointer;border:1px solid var(--acc,#58a6ff);background:transparent;color:var(--acc,#58a6ff);",
       " border-radius:999px;padding:4px 12px;font:600 12px system-ui,sans-serif;margin-left:8px;white-space:nowrap}",
       "#jaBadge.lic{border-color:#3fb950;color:#3fb950}",
@@ -182,41 +197,40 @@
   }
 
   /* ── the button that is always there ────────────────────────────────────────────────────── */
+  /* ── IN THE TOOLS: ONE SMALL LINK ─────────────────────────────────────────────  2026-11-12
+     Gary: *"take it out of the other Jump platforms interfaces, because it will start to clog them up
+     otherwise."* What used to be a licence badge, a Practice button and an overlay is now one link to
+     the Academy page, beside the tabs. Green when you hold the licence. */
   function badge(){
+    if (PAGE) return;
     style();
     var b = document.getElementById("jaBadge");
     if (!b){
-      b = document.createElement("button"); b.id = "jaBadge"; b.type = "button";
-      b.addEventListener("click", function(){ open(); });
-      /* beside the tabs when the page has them, so it reads as part of the tool */
+      b = document.createElement("a"); b.id = "jaBadge"; b.href = academyUrl(); b.target = "_blank"; b.rel = "noopener";
       var tab = document.querySelector("[data-tab]");
       if (tab && tab.parentNode){ tab.parentNode.appendChild(b); }
       else { b.className = "float"; document.body.appendChild(b); }
     }
-    /* PRACTICE GETS ITS OWN BUTTON (2026-11-12). Søren: *"I don't see a practice mode button?"* It was
-       only the last tab inside the Academy window, which you only see after opening the Academy. Now
-       it sits beside the badge and opens straight onto the Practice tab. */
-    if (!document.getElementById("jaPracticeBtn")){
-      var pb = document.createElement("button"); pb.id = "jaPracticeBtn"; pb.type = "button";
-      pb.textContent = "\ud83c\udfaf Practice";
-      pb.title = "Practise identifying organelles and cells on known answers. Nothing goes into the dataset and it earns no points \u2014 only your accuracy is kept.";
-      pb.style.cssText = "cursor:pointer;border:1px solid var(--acc,#58a6ff);background:transparent;color:var(--acc,#58a6ff);"
-        + "border-radius:999px;padding:4px 12px;font:600 12px system-ui,sans-serif;white-space:nowrap";
-      pb.addEventListener("click", function(){ open(null, 5); });
-      if (b.parentNode && !b.classList.contains("float")) b.parentNode.insertBefore(pb, b.nextSibling);
-      else { pb.style.position = "fixed"; pb.style.left = "12px"; pb.style.top = "44px"; pb.style.zIndex = "9990";
-             pb.style.background = "var(--card,#161b22)"; document.body.appendChild(pb); }
-    }
     var lic = licensed();
     b.classList.toggle("lic", lic);
-    /* "Licence", not "Licence to Jump", on the button (2026-11-12): with 🎯 Practice beside it the full
-       words pushed Practice onto a second line of µJump's 760 px tab bar. The full name is in the title. */
-    /* 🎓, not 🪪: the ID-card emoji draws as an empty box on Søren's Windows PC. */
-    /* No licence number on the button either (Søren, same evening) -- it is in the title and on the licence. */
-    b.textContent = lic ? "🎓 Licence to Jump"
-                        : "🎓 Jump Academy";
-    b.title = lic ? "You have your Licence to Jump" + (STATUS.licenceNo ? " (" + STATUS.licenceNo + ")" : "") + ". Open it to see your licence."
-                  : "Before you log anything: sign the agreement, do the tutorial and pass two short tests.";
+    b.textContent = "\ud83c\udf93 Academy";
+    b.title = lic ? "Jump Academy \u2014 you hold your Licence to Jump" + (STATUS.licenceNo ? " (" + STATUS.licenceNo + ")" : "")
+                    + ". Practice, learning, games and badges. Opens in a new tab."
+                  : "Jump Academy \u2014 get your Licence to Jump before you log anything, practise, learn, play and earn badges. Opens in a new tab.";
+  }
+  /* The note a tool shows instead of the old overlay: why, and the link. One at a time. */
+  function licenceNote(msg){
+    style();
+    var old = document.getElementById("jaNote"); if (old) old.remove();
+    var n = document.createElement("div"); n.id = "jaNote";
+    n.style.cssText = "position:fixed;right:14px;top:60px;z-index:100000;max-width:360px;background:var(--card,#161b22);"
+      + "color:var(--ink,#e6edf3);border:1px solid var(--acc,#58a6ff);border-radius:12px;padding:12px 14px;"
+      + "font:14px/1.45 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)";
+    n.innerHTML = '<div style="margin-bottom:8px">' + esc(msg) + '</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="ja-btn" id="jaNoteX">Later</button>'
+      + '<a class="ja-btn go" style="text-decoration:none" target="_blank" rel="noopener" href="' + esc(academyUrl()) + '">\ud83c\udf93 Open Jump Academy \u2197</a></div>';
+    document.body.appendChild(n);
+    n.querySelector("#jaNoteX").onclick = function(){ n.remove(); };
   }
 
   /* ── the overlay ────────────────────────────────────────────────────────────────────────── */
@@ -230,6 +244,13 @@
 
   function shell(){
     style();
+    if (PAGE){
+      var host = document.getElementById("jaHost");
+      if (!document.getElementById("jaBody")){
+        host.innerHTML = '<div id="jaBox" class="ja-inpage"><div id="jaBody"></div></div>';
+      }
+      return host;
+    }
     var ov = document.getElementById("jaOv");
     if (!ov){
       ov = document.createElement("div"); ov.id = "jaOv";
@@ -242,6 +263,19 @@
     return ov;
   }
   function head(){
+    /* On the Academy page the page itself has the heading and the Licence / Practice tabs; this only
+       draws the licence's own steps, and nothing at all above a practice round. */
+    if (PAGE){
+      var hp = WHY ? '<div class="ja-fb ' + (WHY_TONE === "info" ? "info" : "wrong") + '" style="margin-top:8px">' + esc(WHY) + '</div>' : '';
+      if (STEP === 5) return hp;
+      var reachP = firstOpenStep();
+      return hp + '<div class="ja-steps">' + STEPS.map(function(t, i){
+        var can = i <= reachP || stepDone(i);
+        return '<button type="button" data-jastep="' + i + '" class="' + (stepDone(i) ? "ok " : "") + (i === STEP ? "on" : "") + '"'
+          + (can ? ' title="Open ' + t.toLowerCase() + '"' : ' disabled title="Finish the steps before this one first"') + '>'
+          + (stepDone(i) ? "\u2713 " : (i + 1) + ". ") + t + '</button>';
+      }).join("") + '</div>';
+    }
     var h = '<h2>🎓 Jump Academy</h2><div class="ja-sub">Everything logged in the Jump tools becomes part of shared '
       + 'scientific datasets. Before you add to them: an agreement, the tutorial, and two short tests on cells and '
       + 'organelles that experts or checked AI suggestions have already identified. Pass both and you get your '
@@ -277,7 +311,7 @@
   async function open(why, step, tone){
     WHY = why || ""; WHY_TONE = tone || "";
     shell(); OPEN = true;
-    document.getElementById("jaOv").style.display = "flex";
+    if (!PAGE) document.getElementById("jaOv").style.display = "flex";
     if (!cred()){
       body('<div class="ja-done"><b>Sign in with Google first</b> (the account button in the top-right corner). '
         + 'The licence belongs to your account, so it follows you to every Jump tool and every computer.</div>');
@@ -294,7 +328,7 @@
   }
   function close(){
     OPEN = false; WHY = "";
-    var ov = document.getElementById("jaOv"); if (ov) ov.style.display = "none";
+    var ov = PAGE ? null : document.getElementById("jaOv"); if (ov) ov.style.display = "none";
     stopTest();
   }
   function render(){
@@ -344,7 +378,16 @@
   }
 
   /* ── 2. the tutorial ────────────────────────────────────────────────────────────────────── */
-  function tourState(){ try { return (UJ.tour && UJ.tour.state) ? UJ.tour.state() : {}; } catch (_e){ return {}; } }
+  /* The walkthroughs live in µJump (they point at its real controls). On the Academy page their progress
+     is read straight from µJump's own record in this browser, and "Start" leaves µJump a handoff note,
+     so it opens on the right walkthrough (core/tour.js offerHandoff). */
+  var UJUMP_TOUR_KEY = "grubblab_ujump_tour_v1";
+  var TOUR_TITLES = { find: "Finding a cell, and saying what it is", organelles: "Organelles: points and outlines" };
+  var TOUR_STEPS = { find: 15, organelles: 18 };
+  function tourState(){
+    try { if (UJ.tour && UJ.tour.state) return UJ.tour.state(); } catch (_e){}
+    try { return JSON.parse(localStorage.getItem(UJUMP_TOUR_KEY) || "{}") || {}; } catch (_e){ return {}; }
+  }
   function tutorialDone(){
     if (STATUS && STATUS.tutorialAt) return true;
     var st = tourState();
@@ -352,6 +395,43 @@
   }
   function renderTutorial(){
     var hasTour = !!(UJ.tour && UJ.tour.parts && UJ.tour.parts().length);
+    if (!hasTour && PAGE){
+      var stP = tourState();
+      var rowsP = TUTORIAL_PARTS.map(function(id){
+        var done = stP[id] && stP[id].done;
+        return '<div class="ja-row" style="justify-content:space-between;border-top:1px solid var(--line,#30363d);padding-top:8px">'
+          + '<div><b>' + esc(TOUR_TITLES[id] || id) + '</b><div class="ja-sub">' + (TOUR_STEPS[id] || "") + ' steps, in \u00b5Jump'
+          + (done ? ' \u00b7 <span style="color:#3fb950">\u2713 done</span>' : (stP[id] && stP[id].at ? ' \u00b7 you got to step ' + (stP[id].at + 1) : '')) + '</div></div>'
+          + '<button class="ja-btn' + (done ? '' : ' go') + '" data-part="' + esc(id) + '">' + (done ? 'Again' : 'Start in \u00b5Jump') + ' \u2197</button></div>';
+      }).join("");
+      var allP = tutorialDone();
+      var bP = body('<h3>2. The tutorial</h3><p>Two walkthroughs in <b>\u00b5Jump</b>: how a cell is found and named, and how '
+        + 'organelles are logged and outlined on the tracing pad. They point at the real controls, so they run there \u2014 '
+        + 'each opens in a new tab. Come back here when both are done.</p>' + rowsP
+        + '<div class="ja-row" style="margin-top:14px"><button class="ja-btn go" id="jaNext"' + (allP ? '' : ' disabled') + '>'
+        + 'Next: organelles \u2192</button>' + (allP ? '' : '<span class="ja-sub">Finish both walkthroughs first \u2014 this page notices when you come back.</span>') + '</div>');
+      bP.querySelectorAll("[data-part]").forEach(function(x){
+        x.onclick = function(){
+          var id = x.getAttribute("data-part");
+          try { var st = JSON.parse(localStorage.getItem(UJUMP_TOUR_KEY) || "{}") || {}; st.handoff = id;
+                if (st[id] && st[id].done){ delete st[id].done; st[id].at = 0; }
+                localStorage.setItem(UJUMP_TOUR_KEY, JSON.stringify(st)); } catch (_e){}
+          window.open(location.pathname.replace(/[^\/]*$/, "") + "ujump.html", "_blank", "noopener");
+        };
+      });
+      bP.querySelector("#jaNext").onclick = async function(){
+        if (!(STATUS && STATUS.tutorialAt)){
+          var d = await api({ action: "tutorial" });
+          if (d && d.ok){ STATUS = d.status; remember(STATUS); }
+        }
+        go(2);
+      };
+      /* coming back from the µJump tab redraws this step, so "Next" lights up by itself */
+      if (!renderTutorial.watch){ renderTutorial.watch = true;
+        window.addEventListener("focus", function(){ if (OPEN && STEP === 1) render(); });
+        window.addEventListener("storage", function(e){ if (e.key === UJUMP_TOUR_KEY && OPEN && STEP === 1) render(); }); }
+      return;
+    }
     if (!hasTour){
       body('<h3>2. The tutorial</h3><div class="ja-done">The tutorial and the tests run in <b>µJump</b>. '
         + '<a href="' + esc(ujumpUrl()) + '">Open Jump Academy in µJump →</a> — the licence you get there '
@@ -744,14 +824,14 @@
     var wrapped = function(payload, okMsg){
       var t = payload && payload.type;
       if (t && REQUIRED[t] && STATUS && STATUS_FOR === email() && !STATUS.licensed){
-        open("You need your Licence to Jump before you can log this. It takes about 15 minutes.");
+        licenceNote("You need your Licence to Jump before you can log this. Jump Academy takes about 15 minutes, once, and the licence counts in every Jump tool.");
         return false;
       }
       var r = orig.apply(this, arguments);
       if (r && typeof r.then === "function")
         r.then(function(d){
           if (d && d.ok === false && /Licence to Jump/i.test(String(d.error || ""))){
-            refresh(); open("The server did not record that: you need your Licence to Jump first.");
+            refresh(); licenceNote("The server did not record that: you need your Licence to Jump first. Get it in Jump Academy.");
           }
         }, function(){});
       return r;
@@ -763,10 +843,14 @@
 
   /* ── start-up: the badge, the gate, and the first-sign-in welcome ───────────────────────── */
   function boot(){
+    PAGE = !!document.getElementById("jaHost");
     STATUS = remembered(); STATUS_FOR = STATUS ? email() : "";
     badge();
-    if (!wrapPostReport()){ var n = 0; var iv = setInterval(function(){ if (wrapPostReport() || ++n > 40) clearInterval(iv); }, 250); }
-    if (/#academy\b/.test(location.hash)) setTimeout(function(){ open(); }, 600);
+    if (!PAGE){
+      if (!wrapPostReport()){ var n = 0; var iv = setInterval(function(){ if (wrapPostReport() || ++n > 40) clearInterval(iv); }, 250); }
+      /* old links to "#academy" on a tool now go to the Academy page */
+      if (/#academy\b/.test(location.hash)){ location.replace(academyUrl()); return; }
+    }
     /* Watch for the sign-in: when an account appears (or changes), ask the server, and greet an
        account that has no licence once per browser session. */
     var lastCred = "";
@@ -776,17 +860,18 @@
       lastCred = c;
       if (STATUS_FOR !== e){ STATUS = remembered(); STATUS_FOR = STATUS ? e : ""; badge(); }
       await refresh();
+      if (PAGE){ if (OPEN) render(); try { window.dispatchEvent(new CustomEvent("academy-status")); } catch (_e){} return; }
       var k = "jump_academy_greeted_" + e;
       var greeted = false; try { greeted = sessionStorage.getItem(k) === "1"; } catch (_e){}
       if (STATUS && !STATUS.licensed && !greeted && !OPEN){
         try { sessionStorage.setItem(k, "1"); } catch (_e){}
-        open("Welcome! Before you log anything in the Jump tools, there is Jump Academy \u2014 about 15 minutes, once, "
+        licenceNote("Welcome! Before you log anything in the Jump tools, there is Jump Academy \u2014 about 15 minutes, once, "
           + "and it counts in every Jump tool. You can look around freely without it.", null, "info");
       }
     }, 1500);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 
-  UJ.academy = { open: open, close: close, status: function(){ return STATUS; }, refresh: refresh,
+  UJ.academy = { open: open, close: close, status: function(){ return STATUS; }, refresh: refresh, api: api,
                  licensed: licensed, version: VERSION, required: REQUIRED };
 })();

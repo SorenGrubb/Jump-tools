@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>The Light Path</title>
+<!-- Søren's two-photon light-path game, from NAD Network, framed in Jump Academy (academy.html#games).
+     solo.js keeps progress in this browser; grubblab.js, loaded after it, sends it to the account
+     instead whenever the Academy page is signed in. lightpath.js and engine.js are NAD's files unchanged. -->
+<link rel="stylesheet" href="lightpath.css">
+</head>
+<body data-api="gl:progress"
+      data-board="gl:board"
+      data-levels="100"
+      data-whose="The Jump community"
+      data-community="the Jump community"
+      data-endpoint="https://script.google.com/macros/s/AKfycby2n1bN6NzYJuQc_EwbZeLRxOW1p9_7bs0ljxs4CpL2FMsyXnXmwm2AFjeCME41eUVP/exec">
+
+<header>
+  <div class="row"><h1>The Light Path</h1><span id="lvlname"></span><span id="solvedby"></span></div>
+  <div id="hint"></div>
+  <div id="levels"></div>
+</header>
+<div id="stage">
+  <canvas id="game"></canvas>
+  
+  <div id="banner"><div class="firstlight" id="firstlight">First light · one shot</div><div class="big"></div><div class="sub"></div><button id="nextbtn">Next level</button></div>
+</div>
+
+<div id="firebar">
+  <div id="ctl"><button id="reset">Reset</button><button id="specbtn">Spectra ✓</button><button id="partsbtn">Parts</button><button id="boardbtn">Records</button></div>
+  <button id="fire" type="button">Fire the laser</button>
+</div>
+<div id="spec"><canvas id="speccnv"></canvas></div>
+
+<div id="tray"><div id="traytext"><div id="why"></div></div></div>
+
+
+<div id="parts" class="sheet">
+  <div class="sheetbox">
+    <button class="sheetclose" id="partsclose" type="button">Close</button>
+    <h2>The parts on this table</h2>
+    <div id="partsbody"></div>
+  </div>
+</div>
+
+<div id="board" class="sheet">
+  <div class="sheetbox">
+    <button class="sheetclose" id="boardclose" type="button">Close</button>
+    <h2>Records</h2>
+    <div id="boardbody"></div>
+  </div>
+</div>
+<div id="newpart" class="sheet">
+  <div class="sheetbox narrow">
+    <div id="newpartbody"></div>
+    <button class="go" id="newpartclose" type="button">Got it</button>
+  </div>
+</div>
+
+
+<script src="solo.js"></script>
+<script src="grubblab.js"></script>
+<script src="engine.js"></script>
+<script src="lightpath.js"></script>
+</body></html>

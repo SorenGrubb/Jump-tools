@@ -113,7 +113,10 @@ UJ.chat = (function(){
     };
     F.onPresence = function(cb){ var D = F.D; D.onValue(D.ref(db, "presence"), function(s){ var v = s.val() || {}, out = []; Object.keys(v).forEach(function(u){ Object.keys(v[u] || {}).forEach(function(k){ out.push(Object.assign({ uid: u, sid: k }, v[u][k])); }); }); cb(out); }); };
     function path(room){ return room.indexOf("dm_") === 0 ? "dms/" + room.slice(3) : "rooms/" + room; }
-    F.send = function(room, m){ var D = F.D; return D.push(D.ref(db, path(room)), Object.assign({}, m, { uid: me, ts: D.serverTimestamp() })); };
+    F.send = function(room, m){ var D = F.D;
+      /* Jump Academy's chat badge (2026-11-12): messages you have sent, counted in this browser. */
+      try { var k = "jump_chat_sent_v1"; localStorage.setItem(k, String((+localStorage.getItem(k) || 0) + 1)); } catch (_e){}
+      return D.push(D.ref(db, path(room)), Object.assign({}, m, { uid: me, ts: D.serverTimestamp() })); };
     F.onRoom = function(room, cb){
       var D = F.D, q = D.query(D.ref(db, path(room)), D.orderByChild("ts"), D.startAt(Date.now() - DAY), D.limitToLast(KEEP));
       return D.onValue(q, function(s){ var out = []; s.forEach(function(c){ out.push(Object.assign({ id: c.key }, c.val())); }); cb(out); });
