@@ -52,6 +52,10 @@ const doubles = STAMPED.concat(GENERATED).filter(f =>
 ok("...and exactly one", doubles.length === 0, doubles.join(", ") || "no page has two");
 
 console.log("\n--- and none of them is stale ---");
+/* Since 2026-11-13 the deploy writes the stamp (.github/stamp.py, from git), so the repository's copy
+   can lag and that is fine: what is served is stamped from the page's own last commit. */
+const DEPLOY_STAMPS = fs.existsSync(path.join(page.dir(), ".github", "stamp.py"));
+if (DEPLOY_STAMPS) ok("stamped at deploy from git", true, ".github/stamp.py in the Pages workflow");
 let state = {};
 /* The same hash over core/*.js the stamper takes, recomputed rather than trusted -- a recorded
    number that nothing recomputes is a number that can quietly stop being true. */
@@ -64,7 +68,7 @@ const coreVersion = () => {
   });
   return h.digest("hex").slice(0, 10);
 };
-try { state = JSON.parse(fs.readFileSync(path.join(page.dir(), ".build_stamps.json"), "utf8")); }
+if (!DEPLOY_STAMPS) try { state = JSON.parse(fs.readFileSync(path.join(page.dir(), ".build_stamps.json"), "utf8")); }
 catch (e){ ok("the stamper has run", false, "no .build_stamps.json — run python3 src/build_stamps.py"); }
 if (Object.keys(state).length){
   ok("the stamper has run", true, Object.keys(state).length + " pages recorded");
@@ -113,6 +117,7 @@ console.log("\n--- and the stamp covers what the page loads ---");
   ok("core/ hashes to something", /^[0-9a-f]{10}$/.test(want), want);
   const behind = STAMPED.filter(function(f){
     if (!/<script src="core\//.test(read(f))) return false;   // index.html loads none
+    if (DEPLOY_STAMPS) return false;   // .github/stamp.py dates a page by its last commit to it OR to core/
     return !state[f] || state[f].core !== want;
   });
   ok("no page is stamped against an older core/", behind.length === 0,

@@ -31,6 +31,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # the whole history: the build stamp below is each page's last commit
+          fetch-depth: 0
+      - name: Stamp build dates
+        # every page's "build …" line, from git, in Copenhagen time (see .github/stamp.py)
+        run: python3 .github/stamp.py
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

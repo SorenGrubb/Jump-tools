@@ -566,7 +566,7 @@
       var next = part === "organelles" ? 3 : 4;
       host.innerHTML = scoreHtml() + '<div class="ja-done" style="border-color:#3fb950"><b style="color:#3fb950">Passed — '
         + d.correctCount + ' of ' + d.answered + ' right.</b> ' + (part === "organelles" ? "Now the cells." : "") + '</div>'
-        + '<div class="ja-row"><button class="ja-btn go" id="jaNext">' + (next === 3 ? "Next: cells in 3D →" : "🪪 Get your licence") + '</button></div>';
+        + '<div class="ja-row"><button class="ja-btn go" id="jaNext">' + (next === 3 ? "Next: cells in 3D →" : "🎓 Get your licence") + '</button></div>';
       host.querySelector("#jaNext").onclick = function(){ stopTest(); go(next); };
     } else {
       host.innerHTML = scoreHtml() + '<div class="ja-done"><b>' + (d.outOfItems ? "Too many skipped to reach ten answers this round." : d.correctCount + " of " + d.answered + " right")

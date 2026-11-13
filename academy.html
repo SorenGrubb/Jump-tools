@@ -113,6 +113,8 @@
 #lpWrap.full #lpClose{display:block;position:absolute;top:max(6px,env(safe-area-inset-top));right:8px;z-index:2;
   font:600 13px system-ui,sans-serif;padding:6px 10px;border-radius:8px;border:1px solid #2a3440;background:#141b22;color:#cfd8e3}
 body.lp-full{overflow:hidden}
+.build{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;opacity:.75;color:var(--mut,var(--muted,inherit))}
+.buildline{margin:18px 16px 14px;text-align:center}
 </style>
 <script>
 window.UJ = window.UJ || {};
@@ -200,7 +202,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
   </header>
 
   <nav class="atabs" aria-label="Jump Academy">
-    <button type="button" data-p="licence">🪪 Licence</button>
+    <button type="button" data-p="licence">🎓 Licence</button>
     <button type="button" data-p="practice">🎯 Practice</button>
     <button type="button" data-p="learn">📖 Learn</button>
     <button type="button" data-p="games">🎮 Games</button>
@@ -252,7 +254,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
       answers. Needs your Licence to Jump.</p>
       <button class="btn go" id="vqOpen">Check others' finds</button>
     </div>
-    <div class="card"><h3>🪙 How the coins work</h3>
+    <div class="card"><h3>🥇 How the coins work</h3>
       <ul class="look">
         <li>On the tracing pad, with the AI's suggestions on, <b>check its marks</b>: right, wrong, or what it really is.
             A gold coin sometimes jumps out &mdash; often for rare organelles (centrioles, cilia), seldom for
@@ -613,9 +615,9 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     var chat = 0; try { chat = +localStorage.getItem("jump_chat_sent_v1") || 0; } catch (_e){}
     var B = [];
     var add = function(group, ic, name, how, have, need){ B.push({ group: group, ic: ic, name: name, how: how, have: Math.min(have || 0, need), need: need, got: (have || 0) >= need }); };
-    add("Licence", "🪪", "Licence to Jump", "Pass Jump Academy", st.licensed ? 1 : 0, 1);
+    add("Licence", "🎓", "Licence to Jump", "Pass Jump Academy", st.licensed ? 1 : 0, 1);
     LEVELS.forEach(function(l){ add("Levels", "⭐", l[1], l[0].toLocaleString() + " points", pts, l[0]); });
-    add("Contributions", "🪙", "First coin", "A coin for checking the AI", s.coins, 1);
+    add("Contributions", "🥇", "First coin", "A coin for checking the AI", s.coins, 1);
     add("Contributions", "💰", "Coin collector", "100 coins", s.coins, 100);
     add("Contributions", "✅", "Confirmed find", "A find of yours confirmed by somebody else", bc.findsConfirmed, 1);
     add("Contributions", "💎", "Rare find", "A centriole or cilium of yours confirmed", bc.rareConfirmed, 1);
@@ -669,5 +671,6 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
   else setTimeout(start, 0);
 })();
 </script>
+<p class="buildline"><span class="build" title="When this file was built. If it does not match the file you think you are looking at, your browser is showing you a cached copy — reload with ctrl-shift-R.">build –</span></p>
 </body>
 </html>
