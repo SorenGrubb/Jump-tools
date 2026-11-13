@@ -546,7 +546,10 @@ UJ.organelleml = (function(){
   function answerShown(c){ return !HIDE.has(ANS) && shown(c.verdict === "no" ? NOT_ORGANELLE : c.k); }
   function chips(host, z){
     if (!host) return;
-    if (!LAST || !on()){ host.innerHTML = ""; host.style.display = "none"; return; }
+    if (!on()){ host.innerHTML = ""; host.style.display = "none"; return; }
+    /* while the model works on a new section there is nothing to list yet: empty, but not collapsed, so the pad
+       below does not jump (2026-11-13) */
+    if (!LAST){ host.innerHTML = ""; return; }
     host.style.display = "";
     var by = {};
     LAST.marks.forEach(function(m){ by[m.k] = (by[m.k] || 0) + 1; });

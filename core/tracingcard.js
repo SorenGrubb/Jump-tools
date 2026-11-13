@@ -6884,6 +6884,21 @@ function padAiOn(){
   var b = document.getElementById("tracePadAi");
   return !!(b && b.checked && padAiAvailable());
 }
+/* NO JUMPING (2026-11-13, Søren: "It is really annoying that the tracing pad keep jumping up and down when more or
+   less organelles are shown."). The status lines and the kind chips above the pad change height with every section --
+   one row of chips or two, a line of status or three -- and everything below moved with them. Each of them now keeps
+   the tallest height it has had while the pad is open: it can grow (once), never shrink, so the pad stays put.
+   padOpen() lets them go again. */
+var PAD_HOLD_IDS = ["tracePadAiSay", "tracePadAiKinds", "tracePadAiOutSay"];
+function padHold(el){
+  if (!el || !el.offsetParent) return;
+  var h = el.offsetHeight, was = parseFloat(el.dataset.holdH || "0");
+  if (h > was){ el.dataset.holdH = String(h); el.style.minHeight = h + "px"; }
+}
+function padHoldRelease(){
+  PAD_HOLD_IDS.forEach(function(id){ var el = document.getElementById(id); if (el){ el.style.minHeight = ""; delete el.dataset.holdH; } });
+}
+function padHoldAll(){ PAD_HOLD_IDS.forEach(function(id){ padHold(document.getElementById(id)); }); }
 function padAiSay(msg, bad){
   const el = document.getElementById("tracePadAiSay");
   if (!el) return;
@@ -6891,6 +6906,7 @@ function padAiSay(msg, bad){
   el.style.color = bad ? "var(--bad)" : "";
   /* The kind chips under it (2026-11-04: "too crowded ... select for a certain organelle type"). */
   try { if (window.UJ && UJ.organelleml && UJ.organelleml.chips) UJ.organelleml.chips(document.getElementById("tracePadAiKinds"), (typeof PAD !== "undefined" && PAD) ? PAD.z : null); } catch (_e){}
+  padHoldAll();
 }
 document.addEventListener("ujorgfilter", function(){
   try { padPaint(); padAiSay(UJ.organelleml.summary()); } catch (_e){}
@@ -6931,6 +6947,7 @@ function padAiOutSay(msg, bad){
   var el = document.getElementById("tracePadAiOutSay");
   if (!el) return;
   el.textContent = msg || ""; el.style.color = bad ? "var(--bad)" : "";
+  padHold(el);
 }
 function padAiOutTickSync(){
   var ok = padAiOutAvailable();
@@ -7237,6 +7254,7 @@ async function padAiTagKind(ring){
     var el = document.getElementById("tracePadAiOutSay");
     if (el && el.textContent.indexOf(" \u2014 looks like") < 0)
       el.textContent += " \u2014 looks like " + UJ.organelleml.nameOf(r.k).toLowerCase() + " (" + Math.round(r.p * 100) + "%).";
+    padHold(el);
   } catch (_e){}
 }
 /* "Use these contours": the AI's names become the default type. Per structure, the name most of its
@@ -8340,6 +8358,7 @@ function padTipsWire(){
   }
 }
 function padOpen(){
+  try { padHoldRelease(); } catch (_e){}
   try { padTipsStart(); } catch (_e){}
   const got = tracingPos();
   if (got.error){ tracingSay(got.error, true); return; }
