@@ -684,6 +684,22 @@
     <div class="ctl" style="margin:4px 0 0"><button id="physReset" title="Back to 37.7 °C and 5 mmHg">Reset</button></div>
     <div id="physNote" style="font-size:11.5px;color:var(--mut);margin-top:4px">Turn on the blood flow (Vascular regulation, red blood cells) to see the vessels respond; stimulate a cell to see the conduction speed.</div>
   </div>
+  <div id="imgBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div style="font-size:12px;margin-bottom:4px"><b>What a scanner would record</b> <span style="color:var(--mut)">(MODEL: fMRI and functional ultrasound from the blood flow)</span></div>
+    <div class="ctl" style="margin:0 0 4px">
+      <button id="imgBtn" title="Put a scanner's voxels over the tissue. Each voxel's signal is computed from the vessels inside it in the blood-flow model: their widths, haematocrit and blood oxygen. A sensory stimulus (10 s on, 20 s off) dilates the vessels around a point.">📡 Imaging</button>
+      <select id="imgSc" title="Which technique, at its usual resolution"><option value="h7">7 T BOLD — human, 1.6 mm</option><option value="h11">11.7 T BOLD — human, 1.2 mm</option><option value="h7l">7 T BOLD — human layer fMRI, 0.8 mm</option><option value="m15">15.2 T BOLD — mouse, 156 µm</option><option value="fus">Functional ultrasound — mouse, 0.1 mm</option></select>
+    </div>
+    <div class="ctl" style="margin:0 0 4px">
+      <select id="imgView" title="Overlay: see-through voxels over the real cells and vessels, coloured where the signal changes. Scanner: the picture the scanner records, solid grey pixels with the activation on them."><option value="overlay">Overlay on the tissue</option><option value="scanner">What the scanner records</option></select>
+      <label title="Realistic: the scanner's noise in every sample (σ = 100 / tSNR %). Clean: the signal alone."><input type="checkbox" id="imgNoise" checked> realistic noise</label>
+      <label title="A sensory stimulus in blocks: 10 s on, 20 s off, after a 10 s resting baseline; the baseline is the last 4 s of each rest"><input type="checkbox" id="imgStim" checked> stimulus</label>
+      <select id="imgArea" title="What the stimulus activates: the whole volume (as a visual stimulus would this patch of V1), or a spot about 0.4 mm across around a point (&quot;Activation here&quot;)"><option value="all">whole volume active</option><option value="spot">a 0.4 mm spot active</option></select>
+    </div>
+    <label id="imgOpRow" style="display:flex;gap:8px;align-items:center;font-size:12px" title="How strongly the voxels colour over the tissue">overlay strength <input type="range" id="imgOp" min="0.1" max="1" step="0.05" value="0.5" style="flex:1"></label>
+    <div class="ctl" style="margin:4px 0 0"><button id="imgHere" title="Centre the stimulated spot where you are looking (desktop: the orbit centre; headset: just in front of you)">Activation here</button><button id="imgShift" title="Move the scanner's grid by half a voxel: the same activation, split differently between voxels (partial volume)">Shift grid ½ voxel</button><button id="imgRebase" title="Take a new resting baseline">New baseline</button></div>
+    <div id="imgNote" style="font-size:11.5px;color:var(--mut);margin-top:4px"></div>
+  </div>
   <div class="catick" id="drugRow" style="margin:6px 0;align-items:center">
     <span style="font-size:12px;color:var(--mut)">Drugs (model):</span>
     <label title="Tetrodotoxin: blocks voltage-gated Na⁺ channels -- no action potentials anywhere; a spreading depolarization still runs"><input type="checkbox" data-drug="ttx"> TTX</label>
@@ -1000,7 +1016,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -9066,6 +9082,18 @@ function menuRows(){
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
     rows.push({ label: "Brain temperature " + PHYS.T.toFixed(1) + " °C  ▸", act: () => { const L = [34, 36, 37.7, 39, 40.5, 42.8]; const i = L.findIndex(x => x > PHYS.T + 0.05); setTemp(L[i < 0 ? 0 : i]); } });
     rows.push({ label: "Intracranial pressure " + PHYS.icp + " mmHg  ▸", act: () => { const L = [5, 15, 25, 35, 50]; const i = L.findIndex(x => x > PHYS.icp); setIcp(L[i < 0 ? 0 : i]); } });
+    if (DSX.flowNet){
+      rows.push({ label: "What a scanner records (model)", on: IMG.on, act: () => setImg(!IMG.on) });
+      if (IMG.on){
+        rows.push({ label: "   " + IMG_SC[IMG.sc].short + "  ▸", act: () => imgSetting("sc", IMG_ORDER[(IMG_ORDER.indexOf(IMG.sc) + 1) % IMG_ORDER.length]) });
+        rows.push({ label: "   " + (IMG.view === "overlay" ? "Overlay on the tissue" : "What the scanner records") + "  ▸", act: () => imgSetting("view", IMG.view === "overlay" ? "scanner" : "overlay") });
+        rows.push({ label: "   Realistic noise", on: IMG.noise, act: () => imgSetting("noise", !IMG.noise) });
+        rows.push({ label: "   Stimulus (10 s on, 20 s off)", on: IMG.stim, act: () => imgSetting("stim", !IMG.stim) });
+        rows.push({ label: "   " + (IMG.area === "all" ? "Whole volume active" : "A 0.4 mm spot active") + "  ▸", act: () => imgSetting("area", IMG.area === "all" ? "spot" : "all") });
+        rows.push({ label: "   Activation just in front of me", act: () => imgHere() });
+        rows.push({ label: "   Shift the grid ½ voxel", act: () => imgSetting("shift") });
+      }
+    }
     rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
     rows.push({ label: "   Power spectrum of the LFP", on: !!LFP.psd, act: () => setPsd(!LFP.psd) });
     rows.push({ label: "Spreading depolarization (model)", on: CSD.on, act: () => setCsd(!CSD.on) });
@@ -12292,6 +12320,7 @@ function stkConductances(base){
       if (act && act[c]) f *= 1 + Math.min(0.5, act[c]);
       if (csd){ const tau = CSD.t - Math.hypot(N.mid[c*3] - CSD.o.x, N.mid[c*3+1] - CSD.o.y, N.mid[c*3+2] - CSD.o.z) / 50; if (tau >= 0) f *= 1 + csdVes(tau, STK_KIND[kd]); }
       if (neK[kd]) f *= 1 + neK[kd];
+      if (IMG.on && IMG.dil && IMG.dil[c]) f *= 1 + IMG.dil[c];                  // the imaging stimulus (section 45)
     }
     F[c] = f;
     const hd = H ? H[c] : 0.3;
@@ -12305,7 +12334,8 @@ function stkConductances(base){
       let t = 1;
       if (!base){ if (act && act[c]) t *= 1 + Math.min(0.75, 1.5 * act[c]);
         if (csd){ const tau = CSD.t - Math.hypot(N.mid[c*3] - CSD.o.x, N.mid[c*3+1] - CSD.o.y, N.mid[c*3+2] - CSD.o.z) / 50; if (tau >= 0) t *= 1 + 1.3 * csdVes(tau, "art"); }
-        if (DRUG.iso) t *= 1.1; }
+        if (DRUG.iso) t *= 1.1;
+        if (IMG.on && IMG.dil && IMG.dil[c]) t *= 1 + 1.5 * IMG.dil[c]; }
       sp.rs = Math.max(0.6, 0.64 * sp.r0 * f * t);
       Rs += 8 * 1.2e-3 * stkVisc(2 * sp.rs, hd) * sp.L / (Math.PI * sp.rs ** 4);
     }
@@ -14410,6 +14440,7 @@ const SIM_REC = [
   { k: "beat", name: "Heartbeat and breathing",      v: 0.1,      why: "10 Hz and 3 Hz pulsations" },
   { k: "rec",  name: "Recorded activity",            v: 1,        why: "the 2-photon movie in real time" },
   { k: "nvc",  name: "Neurovascular coupling",       v: 1,        why: "dilation rises over ~1–2 s" },
+  { k: "img",  name: "Imaging (fMRI, ultrasound)",   v: 1,        why: "a scanner samples every 0.6–2.5 s" },
   { k: "ca",   name: "Ca²⁺ waves",                   v: 2,        why: "astrocyte waves cross a cell in seconds" },
   { k: "csd",  name: "Spreading depolarization",     v: 5,        why: "3 mm/min; recovery over minutes" },
   { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" },
@@ -16309,6 +16340,7 @@ renderer.setAnimationLoop(() => {
   try { csdFrame(sdt); } catch (e){ console.warn("[vr] spreading depolarization:", e); }
   try { bpFrame(sdt); } catch (e){ console.warn("[vr] blood pressure:", e); }
   try { stkFrame(sdt); } catch (e){ console.warn("[vr] stroke:", e); }
+  try { imgFrame(sdt); } catch (e){ console.warn("[vr] imaging:", e); }
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
@@ -16953,7 +16985,485 @@ if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DS
 })();
 resetStage(); resetCamera();
 renderList(); updateLabel();
-window.__vr = { WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+/* ── 45. WHAT A SCANNER WOULD RECORD: BOLD fMRI and functional ultrasound, from the flow model ───── 2026-11-13
+   Søren: "a demonstration of the resolution of different techniques used for non-invasive imaging. Like, if a 7T
+   MRI did BOLD fMRI would image this, how would the pixels of the image recording look. What about a 11T ... It
+   should show changes in intensity when blood flow changes, so it is dynamic" -- then: "Include a switch between
+   realistic noise and clean. Give the option to have it as an overlay of the real cells/tissue so that you can see
+   the difference between your resolution with these techniques and what is really going on."
+
+   NOTHING HERE IS PAINTED ON. The signal of every voxel is computed from the blood-flow model (section 30): the
+   vessels inside the voxel, each with its radius in the flow (dilations included), its haematocrit and its blood
+   oxygen saturation (carried along the flow). So the draining-vein effect -- the brightest voxel sitting where the
+   oxygenated blood LEAVES, downstream of the active capillaries -- is not put in: it falls out of the vessels.
+
+   THE SCANNERS (voxel x · depth · z, sampling interval):
+   · 7 T BOLD, human, standard: 1.6 mm isotropic, TR 1 s, TE 22.2 ms -- the Human Connectome Project 7T protocol
+     (humanconnectome.org, "HCP 7T Imaging Protocol Overview").
+   · 7 T BOLD, human, layer fMRI: 0.8 mm isotropic, TR 2.5 s -- the sub-millimetre range of laminar fMRI
+     (e.g. Huber et al. 2017 Neuron 96:1253). A typical value, not one protocol.
+   · 11.7 T BOLD, human (Iseult): 1.2 mm isotropic whole brain (Obriot et al. 2026 Imaging Neuroscience,
+     doi 10.1162/IMAG.a.1362). TR not taken from the paper (2 s assumed).
+   · 15.2 T BOLD, mouse: 156 × 156 µm in plane, 500 µm slices, TR 1 s (Jung et al. 2021 PNAS 118:e2023265118).
+   · Functional ultrasound, mouse: ~100 × 110 µm in plane, ~300 µm across it, 1.7 Hz (Macé et al. 2018 Neuron
+     100:1241) -- through a cranial window there, so not fully non-invasive.
+   The human voxels are put on MOUSE tissue: a comparison of scale, not a simulation of a human brain.
+
+   GRADIENT-ECHO BOLD in a voxel (the classical vessel-level picture: Ogawa et al. 1993 Biophys J 64:803;
+   field dependence Uludağ et al. 2009 NeuroImage 48:150):
+   · frequency offset at a vessel wall ν = 40.3 s⁻¹ × (B0 / 1.5 T) × (Hct / 0.4) × (1 − SO₂) (the 1.5 T value
+     used by Obata et al. 2004 NeuroImage 21:144);
+   · extravascular ΔR2* of a vessel: venules and arterioles in the static regime, 4.3 · ν · V; capillaries in the
+     diffusion regime, 0.04 · ν² · V, but never more than the static value (they cross over at high field);
+   · intravascular signal: blood's own R2* = 15 + 16.3 · B0² · (1 − SO₂)² s⁻¹ -- an ASSUMPTION set so venous
+     blood (SO₂ 0.6) has T2* ≈ 7 ms at 7 T, i.e. the blood signal is gone at high field (Uludağ 2009's point);
+   · tissue R2* = 8 + 3.9 · B0 s⁻¹ (ASSUMPTION, grey matter), TE as given or 1 / tissue R2*.
+   · The part of a voxel that lies outside the dataset is taken as tissue that does not change (activation is
+     local), so a huge voxel dilutes a small activation -- as it would.
+   FUNCTIONAL ULTRASOUND (power Doppler) ∝ the volume of moving blood: each vessel's blood volume × haematocrit,
+   weighted by its speed up to 2 mm/s and fully above (the clutter filter loses slow flow; the ramp is an ASSUMPTION
+   -- a sharp cut-off sat right where capillary speeds are and turned small speed changes into changes of +100 %),
+   plus a floor of a quarter of the median voxel (clutter and noise).
+   NOISE ("realistic"): independent Gaussian per voxel per sample, σ = 100 / tSNR % -- tSNR ASSUMED: 40 (7 T
+   standard), 15 (7 T layer), 30 (11.7 T), 30 (mouse 15.2 T); fUS σ 3 %. "Clean" draws the signal alone.
+   No extra blurring: the spread of BOLD beyond the active spot comes from the vessels themselves here.
+
+   THE STIMULUS (a sensory block design, 10 s on / 20 s off, after 10 s of rest): arterioles and capillaries dilate with
+   the realistic gains of section 22 (1st-order capillary 15 %, PA 10 %, 2nd order 7 %, pial arteriole 6 %, 3rd
+   order 3 %, middle 1.2 %), through three 0.6 s lags as in section 22 -- either everywhere ("whole volume active",
+   as a visual stimulus would this patch of V1; the part of a voxel outside the dataset is then taken as equally
+   active) or in a spot (~200 µm fall-off, arterioles ~450 µm from their nearest point: the dilation is conducted
+   upstream; the rest of a voxel then unchanged). Venules are NOT dilated: in rodent cortex they barely change
+   diameter during brief stimuli. Anything else that moves the vessels (stimulated cells, Ca²⁺ waves, sleep, a clot,
+   blood pressure) moves the signal too. Checked on the real network (2026-11-13), whole volume active: inflow
+   +22 %, capillary flow +31 %, venous outflow saturation 0.635 → 0.670 -- what a flow/oxygen-use coupling of ~2.6
+   predicts (0.676) -- and a resting maximum BOLD (TE × deoxyhaemoglobin R2*) of 17.5 % at 7 T, blood volume 3.0 %.
+   THE BOLD CHANGE COMES OUT SMALLER than typical human responses (a few tenths of a % here): mouse arterial blood
+   is only ~85 % saturated (P50 40 mmHg) and the arterioles swell, which adds deoxyhaemoglobin and offsets part of
+   the venous gain. That is the model's honest answer, not tuned. The slow pressure swing at the pial inlets
+   (section 30) is part of "realistic noise" -- physiological noise to a scanner -- and is frozen when clean.
+   The oxygen in the model follows the flow at once (no transit time), so the response here rises with the flow,
+   faster than a human haemodynamic response (peak ~5–6 s); mouse responses are faster too. */
+const IMG_SC = {
+  h7:  { name: "7 T BOLD fMRI — human, standard", short: "7 T (1.6 mm)", kind: "bold", B0: 7,    vox: [1600, 1600, 1600], TR: 1,   TE: 0.0222, tsnr: 40, range: 1,
+         why: "HCP 7T protocol: 1.6 mm isotropic, TR 1 s" },
+  h7l: { name: "7 T BOLD fMRI — human, layer fMRI", short: "7 T layers (0.8 mm)", kind: "bold", B0: 7, vox: [800, 800, 800], TR: 2.5, TE: 0.0222, tsnr: 15, range: 1,
+         why: "laminar fMRI, ~0.8 mm (e.g. Huber et al. 2017)" },
+  h11: { name: "11.7 T BOLD fMRI — human (Iseult)", short: "11.7 T (1.2 mm)", kind: "bold", B0: 11.7, vox: [1200, 1200, 1200], TR: 2, TE: 0, tsnr: 30, range: 1,
+         why: "Iseult whole-brain fMRI, 1.2 mm (Obriot et al. 2026)" },
+  m15: { name: "15.2 T BOLD fMRI — mouse", short: "mouse 15.2 T", kind: "bold", B0: 15.2, vox: [156, 156, 500], TR: 1, TE: 0, tsnr: 30, range: 1,
+         why: "156 × 156 µm, 500 µm slices (Jung et al. 2021)" },
+  fus: { name: "Functional ultrasound — mouse", short: "fUS (0.1 mm)", kind: "fus", vox: [100, 110, 300], TR: 1 / 1.7, tsnr: 0, sig: 3, range: 20,
+         why: "~100 µm in plane, 300 µm across, 1.7 Hz (Macé et al. 2018)" }
+};
+const IMG_ORDER = ["h7", "h11", "h7l", "m15", "fus"];
+const IMG = { on: false, sc: "h7", area: "all", noise: true, view: "overlay", op: 0.5, stim: true, onS: 10, offS: 20, warm: 10,
+              c: null, t: 0, nextS: 0, env: [0, 0, 0], venE: 0, u: 0, dil: null, seg: null, grid: null, mesh: null, edges: null,
+              spr: null, cv: null, shift: 0, probe: -1, hist: [], uHist: [], base: null, note: "", busy: false };
+const IMG_GAIN = { a1: 0.15, act: 0.12, pa: 0.10, a2: 0.07, part: 0.06, a3: 0.03, mid: 0.012, unk: 0.012 };
+/* venules: no active dilation, and none put in passively -- in rodent cortex venules barely change diameter during brief
+   stimuli; the table is kept (all 0) for a later choice */
+const IMG_VEN = { v3: 0, v2: 0, v1: 0, cvt: 0, av: 0, pcv: 0, pven: 0, pial: 0 };
+/* the vessel pieces, once per network: where each piece is, its resting blood volume, where along its chain */
+function imgSegs(){
+  const N = STK.net; if (!N) return null;
+  if (IMG.seg && IMG.seg.N === N) return IMG.seg;
+  let m = 0; for (let c = 0; c < N.nc; c++) if (!(N.ghost && N.ghost[c])) m += Math.max(0, N.off[c+1] - N.off[c] - 1);
+  const C = new Int32Array(m), V = new Float32Array(m), R = new Float32Array(m), F = new Float32Array(m), X = new Float32Array(m * 3);
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  let s = 0;
+  for (let c = 0; c < N.nc; c++){
+    if (N.ghost && N.ghost[c]) continue;
+    const L = Math.max(1e-6, N.len[c]);
+    for (let k = N.off[c]; k < N.off[c+1] - 1; k++){
+      const a = N.cp[k], b = N.cp[k+1], l = Math.max(0, N.arc[k+1] - N.arc[k]), r = 0.5 * (N.rad[a] + N.rad[b]);
+      C[s] = c; V[s] = Math.PI * r * r * l; R[s] = r; F[s] = Math.min(1, Math.max(0, 0.5 * (N.arc[k] + N.arc[k+1]) / L));
+      for (let q = 0; q < 3; q++){ const v = 0.5 * (N.pos[a*3+q] + N.pos[b*3+q]); X[s*3+q] = v; if (v < mn[q]) mn[q] = v; if (v > mx[q]) mx[q] = v; }
+      s++;
+    }
+  }
+  IMG.seg = { N, m, C, V, R, F, X, mn, mx };
+  return IMG.seg;
+}
+/* the voxel grid of the chosen scanner over the dataset; the share of each voxel the dataset fills */
+function imgGrid(){
+  const S = imgSegs(); if (!S) return null;
+  const sc = IMG_SC[IMG.sc], v = sc.vox, o = [0, 1, 2].map(q => S.mn[q] - IMG.shift * v[q] * 0.5);
+  const n = [0, 1, 2].map(q => Math.max(1, Math.ceil((S.mx[q] - o[q]) / v[q] - 1e-9)));
+  const nv = n[0] * n[1] * n[2], cov = new Float32Array(nv), vox = new Int32Array(S.m);
+  for (let k = 0; k < nv; k++){
+    const i = k % n[0], j = Math.floor(k / n[0]) % n[1], l = Math.floor(k / (n[0] * n[1]));
+    let f = 1; [i, j, l].forEach((ix, q) => { const a = o[q] + ix * v[q], b = a + v[q]; f *= Math.max(0, Math.min(b, S.mx[q]) - Math.max(a, S.mn[q])) / v[q]; });
+    cov[k] = f;
+  }
+  for (let s = 0; s < S.m; s++){
+    const i = Math.min(n[0] - 1, Math.floor((S.X[s*3] - o[0]) / v[0])), j = Math.min(n[1] - 1, Math.floor((S.X[s*3+1] - o[1]) / v[1])), l = Math.min(n[2] - 1, Math.floor((S.X[s*3+2] - o[2]) / v[2]));
+    vox[s] = i + n[0] * (j + n[1] * l);
+  }
+  IMG.grid = { sc: IMG.sc, shift: IMG.shift, o, n, v, nv, cov, vox, val: new Float32Array(nv), clean: new Float32Array(nv), S0: null, hist: [], img0: new Float32Array(nv) };
+  IMG.base = null; IMG.hist = []; IMG.uHist = [];
+  return IMG.grid;
+}
+/* what each voxel would give now: BOLD magnitude, or power Doppler (arbitrary units; only changes are shown) */
+function imgSignal(){
+  const S = imgSegs(), G = IMG.grid, N = STK.net; if (!S || !G || !STK.Q) return null;
+  const sc = IMG_SC[IMG.sc], nv = G.nv, vvol = G.v[0] * G.v[1] * G.v[2];
+  const Fc = STK.F && STK.F.length === N.nc ? STK.F : null, H = STK.H, Q = STK.Q, Si = STK.Si, So = STK.So, Sstag = stkS(20);
+  const out = new Float64Array(nv);
+  if (sc.kind === "bold"){
+    const B0 = sc.B0, R2t = 8 + 3.9 * B0, TE = sc.TE || 1 / R2t, nu0 = 40.3 * B0 / 1.5;
+    const dR = new Float64Array(nv), vb = new Float64Array(nv), iv = new Float64Array(nv);
+    for (let s = 0; s < S.m; s++){
+      const c = S.C[s], f = Fc ? Fc[c] : 1, V = S.V[s] * f * f, r = S.R[s] * f;
+      let so = Si && So && !isNaN(Si[c]) && !isNaN(So[c]) ? Si[c] + (So[c] - Si[c]) * S.F[s] : Sstag;
+      if (!(Math.abs(Q[c]) > 1)) so = Sstag;
+      const ht = H ? stkHT(H[c], 2 * r) : 0.3, de = Math.max(0, 1 - so), nu = nu0 * (ht / 0.4) * de, k = G.vox[s];
+      const stat = 4.3 * nu * V, diff = 0.04 * nu * nu * V;
+      dR[k] += N.kind[c] === 0 ? Math.min(stat, diff) : stat;
+      vb[k] += V; iv[k] += V * Math.exp(-TE * (15 + 16.3 * B0 * B0 * de * de));
+    }
+    for (let k = 0; k < nv; k++){
+      const vt = Math.max(1, G.cov[k] * vvol);                  // the dataset's part of the voxel, µm³
+      const v = Math.min(0.5, vb[k] / vt);
+      out[k] = (1 - v) * Math.exp(-TE * (R2t + dR[k] / vt)) + 1.15 * iv[k] / vt;
+    }
+  } else {
+    const pw = new Float64Array(nv);
+    for (let s = 0; s < S.m; s++){
+      const c = S.C[s], f = Fc ? Fc[c] : 1, r = Math.max(0.5, S.R[s] * f), V = S.V[s] * f * f;
+      const sp = Math.abs(Q[c]) / (Math.PI * r * r) / 1000, w = Math.min(1, sp / 2);
+      if (w > 0) pw[G.vox[s]] += V * (H ? stkHT(H[c], 2 * r) : 0.3) * w;
+    }
+    /* a floor under every voxel -- clutter and the scanner's own noise -- so a voxel with almost no fast blood does
+       not show a change of hundreds of percent: a quarter of the median voxel (ASSUMPTION) */
+    if (G.floor == null){ const d = []; for (let k = 0; k < nv; k++) if (G.cov[k] > 0) d.push(pw[k] / Math.max(1, G.cov[k] * vvol)); d.sort((a, b) => a - b); G.floor = 0.25 * (d.length ? d[d.length >> 1] : 0) + 1e-9; }
+    for (let k = 0; k < nv; k++) out[k] = pw[k] / Math.max(1, G.cov[k] * vvol) + G.floor;
+  }
+  return out;
+}
+const imgGauss = () => { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185 * v); };
+/* the stimulus: a dilation per chain around IMG.c, scaled by the block envelope */
+function imgDilation(){
+  const N = STK.net; if (!N || !IMG.c) return;
+  if (!IMG.dil || IMG.dil.length !== N.nc) IMG.dil = new Float32Array(N.nc);
+  if (!IMG.w || IMG.wFor !== IMG.c.join(",") + IMG.area){
+    const w = new Float32Array(N.nc), vw = new Float32Array(N.nc);
+    for (let c = 0; c < N.nc; c++){
+      const nm = N.CL[N.ccls[c]];
+      /* distance from the chain's NEAREST point: a penetrating arteriole is hundreds of µm long, and the stretch of
+         it beside the active spot is what dilates and then carries the dilation up to the pia (conducted) */
+      let d = Infinity;
+      for (let k = N.off[c]; k < N.off[c+1]; k += 2){ const i = N.cp[k]; d = Math.min(d, Math.hypot(N.pos[i*3] - IMG.c[0], N.pos[i*3+1] - IMG.c[1], N.pos[i*3+2] - IMG.c[2])); }
+      const all = IMG.area === "all";
+      if (IMG_GAIN[nm] != null){ const R = nm === "pa" || nm === "part" || nm === "act" ? 450 : 200; w[c] = IMG_GAIN[nm] * (all ? 1 : Math.exp(-((d / R) ** 2))); }
+      if (IMG_VEN[nm] != null) vw[c] = IMG_VEN[nm] * (all ? 1 : Math.exp(-((d / 300) ** 2)));
+    }
+    IMG.w = w; IMG.vw = vw; IMG.wFor = IMG.c.join(",") + IMG.area;
+  }
+  const a = IMG.env[2] * (IMG.gainK || 1), v = IMG.venE;
+  for (let c = 0; c < N.nc; c++) IMG.dil[c] = IMG.w[c] * a + IMG.vw[c] * v;
+}
+function imgCentre(){
+  const S = imgSegs(); if (!S) return null;
+  let b = null; try { b = regionBox(); } catch (e){}
+  if (b && !b.isEmpty()){ const c = b.getCenter(new THREE.Vector3()); return [c.x, c.y, c.z]; }
+  return [0.5 * (S.mn[0] + S.mx[0]), Math.min(S.mx[1], 550), 0.5 * (S.mn[2] + S.mx[2])];   // layer 2/3 if no cells are loaded (pia ≈ 350 µm)
+}
+function imgHere(){
+  const p = renderer.xr.isPresenting
+    ? camera.getWorldPosition(new THREE.Vector3()).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.25))
+    : controls.target.clone();
+  content.worldToLocal(p);
+  IMG.c = [p.x, p.y, p.z]; IMG.w = null; if (IMG.area === "all"){ IMG.area = "spot"; IMG._ld = -1; } imgProbe(); imgUi();
+  ctxNote.textContent = "Imaging: the activation is now centred at " + p.toArray().map(Math.round).join(", ") + " µm.";
+}
+/* ── drawing: one box per voxel, coloured by its change; or the scanner's own picture ── */
+const _iC = new THREE.Color(), _iM = new THREE.Matrix4();
+function imgColour(pct, range, base){
+  const t = Math.max(-1, Math.min(1, pct / range));
+  if (IMG.view === "scanner"){
+    const g = 0.18 + 0.5 * base;                       // the picture: grey from its resting signal
+    if (Math.abs(t) < 0.12) return _iC.setRGB(g, g, g);
+    return t > 0 ? _iC.setRGB(1, Math.min(1, 0.25 + 0.75 * t), 0.05 * (1 - t)) : _iC.setRGB(0.05, 0.4 + 0.5 * -t, 1);
+  }
+  if (Math.abs(t) < 0.03) return _iC.setRGB(0.55, 0.62, 0.6);                  // nothing changing: a faint neutral
+  if (t >= 0) return _iC.setRGB(1, 0.2 + 0.8 * t, 0.08);
+  return _iC.setRGB(0.1, 0.45 + 0.5 * -t, 1);
+}
+function imgDraw(){
+  const G = IMG.grid; if (!G) return;
+  const sc = IMG_SC[IMG.sc];
+  if (!IMG.mesh || IMG.mesh.count !== G.nv || IMG.mesh.userData.for !== G){
+    imgClear(true);
+    const mat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const uScan = { value: 0 };
+    /* each voxel its own see-through-ness (overlay), or none at all (the scanner's picture) */
+    mat.onBeforeCompile = sh => {
+      sh.uniforms.uScan = uScan;
+      sh.vertexShader = "attribute float ialpha;\nvarying float vIA;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvIA = ialpha;");
+      sh.fragmentShader = "varying float vIA;\nuniform float uScan;\n" + sh.fragmentShader.replace("#include <dithering_fragment>", "#include <dithering_fragment>\ngl_FragColor.a = uScan > 0.5 ? 1.0 : vIA;");
+    };
+    mat.userData.uScan = uScan;
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    geo.setAttribute("ialpha", new THREE.InstancedBufferAttribute(new Float32Array(G.nv).fill(0.1), 1));
+    const m = new THREE.InstancedMesh(geo, mat, G.nv);
+    for (let k = 0; k < G.nv; k++){
+      const i = k % G.n[0], j = Math.floor(k / G.n[0]) % G.n[1], l = Math.floor(k / (G.n[0] * G.n[1]));
+      _iM.makeScale(G.v[0] * 0.985, G.v[1] * 0.985, G.v[2] * 0.985).setPosition(G.o[0] + (i + 0.5) * G.v[0], G.o[1] + (j + 0.5) * G.v[1], G.o[2] + (l + 0.5) * G.v[2]);
+      m.setMatrixAt(k, _iM); m.setColorAt(k, _iC.setRGB(0.3, 0.3, 0.3));
+    }
+    m.renderOrder = 6; m.userData.for = G; m.frustumCulled = false; IMG.mesh = m; content.add(m);
+    /* the voxel edges, so the grid reads as a grid over the tissue */
+    const pos = [];
+    for (let q = 0; q < 3; q++){
+      const a = (q + 1) % 3, b = (q + 2) % 3;
+      for (let i = 0; i <= G.n[a]; i++) for (let j = 0; j <= G.n[b]; j++){
+        const p0 = [0, 0, 0], p1 = [0, 0, 0];
+        p0[a] = p1[a] = G.o[a] + i * G.v[a]; p0[b] = p1[b] = G.o[b] + j * G.v[b]; p0[q] = G.o[q]; p1[q] = G.o[q] + G.n[q] * G.v[q];
+        pos.push(...p0, ...p1);
+      }
+    }
+    const eg = new THREE.BufferGeometry(); eg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    IMG.edges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: "#9fd3c7", transparent: true, opacity: 0.5, depthWrite: false }));
+    IMG.edges.renderOrder = 7; content.add(IMG.edges);
+  }
+  const m = IMG.mesh, scanner = IMG.view === "scanner", alpha = m.geometry.getAttribute("ialpha");
+  m.material.userData.uScan.value = scanner ? 1 : 0;
+  if (m.material.depthWrite !== scanner){ m.material.depthWrite = scanner; m.material.needsUpdate = true; }
+  let lo = Infinity, hi = -Infinity; for (let k = 0; k < G.nv; k++) if (G.cov[k] > 0 && G.img0[k] > 0){ lo = Math.min(lo, G.img0[k]); hi = Math.max(hi, G.img0[k]); }
+  for (let k = 0; k < G.nv; k++){
+    const base = hi > lo ? (G.img0[k] - lo) / (hi - lo) : 0.5;
+    m.setColorAt(k, G.cov[k] > 0 ? imgColour(G.val[k], sc.range, base) : _iC.setRGB(0.1, 0.1, 0.1));
+    alpha.array[k] = G.cov[k] > 0 ? Math.min(0.92, 0.035 + IMG.op * Math.min(1, Math.abs(G.val[k]) / sc.range) * 1.4) : 0.015;
+  }
+  alpha.needsUpdate = true;
+  m.instanceColor.needsUpdate = true;
+  IMG.edges.material.opacity = scanner ? 0.25 : 0.5;
+}
+function imgClear(keepPanel){
+  if (IMG.mesh){ content.remove(IMG.mesh); IMG.mesh.geometry.dispose(); IMG.mesh.material.dispose(); IMG.mesh = null; }
+  if (IMG.edges){ content.remove(IMG.edges); IMG.edges.geometry.dispose(); IMG.edges.material.dispose(); IMG.edges = null; }
+  if (!keepPanel && IMG.spr) IMG.spr.visible = false;
+}
+/* ── the scanner's screen: one slice as recorded, and the probe voxel's time course ── */
+function imgPanel(){
+  const G = IMG.grid; if (!G) return;
+  const sc = IMG_SC[IMG.sc], W = 760, H = 560;
+  if (!IMG.cv){ IMG.cv = document.createElement("canvas"); IMG.cv.width = W; IMG.cv.height = H; }
+  const g = IMG.cv.getContext("2d");
+  g.clearRect(0, 0, W, H); g.fillStyle = "rgba(10,14,18,0.95)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#20c997"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+  g.fillStyle = "#e6edf3"; g.font = "600 23px system-ui, sans-serif"; g.fillText("What " + sc.short + " would record", 16, 32);
+  g.font = "600 14px system-ui, sans-serif"; g.fillStyle = "#63e6be";
+  const inData = [...G.cov].filter(x => x > 0).length;
+  g.fillText("MODEL · voxel " + G.v.map(x => x >= 1000 ? (x / 1000).toFixed(1) + " mm" : x + " µm").join(" × ") + " · every " + (sc.TR < 1 ? Math.round(sc.TR * 1000) + " ms" : sc.TR + " s")
+    + " · " + inData + " voxel" + (inData === 1 ? "" : "s") + " cover the dataset · " + (IMG.noise ? "realistic noise" : "clean"), 16, 54);
+  /* the slice through the probe voxel (x across, depth down): the picture the scanner records (grey, noise and all),
+     and below it the activation map -- the change now (clean) or the response over the blocks where it is significant */
+  const pk = IMG.probe >= 0 && IMG.probe < G.nv ? IMG.probe : 0, pl = Math.floor(pk / (G.n[0] * G.n[1]));
+  const px = Math.min(250 / G.n[0], 120 / G.n[1]), x0 = 16;
+  const raw = G.raw || G.clean;
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < G.nv; k++) if (G.cov[k] > 0){ const r = G.img0[k] * (1 + raw[k] / 100); lo = Math.min(lo, r); hi = Math.max(hi, r); }
+  const drawSlice = (y0, mapMode) => {
+    for (let j = 0; j < G.n[1]; j++) for (let i = 0; i < G.n[0]; i++){
+      const k = i + G.n[0] * (j + G.n[1] * pl);
+      if (!(G.cov[k] > 0)){ g.fillStyle = "#050607"; g.fillRect(x0 + i * px, y0 + j * px, px, px); continue; }
+      const r = G.img0[k] * (1 + raw[k] / 100), base = hi > lo ? (r - lo) / (hi - lo) : 0.5, gr = Math.round(40 + 170 * base);
+      let col = "rgb(" + gr + "," + gr + "," + gr + ")";
+      if (mapMode){
+        const t = Math.max(-1, Math.min(1, G.val[k] / sc.range)), gb = Math.round(25 + 60 * base);
+        col = Math.abs(t) < 0.05 ? "rgb(" + gb + "," + gb + "," + gb + ")" : t > 0 ? "rgb(255," + Math.round(60 + 190 * t) + ",20)" : "rgb(20," + Math.round(100 + 130 * -t) + ",255)";
+      }
+      g.fillStyle = col; g.fillRect(x0 + i * px, y0 + j * px, px, px);
+    }
+    g.strokeStyle = "#ffd43b"; g.lineWidth = 2; g.strokeRect(x0 + (pk % G.n[0]) * px, y0 + (Math.floor(pk / G.n[0]) % G.n[1]) * px, px, px);
+  };
+  g.font = "13px system-ui, sans-serif";
+  g.fillStyle = "#8b949e"; g.fillText("the recorded picture, now (slice " + (pl + 1) + " of " + G.n[2] + ")", x0, 74);
+  drawSlice(80, false);
+  const yMap = 80 + G.n[1] * px + 30;
+  g.fillStyle = "#8b949e";
+  g.fillText(IMG.noise ? "activation map: |z| > 3 over the blocks" : "activation map: the change now", x0, yMap - 6);
+  drawSlice(yMap, true);
+  g.fillText("x across, depth down", x0, yMap + G.n[1] * px + 16); g.fillText("red up, blue down (±" + sc.range + " %)", x0, yMap + G.n[1] * px + 32);
+  /* the probe's time course: every sample, and the average over the blocks so far */
+  const L = 300, R = W - 20, T = 80, B = 300, win = 90, h = IMG.hist, tE = IMG.t, rng = Math.max(sc.range, IMG.noise ? 3 * (sc.kind === "fus" ? sc.sig : 100 / sc.tsnr) : 0);
+  const y = v => (T + B) / 2 - (B - T) / 2 * Math.max(-1, Math.min(1, v / rng));
+  for (const u of IMG.uHist){ if (!u.on) continue; const a = L + (R - L) * (1 - (tE - u.t0) / win), b = L + (R - L) * (1 - (tE - u.t1) / win); if (b < L) continue; g.fillStyle = "rgba(32,201,151,0.13)"; g.fillRect(Math.max(L, a), T, Math.min(R, b) - Math.max(L, a), B - T); }
+  g.strokeStyle = "#30363d"; g.lineWidth = 1; g.beginPath(); g.moveTo(L, y(0)); g.lineTo(R, y(0)); g.stroke();
+  g.fillStyle = "#8b949e"; g.fillText("+" + rng.toFixed(1) + " %", L - 50 + 4, T + 10); g.fillText("−" + rng.toFixed(1) + " %", L - 50 + 4, B); g.fillText("the yellow voxel, last " + win + " s (green: stimulus on)", L, T - 8);
+  g.strokeStyle = "#ffd43b"; g.lineWidth = 2; g.beginPath(); let f = true;
+  for (const x of h){ const xx = L + (R - L) * (1 - (tE - x.t) / win); if (xx < L) continue; const yy = y(x.v[pk]); f ? g.moveTo(xx, yy) : g.lineTo(xx, yy); f = false; }
+  g.stroke();
+  if (IMG.noise){ g.strokeStyle = "rgba(230,237,243,0.55)"; g.setLineDash([4, 4]); g.beginPath(); f = true;
+    for (const x of h){ const xx = L + (R - L) * (1 - (tE - x.t) / win); if (xx < L) continue; const yy = y(x.c[pk]); f ? g.moveTo(xx, yy) : g.lineTo(xx, yy); f = false; }
+    g.stroke(); g.setLineDash([]); g.fillStyle = "rgba(230,237,243,0.7)"; g.fillText("dashed: the same voxel without noise", L, B + 16); }
+  /* block average */
+  { const per = IMG.onS + IMG.offS, nb = Math.max(4, Math.round(per / sc.TR)), sum = new Float64Array(nb), n = new Uint16Array(nb);
+    for (const x of h){ if (x.tb == null) continue; const b = Math.min(nb - 1, Math.floor(x.tb / per * nb)); sum[b] += x.v[pk]; n[b]++; }
+    const T2 = 360, B2 = H - 40, cyc = IMG.stim ? Math.max(0, Math.floor((IMG.t - IMG.warm) / per)) : 0;
+    g.fillStyle = "#8b949e"; g.fillText("average of the " + (isFinite(cyc) ? cyc : 0) + " block" + (cyc === 1 ? "" : "s") + " so far (" + IMG.onS + " s on / " + IMG.offS + " s off)", L, T2 - 8);
+    const r2 = Math.max(sc.range, IMG.noise && isFinite(cyc) && cyc > 0 ? 2.5 * (sc.kind === "fus" ? sc.sig : 100 / sc.tsnr) / Math.sqrt(cyc) : 0);
+    const y2 = v => (T2 + B2) / 2 - (B2 - T2) / 2 * Math.max(-1, Math.min(1, v / r2));
+    g.fillStyle = "rgba(32,201,151,0.13)"; g.fillRect(L, T2, (R - L) * IMG.onS / per, B2 - T2);
+    g.strokeStyle = "#30363d"; g.beginPath(); g.moveTo(L, y2(0)); g.lineTo(R, y2(0)); g.stroke();
+    g.fillStyle = "#8b949e"; g.fillText("+" + +r2.toFixed(1) + " %", L - 50 + 4, T2 + 10); g.fillText("−" + +r2.toFixed(1) + " %", L - 50 + 4, B2);
+    g.strokeStyle = "#63e6be"; g.lineWidth = 3; g.beginPath(); f = true;
+    for (let b = 0; b < nb; b++){ if (!n[b]) { f = true; continue; } const xx = L + (R - L) * (b + 0.5) / nb, yy = y2(sum[b] / n[b]); f ? g.moveTo(xx, yy) : g.lineTo(xx, yy); f = false; }
+    g.stroke(); }
+  g.fillStyle = "#8b949e"; g.font = "12.5px system-ui, sans-serif";
+  g.fillText(sc.why + (sc.vox[0] >= 800 ? " · a human voxel on mouse tissue: scale only" : ""), 16, H - 14);
+  if (!IMG.spr){
+    const tex = new THREE.CanvasTexture(IMG.cv); tex.colorSpace = THREE.SRGBColorSpace;
+    IMG.spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); IMG.spr.renderOrder = 31; scene.add(IMG.spr);
+  }
+  IMG.spr.material.map.needsUpdate = true; IMG.spr.visible = true;
+  const hh = 0.15; IMG.spr.scale.set(hh * W / H, hh, 1);
+  const cand = [STK.spr && STK.spr.visible ? STK.spr : null, NV.plotSpr && NV.plotSpr.visible ? NV.plotSpr : null, CA.plotSpr && CA.plotSpr.visible ? CA.plotSpr : null,
+                LFP.spr && LFP.spr.visible ? LFP.spr : null, CSD.spr && CSD.spr.visible ? CSD.spr : null].filter(Boolean);
+  let low = null; for (const x of cand) if (!low || x.position.y - x.scale.y / 2 < low.position.y - low.scale.y / 2) low = x;
+  if (low) IMG.spr.position.copy(low.position).add(new THREE.Vector3(0, -low.scale.y / 2 - 0.008 - IMG.spr.scale.y / 2, 0));
+  else IMG.spr.position.copy(SBAR.group ? SBAR.group.position : stage.position).add(new THREE.Vector3(0, -0.03 - IMG.spr.scale.y / 2, 0));
+}
+/* ── every frame: the stimulus envelope, the flow, and a sample every TR of brain time ── */
+function imgFrame(sdt){
+  if (!IMG.on || !STK.on || !STK.net) return;
+  if (!IMG.grid || IMG.grid.sc !== IMG.sc || IMG.grid.shift !== IMG.shift){ imgGrid(); imgProbe(); }
+  const G = IMG.grid, sc = IMG_SC[IMG.sc];
+  IMG.t += sdt;
+  const per = IMG.onS + IMG.offS, tb = IMG.t - IMG.warm, u = IMG.stim && tb > 0 && (tb % per) < IMG.onS ? 1 : 0;
+  if (u !== IMG.u){ if (u) IMG.uHist.push({ on: 1, t0: IMG.t, t1: IMG.t + IMG.onS }); IMG.u = u; IMG.uHist = IMG.uHist.filter(x => x.t1 > IMG.t - 200); }
+  if (sdt > 0){
+    const st = Math.max(1, Math.ceil(sdt / 0.05)), d = sdt / st;
+    for (let i = 0; i < st; i++){
+      const a = 1 - Math.exp(-d / 0.6);
+      IMG.env[0] += (IMG.u - IMG.env[0]) * a; IMG.env[1] += (IMG.env[0] - IMG.env[1]) * a; IMG.env[2] += (IMG.env[1] - IMG.env[2]) * a;
+      IMG.venE += (IMG.u - IMG.venE) * (1 - Math.exp(-d / (IMG.u > IMG.venE ? 3 : 20)));
+    }
+  }
+  const prev = IMG._ld || 0, now = IMG.env[2] + IMG.venE;
+  if (Math.abs(now - prev) > 0.01){ IMG._ld = now; imgDilation(); STK.dirty = true; }
+  /* one sample per TR of brain time, from the flow as last solved */
+  if (IMG.t >= IMG.nextS){
+    IMG.nextS = IMG.t + sc.TR;
+    const s = imgSignal(); if (!s) return;
+    /* THE BASELINE follows the rest: the last 4 s of the warm-up and of every rest period (as a percent change is
+       taken against the rest before it), so a slow drift of the model is not read as a response */
+    const rest = IMG.t > IMG.warm - 4 && (IMG.t <= IMG.warm || !IMG.stim || ((IMG.t - IMG.warm) % per) > per - 4);
+    if (rest && IMG.t > 2){
+      if (!G.S0){ G.S0 = Float64Array.from(s); for (let k = 0; k < G.nv; k++) G.img0[k] = s[k]; }
+      else for (let k = 0; k < G.nv; k++){ G.S0[k] += 0.35 * (s[k] - G.S0[k]); G.img0[k] = G.S0[k]; }
+    }
+    if (!G.S0) return;
+    const sig = sc.kind === "fus" ? sc.sig : 100 / sc.tsnr, v = new Float32Array(G.nv), c = new Float32Array(G.nv);
+    for (let k = 0; k < G.nv; k++){
+      /* the part of the voxel outside the dataset: as active as the rest if the whole volume is (it is the same patch
+         of V1), unchanged if only a spot is */
+      const pc = G.cov[k] > 0 ? 100 * (IMG.area === "all" ? 1 : G.cov[k]) * (s[k] / G.S0[k] - 1) : 0;
+      c[k] = pc; v[k] = G.cov[k] > 0 && IMG.noise ? pc + sig * imgGauss() : pc;
+    }
+    G.val.set(c); G.clean.set(c); G.raw = v;
+    IMG.hist.push({ t: IMG.t, v, c, raw: s, tb: IMG.t > IMG.warm ? (IMG.t - IMG.warm) % per : null });
+    if (IMG.hist.length > 400) IMG.hist.shift();
+    /* what the voxels show: clean -- the change now; with noise -- the response over the blocks so far, where it is
+       significant (|z| > 3), since one noisy sample is mostly noise */
+    if (IMG.noise){ const st = imgStats(); IMG.stat = st; for (let k = 0; k < G.nv; k++) G.val[k] = st && Math.abs(st.z[k]) > 3 ? st.d[k] : 0; }
+    else IMG.stat = null;
+    imgDraw(); imgPanel(); imgNote();
+  }
+}
+/* THE ACTIVATION MAP, as an fMRI analysis would make it: per voxel, the mean during the stimulus (from 3 s after its
+   start to its end) against the mean in the late rest (the last 8 s), with its standard error from the samples --
+   z = difference / SE. With noise, a single sample says almost nothing; over blocks the response stands out. */
+function imgStats(){
+  const G = IMG.grid; if (!G) return null;
+  const per = IMG.onS + IMG.offS, nv = G.nv;
+  const sa = new Float64Array(nv), sb = new Float64Array(nv), qa = new Float64Array(nv), qb = new Float64Array(nv); let na = 0, nb = 0;
+  for (const x of IMG.hist){
+    if (x.tb == null) continue;
+    const on = x.tb > 3 && x.tb < IMG.onS, off = x.tb > per - 8;
+    if (!on && !off) continue;
+    if (on) na++; else nb++;
+    for (let k = 0; k < nv; k++){ const v = x.v[k]; if (on){ sa[k] += v; qa[k] += v * v; } else { sb[k] += v; qb[k] += v * v; } }
+  }
+  const z = new Float32Array(nv), d = new Float32Array(nv);
+  if (na < 2 || nb < 2) return { z, d, na, nb };
+  for (let k = 0; k < nv; k++){
+    const ma = sa[k] / na, mb = sb[k] / nb, va = Math.max(0, qa[k] / na - ma * ma), vb = Math.max(0, qb[k] / nb - mb * mb);
+    d[k] = ma - mb; const se = Math.sqrt(va / na + vb / nb);
+    z[k] = se > 1e-6 ? d[k] / se : (Math.abs(d[k]) > 1e-4 ? Math.sign(d[k]) * 50 : 0);
+  }
+  return { z, d, na, nb };
+}
+function imgProbe(){
+  const G = IMG.grid; if (!G || !IMG.c) return;
+  const ix = [0, 1, 2].map(q => Math.max(0, Math.min(G.n[q] - 1, Math.floor((IMG.c[q] - G.o[q]) / G.v[q]))));
+  IMG.probe = ix[0] + G.n[0] * (ix[1] + G.n[1] * ix[2]);
+}
+function imgNote(){
+  const G = IMG.grid, sc = IMG_SC[IMG.sc]; if (!G) return;
+  let mx = 0, mk = -1; for (let k = 0; k < G.nv; k++) if (Math.abs(G.clean[k]) > Math.abs(mx)){ mx = G.clean[k]; mk = k; }
+  const inData = [...G.cov].filter(x => x > 0).length, pr = G.clean[IMG.probe] || 0;
+  IMG.note = sc.name + " (MODEL): " + inData + " voxel" + (inData === 1 ? "" : "s") + " cover the whole dataset. "
+    + "Largest change now " + (mx >= 0 ? "+" : "") + mx.toFixed(2) + " %" + (mk >= 0 && mk !== IMG.probe ? " (not in the voxel at the activation, " + (pr >= 0 ? "+" : "") + pr.toFixed(2) + " %)" : " (the voxel at the activation)")
+    + (IMG.noise ? "; noise ± " + (sc.kind === "fus" ? sc.sig : (100 / sc.tsnr).toFixed(1)) + " % per sample" : "; no noise") + ". " + sc.why + ".";
+  const el = document.getElementById("imgNote"); if (el) el.textContent = IMG.note;
+}
+async function setImg(v){
+  IMG.on = !!v;
+  document.getElementById("imgBtn").classList.toggle("on", IMG.on);
+  if (IMG.on){
+    if (!DSX.flowNet){ ctxNote.textContent = "Imaging needs the blood-flow network (MICrONS only)."; IMG.on = false; document.getElementById("imgBtn").classList.remove("on"); return; }
+    if (!STK.on){ ctxNote.textContent = "Imaging: starting the blood-flow model…"; await setStroke(true, { quiet: true, rbc: false }); }
+    if (!STK.on || !IMG.on){ IMG.on = false; document.getElementById("imgBtn").classList.remove("on"); return; }
+    imgSegs(); if (!IMG.c) IMG.c = imgCentre();
+    /* the slow pressure swing at the pial inlets (section 30, 30–60 s) is physiological noise to a scanner:
+       part of "realistic noise", frozen when clean */
+    if (IMG.prevSwing == null) IMG.prevSwing = STK.anSwing;
+    STK.anSwing = IMG.noise && IMG.prevSwing; STK.dirty = true;
+    IMG.t = 0; IMG.nextS = 0; IMG.env = [0, 0, 0]; IMG.venE = 0; IMG.u = 0; IMG.w = null; IMG._ld = 0;
+    imgGrid(); imgProbe(); imgDilation();
+    simRecommend("img");
+    ctxNote.textContent = "Imaging (MODEL): " + IMG_SC[IMG.sc].name + " — a resting baseline for " + IMG.warm + " s, then the stimulus, " + IMG.onS + " s on and " + IMG.offS + " s off.";
+  } else {
+    imgClear(); if (IMG.dil){ IMG.dil.fill(0); STK.dirty = true; } IMG.grid = null;
+    if (IMG.prevSwing != null){ STK.anSwing = IMG.prevSwing; IMG.prevSwing = null; STK.dirty = true; }
+  }
+  imgUi(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function imgSetting(k, v){
+  if (k === "sc"){ IMG.sc = v; IMG.grid = null; IMG.nextS = IMG.t; }
+  if (k === "noise"){ IMG.noise = !!v; if (IMG.on && IMG.prevSwing != null){ STK.anSwing = IMG.noise && IMG.prevSwing; STK.dirty = true; } }
+  if (k === "view") IMG.view = v;
+  if (k === "op") IMG.op = +v;
+  if (k === "stim"){ IMG.stim = !!v; }
+  if (k === "area"){ IMG.area = v; IMG.w = null; IMG._ld = -1; }
+  if (k === "shift"){ IMG.shift = IMG.shift ? 0 : 1; IMG.grid = null; IMG.nextS = IMG.t; }
+  if (k === "rebase"){ if (IMG.grid){ IMG.grid.S0 = null; IMG.hist = []; } IMG.t = 0; IMG.nextS = 0; IMG.uHist = []; }
+  if (IMG.on && IMG.grid && (k === "view" || k === "op" || k === "noise")){ imgDraw(); imgPanel(); imgNote(); }
+  imgUi(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function imgUi(){
+  const q = id => document.getElementById(id);
+  if (!q("imgSc")) return;
+  q("imgSc").value = IMG.sc; q("imgNoise").checked = IMG.noise; q("imgView").value = IMG.view; q("imgOp").value = IMG.op; q("imgStim").checked = IMG.stim; q("imgArea").value = IMG.area;
+  q("imgOpRow").style.display = IMG.view === "overlay" ? "" : "none";
+  if (!IMG.on) q("imgNote").textContent = "Turn it on to put the scanner's voxels over the tissue. The signal comes from the blood-flow model (oxygen, haematocrit, vessel widths), not from a picture.";
+}
+document.getElementById("imgBtn").addEventListener("click", () => setImg(!IMG.on));
+document.getElementById("imgSc").addEventListener("change", e => imgSetting("sc", e.target.value));
+document.getElementById("imgNoise").addEventListener("change", e => imgSetting("noise", e.target.checked));
+document.getElementById("imgView").addEventListener("change", e => imgSetting("view", e.target.value));
+document.getElementById("imgOp").addEventListener("input", e => imgSetting("op", e.target.value));
+document.getElementById("imgStim").addEventListener("change", e => imgSetting("stim", e.target.checked));
+document.getElementById("imgArea").addEventListener("change", e => imgSetting("area", e.target.value));
+document.getElementById("imgHere").addEventListener("click", () => imgHere());
+document.getElementById("imgShift").addEventListener("click", () => imgSetting("shift"));
+document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
+imgUi();
+
+window.__vr = { IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
