@@ -13,28 +13,28 @@
  "validation": [
   {
    "src": "minnie65 lysosome",
-   "held_out": 808,
-   "mean_IoU": 0.791,
-   "median_IoU": 0.847
+   "held_out": 1156,
+   "mean_IoU": 0.84,
+   "median_IoU": 0.921
   },
   {
    "src": "minnie65 mitochondria",
-   "held_out": 460,
-   "mean_IoU": 0.71,
-   "median_IoU": 0.792
+   "held_out": 604,
+   "mean_IoU": 0.675,
+   "median_IoU": 0.796
   },
   {
    "src": "pinky mitochondria",
-   "held_out": 543,
-   "mean_IoU": 0.516,
-   "median_IoU": 0.528
+   "held_out": 217,
+   "mean_IoU": 0.674,
+   "median_IoU": 0.787
   }
  ],
- "trained": "2026-11-07T09:22",
+ "trained": "2026-11-13T19:01",
  "trainedOn": {
-  "minnie65 lysosome": 4462,
-  "minnie65 mitochondria": 2180,
-  "pinky mitochondria": 2750
+  "minnie65 lysosome": 5616,
+  "minnie65 mitochondria": 3102,
+  "pinky mitochondria": 726
  },
  "source": "organelle_outline_train.ipynb"
 }
