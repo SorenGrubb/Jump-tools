@@ -6976,6 +6976,18 @@ async function padAiOutlineAt(e){
     if (others.some(function(P){ return UJ.organelleseg.inside([t[0], t[1]], P); })){
       padAiOutSay("That spot is already traced as another structure. Pick that structure in the list to change it, or click outside it.", true); return;
     }
+    /* WHAT THE AI CAN OUTLINE (2026-11-13). Søren tried GFAP and was told "No nucleus found": the AI knows
+       lysosomes and mitochondria (seg) and nuclei, and a click on anything else fell through to the nucleus
+       model. A structure named as something else now says so before trying. */
+    var kNow = ""; try { kNow = String((tracingKindFor(PAD ? PAD.inst : 0) || {}).kind || ""); } catch (_e){}
+    /* the kinds come from seg.json (the notebook lists the ones it outlines well); nuclei have their own model */
+    var known = null; try { known = UJ.organelleseg.kinds ? await UJ.organelleseg.kinds() : null; } catch (_e){}
+    known = (known && known.length ? known : ["lysosome", "mitochondria"]).concat(["nucleus", "mitochondrion"]);
+    if (kNow && known.indexOf(kNow.toLowerCase()) < 0){
+      var kName = kNow; try { kName = (tracingKindFor(PAD ? PAD.inst : 0).name || kNow); } catch (_e){}
+      var list = known.filter(function(k){ return k !== "mitochondrion"; }).join(", ");
+      padAiOutSay("The AI outline does not know " + kName + " yet (it knows: " + list + ") \u2014 draw it by hand (\u270e or \u270d). Every traced one goes into the next training, and it is offered here once it outlines them well.", true); return;
+    }
     var model = padAiModel();
     var o = await UJ.organelleseg.outline([t[0], t[1]], z, { model: model });
     if (!o && model === "seg" && UJ.organelleseg.available("nucleus")){
@@ -7426,6 +7438,8 @@ async function padAiFollow(dir){
     var got = await UJ.organelleseg.follow(from.points, from.z, dir, 10, step,
       function(k, z){ padAiOutSay("Following\u2026 " + k + " new contour" + (k > 1 ? "s" : "") + " (z " + z + ")"); },
       { existing: existing, gap: 1, avoid: padAiOthers,
+        /* every ring of this structure on a section, so each branch of a fork finds its own (2026-11-13) */
+        existingAll: function(z){ return padAiMine(z).map(function(r){ return r.points; }); },
         /* the model that drew the outline being followed, else the one for this structure's type */
         model: PAD_AI_MODEL[String(PAD.inst || 0)] || padAiModel(),
         /* Your own "imaging artifact" answers count: one on this section inside the organelle, or
@@ -7453,6 +7467,7 @@ async function padAiFollow(dir){
       ? "Added " + got.length + " contour" + (got.length > 1 ? "s" : "") + " (z " + got[0].z + "\u2013" + got[got.length - 1].z + ")"
         + (interp.length ? "; interpolated over a missing or damaged section at z " + interp.join(", ") : "")
         + (moved.length ? "; used the neighbouring section where the planned one failed (" + moved.join(", ") + ")" : "")
+        + (got.forks ? "; it forked " + (got.forks === 1 ? "once" : got.forks + " times") + ", and all " + got.branches + " branches were followed" : "")
         + ". Step through with , and . to check; follow again to go further."
       : "Nothing new: the next sections either already have this structure, or did not look like the same organelle. Step there and click it, or draw it.");
   } catch (err){

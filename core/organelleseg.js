@@ -89,6 +89,21 @@ UJ.organelleseg = (function(){
   /* Which folder a model comes from ("" if none was found). */
   function source(name){ var M = MODELS[name || "seg"]; return M && M.ok ? M.base : ""; }
   /* available() / whenAvailable(): the organelle model, as before. With a name: that model. */
+  /* WHICH KINDS THE OUTLINE MODEL IS OFFERED FOR (2026-11-13): seg.json's "kinds", written by the training
+     notebook from v4 as the traced kinds it outlines well on held-out tracings. Read once, cached. */
+  var KINDS_P = null;
+  function kinds(){
+    if (KINDS_P) return KINDS_P;
+    KINDS_P = (async function(){
+      try {
+        await (MODELS.seg.probe || Promise.resolve());
+        if (!MODELS.seg.ok) return null;
+        var j = await (await fetch(MODELS.seg.base + MODELS.seg.file, { cache: "no-cache" })).json();
+        return Array.isArray(j.kinds) ? j.kinds.map(function(k){ return String(k).toLowerCase(); }) : null;
+      } catch (_e){ return null; }
+    })();
+    return KINDS_P;
+  }
   function available(name){ return !!(CFG.base && (name ? (MODELS[name] && MODELS[name].ok) : CFG.ok)); }
   function whenAvailable(name){
     if (name && MODELS[name]) return MODELS[name].probe || Promise.resolve(false);
@@ -712,13 +727,23 @@ UJ.organelleseg = (function(){
     }
     return got;
   }
+  /* ── FOLLOW, AND FOLLOW BOTH SIDES OF A FORK (2026-11-13) ─────────────────────────────────────
+     Søren: "when a mitochondria forks and I want to follow both part of the fork, it only follows one
+     of them ... Would it be possible to follow both of them simultaneously?"
+     Each step outlines what sits under the middle of the last outline, as before. When that covers
+     clearly less of the last outline than a continuation would (under 65 %), the organelle may have
+     split: the parts of the last outline it left uncovered are clicked as well, and every separate
+     piece found there that OVERLAPS the last outline (a quarter of the piece at least) and is not too
+     small becomes a branch of its own, followed on its own from there. A neighbouring organelle that
+     merely lies close does not overlap the last outline, so it is not taken. Branches never overlap
+     each other, a branch that runs into another one stops there (the two have joined), and there are
+     at most opts.maxBranches (4) of them. Every new contour says which branch it is on. */
   async function follow(points, z, dir, n, step, onEach, opts){
     opts = opts || {};
-    var tr = toolRes(), got = [], prev = points, prevZ = z, gridZ = z;
-    var prevArea = area(points) * tr[0] * tr[1];
-    var ART = opts.artifactFrac == null ? 0.03 : opts.artifactFrac;
-    var why = {};                                  // z -> "artifact", for the status line
-    var fits = function(o, from, fromArea, zz){
+    var tr = toolRes(), got = [], why = {};
+    var ART = opts.artifactFrac == null ? 0.03 : opts.artifactFrac, MAXB = opts.maxBranches == null ? 4 : opts.maxBranches;
+    var forks = 0;
+    var fits = function(o, from, fromArea, zz, loose){
       if (!o) return false;
       if (o.existing) return true;                 // what is already drawn there is the answer
       /* AN ARTIFACT OVER THE ORGANELLE counts as a missing section: a fold, a knife mark, a crack,
@@ -726,60 +751,141 @@ UJ.organelleseg = (function(){
       if (o.artifact > ART || o.artifactLine || (opts.artifactAt && zz != null && opts.artifactAt(zz, o.points))){ if (zz != null) why[zz] = "artifact"; return false; }
       var c = centroid(from), c2 = centroid(o.points);
       var jump = Math.hypot((c2[0] - c[0]) * tr[0], (c2[1] - c[1]) * tr[1]);
-      return !(o.areaNm2 < fromArea / 3 || o.areaNm2 > fromArea * 3 || jump > Math.max(300, Math.sqrt(fromArea)));
+      /* a branch is a part of what it came from: smaller is expected (down to an eighth) */
+      return !(o.areaNm2 < fromArea / (loose ? 8 : 3) || o.areaNm2 > fromArea * 3 || jump > Math.max(300, Math.sqrt(fromArea)));
     };
-    var have = function(zz){
-      var ex = opts.existing ? opts.existing(zz) : null;
-      return ex ? { points: ex, areaNm2: area(ex) * tr[0] * tr[1], existing: true } : null;
+    /* what is already drawn on zz FOR THIS BRANCH: the ring of this structure that holds, or lies near, the
+       middle of the branch's last outline -- not simply the biggest one, which may be the other branch */
+    var have = function(zz, ref){
+      var c = centroid(ref), list = opts.existingAll ? (opts.existingAll(zz) || []) : null;
+      if (!list){ var ex = opts.existing ? opts.existing(zz) : null; list = ex ? [ex] : []; }
+      var refA = area(ref) * tr[0] * tr[1], best = null, bd = Infinity;
+      list.forEach(function(P){
+        if (!P || P.length < 3) return;
+        var cp = centroid(P), d = inside(c, P) ? 0 : Math.hypot((cp[0] - c[0]) * tr[0], (cp[1] - c[1]) * tr[1]);
+        if (d < bd){ bd = d; best = P; }
+      });
+      if (!best || bd > Math.max(300, Math.sqrt(refA))) return null;
+      return { points: best, areaNm2: area(best) * tr[0] * tr[1], existing: true };
     };
-    /* opts.avoid(z) -> polygons of OTHER structures already traced on z: never drawn over */
-    var look = async function(zz){
-      var o = await outline(centroid(prev), zz, { model: opts.model });
-      return opts.avoid ? clip(o, opts.avoid(zz), centroid(prev)) : o;
+    /* the other branches' new contours on zz, so no two branches draw over each other */
+    var ours = function(zz, me){ return got.filter(function(g){ return g.z === zz && g.branch !== me; }).map(function(g){ return g.points; }); };
+    var avoidAt = function(zz, me){ return (opts.avoid ? (opts.avoid(zz) || []) : []).concat(ours(zz, me)); };
+    var look = async function(zz, at, me){
+      var o = await outline(at, zz, { model: opts.model });
+      return clip(o, avoidAt(zz, me), at);
     };
-    var take = function(o, zz){
-      if (!o.existing) got.push({ z: zz, points: o.points });
-      prev = o.points; prevZ = zz; prevArea = o.areaNm2;
-    };
-    for (var k = 1; k <= n; k++){
-      var zz = gridZ + dir * step;
-      gridZ = zz;
-      var o = have(zz) || await look(zz);
-      if (fits(o, prev, prevArea, zz)){ take(o, zz); }
-      else {
-        var done = false;
-        /* 1. the nearest good neighbour, within half a step, never behind where it came from */
-        for (var d = 1; d <= Math.floor(step / 2) && !done; d++){
-          for (var sgn = 1; sgn >= -1 && !done; sgn -= 2){
-            var zn = zz + sgn * d * dir;
-            if ((zn - prevZ) * dir <= 0) continue;
-            var on = have(zn) || await look(zn);
-            if (fits(on, prev, prevArea, zn)){
-              take(on, zn); done = true;
-              if (!on.existing){ got[got.length - 1].insteadOf = zz; got[got.length - 1].why = why[zz] || ""; }
-            }
-          }
-        }
-        /* 2. the next planned section, and the failed one interpolated */
-        if (!done && k < n){
-          var z2 = zz + dir * step;
-          var o2 = have(z2) || await look(z2);
-          if (fits(o2, prev, prevArea, z2)){
-            var mid = between(prev, o2.points, (zz - prevZ) / (z2 - prevZ));
-            if (opts.avoid){ var cm = clip({ points: mid }, opts.avoid(zz), centroid(mid)); if (cm) mid = cm.points; }
-            got.push({ z: zz, points: mid, interpolated: true, why: why[zz] || "" });
-            take(o2, z2); gridZ = z2; k++; done = true;
-          }
-        }
-        if (!done) break;                          // 3. two failures in a row
+    /* how much of polygon A lies inside polygon B, as a share of A (sampled on a grid) */
+    var shareIn = function(A, B){
+      var b = [Infinity, Infinity, -Infinity, -Infinity];
+      A.forEach(function(p){ b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+      var nIn = 0, nAB = 0, g = 14;
+      for (var i = 0; i < g; i++) for (var j = 0; j < g; j++){
+        var q = [b[0] + (i + 0.5) * (b[2] - b[0]) / g, b[1] + (j + 0.5) * (b[3] - b[1]) / g];
+        if (!inside(q, A)) continue; nIn++; if (inside(q, B)) nAB++;
       }
-      if (onEach) try { onEach(got.length, prevZ); } catch (_e){}
+      return nIn ? nAB / nIn : 0;
+    };
+    /* spots inside `from` that `main` leaves uncovered, spread over it, at most 8 */
+    var seedsOutside = function(from, mains){
+      var b = [Infinity, Infinity, -Infinity, -Infinity];
+      from.forEach(function(p){ b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+      var out = [], g = 7;
+      for (var i = 0; i < g; i++) for (var j = 0; j < g; j++){
+        var q = [b[0] + (i + 0.5) * (b[2] - b[0]) / g, b[1] + (j + 0.5) * (b[3] - b[1]) / g];
+        if (inside(q, from) && !mains.some(function(P){ return inside(q, P); })) out.push(q);
+      }
+      /* farthest-point order, so the few that are clicked are spread out */
+      var pick = [];
+      while (out.length && pick.length < 8){
+        var bi = 0, bd = -1;
+        out.forEach(function(q, k){
+          var d = pick.length ? Math.min.apply(null, pick.map(function(p){ return Math.hypot(p[0] - q[0], p[1] - q[1]); })) : Infinity;
+          if (d > bd){ bd = d; bi = k; }
+        });
+        pick.push(out.splice(bi, 1)[0]);
+      }
+      return pick;
+    };
+    var branches = [{ id: 0, prev: points, prevZ: z, gridZ: z, prevArea: area(points) * tr[0] * tr[1], k: 0, alive: true, from: null }];
+    var take = function(B, o, zz){
+      if (!o.existing){
+        /* ran into another branch: the two have joined; this one stops */
+        if (ours(zz, B.id).some(function(P){ return shareIn(o.points, P) > 0.5; })){ B.alive = false; return false; }
+        got.push({ z: zz, points: o.points, branch: B.id });
+      }
+      B.prev = o.points; B.prevZ = zz; B.prevArea = o.areaNm2;
+      return true;
+    };
+    /* after a good step: does the organelle split here? */
+    var forkAt = async function(B, o, zz, fromPts, fromArea){
+      if (branches.length >= MAXB || o.existing) return;
+      if (shareIn(fromPts, o.points) >= 0.65) return;                 // it covers the last outline: a continuation
+      var found = [o.points];
+      var seeds = seedsOutside(fromPts, found);
+      for (var s = 0; s < seeds.length && branches.length < MAXB; s++){
+        if (found.some(function(P){ return inside(seeds[s], P); })) continue;
+        var c = await look(zz, seeds[s], -1);
+        if (!c || !fits(c, fromPts, fromArea, zz, true)) continue;
+        if (found.some(function(P){ return shareIn(c.points, P) > 0.3; })) continue;
+        if (shareIn(c.points, fromPts) < 0.25) continue;               // must be a part of what it came from
+        found.push(c.points);
+        var nb = { id: branches.length, prev: fromPts, prevZ: B.prevZ, gridZ: B.gridZ, prevArea: fromArea, k: B.k, alive: true, from: B.id };
+        branches.push(nb); forks++;
+        if (!take(nb, c, zz)) continue;
+        nb.prevZ = zz; nb.gridZ = B.gridZ;
+      }
+    };
+    var stepOne = async function(B){
+      var zz = B.gridZ + dir * step; B.gridZ = zz; B.k++;
+      var from = B.prev, fromArea = B.prevArea, fromZ = B.prevZ;
+      var o = have(zz, B.prev) || await look(zz, centroid(B.prev), B.id);
+      if (fits(o, B.prev, B.prevArea, zz)){
+        if (take(B, o, zz)) await forkAt(B, o, zz, from, fromArea);
+        return;
+      }
+      /* 1. the nearest good neighbour, within half a step, never behind where it came from */
+      for (var d = 1; d <= Math.floor(step / 2); d++){
+        for (var sgn = 1; sgn >= -1; sgn -= 2){
+          var zn = zz + sgn * d * dir;
+          if ((zn - fromZ) * dir <= 0) continue;
+          var on = have(zn, B.prev) || await look(zn, centroid(B.prev), B.id);
+          if (fits(on, B.prev, B.prevArea, zn)){
+            if (take(B, on, zn) && !on.existing){ got[got.length - 1].insteadOf = zz; got[got.length - 1].why = why[zz] || ""; }
+            return;
+          }
+        }
+      }
+      /* 2. the next planned section, and the failed one interpolated */
+      if (B.k < n){
+        var z2 = zz + dir * step;
+        var o2 = have(z2, B.prev) || await look(z2, centroid(B.prev), B.id);
+        if (fits(o2, B.prev, B.prevArea, z2)){
+          var mid = between(B.prev, o2.points, (zz - fromZ) / (z2 - fromZ));
+          var cm = clip({ points: mid }, avoidAt(zz, B.id), centroid(mid)); if (cm) mid = cm.points;
+          got.push({ z: zz, points: mid, interpolated: true, why: why[zz] || "", branch: B.id });
+          take(B, o2, z2); B.gridZ = z2; B.k++;
+          return;
+        }
+      }
+      B.alive = false;                             // 3. two failures in a row
+    };
+    /* the branches advance together, one section at a time, so they see each other's contours */
+    for (var guard = 0; guard < 400; guard++){
+      var live = branches.filter(function(B){ return B.alive && B.k < n; });
+      if (!live.length) break;
+      for (var i = 0; i < live.length; i++){
+        await stepOne(live[i]);
+        if (onEach) try { onEach(got.length, live[i].prevZ, branches.length); } catch (_e){}
+      }
     }
+    got.forks = forks;
+    got.branches = branches.length;
     return got;
   }
 
   return { configure: configure, source: source, available: available, whenAvailable: whenAvailable,
-           outline: outline, follow: follow, fill: fill, union: union, clip: clip,
+           outline: outline, follow: follow, kinds: kinds, fill: fill, union: union, clip: clip,
            subtract: function(polys, minus, cell){ return union(polys, cell, minus); }, inside: inside, between: between,
            centroid: centroid, meta: function(){ return META; },
            _trace: trace, _rdp: rdp, _clicked: clicked, _area: area };
