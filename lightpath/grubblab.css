@@ -1,0 +1,42 @@
+/* grubblab.css -- The Light Path on a telephone, on grubblab only.                       2026-11-13
+   Søren: "The lightpath game board is very small on a mobile device." Measured on an iPhone 13
+   (390 x 844): the header, the firing bar and the tray took ~600 px and left the board 161 px
+   tall in the Academy frame, 228 px full screen; in landscape 110 px. Loaded after lightpath.css
+   so NAD's own files stay unchanged. Nothing here moves a control off the table edge or over it;
+   it only gives the text and buttons less room. */
+
+/* The instructions: two lines, tap to read the rest (grubblab.js toggles .open). */
+@media (max-width: 760px), (max-height: 620px) {
+  #hint { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+          overflow: hidden; min-height: 0; cursor: pointer; position: relative; }
+  #hint.open { display: block; -webkit-line-clamp: unset; }
+  #hint:not(.open)::after { content: "more"; position: absolute; right: 0; bottom: 0;
+          padding-left: 18px; color: var(--acc); background: linear-gradient(90deg, transparent, var(--bg) 14px); }
+  header { padding: 6px 10px 3px; }
+  header .row { gap: 6px 8px; }
+  #solvedby { flex-basis: 100%; }
+  #levels button { height: 24px; width: 28px; }
+
+  /* the firing bar: one row, the laser button on the right as on a computer */
+  #firebar { flex-wrap: nowrap; gap: 6px; padding: 5px 8px; }
+  #ctl { gap: 4px; min-width: 0; overflow-x: auto; }
+  #ctl button { padding: 6px 8px; font-size: .68rem; flex: none; }
+  #fire { padding: 8px 13px; font-size: .74rem; flex: none; white-space: nowrap; }
+  #fire::before { margin-right: 5px; }
+
+  /* the tray: the parts keep their size; the explanation beside them gets less */
+  #tray { min-height: 66px; padding: 5px 8px; gap: 7px; }
+  .titem { width: 50px; height: 50px; }
+  #traytext { max-height: 56px; font-size: .6rem; max-width: 46%; padding-left: 7px; }
+  #spec canvas { height: 72px; }
+}
+/* the Academy's "Close" sits top right in full screen; keep the header clear of it */
+@media (max-width: 760px), (max-height: 620px) { header { padding-right: 82px; } }
+
+/* landscape telephone: one line of instructions, smaller tray */
+@media (max-height: 460px) {
+  #hint { -webkit-line-clamp: 1; }
+  #tray { min-height: 56px; }
+  .titem { width: 44px; height: 44px; }
+  #traytext { max-height: 46px; }
+}

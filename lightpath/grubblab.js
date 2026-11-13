@@ -59,3 +59,9 @@
     return inner(input, init);
   };
 }());
+
+/* On a telephone grubblab.css clamps the instructions to two lines; a tap shows the rest. */
+document.addEventListener('click', function (e) {
+  var h = e.target && e.target.closest && e.target.closest('#hint');
+  if (h) h.classList.toggle('open');
+});

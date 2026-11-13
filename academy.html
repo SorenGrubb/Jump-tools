@@ -102,6 +102,17 @@
   #keyPanel .idf-back{color:var(--accent);cursor:pointer;font-size:13px;display:inline-block;margin-top:8px}
   #keyPanel input{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
   .refs li{margin:8px 0}
+
+/* The Light Path is laid out for a whole screen (NAD's game): framed in the card it gets a full
+   viewport's height, and "Play full screen" gives it the whole window -- the iframe stays in this
+   page, so the sign-in (window.lpCred) still reaches it. */
+#lpFrame{display:block;width:100%;height:calc(100vh - 24px);height:calc(100dvh - 24px);min-height:420px;border:0;border-radius:10px;background:#0b0f14}
+#lpClose{display:none}
+#lpWrap.full{position:fixed;inset:0;z-index:2147483000;background:#0b0f14}
+#lpWrap.full #lpFrame{height:100vh;height:100dvh;min-height:0;border-radius:0}
+#lpWrap.full #lpClose{display:block;position:absolute;top:max(6px,env(safe-area-inset-top));right:8px;z-index:2;
+  font:600 13px system-ui,sans-serif;padding:6px 10px;border-radius:8px;border:1px solid #2a3440;background:#141b22;color:#cfd8e3}
+body.lp-full{overflow:hidden}
 </style>
 <script>
 window.UJ = window.UJ || {};
@@ -230,7 +241,9 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
       right detectors. <b>Clear all 100 tables yourself</b> to earn the Light Path badge &mdash; then you join the
       <b>Jump community's campaign</b>, where everybody plays the same tables and whoever clears one unlocks the next for all.
       <span id="lpWho"></span></p>
-      <iframe id="lpFrame" title="The Light Path" data-src="lightpath/index.html" style="width:100%;height:min(88vh,900px);border:0;border-radius:10px;background:#000"></iframe>
+      <div class="row" style="margin:0 0 8px"><button class="btn go" id="lpFull" type="button">⛶ Play full screen</button></div>
+      <div id="lpWrap"><button id="lpClose" type="button" aria-label="Leave full screen">✕ Close</button>
+      <iframe id="lpFrame" title="The Light Path" data-src="lightpath/index.html"></iframe></div>
     </div>
     <div class="card"><h3>🔎 Check others' finds</h3>
       <p style="margin-top:0">When somebody corrects the AI or finds an organelle it cannot learn yet, their points wait
@@ -303,8 +316,31 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     if (LP_FOR === who) return;
     LP_FOR = who; f.src = f.dataset.src + "?v=" + Date.now();
   }
+  function lpFull(on){
+    $("#lpWrap").classList.toggle("full", on); document.body.classList.toggle("lp-full", on);
+    /* the whole window, not the browser's full screen: that would hide the coin's layer, and iPhone Safari has none */
+    /* the game refits its board on resize; nudge it in case the frame's size changed without one */
+    setTimeout(function(){ try { $("#lpFrame").contentWindow.dispatchEvent(new Event("resize")); } catch (_e){} }, 120);
+  }
+  $("#lpFull").onclick = function(){ lightpath(); lpFull(true); };
+  $("#lpClose").onclick = function(){ lpFull(false); };
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && $("#lpWrap").classList.contains("full")) lpFull(false); });
   var LP = null;      // the newest progress the game reported, for the badges
-  window.addEventListener("lightpath-clear", function(e){ if (e.detail && e.detail.ok){ LP = e.detail; if (CUR === "badges") badges(); } });
+  /* A table cleared for the first time: the server has paid 1 point (Lightpath.gs, LP_COIN), and the coin
+     jumps out of the middle of the table and flies to the points chip -- the same coin as on the pad. */
+  function lpCoin(c){
+    var go = function(){
+      var r = $("#lpFrame").getBoundingClientRect();
+      UJ.coin.fly({ x: r.left + r.width / 2, y: r.top + r.height * 0.45, amount: c.amount || 1, label: "a table aligned" });
+    };
+    if (UJ.coin && UJ.coin.fly) go();
+    else { var sc = document.createElement("script"); sc.src = "core/coin.js"; sc.onload = go; document.head.appendChild(sc); }
+  }
+  window.addEventListener("lightpath-clear", function(e){
+    if (!(e.detail && e.detail.ok)) return;
+    LP = e.detail; if (CUR === "badges") badges();
+    if (e.detail.coin) setTimeout(function(){ lpCoin(e.detail.coin); }, 650);     // after the beam lights the table
+  });
   document.querySelectorAll("nav.atabs button").forEach(function(b){ b.onclick = function(){ show(b.dataset.p); }; });
   window.addEventListener("academy-status", function(){ if (CUR === "badges") badges(); });
   window.addEventListener("academy-signin", function(){ if (CUR === "licence" || CUR === "practice") show(CUR); if (CUR === "games") lightpath(); if (CUR === "badges") setTimeout(badges, 2500); });
