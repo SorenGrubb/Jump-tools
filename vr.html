@@ -8903,7 +8903,10 @@ function gloveSeg(len, r){ const m = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); m.sca
 /* side: "L" or "R". The model: fingers along +y, palm facing +z, thumb toward -x (left) or +x (right). */
 function buildGlove(side){
   const s = side === "L" ? -1 : 1, g = new THREE.Group(), F = {};
-  const palm = new THREE.Mesh(new THREE.CapsuleGeometry(0.034, 0.045, 6, 12), GLOVE_MAT); palm.scale.set(1.25, 1, 0.5); palm.position.y = 0.045; g.add(palm);
+  /* PROPORTIONS (2026-11-14, Søren: "the palm seems a bit too large relative to the size of the fingers. The thumb
+     therefore seems to be sitting a bit too low"): a palm ~9 cm long and 7.5 cm wide, a middle finger ~8 cm, the
+     thumb leaving the palm higher up, near the index knuckle's level. */
+  const palm = new THREE.Mesh(new THREE.CapsuleGeometry(0.029, 0.034, 6, 12), GLOVE_MAT); palm.scale.set(1.3, 1, 0.52); palm.position.y = 0.043; g.add(palm);
   /* the glove ends at a rolled cuff, open: from behind you look into it, as you would a real glove, not at a lid */
   const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.034, 0.05, 18, 1, true), GLOVE_WRIST); wrist.scale.z = 0.62; wrist.position.y = -0.015; g.add(wrist);
   const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.0335, 0.0055, 8, 24), GLOVE_CUFF); cuff.rotation.x = Math.PI / 2; cuff.scale.y = 0.62; cuff.position.y = -0.04; g.add(cuff);
@@ -8913,13 +8916,13 @@ function buildGlove(side){
       const nx = new THREE.Group(); nx.position.y = L + r * 0.5; j.add(nx); parent = nx; });
     return { root, joints };
   };
-  [["index", 0.031, 0.98], ["middle", 0.010, 1.06], ["ring", -0.011, 1.0], ["pinky", -0.030, 0.8]].forEach(([n, x, l]) => {
-    const c = chain([0.028 * l, 0.019 * l, 0.015 * l], 0.0085);
-    c.root.position.set(x * s, 0.098 - Math.abs(x) * 0.35, 0); g.add(c.root); F[n] = c.joints;
+  [["index", 0.028, 0.97], ["middle", 0.009, 1.06], ["ring", -0.010, 1.0], ["pinky", -0.027, 0.8]].forEach(([n, x, l]) => {
+    const c = chain([0.036 * l, 0.024 * l, 0.018 * l], 0.0085);
+    c.root.position.set(x * s, 0.084 - Math.abs(x) * 0.3, 0); g.add(c.root); F[n] = c.joints;
   });
-  const th = chain([0.024, 0.02], 0.0098);
+  const th = chain([0.03, 0.024], 0.0098);
   /* the thumb leaves the palm at its base and points mostly forward, a little out -- on a controller it lies along the top */
-  th.root.position.set(0.036 * s, 0.022, 0.012); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; g.add(th.root); F.thumb = th.joints;
+  th.root.position.set(0.032 * s, 0.038, 0.012); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; g.add(th.root); F.thumb = th.joints;
   g.userData.F = F;
   return g;
 }
@@ -8938,6 +8941,11 @@ function gloveOnGrip(side){
   g.quaternion.setFromRotationMatrix(m);
   g.position.set(side === "R" ? 0.012 : -0.012, -0.012, 0.06);     // the palm round the handle, the wrist behind it
   holder.add(g); holder.userData.glove = g;
+  /* THE HAND, NOT THE CONTROLLER (2026-11-14, Søren: "The angle of the hands seems to be oriented according to the
+     controllers and not my hands, so they appear to be pointing upwards a bit too much"): a Quest controller's
+     handle runs up and forward from the hand that holds it, so the glove is tipped ~40° down from the grip's axis,
+     to where the fingers of a relaxed hand point. */
+  holder.rotation.x = -0.7;
   return holder;
 }
 /* Hand tracking: one segment per bone, rebuilt from the joints each frame. */
