@@ -131,7 +131,7 @@ UJ.tools = (function(){
       volumes: [{ key: "pinky100", label: "pinky100",
         bb: { xmin: 140000, xmax: 500000, ymin: 124000, ymax: 338000,
               zmin: 40, zmax: 87080 },
-        em: "precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",
+        em: "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
         seg: "precomputed://gs://microns_public_datasets/pinky100_v185/seg",
         nuc: "precomputed://https://td.princeton.edu/sseung-archive/pinky100-nuclei/seg" }] },
 

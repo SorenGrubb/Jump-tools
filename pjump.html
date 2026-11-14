@@ -564,7 +564,9 @@ UJ.cfg.em = {
   /* gs://neuroglancer/..., NOT microns_public_datasets/...: the same volume, but that copy
      serves an info file and no chunks (404 everywhere, 2026-09-20 and -21). See
      src/pjump_gets_the_tracing_card.py. */
-  emSource:"gs://neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",
+  /* 14 Nov 2026: gs://neuroglancer/pinky100_v0/ was emptied (every key 404). The same volume, same
+     4/4/40 frame, is on BossDB's open bucket -- checked: nucleus 13776 sits where the EM shows it. */
+  emSource:"precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
   segSource:"gs://microns_public_datasets/pinky100_v185/seg",
   /* IT DOES PUBLISH ONE. This block had no nucSource at all until 2026-09-09 and the Blender
      panel passed `nucSource:""` with the comment "pinky100 publishes no nucleus segmentation" --
@@ -2624,7 +2626,7 @@ document.getElementById("refreshBtn").addEventListener("click",function(){loadLi
 <script type="application/json" id="cildata">{"OV_IDX":"","OV_CILSX":"","OV_CILSY":"","OV_CILSZ":"","OV_CILEX":"","OV_CILEY":"","OV_CILEZ":"","ST_IDX":"","ST_CILSX":"","ST_CILSY":"","ST_CILSZ":"","ST_CILEX":"","ST_CILEY":"","ST_CILEZ":"","MERGED_CIL":{}}</script>
 <script type="application/json" id="organelledata">{"PLUGS":{},"HOLES":{}}</script>
 <script>
-const SRC={em:"precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",em35:"precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",seg:"precomputed://gs://microns_public_datasets/pinky100_v185/seg",seg35:"precomputed://gs://microns_public_datasets/pinky100_v185/seg",nuc:"precomputed://https://td.princeton.edu/sseung-archive/pinky100-nuclei/seg"};
+const SRC={em:"precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",em35:"precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",seg:"precomputed://gs://microns_public_datasets/pinky100_v185/seg",seg35:"precomputed://gs://microns_public_datasets/pinky100_v185/seg",nuc:"precomputed://https://td.princeton.edu/sseung-archive/pinky100-nuclei/seg"};
 /* The raw EM imagery renders low-contrast by default (Neuroglancer's default shader linearly
    maps the full 0-255 raw intensity range to black-white, but this tissue's actual signal sits
    in a narrower band). This normalizes the default grayscale shader's input range to
@@ -9173,7 +9175,7 @@ async function computeCellContactsOfType(rootIdStr,i,typeLabel,radiusUm,clusterU
 function cellContactsViewerBase(){
   return{
     SRC_SEG:"precomputed://gs://microns_public_datasets/pinky100_v185/seg",
-    SRC_EM:"precomputed://https://storage.googleapis.com/neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked",
+    SRC_EM:"precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
     /* The one constant, not a copy of its numbers -- this used to hold its own [86,172] and
        so kept minnie65's contrast in three viewers after the main one was corrected. */
     EM_SHADER_CONTROLS_LOCAL:EM_SHADER_CONTROLS,

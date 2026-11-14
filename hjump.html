@@ -1098,7 +1098,10 @@ document.addEventListener("DOMContentLoaded", function(){
      trained on MitoEM-H, pinky's synaptic clefts and CellMap); until a file is there, µJump's
      model of the same name is used. H01 has the 8 and 32 nm levels the models read. -->
 <script src="core/organelleml.js"></script>
-<script>UJ.organelleml.configure({ base: "models/organelles/h01/", fallback: "models/organelles/minnie65/" });</script>
+<!-- 2026-11-14, Søren: "the one developed for µJump does not work. Can we have separate models for each
+     of the datasets?" The SUGGESTIONS no longer borrow µJump's model: until models/organelles/h01/model.json
+     exists (organelle_ml_train_v18.ipynb with DATASET = "h01"), the tick says no model is trained yet. -->
+<script>UJ.organelleml.configure({ base: "models/organelles/h01/" });</script>
 <script src="core/organelleseg.js"></script>
 <script>UJ.organelleseg.configure({ base: "models/organelles/h01/", fallback: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>

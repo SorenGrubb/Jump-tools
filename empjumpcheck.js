@@ -21,15 +21,19 @@ const page_ = require("./pagepath.js");
 let fails = 0;
 const ok = (c, what, d) => { console.log((c ? "  ok   " : "  FAIL ") + what + (d !== undefined ? "  <- " + d : "")); if (!c) fails++; };
 
-/* pinky100's real info, read from both buckets on 2026-09-21 (they are identical). */
-const RES = [4, 8, 16, 32, 64, 128, 256, 512];
-const SIZE = [[90000, 53500], [45000, 26750], [22500, 13375], [11250, 6688], [5625, 3344], [2813, 1672], [1407, 836], [704, 418]];
-const OFF = [[35000, 31000], [17500, 15500], [8750, 7750], [4375, 3875], [2187, 1937], [1093, 968], [546, 484], [273, 242]];
+/* 2026-11-14: gs://neuroglancer/pinky100_v0/ was emptied too (every key 404, Søren: "Why is pJump
+   not showing EM?"). The volume is on BossDB's open bucket, same 4/4/40 frame (nucleus 13776 lies
+   where the BossDB EM shows a nucleus). Its real info, read 2026-11-14: */
+const RES = [4, 8, 16, 32, 64, 128, 256, 512, 1024];
+const SIZE0 = [124928, 83968];
 const INFO = { type: "image", data_type: "uint8", num_channels: 1, scales: RES.map((r, k) => ({
-  key: r + "_" + r + "_40", resolution: [r, r, 40], size: [SIZE[k][0], SIZE[k][1], 2176],
-  voxel_offset: [OFF[k][0], OFF[k][1], 1], chunk_sizes: [[256, 256, 16]], encoding: "raw" })) };
-const OLD = "microns_public_datasets/pinky100_v0/son_of_alignment_v15_rechunked";
-const NEW = "neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked";
+  key: r.toFixed(1) + "_" + r.toFixed(1) + "_40.0", resolution: [r, r, 40],
+  size: [SIZE0[0] / (1 << k), SIZE0[1] / (1 << k), 2192],
+  voxel_offset: [0, 0, 0], chunk_sizes: [[512, 512, 16]], encoding: "raw" })) };
+const OLDS = ["microns_public_datasets/pinky100_v0/son_of_alignment_v15_rechunked",
+              "neuroglancer/pinky100_v0/son_of_alignment_v15_rechunked"];
+const OLD = OLDS[1];
+const NEW = "bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em";
 /* The neighbour of nucleus 13776 in Søren's screenshot, in πJump's 4/4/40 frame. */
 const CELL = [48000, 73540, 1531];
 
@@ -45,18 +49,20 @@ const CELL = [48000, 73540, 1531];
                    "**td.princeton.edu/**", "**gstatic.com/**"])
     await p.route(h, r => r.abort());
   let newHits = 0, oldHits = 0;
-  await p.route("**storage.googleapis.com/**", route => {
+  const both = route => {
     const u = route.request().url();
-    const isOld = u.indexOf(OLD) >= 0, isNew = u.indexOf(NEW) >= 0;
+    const isOld = OLDS.some(o => u.indexOf(o) >= 0), isNew = u.indexOf(NEW) >= 0;
     if (!isOld && !isNew) return route.abort();
     if (/\/info$/.test(u)) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(INFO) });
     if (isOld){ oldHits++; return route.fulfill({ status: 404, body: "" }); }   /* as it really does */
     newHits++;
-    const n = 256 * 256 * 16, buf = Buffer.allocUnsafe(n);
+    const n = 512 * 512 * 16, buf = Buffer.allocUnsafe(n);
     /* A gradient across Søren's window, so a draw and a no-draw look different. */
-    for (let i = 0; i < n; i++) buf[i] = 40 + ((i % 256) % 180);
+    for (let i = 0; i < n; i++) buf[i] = 40 + ((i % 512) % 180);
     return route.fulfill({ status: 200, contentType: "application/octet-stream", body: buf });
-  });
+  };
+  await p.route("**storage.googleapis.com/**", both);
+  await p.route("**bossdb-open-data.s3.amazonaws.com/**", both);
   await p.goto("file://" + page_("pjump.html"));
   await p.waitForTimeout(6000);
 
@@ -69,12 +75,12 @@ const CELL = [48000, 73540, 1531];
       const code = [...document.scripts].filter(s => !s.src).map(s => s.textContent).join("\n")
         .replace(/\/\*[\s\S]*?\*\//g, "");
       return { em: SRC.em, em35: SRC.em35, colab: UJ.cfg.em.emSource, img, cc,
-               oldInCode: code.split(OLD).length - 1 };
+               oldInCode: code.split(OLD).length - 1 + code.split("pinky100_v0/son_of").length - 1 };
     }, { OLD, NEW });
     ok(got.em.indexOf(NEW) >= 0 && got.em35.indexOf(NEW) >= 0, "SRC.em and SRC.em35 are the bucket with chunks", got.em);
     ok(got.img.length > 0 && got.img.every(s => s.indexOf(NEW) >= 0), "...so every viewer link's EM layer is", got.img.join(", "));
     ok(got.cc.indexOf(NEW) >= 0, "...and the cell-contacts viewer's", got.cc);
-    ok(got.colab === "gs://" + NEW, "...and the Colab notebook's", got.colab);
+    ok(got.colab === "precomputed://https://" + NEW, "...and the Colab notebook's", got.colab);
     ok(got.oldInCode === 0, "nothing on the page still reads the copy with no chunks", got.oldInCode + " place(s)");
   }
 
@@ -108,9 +114,9 @@ const CELL = [48000, 73540, 1531];
       } catch (e){ return { err: String(e && e.message || e) }; }
     }, CELL);
     ok(!got.err, "a section draws", got.err || "yes");
-    ok(got.key === "4_4_40" && got.sectionNm === 40, "...mip 0 is 4 nm, one 40 nm section", got.key + ", " + got.sectionNm + " nm");
+    ok(got.key === "4.0_4.0_40.0" && got.sectionNm === 40, "...mip 0 is 4 nm, one 40 nm section", got.key + ", " + got.sectionNm + " nm");
     ok(got.min !== got.max, "...with real pixels on it", got.min + "–" + got.max);
-    ok(newHits > 0 && oldHits === 0, "...fetched from gs://neuroglancer/, never from the empty copy", newHits + " new, " + oldHits + " old");
+    ok(newHits > 0 && oldHits === 0, "...fetched from BossDB, never from the emptied Google copies", newHits + " new, " + oldHits + " old");
   }
 
   console.log("\nit carries the shared tracing card");
