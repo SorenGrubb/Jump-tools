@@ -30,6 +30,9 @@
   .row div{flex:1;min-width:0}
   .grp{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
   .grp .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .sw.pick{cursor:pointer;width:14px;height:14px;box-shadow:0 0 0 1px rgba(230,237,243,.35)}
+  .sw.pick:hover{box-shadow:0 0 0 2px #e6edf3}
+  .colReset{background:none;border:0;color:#8b949e;cursor:pointer;padding:0 2px;font-size:12px;flex:none}
   .grp div{flex:1;min-width:0}
   .grp b{display:block;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .grp small{display:block;color:var(--mut);font-size:11px}
@@ -1469,11 +1472,40 @@ function cellTint(c, hex){
   col.setHSL((hsl.h + 0.035 * r(1) + 1) % 1, Math.max(0, Math.min(1, hsl.s + 0.12 * r(2))), Math.max(0.12, Math.min(0.88, hsl.l + 0.12 * r(3))));
   return col;
 }
+/* ── YOUR OWN COLOURS ─────────────────────────────────────────────────────────  2026-11-14
+   Søren: "It would be nice if the color could be changed of the cells in VR". Click a colour square
+   in the list: a type's square recolours every cell of that type, a cell's square only that cell.
+   Kept in this browser (vr_user_colours) -- by type group and by root ID -- and a colour you chose
+   wins over both colour modes, since you chose it. ↺ beside a square puts the automatic colour back. */
+const USER_COL = (() => { try { const o = JSON.parse(localStorage.getItem("vr_user_colours") || "{}"); return { type: o.type || {}, cell: o.cell || {} }; } catch (e){ return { type: {}, cell: {} }; } })();
+function saveUserCol(){ try { localStorage.setItem("vr_user_colours", JSON.stringify(USER_COL)); } catch (e){} }
+function cellKeyCol(c){ return String(c.root || c.label + "|" + c.i); }
+function userColourOf(c){ return USER_COL.cell[cellKeyCol(c)] || USER_COL.type[groupKey(c)] || null; }
+function autoColourOf(c){ return COLOUR_MODE === "ei" ? EI_COL[cellClass(c)] : c.typeColour; }
+function applyUserColours(list){ (list || CELLS).forEach(c => { const u = userColourOf(c); if (u) c.colour = u; }); }
+function repaintCell(c){
+  c.colour = userColourOf(c) || autoColourOf(c);
+  if (c.mesh) c.mesh.material.color.copy(cellTint(c, c.colour));
+}
+function setUserColour(kind, key, hex, done){
+  if (hex) USER_COL[kind][key] = hex; else delete USER_COL[kind][key];
+  CELLS.forEach(c => { if ((kind === "type" ? groupKey(c) : cellKeyCol(c)) === key) repaintCell(c); });
+  if (done){ saveUserCol(); renderList(); if (typeof MENU !== "undefined") MENU.dirty = true; }
+}
+function pickColour(kind, key, current){
+  const inp = document.createElement("input"); inp.type = "color";
+  try { inp.value = "#" + new THREE.Color(current || "#ffffff").getHexString(); } catch (e){}
+  inp.style.cssText = "position:fixed;left:-50px;top:0;width:1px;height:1px;opacity:0";
+  document.body.appendChild(inp);
+  inp.addEventListener("input", () => setUserColour(kind, key, inp.value, false));
+  inp.addEventListener("change", () => { setUserColour(kind, key, inp.value, true); setTimeout(() => inp.remove(), 0); });
+  inp.click();
+}
 function setColourMode(mode){
   COLOUR_MODE = mode;
   document.getElementById("colourSel").value = mode;
   for (const c of CELLS){
-    c.colour = mode === "ei" ? EI_COL[cellClass(c)] : c.typeColour;
+    c.colour = userColourOf(c) || (mode === "ei" ? EI_COL[cellClass(c)] : c.typeColour);
     if (c.mesh) c.mesh.material.color.copy(cellTint(c, c.colour));
   }
   renderList(); applyLook(); if (typeof MENU !== "undefined") MENU.dirty = true;
@@ -1640,7 +1672,7 @@ function renderList(){
     const shown = g.cells.filter(c => !c.hidden).length, loaded = g.cells.filter(c => c.mesh || c.nucMesh).length, bad = g.cells.filter(c => c.err).length;
     const cls = cellClass(g.cells[0]);
     const head = `<div class="grp" data-grp="${esc(g.key)}">
-        <span class="car">${open ? "▾" : "▸"}</span><span class="sw" style="background:${g.cells[0].colour}"></span>
+        <span class="car">${open ? "▾" : "▸"}</span><span class="sw pick" data-gcol="${esc(g.key)}" style="background:${USER_COL.type[g.key] || g.cells[0].colour}" title="Change the colour of all ${n} ${esc(g.name)}"></span>${USER_COL.type[g.key] ? `<button class="colReset" data-gcolr="${esc(g.key)}" title="Back to the automatic colour">↺</button>` : ""}
         <div><b>${esc(g.name)} <span style="font-weight:400;color:${EI_COL[cls]}">${({ exc: "E", inh: "I", glia: "glia", unknown: "?" })[cls]}</span></b>
         <small>${n} cell${n > 1 ? "s" : ""}${loaded < n ? " · " + loaded + " loaded" : ""}${window.__RA && window.__RA.on && window.__RA.meta ? " · " + g.cells.filter(c => raEntry(c)).length + " imaged" : ""}${bad ? ` · <span class="err">${bad} failed</span>` : ""}</small></div>
         ${g.cells.some(c => c.mesh && cellClass(c) !== "glia") ? `<button class="stimOne" data-gstim="${esc(g.key)}" title="Fire every neuron of ${esc(g.name)} at the same moment">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
@@ -1648,7 +1680,7 @@ function renderList(){
         <input type="checkbox" data-gvis="${esc(g.key)}" ${shown === n ? "checked" : ""} title="Show / hide all ${n}"></div>`;
     if (!open) return head;
     return head + g.cells.map(c =>
-      `<div class="row sub"><span class="sw" style="background:${c.colour}"></span><div>
+      `<div class="row sub"><span class="sw pick" data-ccol="${c.i}" style="background:${c.colour}" title="Change this cell's colour"></span>${USER_COL.cell[cellKeyCol(c)] ? `<button class="colReset" data-ccolr="${c.i}" title="Back to its type's colour">↺</button>` : ""}<div>
          <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
          <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span>${window.__RA && window.__RA.on && raEntry(c) ? `<span title="${esc(raListTitle(c))}">${raMiniSvg(raEntry(c))}</span>` : ""}</div>
          ${c.mesh && cellClass(c) !== "glia" ? `<button class="stimOne${window.__lastStim === c.i ? " on" : ""}" data-stim="${c.i}" title="Stimulate ${esc(c.root || c.label)} at its soma">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
@@ -1663,6 +1695,7 @@ function renderList(){
 }
 const OPEN_GROUPS = new Set();
 let AUTO_OPEN = null;
+applyUserColours();   // your own colours, once groupKey() below exists to read them by
 /* Group by the MICrONS type CODE when the label carries one -- "L2/3 pyramidal neuron (23P)" from
    µJump and "L2/3 pyramidal (23P, MICrONS prediction)" from the neighbour finder are one group --
    and otherwise by the name, ignoring case. The group is shown under its shortest name. */
@@ -1688,6 +1721,14 @@ function cellGroups(){
 }
 listEl.addEventListener("click", e => {
   if (e.target.closest("input")) return;
+  const gc = e.target.closest("[data-gcol]");
+  if (gc){ e.stopPropagation(); const cs = CELLS.filter(c => groupKey(c) === gc.dataset.gcol); pickColour("type", gc.dataset.gcol, cs[0] && cs[0].colour); return; }
+  const gr = e.target.closest("[data-gcolr]");
+  if (gr){ e.stopPropagation(); setUserColour("type", gr.dataset.gcolr, null, true); return; }
+  const cc = e.target.closest("[data-ccol]");
+  if (cc){ const c = CELLS[+cc.dataset.ccol]; pickColour("cell", cellKeyCol(c), c.colour); return; }
+  const cr = e.target.closest("[data-ccolr]");
+  if (cr){ const c = CELLS[+cr.dataset.ccolr]; setUserColour("cell", cellKeyCol(c), null, true); return; }
   const gb = e.target.closest("[data-glass]");
   if (gb){ const c = CELLS[+gb.dataset.glass]; setCellGlass([c], !c.glass); return; }
   const gs = e.target.closest("[data-gstim]");
@@ -2990,6 +3031,7 @@ async function addNeighbours(k, only, what){
     const c = { i: CELLS.length, ds: c0.ds, root: String(r[5]), nuc: String(r[4]), label, extra: [],
                 colour: colourFor(label), neighbourOf: c0.i, dist: d, status: "waiting…" };
     c.typeColour = c.colour; if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    { const u = userColourOf(c); if (u) c.colour = u; }
     CELLS.push(c); added.push(c);
   }
   renderList(); MENU.dirty = true;
@@ -3184,6 +3226,7 @@ async function addTracedCells(){
     const c = { i: CELLS.length, ds: VR_DS, root, nuc: nid, label, extra: [], status: "waiting…",
                 tracedCell: true };
     c.colour = c.typeColour = colourFor(label); if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    { const u = userColourOf(c); if (u) c.colour = u; }
     CELLS.push(c); added.push(c);
   }
   renderList(); MENU.dirty = true;
@@ -4677,11 +4720,35 @@ async function saveScene(fromVR, asNew){
              : wasId && wasId !== d.sceneId ? (asNew ? "Saved as a new scene, with its own link (the old one is unchanged)" : "Saved as your own copy, with its own link")
              : "Saved";
   out.innerHTML = what + ": <b>" + esc(title) + "</b><br><a href='" + esc(link) + "' target='_blank' style='color:var(--accent);word-break:break-all'>" + esc(link) + "</a>"
-    + "<div class='ctl' style='margin:6px 0 0'><button id='sceneCopy'>Copy link</button><button id='sceneForum'>Share in the forum…</button></div><div id='sceneForumBox'></div>";
+    + "<div class='ctl' style='margin:6px 0 0'><button id='sceneCopy'>Copy link</button><button id='sceneForum'>Share in the forum…</button><button id='sceneAcad' title='Offer this scene to Jump Academy, where chosen scenes are shown to everybody learning'>🎓 Submit to Jump Academy…</button></div><div id='sceneForumBox'></div>";
   document.getElementById("sceneCopy").onclick = e => { (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(() => e.target.textContent = "Copied ✓", () => prompt("Copy:", link)); };
   document.getElementById("sceneForum").onclick = () => forumComposer(title, link);
+  document.getElementById("sceneAcad").onclick = () => academyComposer(d.sceneId, title);
   ctxNote.textContent = "💾 Scene " + (d.updated ? "updated" : "saved") + ": " + title;
   try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
+}
+/* ── INTO JUMP ACADEMY (2026-11-14) ── Søren: "Jump academy should also feature chosen scenes made in VR, you
+   should be able to submit your scene to this." A saved scene of yours, with a line on what it shows; the reviewer
+   chooses which are featured (backend VRScenes.gs, vr_scene_academy). Nothing is copied: a featured scene is this
+   scene, so updating it later updates what the Academy shows. */
+function academyComposer(id, title){
+  const box = document.getElementById("sceneForumBox");
+  box.innerHTML = "<div style='margin-top:8px'><div class='help' style='margin-bottom:4px'>Chosen scenes are shown in <b>Jump Academy → Scenes</b>. "
+    + "A good one has a few cells that tell one thing, and a timeline that shows it (" + (tlCount() ? "this one has a " + Math.round(TL.dur) + " s timeline ✓" : "<b>this one has no timeline yet</b>") + ").</div>"
+    + "<textarea id='aNote' rows='3' maxlength='600' placeholder='What should people look at? (one or two lines, shown on its card)' style='width:100%;box-sizing:border-box;font:13px system-ui;padding:6px 8px;background:transparent;color:inherit;border:1px solid var(--line);border-radius:6px'></textarea>"
+    + "<div class='ctl'><button id='aSend' class='on'>Submit</button></div><div id='aOut' class='help'></div></div>";
+  document.getElementById("aSend").onclick = async () => {
+    const ao = document.getElementById("aOut");
+    if (!credOk()){ ao.textContent = "Your sign-in has expired — sign in again above."; signInUI(); return; }
+    ao.textContent = "Submitting…";
+    try {
+      const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ type: "vr_scene_academy", action: "submit", sceneId: id, note: document.getElementById("aNote").value || "", credential: CRED, ds: "ujump" }) });
+      const d = JSON.parse(await r.text());
+      ao.innerHTML = d.ok ? (d.academy === "featured" ? "✓ It is already featured in Jump Academy." : "✓ Submitted. When it is chosen it appears in <a href='academy.html#scenes' target='_blank' style='color:var(--accent)'>Jump Academy → Scenes</a>; you can follow it there.")
+                          : "Not submitted: " + esc(d.error || "no answer") + (/unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : "");
+    } catch (e){ ao.textContent = "Not submitted: could not reach the server."; }
+  };
 }
 /* ── into the discussion forum ── one shared stream for all the tools (core/forum.js); the post
    carries the link, and the forum draws the preview card from it. */
@@ -4730,6 +4797,7 @@ async function openScene(id){
   CELLS = prepCells(sc.cells || []);
   RBOX.list = Array.isArray(sc.boxes) ? sc.boxes : []; RBOX.on = sc.boxesOn !== false;
   CELLS.forEach(c => { c.colour = c.typeColour = colourFor(c.label); });
+  applyUserColours();
   window.__vr && (window.__vr.CELLS = CELLS);
   const u = sc.ui || {};
   if (u.detail) document.getElementById("detail").value = u.detail;
@@ -15539,6 +15607,7 @@ async function cnAdd(roots){
     const label = name + (code ? (name.toLowerCase() === code.toLowerCase() ? " (MICrONS prediction)" : " (" + code + ", MICrONS prediction)") : "");
     const c = { i: CELLS.length, ds: (c0 && c0.ds) || VR_DS, root: r, nuc: t.nuc || "", label, extra: [], colour: colourFor(label), status: "waiting…" };
     c.typeColour = c.colour; if (COLOUR_MODE === "ei") c.colour = EI_COL[cellClass(c)];
+    { const u = userColourOf(c); if (u) c.colour = u; }
     CELLS.push(c); added.push(c);
   }
   if (!added.length){ cnSay("Those partners are here already."); return; }

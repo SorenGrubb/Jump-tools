@@ -31,6 +31,8 @@
               atlas (3D meshes and the soma in EM), the cell key (the guided-identification tree, to
               walk without submitting), and a reading list.
     Games     The Light Path (lightpath/, 100 tables solo, then together), "Check others' finds", and how the coins work.
+    Scenes    (2026-11-14) VR scenes the community made, chosen for the Academy; a guide to making your own, from
+              finding the cells to a timeline; and your own scenes, to submit -- backend VRScenes.gs.
     Badges    earned over time, from what you already do in the tools.
   The data is MICrONS minnie65, the same as µJump's, and the licence is the same licence: one account,
   every tool.
@@ -102,6 +104,18 @@
   #keyPanel .idf-back{color:var(--accent);cursor:pointer;font-size:13px;display:inline-block;margin-top:8px}
   #keyPanel input{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
   .refs li{margin:8px 0}
+  .scenes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .scard{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+  .scard .pv{aspect-ratio:16/10;background:#0b0f14 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#5f6873;font-size:13px}
+  .scard .bd{padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .scard b{font-size:15px}
+  .scard .st{font-size:12px;color:var(--mut)}
+  .scard textarea{width:100%;font:inherit;font-size:13px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .pill{display:inline-block;font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--mut)}
+  .pill.featured{border-color:var(--gold);color:var(--gold)} .pill.submitted{border-color:var(--accent);color:var(--accent)} .pill.declined{color:var(--bad);border-color:var(--bad)}
+  ol.guide{padding-left:22px;margin:0} ol.guide>li{margin:0 0 14px} ol.guide>li>b:first-child{font-size:15.5px}
+  ol.guide ul{margin:4px 0 0;padding-left:18px} ol.guide ul li{margin:3px 0}
+  .kbd{font:12px ui-monospace,Menlo,monospace;border:1px solid var(--line);border-radius:5px;padding:0 5px;background:var(--chip)}
 
 /* The Light Path is laid out for a whole screen (NAD's game): framed in the card it gets a full
    viewport's height, and "Play full screen" gives it the whole window -- the iframe stays in this
@@ -205,6 +219,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     <button type="button" data-p="licence">🎓 Licence</button>
     <button type="button" data-p="practice">🎯 Practice</button>
     <button type="button" data-p="learn">📖 Learn</button>
+    <button type="button" data-p="scenes">🎬 Scenes</button>
     <button type="button" data-p="games">🎮 Games</button>
     <button type="button" data-p="badges">🏅 Badges</button>
   </nav>
@@ -268,6 +283,19 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     </div>
   </section>
 
+  <section class="panel" id="p-scenes">
+    <div class="subnav" id="sceneNav">
+      <button type="button" data-s="featured" class="on">Chosen scenes</button>
+      <button type="button" data-s="guide">Make your own scene</button>
+      <button type="button" data-s="mine">Your scenes</button>
+      <button type="button" data-s="review" style="display:none">Review submissions</button>
+    </div>
+    <div id="s-featured"></div>
+    <div id="s-guide" style="display:none"></div>
+    <div id="s-mine" style="display:none"></div>
+    <div id="s-review" style="display:none"></div>
+  </section>
+
   <section class="panel" id="p-badges">
     <div id="badgesBody"><p class="mut">Sign in (top right) to see your badges.</p></div>
   </section>
@@ -286,7 +314,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
   $("#themeBtn").onclick = function(){ setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"); };
 
   /* ── tabs, remembered in the address (#practice, #learn …) so a link can open one ── */
-  var PANELS = { licence: "p-licence-practice", practice: "p-licence-practice", learn: "p-learn", games: "p-games", badges: "p-badges" };
+  var PANELS = { licence: "p-licence-practice", practice: "p-licence-practice", learn: "p-learn", scenes: "p-scenes", games: "p-games", badges: "p-badges" };
   var CUR = "";
   function show(p){
     if (!PANELS[p]) p = "licence";
@@ -308,6 +336,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     if (p === "learn") learn(LEARN);
     if (p === "badges") badges();
     if (p === "games") lightpath();
+    if (p === "scenes") scenes(SCN);
   }
   /* The game loads when its tab is first opened, and again on sign-in so its progress switches from this
      browser to the account (lightpath/grubblab.js asks window.lpCred() for the credential). */
@@ -345,7 +374,7 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
   });
   document.querySelectorAll("nav.atabs button").forEach(function(b){ b.onclick = function(){ show(b.dataset.p); }; });
   window.addEventListener("academy-status", function(){ if (CUR === "badges") badges(); });
-  window.addEventListener("academy-signin", function(){ if (CUR === "licence" || CUR === "practice") show(CUR); if (CUR === "games") lightpath(); if (CUR === "badges") setTimeout(badges, 2500); });
+  window.addEventListener("academy-signin", function(){ if (CUR === "licence" || CUR === "practice") show(CUR); if (CUR === "games") lightpath(); if (CUR === "badges") setTimeout(badges, 2500); if (CUR === "scenes") scenes(SCN); });
 
   /* ── EM, with the Academy's small ring and four pointers on a spot ── */
   var VIEWS = [ { mip: 0, zoom: 2 }, { mip: 0, zoom: 1 }, { mip: 1, zoom: 1 }, { mip: 2, zoom: 1 } ];
@@ -660,6 +689,180 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
             + (b.got || b.need === 1 ? '' : '<div class="bar"><i style="width:' + Math.round(100 * b.have / b.need) + '%"></i></div><div class="how">' + Math.floor(b.have) + ' / ' + b.need + '</div>')
             + '</div>'; }).join("") + '</div>';
       }).join("");
+  }
+
+  /* ════════════════ SCENES ════════════════  2026-11-14
+     Søren: "I think Jump academy should also feature chosen scenes made in VR, you should be able to submit
+     your scene to this. There should also be a guide how to make your own scene, from finding the cell or
+     cells to making a timeline in VR."
+     Chosen  the featured scenes (?vrSceneFeatured=1), each card's picture read from the scene's own preview.
+     Guide   from a cell in µJump to a filmed timeline, with the buttons' real names.
+     Yours   your saved scenes and where each stands; submit with a line on what it shows, or withdraw.
+     Review  only for the reviewer (the server says who that is): feature, decline, or put back. */
+  var SCN = "featured", SC_OWNER = false, SC_PV = {};
+  document.querySelectorAll("#sceneNav button").forEach(function(b){ b.onclick = function(){ scenes(b.dataset.s); }; });
+  var SC_CHECKED = false;
+  function scenes(which){
+    SCN = which;
+    /* the Review tab is shown to the reviewer only, and only the server knows who that is */
+    if (GOOGLE_VERIFIED && !SC_CHECKED){ SC_CHECKED = true;
+      scPost({ action: "mine" }).then(function(d){ if (d && d.owner){ SC_OWNER = true; $('#sceneNav [data-s="review"]').style.display = ""; } }); }
+    document.querySelectorAll("#sceneNav button").forEach(function(b){ b.classList.toggle("on", b.dataset.s === which); });
+    ["featured", "guide", "mine", "review"].forEach(function(k){ $("#s-" + k).style.display = k === which ? "" : "none"; });
+    if (which === "featured") scFeatured();
+    if (which === "guide") scGuide();
+    if (which === "mine") scMine();
+    if (which === "review") scReview();
+  }
+  function scPost(body){
+    body.credential = GOOGLE_CREDENTIAL; body.ds = "ujump"; body.type = "vr_scene_academy";
+    return fetch(REPORT_ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) })
+      .then(function(r){ return r.text(); }).then(function(t){ return JSON.parse(t); })
+      .catch(function(){ return { ok: false, error: "could not reach the server" }; });
+  }
+  function scLen(sec){ sec = Math.round(sec || 0); return sec >= 60 ? Math.floor(sec / 60) + " min " + (sec % 60 ? (sec % 60) + " s" : "") : sec + " s"; }
+  /* the picture: one small request per card, kept for the visit */
+  function scPreview(card, id){
+    var pv = card.querySelector(".pv");
+    var paint = function(m){ if (m && m.preview){ pv.style.backgroundImage = "url('" + m.preview + "')"; pv.textContent = ""; } else pv.textContent = "no picture"; };
+    if (SC_PV[id]){ SC_PV[id].then(paint); return; }
+    SC_PV[id] = fetch(REPORT_ENDPOINT + "?vrScene=" + encodeURIComponent(id) + "&meta=1&ds=ujump").then(function(r){ return r.json(); }).catch(function(){ return null; });
+    SC_PV[id].then(paint);
+  }
+  function scCard(sc, extra){
+    var id = encodeURIComponent(sc.sceneId);
+    return '<div class="scard" data-id="' + esc(sc.sceneId) + '"><div class="pv">loading the picture…</div><div class="bd">'
+      + '<b>' + esc(sc.title || "Untitled scene") + '</b>'
+      + '<div class="st">' + (sc.authorName ? "by " + esc(String(sc.authorName).split(" ")[0]) + " · " : "") + (sc.cells || 0) + " cell" + (sc.cells === 1 ? "" : "s")
+      + (sc.story > 0 ? " · a " + scLen(sc.story) + " story" : "") + '</div>'
+      + ((sc.note || sc.academyNote) ? '<div class="small">' + esc(sc.note || sc.academyNote) + '</div>' : '')
+      + '<div class="row" style="margin-top:auto">'
+      + (sc.story > 0 ? '<a class="btn go" target="_blank" rel="noopener" href="vr.html#scene=' + id + '&play=1">▶ Play its story</a>' : '')
+      + '<a class="btn' + (sc.story > 0 ? '' : ' go') + '" target="_blank" rel="noopener" href="vr.html#scene=' + id + '">🥽 Open in VR</a></div>'
+      + (extra || "") + '</div></div>';
+  }
+  function scFeatured(){
+    var host = $("#s-featured");
+    host.innerHTML = '<p class="mut small" style="margin-top:0">Scenes the community made in the VR viewer, chosen because they show something '
+      + 'well. Open one on your computer, or in the headset (the VR page has a link for it). <b>▶ Play its story</b> runs its timeline '
+      + 'as its maker filmed it. <a href="#" id="scToGuide">Make your own →</a></p><div id="scList" class="mut">Loading…</div>';
+    $("#scToGuide").onclick = function(e){ e.preventDefault(); scenes("guide"); };
+    fetch(REPORT_ENDPOINT + "?vrSceneFeatured=1&ds=ujump&_=" + Date.now(), { cache: "no-store" }).then(function(r){ return r.json(); }).then(function(d){
+      var list = (d && d.ok && d.scenes) || [];
+      if (!d || !d.ok){ $("#scList").textContent = "The chosen scenes could not be read" + (d && d.error ? ": " + d.error : "") + "."; return; }
+      if (!list.length){ $("#scList").innerHTML = '<div class="card">No scenes have been chosen yet &mdash; yours could be the first. '
+        + '<a href="#" id="scToGuide2">See how to make one</a>.</div>'; $("#scToGuide2").onclick = function(e){ e.preventDefault(); scenes("guide"); }; return; }
+      $("#scList").className = "scenes"; $("#scList").innerHTML = list.map(function(sc){ return scCard(sc); }).join("");
+      $("#scList").querySelectorAll(".scard").forEach(function(c){ scPreview(c, c.dataset.id); });
+    }).catch(function(){ $("#scList").textContent = "The chosen scenes could not be read: the server did not answer."; });
+  }
+  function scGuide(){
+    var host = $("#s-guide");
+    if (host.dataset.done) return; host.dataset.done = "1";
+    host.innerHTML = '<div class="card"><h3>Make your own VR scene</h3>'
+      + '<p class="mut small" style="margin-top:0">A scene is a room you set up in the VR viewer &mdash; the cells, how they look, the EM, '
+      + 'what is shown &mdash; saved as a link. With a <b>timeline</b> it becomes a short film that plays the same way for everybody. '
+      + 'You need a computer for the timeline; the headset is for looking (and showing).</p>'
+      + '<ol class="guide">'
+      + '<li><b>Find your cells</b> in <a href="ujump.html" target="_blank" rel="noopener">&micro;Jump</a> (or any Jump tool).<ul>'
+      + '<li>One cell: search its <b>root ID</b> or <b>nucleus ID</b>, or pick a <b>random example</b> of a cell type in the <b>Jump</b> tab.</li>'
+      + '<li>Many cells: <b>Filter and show</b> &rarr; choose the types, layers or region &rarr; <b>Preview matches</b> &rarr; <b>🥽 Show in VR</b> sends them all at once.</li>'
+      + '<li>Connections: in <b>Connectivity</b>, <b>Cell contacts</b> or <b>Astrocyte&ndash;synapse proximity</b>, <b>🥽 + VR</b> brings the synapses or contacts along with the cell.</li></ul></li>'
+      + '<li><b>Collect them.</b> Press <b>🥽 + VR</b> beside each cell&rsquo;s root ID. They gather in the tray in the bottom-right corner; '
+      + '<b>Open VR viewer</b> opens them together. Fewer cells tell a clearer story &mdash; and above about 20 a standalone Quest struggles.</li>'
+      + '<li><b>Add to them in the viewer.</b><ul>'
+      + '<li>Click a cell&rsquo;s name to pick it; <b>+3 neighbours</b> adds the three cells whose nuclei are nearest; '
+      + '<b>+ Recorded neighbours</b> adds nearby neurons with two-photon recordings.</li>'
+      + '<li><b>👥 Groups</b> keeps root IDs of your own together as one row.</li></ul></li>'
+      + '<li><b>Make it look right.</b><ul>'
+      + '<li>Tick cells and whole types on and off; <b>◐</b> makes a cell or a type see-through, so one cell stands out among the rest.</li>'
+      + '<li>Click a <b>colour square</b> to recolour a type or a single cell; <b>↺</b> puts the automatic colour back.</li>'
+      + '<li><b>EM section</b> lays the real micrograph through the picked cell&rsquo;s nucleus &mdash; the honest part of any scene. '
+      + 'Layers, nuclei, vessels, synapses and organelles each have their own switches.</li>'
+      + '<li>Turn the view with the mouse to where you want people to start.</li></ul></li>'
+      + '<li><b>Save the scene.</b> Give it a title at the top of the list and press <b>💾 Save</b> (sign in with Google first &mdash; '
+      + 'the scene carries your name). You get a link; saving again <i>updates</i> the same link, <b>＋ Save as new</b> makes another.</li>'
+      + '<li><b>Make the timeline</b> &mdash; <b>🎞 Timeline</b> opens it along the bottom of the window.<ul>'
+      + '<li>Set the film&rsquo;s <b>Length</b> (seconds), and if you like a fade from black at the start and end.</li>'
+      + '<li>Move the playhead, turn the view, and press <b>+ ◆ Camera</b>; do it again further on. The camera glides between keys; '
+      + 'a key can also <b>orbit</b> a cell. <b>Path</b> shows the route as a dotted line.</li>'
+      + '<li><b>+ ■ View</b> keys switch what is shown (layers, nuclei, vessels, the EM&hellip;) at that moment, with a fade.</li>'
+      + '<li><b>+ ⚡ Stimulus</b> keys fire a cell at its soma &mdash; an action potential or a Ca&sup2;&#8314; wave; several cells, staggered, make a pattern.</li>'
+      + '<li><b>+ T Caption</b> keys put a text card on screen; <b>+ ✦ Effect</b> keys highlight a cell, follow the spike, freeze the spikes, '
+      + 'peel the tissue block, play the recorded activity, focus on one cell, ride a red blood cell and more.</li>'
+      + '<li>Drag keys to move them; <b>Snap</b> lines them up; click a key to edit it. Press <span class="kbd">space</span> to play it from the playhead.</li>'
+      + '<li>A timeline you like can be saved to your profile with <b>📚 My timelines</b> and used again on other cells.</li></ul></li>'
+      + '<li><b>Film it (optional).</b> <b>⏺ Film it</b> records the timeline from start to end to a video file, in the recorder&rsquo;s size and frame rate &mdash; for a talk or a post.</li>'
+      + '<li><b>Save again</b> with <b>💾 Save</b>, so the timeline is part of the scene. Its link now offers <b>▶ Play its story</b>.</li>'
+      + '<li><b>Submit it to the Academy.</b> After saving, press <b>🎓 Submit to Jump Academy…</b> and write a line on what people should look at '
+      + '&mdash; or submit it from <a href="#" id="scToMine">Your scenes</a> here. Chosen scenes appear under <b>Chosen scenes</b> for everybody learning.</li>'
+      + '</ol>'
+      + '<p class="mut small" style="margin-bottom:0"><b>What gets chosen:</b> a scene that shows one thing clearly &mdash; a cell type&rsquo;s shape, '
+      + 'how two cells touch, a vessel and its pericytes, a recorded neuron firing &mdash; with the EM in it somewhere, a timeline that '
+      + 'leads the eye, and captions that say what you are looking at. Short is good: 20&ndash;60 s.</p>'
+      + '<div class="row"><a class="btn go" href="ujump.html" target="_blank" rel="noopener">Find cells in &micro;Jump →</a>'
+      + '<a class="btn" href="vr.html" target="_blank" rel="noopener">Open the VR viewer →</a></div></div>';
+    $("#scToMine").onclick = function(e){ e.preventDefault(); scenes("mine"); };
+  }
+  var SC_STATE = { "": "", submitted: "waiting to be chosen", featured: "featured in the Academy", declined: "not chosen this time" };
+  function scMine(){
+    var host = $("#s-mine");
+    if (!GOOGLE_VERIFIED){ host.innerHTML = '<div class="card">Sign in (top right) to see the VR scenes you have saved and submit one.</div>'; return; }
+    host.innerHTML = '<p class="mut small" style="margin-top:0">The scenes you saved in the VR viewer. Submit one with a line on what it shows; '
+      + 'a submitted scene can be withdrawn at any time, and a featured scene is your scene &mdash; when you update it in VR, the Academy shows the update.</p><div id="scMineList" class="mut">Loading…</div>';
+    scPost({ action: "mine" }).then(function(d){
+      var el = $("#scMineList");
+      if (!d.ok){ el.textContent = "Your scenes could not be read: " + (d.error || "no answer") + (/unknown|type/i.test(d.error || "") ? " (the server has not been updated yet)" : "") + "."; return; }
+      SC_OWNER = !!d.owner; $('#sceneNav [data-s="review"]').style.display = SC_OWNER ? "" : "none";
+      if (!d.scenes.length){ el.innerHTML = '<div class="card">You have not saved a VR scene yet. <a href="#" id="scToGuide3">How to make one</a>.</div>';
+        $("#scToGuide3").onclick = function(e){ e.preventDefault(); scenes("guide"); }; return; }
+      el.className = "scenes";
+      el.innerHTML = d.scenes.map(function(sc){
+        var a = sc.academy || "";
+        var extra = '<div class="row" style="margin-top:4px">' + (a ? '<span class="pill ' + a + '">' + esc(SC_STATE[a] || a) + '</span>' : '') + '</div>'
+          + (sc.academyReply ? '<div class="small"><i>From the reviewer:</i> ' + esc(sc.academyReply) + '</div>' : '')
+          + (a === "submitted" || a === "featured"
+              ? '<div class="row"><button class="btn" data-wd="' + esc(sc.sceneId) + '">Withdraw from the Academy</button></div>'
+              : '<textarea rows="2" maxlength="600" placeholder="What should people look at? (shown on its card)" data-note="' + esc(sc.sceneId) + '">' + esc(sc.academyNote || "") + '</textarea>'
+                + '<div class="row" style="margin-top:0"><button class="btn go" data-sub="' + esc(sc.sceneId) + '">🎓 Submit to the Academy</button></div>');
+        return scCard(sc, extra);
+      }).join("");
+      el.querySelectorAll(".scard").forEach(function(c){ scPreview(c, c.dataset.id); });
+      el.querySelectorAll("[data-sub]").forEach(function(b){ b.onclick = function(){
+        b.disabled = true; b.textContent = "Submitting…";
+        var note = (el.querySelector('[data-note="' + b.dataset.sub + '"]') || {}).value || "";
+        scPost({ action: "submit", sceneId: b.dataset.sub, note: note }).then(function(r){ if (!r.ok){ b.disabled = false; b.textContent = "Not submitted: " + (r.error || "no answer"); return; } scMine(); });
+      }; });
+      el.querySelectorAll("[data-wd]").forEach(function(b){ b.onclick = function(){
+        b.disabled = true; scPost({ action: "withdraw", sceneId: b.dataset.wd }).then(function(){ scMine(); });
+      }; });
+    });
+  }
+  function scReview(){
+    var host = $("#s-review");
+    host.innerHTML = '<p class="mut small" style="margin-top:0">Submitted and featured scenes. Open each one before choosing; '
+      + 'a line back is shown to its maker.</p><div id="scRevList" class="mut">Loading…</div>';
+    scPost({ action: "queue" }).then(function(d){
+      var el = $("#scRevList");
+      if (!d.ok){ el.textContent = d.error || "no answer"; return; }
+      if (!d.scenes.length){ el.textContent = "Nothing waiting."; return; }
+      el.className = "scenes";
+      el.innerHTML = d.scenes.map(function(sc){
+        var a = sc.academy;
+        return scCard(sc, '<div class="row" style="margin-top:4px"><span class="pill ' + a + '">' + esc(SC_STATE[a] || a) + '</span>'
+          + '<span class="st">' + esc(String(sc.academyAt || "").slice(0, 10)) + '</span></div>'
+          + '<textarea rows="2" maxlength="600" placeholder="A line back to its maker (optional)" data-rep="' + esc(sc.sceneId) + '">' + esc(sc.academyReply || "") + '</textarea>'
+          + '<div class="row" style="margin-top:0">'
+          + (a !== "featured" ? '<button class="btn go" data-dec="featured" data-id="' + esc(sc.sceneId) + '">★ Feature</button>' : '<button class="btn" data-dec="submitted" data-id="' + esc(sc.sceneId) + '">Un-feature</button>')
+          + '<button class="btn" data-dec="declined" data-id="' + esc(sc.sceneId) + '">Not this time</button></div>');
+      }).join("");
+      el.querySelectorAll(".scard").forEach(function(c){ scPreview(c, c.dataset.id); });
+      el.querySelectorAll("[data-dec]").forEach(function(b){ b.onclick = function(){
+        b.disabled = true;
+        var rep = (el.querySelector('[data-rep="' + b.dataset.id + '"]') || {}).value;
+        scPost({ action: "decide", sceneId: b.dataset.id, decision: b.dataset.dec, reply: rep }).then(function(r){ if (!r.ok){ b.disabled = false; b.textContent = r.error || "failed"; return; } scReview(); });
+      }; });
+    });
   }
 
   /* ── start ── */
