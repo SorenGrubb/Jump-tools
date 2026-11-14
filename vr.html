@@ -9413,7 +9413,8 @@ function menuRows(){
     rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
     rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
     rows.push({ label: "Hear spikes" + (spkAudioBlocked() ? "  (blocked — press the trigger once)" : ""), on: SPK.snd, act: () => { spkWake(); setSpkSound(!SPK.snd); } });
-    rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
+    if (spkCanBuzz() === false) rows.push({ label: "Feel spikes — this browser cannot vibrate the controllers", note: true });
+    else rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
     rows.push({ label: "   Test: click and buzz", act: spkTest });
     S("Blood & vessels (models)");
     if (DS_HAS.flow){
@@ -13995,6 +13996,17 @@ function spkHapticInfo(){
     return (s.handedness || "?") + ": " + (!gp ? "no gamepad" : "hapticActuators " + (ha ? ha.length : "absent") + ", vibrationActuator "
       + (va ? (va.type || "yes") + (va.effects ? " [" + [...va.effects].join("/") + "]" : "") + (va.pulse ? " +pulse" : "") + (va.playEffect ? " +playEffect" : "") : "absent"));
   }).join(" · ") || "no input sources";
+}
+/* NO VIBRATION IN THIS BROWSER (2026-11-14): on Søren's Quest the browser gives the page no haptic controls at all
+   ("vibration actuators and haptic actuators absent on both hands") -- a web page cannot make those controllers
+   buzz. The palette says so instead of offering a switch that does nothing. Other browsers (Wolvic, Chrome on a PC
+   through Quest Link) may offer them, so the feature stays and lights up wherever they are. */
+function spkCanBuzz(){
+  const se = renderer.xr.getSession && renderer.xr.getSession(); if (!se) return null;
+  let any = false, seen = false;
+  for (const s of se.inputSources){ const gp = s.gamepad; if (!gp) continue; seen = true;
+    if ((gp.hapticActuators && gp.hapticActuators.length) || gp.vibrationActuator || (s.hapticActuators && s.hapticActuators.length)) any = true; }
+  return seen ? any : null;
 }
 function spkHaptic(h, a, ms){
   const src = xrSourceFor(h), gp = src && src.gamepad; if (!gp) return 0;
