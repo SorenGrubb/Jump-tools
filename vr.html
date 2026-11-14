@@ -3022,6 +3022,7 @@ async function addNeighbours(k, only, what){
     .map(r => ({ r, d: Math.hypot(r[0] - at.x, r[1] - at.y, r[2] - at.z) }))
     .sort((a, b) => a.d - b.d).slice(0, k);
   if (!near.length){ ctxNote.textContent = only ? "No " + what + "s within ~200 µm that are not here already." : "Neighbours: none with a root id nearby."; return; }
+  if (ISOLATE) toggleIsolate(true);          // you asked to see them: "Only the picked cell" would hide each one as it loads
   const light = document.getElementById("detail").value === "light", token = LOAD_TOKEN, added = [];
   for (const { r, d } of near){
     const code = I.types[r[3]] || "Unclassified";
@@ -9026,7 +9027,20 @@ function sticks(dt){
 }
 
 /* ── isolate: only the picked cell, everything else hidden ─────────────────── */
-function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
+/* ── "ONLY THE PICKED CELL" SAYS SO ───────────────────────────────────────────  2026-11-14
+   Søren, in the headset: neighbours "loaded and showed and then disappeared and I could not figure out how to get
+   them back." Only the picked cell was on (X on the left controller toggles it, easy to press by accident), so
+   every cell that finished loading was hidden the moment it arrived. Now the switch says what it did, in the
+   headset too, and asking for neighbours turns it off -- you asked to see them. */
+function toggleIsolate(quiet){
+  ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true;
+  if (quiet) return;
+  const n = CELLS.filter(c => !c.hidden).length;
+  const msg = ISOLATE ? "Only the picked cell is shown — the other " + Math.max(0, n - 1) + " are hidden. X (left controller) or Tools → “Only the picked cell” shows them again."
+                      : "All cells shown again.";
+  ctxNote.textContent = msg;
+  try { if (renderer.xr.isPresenting) flashWarn(msg, 4000, ISOLATE ? "#f0a742" : "#3fb950"); } catch (e){}
+}
 
 /* ── THE PALETTE, on the left hand ──────────────────────────────────────────  2026-10-13
    Søren, after trying the floating menu: *"could we make it like a palette on the left controller
@@ -9043,12 +9057,37 @@ function toggleIsolate(){ ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true; }
    a row is just a rectangle on the canvas. The controls card that used to sit on the left hand is
    now the View tab's "Help" page. */
 const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: null,
-               dirty: true, tab: 0, cellPage: 0, help: false };
+               dirty: true, tab: 0, cellPage: 0, help: false, secOpen: {} };
 const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26;
 const TABS = ["Show", "Map", "Tools", "Spray", "EM", "Cells", "View"];
+/* ── SECTIONS, MOSTLY CLOSED ─────────────────────────────────────────────────  2026-11-14
+   Søren: "the menu is way too long, especially for tools. I think we could arrange the things under categories
+   and have most of the categories collapsed." A row pushed after S("name") belongs to that section; rows pushed
+   with no section stay at the top, always visible (the things you reach for most). Each section is one header
+   row -- "▸ Blood & vessels  · 2 on" -- and opening one closes the one that was open, so the palette never shows
+   more than the top rows and one section. Which one is open is remembered per tab while the page is open. */
+function menuSections(rows, tab){
+  /* the cell-finding rows first: what you look for when the cells are not what you expected */
+  const first = r => /^(\+3 neighbours|Only the picked cell)/.test(r.label) ? 0 : 1;
+  const top = rows.filter(r => !r.sec).map((r, i) => [r, i]).sort((x, y) => first(x[0]) - first(y[0]) || x[1] - y[1]).map(x => x[0]), order = [], by = {};
+  rows.forEach(r => { if (r.sec){ if (!by[r.sec]){ by[r.sec] = []; order.push(r.sec); } by[r.sec].push(r); } });
+  if (!order.length) return rows;
+  const open = MENU.secOpen[tab];
+  const out = top.slice();
+  for (const n of order){
+    const L = by[n], nOn = L.filter(r => r.on === true && !/^\s/.test(r.label)).length;
+    out.push({ head: true, open: open === n, label: (open === n ? "▾  " : "▸  ") + n + (nOn ? "   · " + nOn + " on" : ""),
+               act: () => { MENU.secOpen[tab] = open === n ? null : n; } });
+    if (open === n) out.push(...L);
+  }
+  return out;
+}
 function menuRows(){
   const rows = [];
   const t = TABS[MENU.tab];
+  let SEC = null;
+  const S = n => { SEC = n; };
+  { const _push = rows.push.bind(rows); rows.push = (...a) => _push(...a.map(r => (SEC && r.sec === undefined ? Object.assign(r, { sec: SEC }) : r))); }
   if (t === "Show"){
     /* Google's button cannot be drawn inside an immersive session, so the headset says where you stand and where to
        sign in: on the page (top of the panel), before Enter VR -- the Quest browser shows that page first. */
@@ -9059,6 +9098,7 @@ function menuRows(){
     rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
     rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
     if (VR_DS === "microns") rows.push({ label: "Axon initial segment (orange)", on: AIS_COL.on, act: () => setAisColour(!AIS_COL.on) });
+    S("Organelles & tracings");
     rows.push({ label: "Organelle reports" + (ORG.kind !== "all" ? ": " + ORG.kind.replace(/_/g, " ") : ""), on: ORG.on, act: () => setOrganelles(!ORG.on) });
     if (ORG.on){
       /* Step through the kinds actually in the box, from the panel's chooser. */
@@ -9067,10 +9107,12 @@ function menuRows(){
                   act: () => { ORG.kind = ok[(ok.indexOf(ORG.kind) + 1) % ok.length] || "all"; setOrganelles(true); } });
     }
     if (hasPoints()){
+      S("Synapses & contact points");
       rows.push({ label: "Synapses & contact points", on: PTS.on, act: () => setPoints(!PTS.on) });
       if (PTS.on) rows.push({ label: "   Synapses: " + ({ both: "inputs and outputs", in: "inputs only", out: "outputs only" })[PTS.dir] + "  ▸",
                               act: () => { PTS.dir = ({ both: "in", in: "out", out: "both" })[PTS.dir]; document.getElementById("ptsDir").value = PTS.dir; buildPoints(); } });
     }
+    S("Organelles & tracings");
     if (DS_HAS.vec){
     rows.push({ label: "Nucleus → centriole vectors", on: VEC.cent, act: () => setVectors("cent", !VEC.cent) });
     rows.push({ label: "Cilium base → tip vectors", on: VEC.cil, act: () => setVectors("cil", !VEC.cil) });
@@ -9091,6 +9133,7 @@ function menuRows(){
       rows.push({ label: "   Kind: " + (TRC.kind === "all" ? "all" : trcKindName(TRC.kind)) + "  ▸", act: () => cyc("kind", kv) });
       rows.push({ label: "   + Add the cells with these tracings", act: addTracedCells });
     }
+    S("Scale bar, grid & background");
     rows.push({ label: "Scale bar", on: SBAR.on, act: () => setScaleBar(!SBAR.on) });
     rows.push({ label: "Floor grid", on: LOOK.grid, act: () => setGrid(!LOOK.grid) });
     { const i = BG_PRESETS.findIndex(x => x[0] === LOOK.bg);
@@ -9106,7 +9149,9 @@ function menuRows(){
                 on: V1COL.mode !== "off", act: () => setV1Col(({ off: "outline", outline: "cells", cells: "off" })[V1COL.mode]) });
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
     if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
+    S("Meninges");
     if (DS_HAS.men) for (const k in MEN_PARTS) rows.push({ label: MEN_PARTS[k].label + (k === "villus" ? " (3 outlines)" : ""), on: MEN.on[k], act: () => setMen(k, !MEN.on[k]) });
+    S("Vessels & blood");
     const vm = document.getElementById("vascSel").value;
     if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
                 on: vm !== "off", act: () => setVessels(({ off: "whole", whole: "box", box: "off" })[vm]) });
@@ -9129,7 +9174,9 @@ function menuRows(){
                   act: () => { SKEL.cap = ({ act: "cvt", cvt: "plain", plain: "act" })[SKEL.cap]; buildSkel(); } });
     }
   } else if (t === "Tools"){
+    S("Stimulate & listen");
     rows.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
+    S("Ca²⁺ wave");
     rows.push({ label: "Ca²⁺ wave (trigger on any cell)", on: CA.on, act: () => setCa(!CA.on) });
     if (CA.on || CA.running){
       rows.push({ label: "   Ca²⁺ speed: " + CA.speed + " µm/s  ▸", act: () => caSetting("speed", ({ 5: 10, 10: 15, 15: 20, 20: 30, 30: 5 })[CA.speed] || 15) });
@@ -9139,6 +9186,7 @@ function menuRows(){
       rows.push({ label: "   Ca²⁺ plot", on: CA.plot, act: () => { CA.plot = !CA.plot; document.getElementById("caPlotBtn").classList.toggle("on", CA.plot); caPlotDraw(!CA.plot); } });
       rows.push({ label: "   Reset Ca²⁺", act: caReset });
     }
+    S("Connections");
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
     if (DS_HAS.syn && SELECTED >= 0){
       rows.push({ label: "Connectivity of the picked cell", on: !!CN.on, act: () => setConnectivity(!CN.on) });
@@ -9154,6 +9202,7 @@ function menuRows(){
         if (CN.tp && CN.tp.hit) rows.push({ label: "   File " + CN.tp.hit + " tripartite as µJump reports" + (credOk() ? "" : " (needs sign-in)"), act: tpSave });
       }
     }
+    S("Blood & vessels (models)");
     if (DS_HAS.vasc){
       rows.push({ label: "Vascular regulation & blood flow (model)", on: NV.on, act: () => setNv(!NV.on) });
       if (NV.on){
@@ -9181,11 +9230,13 @@ function menuRows(){
         rows.push({ label: "   Shih et al. for untraced capillaries", on: NV.useShih, act: () => nvSetting("useShih", !NV.useShih) });
       }
     }
+    S("Clock & brain states (models)");
     rows.push({ label: "Clock " + (SIM.paused ? "paused" : simFmt(SIM.speed)) + "  ▸ (recommended speeds)", act: () => { const v = SIM_REC.map(r => r.v).filter((x, i, a) => a.indexOf(x) === i).sort((a, b) => a - b); const i = v.findIndex(x => x > SIM.speed * 1.05); setSimSpeed(v[i < 0 ? 0 : i]); } });
     rows.push({ label: SIM.paused ? "   Resume the clock" : "   Pause the clock", act: () => { SIM.paused = !SIM.paused; simUi(true); MENU.dirty = true; } });
     rows.push({ label: "Sleep (model)", on: SL.on, act: () => setSleep(!SL.on) });
     rows.push({ label: "Brain temperature " + PHYS.T.toFixed(1) + " °C  ▸", act: () => { const L = [34, 36, 37.7, 39, 40.5, 42.8]; const i = L.findIndex(x => x > PHYS.T + 0.05); setTemp(L[i < 0 ? 0 : i]); } });
     rows.push({ label: "Intracranial pressure " + PHYS.icp + " mmHg  ▸", act: () => { const L = [5, 15, 25, 35, 50]; const i = L.findIndex(x => x > PHYS.icp); setIcp(L[i < 0 ? 0 : i]); } });
+    S("What a scanner records (model)");
     if (DSX.flowNet){
       rows.push({ label: "What a scanner records (model)", on: IMG.on, act: () => setImg(!IMG.on) });
       if (IMG.on){
@@ -9198,6 +9249,7 @@ function menuRows(){
         rows.push({ label: "   Shift the grid ½ voxel", act: () => imgSetting("shift") });
       }
     }
+    S("Clock & brain states (models)");
     rows.push({ label: "LFP probe (model)", on: LFP.on, act: () => setLfp(!LFP.on) });
     rows.push({ label: "   Power spectrum of the LFP", on: !!LFP.psd, act: () => setPsd(!LFP.psd) });
     rows.push({ label: "Spreading depolarization (model)", on: CSD.on, act: () => setCsd(!CSD.on) });
@@ -9205,6 +9257,7 @@ function menuRows(){
       rows.push({ label: "   Coming from " + CSD.dir.replace("-", "−") + "  ▸", act: () => { const o = ["x-", "x+", "z-", "z+"]; CSD.dir = o[(o.indexOf(CSD.dir) + 1) % 4]; document.getElementById("csdDir").value = CSD.dir; csdStart(); } });
       rows.push({ label: "   Send another wave", act: () => csdStart() });
     }
+    S("Identify a cell (game)");
     if (DS_HAS.vec && DS_HAS.nb){
       rows.push({ label: "Identify a cell (game) — " + GAME.st.pts + " pts, " + gameLevel(GAME.st.pts), on: GAME.on, act: () => setGame(!GAME.on) });
       if (GAME.on){
@@ -9220,11 +9273,13 @@ function menuRows(){
         }
       }
     }
+    S("Stimulate & listen");
     rows.push({ label: "Drug: TTX", on: DRUG.ttx, act: () => setDrug("ttx", !DRUG.ttx) });
     rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
     rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
     rows.push({ label: "Hear spikes", on: SPK.snd, act: () => setSpkSound(!SPK.snd) });
     rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
+    S("Blood & vessels (models)");
     if (DS_HAS.flow){
       rows.push({ label: "Stroke (model)", on: STK.on && !STK.quiet, act: () => document.getElementById("stkBtn").click() });
       if (STK.on && !STK.quiet){
@@ -9234,6 +9289,7 @@ function menuRows(){
         rows.push({ label: "   Pial collaterals open", on: STK.collat, act: () => stkSetting("collat", !STK.collat) });
       }
     }
+    S("Clock & brain states (models)");
     if (LFP.on){
       rows.push({ label: "   Place the probe (then trigger)", on: LFP.arm, act: () => { LFP.arm = !LFP.arm; } });
       rows.push({ label: "   Background population", on: LFP.bg, act: () => { LFP.bg = !LFP.bg; document.getElementById("lfpBg").checked = LFP.bg; } });
@@ -9242,6 +9298,7 @@ function menuRows(){
       rows.push({ label: "   " + ({ cycle: "Cycle: awake → NREM → REM", nrem: "NREM", rem: "REM", awake: "Awake" })[SL.mode] + "  ▸", act: () => slSetting("mode", ({ cycle: "nrem", nrem: "rem", rem: "awake", awake: "cycle" })[SL.mode]) });
       rows.push({ label: "   Sleep plot", on: SL.plot, act: () => slSetting("plot", !SL.plot) });
     }
+    S("Recorded activity");
     if (DS_HAS.ra){
       rows.push({ label: "Recorded activity (MICrONS)", on: RA.on, act: () => setRa(!RA.on) });
       if (RA.on){
@@ -9259,6 +9316,7 @@ function menuRows(){
         rows.push({ label: "   + Recorded neighbours of the picked cell", act: raNeighbours });
       }
     }
+    S("Stimulate & listen");
     rows.push({ label: "Synapses fire the next cell", on: document.getElementById("stimMode").value === "fire",
                 act: () => { const el = document.getElementById("stimMode"); el.value = el.value === "fire" ? "psp" : "fire"; } });
     rows.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸",
@@ -9271,8 +9329,11 @@ function menuRows(){
       rows.push({ label: "   Plot: Ca²⁺", on: PLOT_SHOW.ca, act: () => setPlotShow("ca", !PLOT_SHOW.ca) });
     }
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
+    S(null);
     rows.push({ label: "Reset activity", act: resetActivity });
+    S("Stimulate & listen");
     rows.push({ label: STIM.synCleared ? "Show all synapse markers" : "Hide synapse markers (until used)", act: () => setSynCleared(!STIM.synCleared) });
+    S("Cut, see-through & tissue block");
     if (BLOCK.group || BLOCK.loading){
       rows.push({ label: "Tissue block" + (BLOCK.loading ? " (reading…)" : ""), on: BLOCK.on, act: () => { BLOCK.on = !BLOCK.on; blkApply(); } });
       rows.push({ label: "   Peeled: " + Math.round(BLOCK.peel * 100) + " %  ▸", act: () => setPeel(BLOCK.peel >= 0.99 ? 0 : Math.min(1, Math.round(BLOCK.peel * 4 + 1) / 4)) });
@@ -9282,8 +9343,10 @@ function menuRows(){
       act: () => { document.getElementById("blkSrc").value = RBOX.list.length ? "rbox:0" : "cells"; blkSrcUI(); blockFromUI(); } });
     if (!(BLOCK.group || BLOCK.loading) && CELLS[SELECTED]) rows.push({ label: "Tissue block around the picked cell's soma",
       act: () => { document.getElementById("blkSrc").value = "soma"; blkSrcUI(); blockFromUI(); } });
+    S(null);
     rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
     rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
+    S("Cut, see-through & tissue block");
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
                 act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
     rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
@@ -9291,7 +9354,8 @@ function menuRows(){
     rows.push({ label: SELECTED >= 0 ? "Others see-through (picked stays solid)" : "Others see-through (pick a cell first)", act: glassOthers });
     if (SELECTED >= 0 && CELLS[SELECTED]) rows.push({ label: "Picked cell see-through", on: !!CELLS[SELECTED].glass, act: () => setCellGlass([CELLS[SELECTED]], !CELLS[SELECTED].glass) });
     if (CELLS.some(c => c.glass)) rows.push({ label: "All cells solid", act: glassClear });
-    rows.push({ label: "Only the picked cell", on: ISOLATE, act: toggleIsolate });
+    S(null);
+    rows.push({ label: "Only the picked cell", on: ISOLATE, act: () => toggleIsolate() });
     rows.push({ label: "Fly with the trigger / pinch", on: !!FLY.trigger, act: () => { FLY.trigger = !FLY.trigger; } });
     if (DS_HAS.nb) rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
   } else if (t === "Spray"){
@@ -9332,6 +9396,7 @@ function menuRows(){
        and a type opened to its cells. Seven to a page either way, so the palette never grows past
        a hand's width of height. */
     const groups = cellGroups(), per = 7;
+    if (ISOLATE || CELLS.length > 1) rows.push({ label: ISOLATE ? "Only the picked cell — show all" : "Only the picked cell", on: ISOLATE, act: () => toggleIsolate() });
     const g = MENU.cellGroup && groups.find(x => x.key === MENU.cellGroup);
     if (!g){
       MENU.cellGroup = null;
@@ -9384,7 +9449,7 @@ function menuRows(){
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
   }
-  return rows;
+  return menuSections(rows, t);
 }
 function drawMenu(){
   MENU.rows = menuRows();
@@ -9416,7 +9481,9 @@ function drawMenu(){
   const top = MENU_PAD + TAB_H + 10;
   MENU.rows.forEach((r, k) => {
     const y = top + k * ROW_H;
+    if (r.head){ g.fillStyle = r.open ? "rgba(63,185,80,0.22)" : "#1c2430"; g.beginPath(); g.roundRect(14, y + 4, MENU_W - 28, ROW_H - 8, 14); g.fill(); }
     if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(63,185,80,0.18)"; g.fillRect(14, y + 2, MENU_W - 28, ROW_H - 4); }
+    if (r.head){ g.fillStyle = r.open ? "#7ee2b8" : "#c9d1d9"; g.font = "600 40px system-ui, sans-serif"; g.fillText(r.label, 34, y + 50, MENU_W - 64); return; }
     let x = 34;
     if (r.on !== undefined){
       g.fillStyle = r.on ? "#3fb950" : "#30363d"; g.beginPath(); g.roundRect(x, y + 18, 68, 36, 18); g.fill();
@@ -10533,7 +10600,7 @@ function tlApplyView(v){
   if (Array.isArray(v.glassCells) && CELLS.some((c, i) => !!c.glass !== !!v.glassCells[i])){ CELLS.forEach((c, i) => { c.glass = !!v.glassCells[i]; }); renderList(); applyLook(); }
   if (v.glassLevel && v.glassLevel !== GLASS_LEVEL) setGlassLevel(v.glassLevel);
   if (v.plotShow) ["vm", "syn", "ca"].forEach(k => { if (v.plotShow[k] != null && !!v.plotShow[k] !== PLOT_SHOW[k]) setPlotShow(k, v.plotShow[k]); });
-  if (v.iso !== ISOLATE) toggleIsolate();
+  if (v.iso !== ISOLATE) toggleIsolate(true);
   if (v.colour && v.colour !== COLOUR_MODE) setColourMode(v.colour);
   if (v.layers !== layersOn()) setLayers(v.layers);
   if (v.vessels) tlVessels(v.vessels);
