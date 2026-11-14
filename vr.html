@@ -4544,7 +4544,7 @@ function syncSprayUI(){
   const t = sprayTip(); t.material.color.set(SPRAY.erase ? "#6e7681" : SPRAY.colour);
   const rh = rightHand();
   if (SPRAY.on && rh){ rh.ctl.add(t); } else if (t.parent) t.parent.remove(t);
-  hands.forEach(h => { h.ray.material.color.set(SPRAY.on && h === rh ? (SPRAY.erase ? "#6e7681" : SPRAY.colour) : 0x8b949e); });
+  hands.forEach(h => { h.ray.material.color.set(SPRAY.on && h === rh ? (SPRAY.erase ? "#6e7681" : SPRAY.colour) : 0xd9b8ff); });
   MENU.dirty = true;
 }
 function setSpray(v){
@@ -8882,24 +8882,139 @@ function placeLabel(){
   label.position.set(stage.position.x, stage.position.y + r + 0.08, stage.position.z);
 }
 
+/* ── 46. GLOVED HANDS ─────────────────────────────────────────────────────────  2026-11-14
+   Søren: "I want to explore the possibility of having hands instead of the black squares that are the controllers
+   now. I imagine a couple of hands with light blue lab gloves on, and the menu being a purple see-through panel
+   kinda looking like a sci-fi movie." (mock-up approved: "That looks good. Build it.")
+
+   · WITH CONTROLLERS a glove rides each controller's grip, as if holding it: fingers forward, thumb on top, palm
+     inwards. The fingers follow the buttons -- the trigger curls the index finger, the grip curls the other three,
+     resting the thumb on a button or the stick lowers the thumb -- so you see yourself point, grab and press.
+   · WITH HAND TRACKING (Quest without controllers, Vision Pro) the glove is built on the 25 tracked joints every
+     frame: a rounded segment for every bone, a palm across the knuckles, so it follows your real fingers.
+   · Cheap on purpose: about 20 rounded segments per hand, one shared material. No model file to download.
+   The pointer from the fingertip is lilac, like the palette. */
+const GLOVE_MAT = new THREE.MeshPhysicalMaterial({ color: 0x6db8f0, roughness: 0.48, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.4, sheen: 0.25, sheenColor: 0xbfe4ff });
+const GLOVE_CUFF = new THREE.MeshPhysicalMaterial({ color: 0x3f8cd0, roughness: 0.55, clearcoat: 0.2 });
+const GLOVE_WRIST = GLOVE_MAT.clone(); GLOVE_WRIST.side = THREE.DoubleSide;
+/* one capsule for every finger bone: radius 0.5, 2 tall in all, centred -- scaled to (2r, length + r, 2r) */
+const GLOVE_SEG = new THREE.CapsuleGeometry(0.5, 1, 4, 10); GLOVE_SEG.scale(1, 1 / 2, 1);
+function gloveSeg(len, r){ const m = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); m.scale.set(2 * r, len + 1.2 * r, 2 * r); m.position.y = len / 2 + r * 0.6; return m; }
+/* side: "L" or "R". The model: fingers along +y, palm facing +z, thumb toward -x (left) or +x (right). */
+function buildGlove(side){
+  const s = side === "L" ? -1 : 1, g = new THREE.Group(), F = {};
+  const palm = new THREE.Mesh(new THREE.CapsuleGeometry(0.034, 0.045, 6, 12), GLOVE_MAT); palm.scale.set(1.25, 1, 0.5); palm.position.y = 0.045; g.add(palm);
+  /* the glove ends at a rolled cuff, open: from behind you look into it, as you would a real glove, not at a lid */
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.034, 0.05, 18, 1, true), GLOVE_WRIST); wrist.scale.z = 0.62; wrist.position.y = -0.015; g.add(wrist);
+  const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.0335, 0.0055, 8, 24), GLOVE_CUFF); cuff.rotation.x = Math.PI / 2; cuff.scale.y = 0.62; cuff.position.y = -0.04; g.add(cuff);
+  const chain = (lengths, r) => {
+    const root = new THREE.Group(), joints = []; let parent = root;
+    lengths.forEach((L, i) => { const j = new THREE.Group(); parent.add(j); j.add(gloveSeg(L, r * (1 - i * 0.08))); joints.push(j);
+      const nx = new THREE.Group(); nx.position.y = L + r * 0.5; j.add(nx); parent = nx; });
+    return { root, joints };
+  };
+  [["index", 0.031, 0.98], ["middle", 0.010, 1.06], ["ring", -0.011, 1.0], ["pinky", -0.030, 0.8]].forEach(([n, x, l]) => {
+    const c = chain([0.028 * l, 0.019 * l, 0.015 * l], 0.0085);
+    c.root.position.set(x * s, 0.098 - Math.abs(x) * 0.35, 0); g.add(c.root); F[n] = c.joints;
+  });
+  const th = chain([0.024, 0.02], 0.0098);
+  /* the thumb leaves the palm at its base and points mostly forward, a little out -- on a controller it lies along the top */
+  th.root.position.set(0.036 * s, 0.022, 0.012); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; g.add(th.root); F.thumb = th.joints;
+  g.userData.F = F;
+  return g;
+}
+/* curl 0 (straight) .. 1 (closed fist), per finger: negative x rotation bends toward the palm */
+function gloveCurl(g, name, v){
+  const J = g.userData.F[name]; if (!J) return;
+  const per = name === "thumb" ? [0.55, 0.7] : [1.35, 1.45, 0.95];
+  J.forEach((j, i) => { j.rotation.x = -v * per[i]; });
+}
+/* On a controller's grip: the glove's +y (fingers) along the grip's -z, palm inwards, thumb on top. */
+function gloveOnGrip(side){
+  const g = buildGlove(side), holder = new THREE.Group();
+  const m = new THREE.Matrix4();
+  if (side === "R") m.makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0));
+  else m.makeBasis(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0));
+  g.quaternion.setFromRotationMatrix(m);
+  g.position.set(side === "R" ? 0.012 : -0.012, -0.012, 0.06);     // the palm round the handle, the wrist behind it
+  holder.add(g); holder.userData.glove = g;
+  return holder;
+}
+/* Hand tracking: one segment per bone, rebuilt from the joints each frame. */
+const GLOVE_BONES = [["thumb-metacarpal", "thumb-phalanx-proximal"], ["thumb-phalanx-proximal", "thumb-phalanx-distal"], ["thumb-phalanx-distal", "thumb-tip"]];
+["index-finger", "middle-finger", "ring-finger", "pinky-finger"].forEach(f => { GLOVE_BONES.push([f + "-phalanx-proximal", f + "-phalanx-intermediate"], [f + "-phalanx-intermediate", f + "-phalanx-distal"], [f + "-phalanx-distal", f + "-tip"]); });
+function trackedGlove(){
+  const g = new THREE.Group();
+  g.userData.bones = GLOVE_BONES.map(() => { const m = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); g.add(m); return m; });
+  g.userData.palm = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); g.add(g.userData.palm);
+  g.userData.cuff = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0055, 8, 24), GLOVE_CUFF); g.add(g.userData.cuff);
+  g.visible = false; return g;
+}
+const _ga = new THREE.Vector3(), _gb = new THREE.Vector3(), _gc = new THREE.Vector3(), _gd = new THREE.Vector3(), _gy = new THREE.Vector3(0, 1, 0), _gm = new THREE.Matrix4();
+function trackedGloveFrame(h){
+  const tg = h.tglove, J = h.hand && h.hand.joints;
+  const ok = !!(J && J["wrist"] && J["wrist"].visible && J["index-finger-tip"] && J["index-finger-tip"].visible);
+  tg.visible = ok; if (h.gripGlove) h.gripGlove.visible = !ok;
+  if (!ok) return;
+  const pos = (n, v) => J[n].getWorldPosition(v);
+  GLOVE_BONES.forEach(([a, b], k) => {
+    const m = tg.userData.bones[k]; if (!J[a] || !J[b]){ m.visible = false; return; }
+    pos(a, _ga); pos(b, _gb); const len = _ga.distanceTo(_gb), r = Math.max(0.006, (J[a].jointRadius || 0.009) * 0.95);
+    m.position.copy(_ga).add(_gb).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(_gy, _gc.subVectors(_gb, _ga).normalize());
+    m.scale.set(2 * r, Math.max(0.002, len + r), 2 * r); m.visible = true;
+  });
+  /* the palm: from the wrist to the middle knuckle, as wide as index to little knuckle */
+  pos("wrist", _ga); pos("middle-finger-phalanx-proximal", _gb); pos("index-finger-phalanx-proximal", _gc); pos("pinky-finger-phalanx-proximal", _gd);
+  const P = tg.userData.palm, up = new THREE.Vector3().subVectors(_gb, _ga), len = up.length(); up.normalize();
+  const across = new THREE.Vector3().subVectors(_gc, _gd), wid = across.length(); across.addScaledVector(up, -across.dot(up)).normalize();
+  const nrm = new THREE.Vector3().crossVectors(across, up).normalize();
+  _gm.makeBasis(across, up, nrm); P.quaternion.setFromRotationMatrix(_gm);
+  P.position.copy(_ga).addScaledVector(up, len * 0.55);
+  P.scale.set(wid + 0.022, Math.max(0.01, len * 1.05), 0.028);
+  const C = tg.userData.cuff; C.position.copy(_ga).addScaledVector(up, -0.012); C.quaternion.copy(P.quaternion); C.rotateX(Math.PI / 2);
+}
+function gloveFrame(){
+  if (!renderer.xr.isPresenting) return;
+  for (const h of hands){
+    if (h.hand && h.tglove) trackedGloveFrame(h);
+    const g = h.gripGlove && h.gripGlove.userData.glove; if (!g || !h.gripGlove.visible) continue;
+    const side = h.source && h.source.handedness === "left" ? "L" : "R";
+    if (h.gripSide !== side){                           // a controller may report its hand only once connected
+      h.grip.remove(h.gripGlove); h.gripGlove = gloveOnGrip(side); h.grip.add(h.gripGlove); h.gripSide = side; continue;
+    }
+    const gp = h.source && h.source.gamepad, B = gp && gp.buttons ? gp.buttons : [];
+    const val = i => (B[i] ? (B[i].value || (B[i].pressed ? 1 : 0)) : 0), touch = i => !!(B[i] && (B[i].touched || B[i].pressed));
+    /* resting on the handle: a light curl; the trigger and the grip close the fingers the rest of the way */
+    const ease = (k, v) => (g.userData[k] = (g.userData[k] || 0) + (v - (g.userData[k] || 0)) * 0.35);
+    gloveCurl(g, "index", ease("i", 0.12 + 0.75 * val(0)));
+    const gr = ease("g", 0.35 + 0.6 * val(1));
+    gloveCurl(g, "middle", gr); gloveCurl(g, "ring", gr); gloveCurl(g, "pinky", gr * 1.05);
+    gloveCurl(g, "thumb", ease("t", touch(3) || touch(4) || touch(5) ? 0.55 : 0.1));
+  }
+}
+
 /* ── VR controllers ───────────────────────────────────────────────────────── */
 const raycaster = new THREE.Raycaster();
 const tmpM = new THREE.Matrix4();
 const hands = [0, 1].map(k => {
   const ctl = renderer.xr.getController(k);
   const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
-  const ray = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.7 }));
+  const ray = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xd9b8ff, transparent: true, opacity: 0.75 }));
   ray.scale.z = 3; ctl.add(ray);
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.008), new THREE.MeshBasicMaterial({ color: 0xe6edf3 }));
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.006), new THREE.MeshBasicMaterial({ color: 0xf6ecff }));
   ctl.add(tip);
   scene.add(ctl);
   const grip = renderer.xr.getControllerGrip(k);
-  grip.add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.09), new THREE.MeshStandardMaterial({ color: 0x30363d })));
+  /* a light-blue lab glove instead of the grey box (section 46); its side is fixed once the controller says which */
+  const gripGlove = gloveOnGrip(k === 0 ? "L" : "R"); grip.add(gripGlove);
   scene.add(grip);
-  const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {} };
+  const hand = renderer.xr.getHand ? renderer.xr.getHand(k) : null; if (hand) scene.add(hand);
+  const tglove = trackedGlove(); scene.add(tglove);
+  const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "L" : "R", hand, tglove };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); });
+  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); });
+  ctl.addEventListener("select", () => spkWake());
   ctl.addEventListener("selectstart", () => {
     /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
        its pinch begins, so its select is acted on in the next frame (section 14). */
@@ -9283,8 +9398,9 @@ function menuRows(){
     rows.push({ label: "Drug: TTX", on: DRUG.ttx, act: () => setDrug("ttx", !DRUG.ttx) });
     rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
     rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
-    rows.push({ label: "Hear spikes", on: SPK.snd, act: () => setSpkSound(!SPK.snd) });
+    rows.push({ label: "Hear spikes" + (spkAudioBlocked() ? "  (blocked — press the trigger once)" : ""), on: SPK.snd, act: () => { spkWake(); setSpkSound(!SPK.snd); } });
     rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
+    rows.push({ label: "   Test: click and buzz", act: spkTest });
     S("Blood & vessels (models)");
     if (DS_HAS.flow){
       rows.push({ label: "Stroke (model)", on: STK.on && !STK.quiet, act: () => document.getElementById("stkBtn").click() });
@@ -9473,44 +9589,58 @@ function drawMenu(){
     }
   }
   g.clearRect(0, 0, MENU_W, H);
-  g.fillStyle = "rgba(13,17,23,0.95)"; g.strokeStyle = "#30363d"; g.lineWidth = 6;
-  g.beginPath(); g.roundRect(3, 3, MENU_W - 6, H - 6, 30); g.fill(); g.stroke();
+  /* ── PURPLE GLASS (section 46, Søren: "the menu being a purple see-through panel kinda looking like a sci-fi
+     movie") ── a violet gradient you can see the cells through, faint scan lines, a glowing edge and corner
+     brackets; lilac where the green used to be. */
+  const pg = g.createLinearGradient(0, 0, 0, H); pg.addColorStop(0, "rgba(120,60,230,0.50)"); pg.addColorStop(1, "rgba(70,30,160,0.40)");
+  g.fillStyle = pg; g.beginPath(); g.roundRect(6, 6, MENU_W - 12, H - 12, 32); g.fill();
+  g.save(); g.clip();
+  for (let yy = 0; yy < H; yy += 6){ g.fillStyle = "rgba(210,180,255,0.045)"; g.fillRect(0, yy, MENU_W, 2); }
+  const glo = g.createRadialGradient(MENU_W * 0.3, 80, 10, MENU_W * 0.3, 80, 700); glo.addColorStop(0, "rgba(220,170,255,0.18)"); glo.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = glo; g.fillRect(0, 0, MENU_W, H);
+  g.restore();
+  g.shadowColor = "#c58bff"; g.shadowBlur = 26; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, MENU_W - 16, H - 16, 30); g.stroke(); g.shadowBlur = 0;
+  g.strokeStyle = "#f0d9ff"; g.lineWidth = 6;
+  [[22, 22, 1, 1], [MENU_W - 22, 22, -1, 1], [22, H - 22, 1, -1], [MENU_W - 22, H - 22, -1, -1]].forEach(([x, y, a, b]) => { g.beginPath(); g.moveTo(x, y + 56 * b); g.lineTo(x, y); g.lineTo(x + 56 * a, y); g.stroke(); });
   /* Tabs. */
   const tw = (MENU_W - MENU_PAD * 2) / TABS.length;
   TABS.forEach((t, k) => {
     const x = MENU_PAD + k * tw, y = MENU_PAD, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
-    g.fillStyle = on ? "#3fb950" : (hv ? "rgba(63,185,80,0.25)" : "#161b22");
-    g.beginPath(); g.roundRect(x + 4, y, tw - 8, TAB_H - 8, 16); g.fill();
-    g.fillStyle = on ? "#0d1117" : "#e6edf3"; g.font = "600 36px system-ui, sans-serif"; g.textAlign = "center";
-    g.fillText(t, x + tw / 2, y + 52); g.textAlign = "left";
+    g.fillStyle = on ? "rgba(214,160,255,0.55)" : (hv ? "rgba(214,160,255,0.25)" : "rgba(255,255,255,0.07)");
+    g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.fill();
+    if (on){ g.shadowColor = "#e0b3ff"; g.shadowBlur = 18; g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.stroke(); g.shadowBlur = 0; }
+    g.fillStyle = on ? "#ffffff" : "#d7c4f2"; g.font = "600 34px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(t, x + tw / 2, y + 54); g.textAlign = "left";
   });
+  g.fillStyle = "rgba(230,200,255,0.45)"; g.fillRect(MENU_PAD + 10, MENU_PAD + TAB_H + 2, MENU_W - MENU_PAD * 2 - 20, 2);
   const top = MENU_PAD + TAB_H + 10;
   MENU.rows.forEach((r, k) => {
     const y = top + k * ROW_H;
-    if (r.head){ g.fillStyle = r.open ? "rgba(63,185,80,0.22)" : "#1c2430"; g.beginPath(); g.roundRect(14, y + 4, MENU_W - 28, ROW_H - 8, 14); g.fill(); }
-    if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(63,185,80,0.18)"; g.fillRect(14, y + 2, MENU_W - 28, ROW_H - 4); }
-    if (r.head){ g.fillStyle = r.open ? "#7ee2b8" : "#c9d1d9"; g.font = "600 40px system-ui, sans-serif"; g.fillText(r.label, 34, y + 50, MENU_W - 64); return; }
+    if (r.head){ g.fillStyle = r.open ? "rgba(214,160,255,0.30)" : "rgba(255,255,255,0.07)"; g.beginPath(); g.roundRect(22, y + 6, MENU_W - 44, ROW_H - 12, 14); g.fill(); }
+    if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(255,255,255,0.13)"; g.beginPath(); g.roundRect(22, y + 4, MENU_W - 44, ROW_H - 8, 12); g.fill();
+      g.strokeStyle = "rgba(240,220,255,0.7)"; g.lineWidth = 2; g.stroke(); }
+    if (r.head){ g.fillStyle = r.open ? "#f6e8ff" : "#dccbf5"; g.font = "600 40px system-ui, sans-serif"; g.fillText(r.label, 40, y + 50, MENU_W - 80); return; }
     let x = 34;
     if (r.on !== undefined){
-      g.fillStyle = r.on ? "#3fb950" : "#30363d"; g.beginPath(); g.roundRect(x, y + 18, 68, 36, 18); g.fill();
-      g.fillStyle = "#e6edf3"; g.beginPath(); g.arc(r.on ? x + 50 : x + 18, y + 36, 13, 0, 7); g.fill();
+      g.fillStyle = r.on ? "#c98bff" : "rgba(255,255,255,0.16)"; g.beginPath(); g.roundRect(x, y + 18, 68, 36, 18); g.fill();
+      if (r.on){ g.shadowColor = "#d9a6ff"; g.shadowBlur = 14; }
+      g.fillStyle = "#ffffff"; g.beginPath(); g.arc(r.on ? x + 50 : x + 18, y + 36, 13, 0, 7); g.fill(); g.shadowBlur = 0;
       x += 90;
     }
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
-    g.fillStyle = r.exit ? "#f0883e" : (r.note ? "#8b949e" : "#e6edf3"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
+    g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
     g.fillText(r.label, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
-  if (!MENU.rows.length){ g.fillStyle = "#8b949e"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
+  if (!MENU.rows.length){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
   /* Footer: a rule, the tool's logo and grubblab.com. */
-  g.strokeStyle = "#30363d"; g.lineWidth = 3; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
+  g.strokeStyle = "rgba(230,200,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
   const lw = drawLogo(g, 36, H - FOOT_H + 14, 54, false);
-  g.fillStyle = "#8b949e"; g.font = "600 30px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("VR · grubblab.com", MENU_W - 40, H - FOOT_H + 62); g.textAlign = "left";
+  g.fillStyle = "#cdb6ef"; g.font = "600 30px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("VR · grubblab.com", MENU_W - 40, H - FOOT_H + 62); g.textAlign = "left";
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
   if (!MENU.mesh){
     const geo = new THREE.PlaneGeometry(PAL_W, PAL_W * H / MENU_W); geo.translate(0, PAL_W * H / MENU_W / 2, 0);
-    MENU.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: MENU.tex, transparent: true, depthTest: false, side: THREE.DoubleSide }));
+    MENU.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: MENU.tex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
     MENU.mesh.renderOrder = 30;
   }
   MENU.dirty = false;
@@ -13836,8 +13966,13 @@ function spkCollect(){
 function spkHaptic(h, a, ms){
   const gp = h.source && h.source.gamepad; if (!gp) return;
   try {
-    if (gp.hapticActuators && gp.hapticActuators[0]) gp.hapticActuators[0].pulse(Math.min(1, a), ms);
-    else if (gp.vibrationActuator) gp.vibrationActuator.playEffect("dual-rumble", { duration: ms, strongMagnitude: Math.min(1, a), weakMagnitude: Math.min(1, a) });
+    let done = false;
+    if (gp.hapticActuators && gp.hapticActuators[0] && gp.hapticActuators[0].pulse){ gp.hapticActuators[0].pulse(Math.min(1, a), ms); done = true; }
+    if (!done && gp.vibrationActuator){
+      const va = gp.vibrationActuator;
+      if (va.pulse) va.pulse(Math.min(1, a), ms);
+      else va.playEffect(va.effects && va.effects.includes && va.effects.includes("trigger-rumble") ? "trigger-rumble" : "dual-rumble", { duration: ms, strongMagnitude: Math.min(1, a), weakMagnitude: Math.min(1, a) });
+    }
   } catch (e){}
 }
 function spkFrame(){
@@ -13861,13 +13996,14 @@ function spkFrame(){
     if (SPK.hap && xr){
       const now = performance.now();
       hands.forEach((h, k) => {
-        if (!h.source || now - SPK.lastHap[k] < 30) return;
+        if (!h.source || now - SPK.lastHap[k] < 45) return;
         const hp = new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld);
         /* within 15 cm of a firing soma (was 8 cm, which meant holding the controller right on the soma), stronger
            the closer; and the hand that fired the stimulus feels its own cells' spikes faintly wherever it is */
         let best = null; for (const e of ev){ const d = e[0].distanceTo(hp); if (d < 0.15 && (!best || d < best[0])) best = [d, e[1]]; }
-        if (best){ spkHaptic(h, Math.max(0.12, (best[1] ? 0.3 : 0.55) * (1 - best[0] / 0.17)), 14); SPK.lastHap[k] = now; }
-        else if (h === SPK.stimHand){ spkHaptic(h, 0.15, 10); SPK.lastHap[k] = now; }
+        /* 25-40 ms: a Quest controller hardly moves for anything shorter than ~20 ms */
+        if (best){ spkHaptic(h, Math.max(0.35, (best[1] ? 0.5 : 0.85) * (1 - best[0] / 0.17)), 35); SPK.lastHap[k] = now; }
+        else if (h === SPK.stimHand){ spkHaptic(h, 0.4, 25); SPK.lastHap[k] = now; }
       });
     }
   }
@@ -13890,6 +14026,35 @@ function spkFrame(){
     }
     SPK.ph = ph;
   }
+}
+/* ── SOUND IN THE HEADSET ──────────────────────────────────────────────────────  2026-11-14
+   Søren, after the counting fix: "I still can't hear the stimulations or feel them in VR with headset." A browser
+   lets a page make sound only after a real press: an AudioContext made without one stays "suspended" and every
+   click goes nowhere, silently. Turning "Hear spikes" on from the palette inside the headset is not always such a
+   press, so the context was made, stayed suspended, and resume() was refused every frame. Now the context is made
+   (silent) at the first press on the page itself -- which includes "Enter VR" -- and woken again on every trigger
+   press in the headset, where the browser does count it. The palette shows when sound is still blocked, and
+   "Test: click and buzz" plays one click and buzzes both controllers, so sound and touch can be checked at once. */
+function spkWake(){
+  try {
+    if (!SPK.ctx) spkAudioInit();
+    if (SPK.ctx && SPK.ctx.state !== "running") SPK.ctx.resume().then(() => { if (typeof MENU !== "undefined") MENU.dirty = true; }).catch(() => {});
+  } catch (e){}
+}
+["pointerdown", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, spkWake, { capture: true, passive: true }));
+function spkAudioBlocked(){ return !!(SPK.snd && SPK.ctx && SPK.ctx.state !== "running"); }
+function spkTest(){
+  spkWake();
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  const p = new THREE.Vector3(0, 0, -0.4).applyMatrix4(cam.matrixWorld);
+  const okA = !!(SPK.ctx && SPK.bufE);
+  if (okA){ try { if (renderer.xr.isPresenting) spkListener(); spkClick(p, false, 0); spkClick(p, false, 0.12); spkClick(p, true, 0.24); } catch (e){ console.warn("[vr] test click:", e); } }
+  let buzzed = 0;
+  hands.forEach(h => { if (h.source && h.source.gamepad){ spkHaptic(h, 0.8, 120); buzzed++; } });
+  const msg = "Test: " + (!okA ? "no Web Audio in this browser" : SPK.ctx.state === "running" ? "three clicks played" : "sound is blocked by the browser (" + SPK.ctx.state + ") — press the trigger once and try again")
+    + " · " + (buzzed ? "buzzed " + buzzed + " controller" + (buzzed > 1 ? "s" : "") : renderer.xr.isPresenting ? "no controller to buzz (hands?)" : "buzz works only in the headset");
+  ctxNote.textContent = msg;
+  try { if (renderer.xr.isPresenting) flashWarn(msg, 3500, "#c98bff"); } catch (e){}
 }
 function setSpkSound(v){
   SPK.snd = !!v && spkAudioInit();
@@ -16523,6 +16688,7 @@ renderer.setAnimationLoop(() => {
   try { stkFrame(sdt); } catch (e){ console.warn("[vr] stroke:", e); }
   try { imgFrame(sdt); } catch (e){ console.warn("[vr] imaging:", e); }
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
+  try { gloveFrame(); } catch (e){ if (!window.__gloveWarned){ window.__gloveWarned = true; console.warn("[vr] gloves:", e); } }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
