@@ -70,7 +70,7 @@ UJ.organelleml = (function(){
     var slash = function(x){ x = String(x || ""); return (x && x.slice(-1) !== "/") ? x + "/" : x; };
     var list = [slash(cfg.base)].concat([].concat(cfg.fallback || []).map(slash)).filter(Boolean);
     var b = list[0] || "";
-    if (b !== CFG.base || CFG.list + "" !== list + ""){ META = null; SESSION = null; LOADING = null; LAST = null; }
+    if (b !== CFG.base || CFG.list + "" !== list + ""){ META = null; SESSION = null; LOADING = null; LAST = null; PLUS = { meta: null, session: null, loading: null }; }
     CFG.base = b; CFG.list = list;
     if (cfg.ortBase){ ORT_BASE = cfg.ortBase; ORT_JS = cfg.ortJs || (ORT_BASE + "ort.webgpu.min.js"); }
     /* IS THERE A MODEL YET? One small request per page, so the tick only appears once a model has
@@ -377,6 +377,48 @@ UJ.organelleml = (function(){
         + "). Reload the page \u2014 your tracing is kept as a draft \u2014 and carry on."); }
     }
   }
+  /* ── A SECOND MODEL FOR SOME CLASSES (2026-11-14) ─────────────────────────────────────────────
+     Søren, after trying the model trained on 13 Nov: "the ML is much worse now. Please revert everything
+     except phagosomes, cilium, glia limitans, GFAP, and collagen." One network scores every class at
+     once, so the classes cannot be mixed inside one file. model.json may name a second model:
+       "plus": { "json": "model_plus.json", "classes": ["phagosome", "cilium", ...] }
+     Both run on the same section; those classes come ONLY from the second, every other class ONLY from
+     the first, and where a mark of each lands within nmsNm of the other the more confident one stays.
+     If the second cannot load, the first's suggestions are shown without it. */
+  var PLUS = { meta: null, session: null, loading: null };
+  function plusClasses(){ return (META && META.plus && Array.isArray(META.plus.classes)) ? META.plus.classes : null; }
+  function loadPlus(say){
+    if (PLUS.session) return Promise.resolve(PLUS.session);
+    if (PLUS.loading) return PLUS.loading;
+    PLUS.loading = (async function(){
+      var r = await fetch(CFG.base + META.plus.json, { cache: "no-cache" });
+      if (!r.ok) throw new Error("the second organelle model's description could not be read (" + r.status + ")");
+      var m2 = await r.json();
+      if (!m2 || m2.format !== "ujump-organelle-model-1" || !Array.isArray(m2.classes)) throw new Error("model_plus.json is not an organelle model");
+      if (say) say("starting the second organelle model…");
+      var url = CFG.base + (m2.onnx || "model_plus.onnx"), sess = null, err = null;
+      var eps = EP ? [[EP]] : (navigator.gpu ? [["webgpu"], ["wasm"]] : [["wasm"]]);
+      for (var i = 0; i < eps.length && !sess; i++){
+        try { sess = await window.ort.InferenceSession.create(url, { executionProviders: eps[i] }); } catch (e){ err = e; }
+      }
+      if (!sess) throw new Error("the second organelle model could not start: " + String(err && err.message || err));
+      PLUS.meta = m2; PLUS.session = sess;
+      return sess;
+    })();
+    PLUS.loading.catch(function(){ PLUS.loading = null; });
+    return PLUS.loading;
+  }
+  /* runSafe for any session: getSess() is asked each time, reload() starts that session again */
+  async function runWith(getSess, feeds, reload){
+    try { return await ortTurn(function(){ return getSess().run(feeds); }); }
+    catch (e){
+      if (!engineError(e)) throw e;
+      await reload();
+      try { return await ortTurn(function(){ return getSess().run(feeds); }); }
+      catch (e2){ throw new Error("The AI engine in this browser tab ran out of memory (" + String(e2 && e2.message || e2)
+        + "). Reload the page — your tracing is kept as a draft — and carry on."); }
+    }
+  }
   function run(view, opts){
     opts = opts || {};
     var say = opts.say || function(){};
@@ -391,73 +433,105 @@ UJ.organelleml = (function(){
       var key = [view.z, view.x0, view.y0, view.vw, view.vh, view.resNm && view.resNm[0], m.nm, dk ? "dark" : "", d3 ? "3d" : ""].join(":");
       if (LAST && LAST.key === key) return LAST.marks;
       say(d3 || (m.zOffsets && m.zOffsets.length > 1) ? "looking for organelles on this section and the ones above and below…" : "looking for organelles…");
-      var ort = window.ort;
-      var infer = async function(pl){
-        var td = tensorData(pl, m, dk), feeds = {};
-        feeds[SESSION.inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
-        var res = await runSafe(feeds, function(){ return load(say); });
-        return res[SESSION.outputNames[0]];
+      var ort = window.ort, used = 1;
+      /* one model's scores on this view: { logits, C, h, w, pl }, or null when a newer run was asked for */
+      var inferModel = async function(mm, getSess, reload){
+        var infer = async function(pl){
+          var td = tensorData(pl, mm, dk), feeds = {};
+          feeds[getSess().inputNames[0]] = new ort.Tensor("float32", td.data, [1, 1, td.H, td.W]);
+          var res = await runWith(getSess, feeds, reload);
+          return res[getSess().outputNames[0]];
+        };
+        var pl, logits, C, h, w, nUsed = 1;
+        var zo = (mm.zOffsets && mm.zOffsets.length > 1) ? mm.zOffsets : null;
+        if (zo){
+          /* A 3D MODEL (organelle_ml_train v13, 2026-11-06): its input IS the sections around this one, as
+             channels, at mm.zOffsets sections of mm.zNm. A neighbour that cannot be read, or is mostly empty,
+             gets this section instead -- as in training. With the pad's "use the sections above and below"
+             box off, every channel is this section. */
+          var tres3 = UJ.emtiles.config().res, ci = zo.indexOf(0);
+          try { pl = await planeAtZ(view, mm.nm, view.z); }
+          catch (_e){ pl = await planeFor(view, mm.nm); }
+          if (my !== TOKEN) return null;
+          var planes = [];
+          for (var zi = 0; zi < zo.length; zi++){
+            if (zi === ci || !d3){ planes.push(pl); continue; }
+            var dzs = Math.round(zo[zi] * (mm.zNm || tres3[2]) / (tres3[2] || 40)), pn3 = null;
+            try { pn3 = await planeAtZ(view, mm.nm, view.z + dzs); } catch (_e){ pn3 = null; }
+            if (my !== TOKEN) return null;
+            if (!pn3 || pn3.w !== pl.w || pn3.h !== pl.h || pn3.x0 !== pl.x0 || pn3.y0 !== pl.y0 || seenFrac(pn3) < 0.5) pn3 = pl;
+            else nUsed++;
+            planes.push(pn3);
+          }
+          var tds = planes.map(function(q){ return tensorData(q, mm, dk); }), W3 = tds[0].W, H3 = tds[0].H, n3 = W3 * H3;
+          var data3 = new Float32Array(zo.length * n3);
+          for (var c3 = 0; c3 < zo.length; c3++) data3.set(tds[c3].data, c3 * n3);
+          var feeds3 = {}; feeds3[getSess().inputNames[0]] = new ort.Tensor("float32", data3, [1, zo.length, H3, W3]);
+          var res3 = await runWith(getSess, feeds3, reload);
+          var o3 = res3[getSess().outputNames[0]];
+          logits = o3.data; C = o3.dims[1]; h = o3.dims[2]; w = o3.dims[3];
+        } else if (!d3){
+          pl = await planeFor(view, mm.nm);
+          if (my !== TOKEN) return null;
+          var o = await infer(pl);
+          logits = o.data; C = o.dims[1]; h = o.dims[2]; w = o.dims[3];
+        } else {
+          var dz = neighbourStep();
+          try { pl = await planeAtZ(view, mm.nm, view.z); }
+          catch (_e){ pl = await planeFor(view, mm.nm); }        // no tiles to read here: this section only
+          if (my !== TOKEN) return null;
+          var o0 = await infer(pl);
+          C = o0.dims[1]; h = o0.dims[2]; w = o0.dims[3];
+          var n = h * w, prob = new Float32Array(C * n), parts = [[o0, 0.5]];
+          for (var sgn = -1; sgn <= 1; sgn += 2){
+            if (my !== TOKEN) return null;
+            var pn; try { pn = await planeAtZ(view, mm.nm, view.z + sgn * dz); } catch (_e){ continue; }
+            if (pn.w !== pl.w || pn.h !== pl.h || pn.x0 !== pl.x0 || pn.y0 !== pl.y0 || seenFrac(pn) < 0.5) continue;
+            var on = await infer(pn);
+            if (on.dims[2] !== h || on.dims[3] !== w) continue;
+            parts.push([on, 0.25]); nUsed++;
+          }
+          var tw = 0; parts.forEach(function(pp){ tw += pp[1]; });
+          parts.forEach(function(pp){ softmaxInto(pp[0].data, C, n, prob, pp[1] / tw); });
+          logits = new Float32Array(C * n);
+          for (var q = 0; q < C * n; q++) logits[q] = Math.log(prob[q] + 1e-9);   // peaks() takes logits; log p is one
+        }
+        return { logits: logits, C: C, h: h, w: w, pl: pl, used: nUsed };
       };
-      var t0 = performance.now(), used = 1, pl, logits, C, h, w;
-      var zo = (m.zOffsets && m.zOffsets.length > 1) ? m.zOffsets : null;
-      if (zo){
-        /* A 3D MODEL (organelle_ml_train v13, 2026-11-06): its input IS the sections around this one, as
-           channels, at m.zOffsets sections of m.zNm. A neighbour that cannot be read, or is mostly empty,
-           gets this section instead -- as in training. With the pad's "use the sections above and below"
-           box off, every channel is this section. */
-        var tres3 = UJ.emtiles.config().res, ci = zo.indexOf(0);
-        try { pl = await planeAtZ(view, m.nm, view.z); }
-        catch (_e){ pl = await planeFor(view, m.nm); }
-        if (my !== TOKEN) return null;
-        var planes = [];
-        for (var zi = 0; zi < zo.length; zi++){
-          if (zi === ci || !d3){ planes.push(pl); continue; }
-          var dzs = Math.round(zo[zi] * (m.zNm || tres3[2]) / (tres3[2] || 40)), pn3 = null;
-          try { pn3 = await planeAtZ(view, m.nm, view.z + dzs); } catch (_e){ pn3 = null; }
+      var t0 = performance.now();
+      var A = await inferModel(m, function(){ return SESSION; },
+        async function(){ try { if (SESSION && SESSION.release) await SESSION.release(); } catch (_e){} SESSION = null; LOADING = null; await load(say); });
+      if (!A) return null;
+      used = A.used;
+      var PC = plusClasses();
+      var found = peaks(A.logits, A.C, A.h, A.w, m, A.pl)
+        .filter(function(k){ return !PC || PC.indexOf(k.k) < 0; })
+        .map(function(k){ return { k: k.k, p: k.p, t: toTool(A.pl, k.px, k.py, view.z) }; });
+      if (PC){
+        try {
+          await loadPlus(say);
           if (my !== TOKEN) return null;
-          if (!pn3 || pn3.w !== pl.w || pn3.h !== pl.h || pn3.x0 !== pl.x0 || pn3.y0 !== pl.y0 || seenFrac(pn3) < 0.5) pn3 = pl;
-          else used++;
-          planes.push(pn3);
-        }
-        var tds = planes.map(function(q){ return tensorData(q, m, dk); }), W3 = tds[0].W, H3 = tds[0].H, n3 = W3 * H3;
-        var data3 = new Float32Array(zo.length * n3);
-        for (var c3 = 0; c3 < zo.length; c3++) data3.set(tds[c3].data, c3 * n3);
-        var feeds3 = {}; feeds3[SESSION.inputNames[0]] = new ort.Tensor("float32", data3, [1, zo.length, H3, W3]);
-        var res3 = await runSafe(feeds3, function(){ return load(say); });
-        var o3 = res3[SESSION.outputNames[0]];
-        logits = o3.data; C = o3.dims[1]; h = o3.dims[2]; w = o3.dims[3];
-      } else if (!d3){
-        pl = await planeFor(view, m.nm);
-        if (my !== TOKEN) return null;
-        var o = await infer(pl);
-        logits = o.data; C = o.dims[1]; h = o.dims[2]; w = o.dims[3];
-      } else {
-        var dz = neighbourStep();
-        try { pl = await planeAtZ(view, m.nm, view.z); }
-        catch (_e){ pl = await planeFor(view, m.nm); }        // no tiles to read here: this section only
-        if (my !== TOKEN) return null;
-        var o0 = await infer(pl);
-        C = o0.dims[1]; h = o0.dims[2]; w = o0.dims[3];
-        var n = h * w, prob = new Float32Array(C * n), parts = [[o0, 0.5]];
-        for (var sgn = -1; sgn <= 1; sgn += 2){
-          if (my !== TOKEN) return null;
-          var pn; try { pn = await planeAtZ(view, m.nm, view.z + sgn * dz); } catch (_e){ continue; }
-          if (pn.w !== pl.w || pn.h !== pl.h || pn.x0 !== pl.x0 || pn.y0 !== pl.y0 || seenFrac(pn) < 0.5) continue;
-          var on = await infer(pn);
-          if (on.dims[2] !== h || on.dims[3] !== w) continue;
-          parts.push([on, 0.25]); used++;
-        }
-        var tw = 0; parts.forEach(function(p){ tw += p[1]; });
-        parts.forEach(function(p){ softmaxInto(p[0].data, C, n, prob, p[1] / tw); });
-        logits = new Float32Array(C * n);
-        for (var q = 0; q < C * n; q++) logits[q] = Math.log(prob[q] + 1e-9);   // peaks() takes logits; log p is one
+          var m2 = Object.assign({}, PLUS.meta, { show: PC.slice() });   // only these classes from it
+          var B = await inferModel(m2, function(){ return PLUS.session; },
+            async function(){ try { if (PLUS.session && PLUS.session.release) await PLUS.session.release(); } catch (_e){} PLUS.session = null; PLUS.loading = null; await loadPlus(say); });
+          if (!B) return null;
+          var more = peaks(B.logits, B.C, B.h, B.w, m2, B.pl)
+            .filter(function(k){ return PC.indexOf(k.k) >= 0; })
+            .map(function(k){ return { k: k.k, p: k.p, t: toTool(B.pl, k.px, k.py, view.z), plus: true }; });
+          /* one mark per thing across the two: within nmsNm of each other, the more confident stays */
+          var tres = UJ.emtiles.config().res, rNm = m.nmsNm || 300;
+          var all = found.concat(more).sort(function(a, b){ return b.p - a.p; }), kept = [];
+          all.forEach(function(x){
+            if (kept.length >= MAX_MARKS) return;
+            if (kept.some(function(y){ return Math.hypot((x.t[0] - y.t[0]) * tres[0], (x.t[1] - y.t[1]) * tres[1]) < rNm; })) return;
+            kept.push(x);
+          });
+          found = kept;
+        } catch (e){ try { console.warn("[organelleml] second model:", e); } catch (_e){} }
       }
-      var found = peaks(logits, C, h, w, m, pl).map(function(k){
-        return { k: k.k, p: k.p, t: toTool(pl, k.px, k.py, view.z) };
-      });
       LAST = { key: key, marks: found, z: view.z, ms: Math.round(performance.now() - t0), ep: EP, dark: dk, sections: used,
                /* the raw scores too, for kindOf(): what an outline is, even where no mark was drawn */
-               grid: { logits: logits, C: C, h: h, w: w, st: m.stride || 8, x0: pl.x0, y0: pl.y0, res: pl.res } };
+               grid: { logits: A.logits, C: A.C, h: A.h, w: A.w, st: m.stride || 8, x0: A.pl.x0, y0: A.pl.y0, res: A.pl.res } };
       return found;
     });
     QUEUE = p.catch(function(){});
@@ -471,7 +545,9 @@ UJ.organelleml = (function(){
   var COLOURS = {};
   function colourOf(k){
     if (COLOURS[k]) return COLOURS[k];
-    var cls = (META && META.classes) || [], i = Math.max(0, cls.indexOf(k));
+    var cls = (META && META.classes) || [], i = cls.indexOf(k);
+    if (i < 0 && PLUS.meta && PLUS.meta.classes){ var j = PLUS.meta.classes.indexOf(k); if (j >= 0) i = cls.length + j; }
+    i = Math.max(0, i);
     var hue = (i * 137.508) % 360;
     return (COLOURS[k] = "hsl(" + hue.toFixed(0) + ",85%,62%)");
   }
@@ -682,6 +758,7 @@ UJ.organelleml = (function(){
     for (var k3 = 1; k3 < G.C; k3++){
       var name = M.classes[k3];
       if (name === ARTIFACT || (M.show && M.show.indexOf(name) < 0)) continue;
+      if (plusClasses() && plusClasses().indexOf(name) >= 0) continue;     // those are the second model's
       if (sum[k3] / cnt > bp){ bp = sum[k3] / cnt; bk = k3; }
     }
     return (bk > 0 && bp >= 0.3) ? { k: M.classes[bk], p: bp } : null;
