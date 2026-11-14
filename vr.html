@@ -8978,7 +8978,10 @@ function gloveFrame(){
   for (const h of hands){
     if (h.hand && h.tglove) trackedGloveFrame(h);
     const g = h.gripGlove && h.gripGlove.userData.glove; if (!g || !h.gripGlove.visible) continue;
-    const side = h.source && h.source.handedness === "left" ? "L" : "R";
+    /* SWAPPED (2026-11-14, Søren: "The hands are on the opposite controller, we need to switch them"): the grip
+       space's X runs the other way to what gloveOnGrip assumed, so each controller wears the other side's glove
+       pose -- which is the right hand once it is in that controller's frame. */
+    const side = h.source && h.source.handedness === "left" ? "R" : "L";
     if (h.gripSide !== side){                           // a controller may report its hand only once connected
       h.grip.remove(h.gripGlove); h.gripGlove = gloveOnGrip(side); h.grip.add(h.gripGlove); h.gripSide = side; continue;
     }
@@ -8986,7 +8989,10 @@ function gloveFrame(){
     const val = i => (B[i] ? (B[i].value || (B[i].pressed ? 1 : 0)) : 0), touch = i => !!(B[i] && (B[i].touched || B[i].pressed));
     /* resting on the handle: a light curl; the trigger and the grip close the fingers the rest of the way */
     const ease = (k, v) => (g.userData[k] = (g.userData[k] || 0) + (v - (g.userData[k] || 0)) * 0.35);
-    gloveCurl(g, "index", ease("i", 0.12 + 0.75 * val(0)));
+    /* TOUCH, NOT ONLY PRESS (2026-11-14, Søren: "the index finger moves as soon as I touch the trigger button in
+       the Meta hands"): the Quest trigger senses a resting finger. Off the trigger the index points straight out;
+       resting on it, it bends halfway; pulling closes it the rest of the way. */
+    gloveCurl(g, "index", ease("i", touch(0) || val(0) > 0.02 ? 0.35 + 0.6 * val(0) : 0));
     const gr = ease("g", 0.35 + 0.6 * val(1));
     gloveCurl(g, "middle", gr); gloveCurl(g, "ring", gr); gloveCurl(g, "pinky", gr * 1.05);
     gloveCurl(g, "thumb", ease("t", touch(3) || touch(4) || touch(5) ? 0.55 : 0.1));
@@ -9006,11 +9012,11 @@ const hands = [0, 1].map(k => {
   scene.add(ctl);
   const grip = renderer.xr.getControllerGrip(k);
   /* a light-blue lab glove instead of the grey box (section 46); its side is fixed once the controller says which */
-  const gripGlove = gloveOnGrip(k === 0 ? "L" : "R"); grip.add(gripGlove);
+  const gripGlove = gloveOnGrip(k === 0 ? "R" : "L"); grip.add(gripGlove);
   scene.add(grip);
   const hand = renderer.xr.getHand ? renderer.xr.getHand(k) : null; if (hand) scene.add(hand);
   const tglove = trackedGlove(); scene.add(tglove);
-  const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "L" : "R", hand, tglove };
+  const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "R" : "L", hand, tglove };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
   ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); });
@@ -13963,17 +13969,24 @@ function spkCollect(){
   } else SPK.raT = null;
   return out;
 }
+/* EVERY ROUTE, NOT THE FIRST ONE THAT EXISTS (2026-11-14, Søren: "Now I hear the stimulation but I still don't
+   feel it"). Browsers differ: some give gamepad.hapticActuators[0].pulse, some gamepad.vibrationActuator with
+   pulse or playEffect, and one that is present can still do nothing. Each is tried on its own; the routes that did
+   not throw are remembered (SPK.hapRoutes) so "Test: click and buzz" can say what this headset offers. */
 function spkHaptic(h, a, ms){
-  const gp = h.source && h.source.gamepad; if (!gp) return;
-  try {
-    let done = false;
-    if (gp.hapticActuators && gp.hapticActuators[0] && gp.hapticActuators[0].pulse){ gp.hapticActuators[0].pulse(Math.min(1, a), ms); done = true; }
-    if (!done && gp.vibrationActuator){
-      const va = gp.vibrationActuator;
-      if (va.pulse) va.pulse(Math.min(1, a), ms);
-      else va.playEffect(va.effects && va.effects.includes && va.effects.includes("trigger-rumble") ? "trigger-rumble" : "dual-rumble", { duration: ms, strongMagnitude: Math.min(1, a), weakMagnitude: Math.min(1, a) });
-    }
-  } catch (e){}
+  const gp = h.source && h.source.gamepad; if (!gp) return 0;
+  const v = Math.min(1, a), used = [];
+  const tryIt = (name, f) => { try { const r = f(); if (r && r.catch) r.catch(() => {}); used.push(name); } catch (e){} };
+  const ha = gp.hapticActuators && gp.hapticActuators[0];
+  if (ha && ha.pulse) tryIt("hapticActuators.pulse", () => ha.pulse(v, ms));
+  const va = gp.vibrationActuator;
+  if (va){
+    if (va.pulse) tryIt("vibrationActuator.pulse", () => va.pulse(v, ms));
+    if (va.playEffect) tryIt("vibrationActuator.playEffect", () => va.playEffect("dual-rumble", { startDelay: 0, duration: ms, strongMagnitude: v, weakMagnitude: v }));
+  }
+  if (h.source.hapticActuators && h.source.hapticActuators[0] && h.source.hapticActuators[0].pulse) tryIt("inputSource.hapticActuators", () => h.source.hapticActuators[0].pulse(v, ms));
+  SPK.hapRoutes = used.join(", ") || "none";
+  return used.length;
 }
 function spkFrame(){
   if (!SPK.snd && !SPK.hap){ SPK.cnt.clear(); SPK.raT = null; return; }
@@ -14050,9 +14063,9 @@ function spkTest(){
   const okA = !!(SPK.ctx && SPK.bufE);
   if (okA){ try { if (renderer.xr.isPresenting) spkListener(); spkClick(p, false, 0); spkClick(p, false, 0.12); spkClick(p, true, 0.24); } catch (e){ console.warn("[vr] test click:", e); } }
   let buzzed = 0;
-  hands.forEach(h => { if (h.source && h.source.gamepad){ spkHaptic(h, 0.8, 120); buzzed++; } });
+  hands.forEach(h => { if (h.source && h.source.gamepad && spkHaptic(h, 0.9, 200)) buzzed++; });
   const msg = "Test: " + (!okA ? "no Web Audio in this browser" : SPK.ctx.state === "running" ? "three clicks played" : "sound is blocked by the browser (" + SPK.ctx.state + ") — press the trigger once and try again")
-    + " · " + (buzzed ? "buzzed " + buzzed + " controller" + (buzzed > 1 ? "s" : "") : renderer.xr.isPresenting ? "no controller to buzz (hands?)" : "buzz works only in the headset");
+    + " · " + (buzzed ? "buzzed " + buzzed + " controller" + (buzzed > 1 ? "s" : "") + " via " + SPK.hapRoutes : renderer.xr.isPresenting ? "no vibration route on these controllers (" + (SPK.hapRoutes || "none") + ")" : "buzz works only in the headset");
   ctxNote.textContent = msg;
   try { if (renderer.xr.isPresenting) flashWarn(msg, 3500, "#c98bff"); } catch (e){}
 }
