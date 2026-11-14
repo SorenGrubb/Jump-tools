@@ -711,8 +711,14 @@
       V.view = Math.max(0, Math.min(VIEWS.length - 1, V.view - (+b.getAttribute("data-zoom")))); draw(); }; });
     host.querySelector("[data-home]").onclick = function(){ V.z = 0; draw(); };
     stage.addEventListener("wheel", function(e){ e.preventDefault(); V.z += e.deltaY > 0 ? 1 : -1; draw(); }, { passive: false });
-    document.getElementById("jaOv").onkeydown = function(e){
-      if (e.key === "Escape") close();
+    /* ── THE REAL CAUSE, 2026-11-14 ── Søren, again: *"It still does not load the image."* On
+       academy.html the Academy is drawn into the page (#jaHost) and there is no #jaOv overlay, so this
+       line threw -- AFTER the section buttons were wired and BEFORE draw() was called. Nothing was
+       ever asked for until a button was clicked. Now the keys go to whichever host exists, and the
+       first draw no longer depends on it. */
+    var keyHost = document.getElementById("jaOv") || document.getElementById("jaHost");
+    if (keyHost) keyHost.onkeydown = function(e){
+      if (e.key === "Escape"){ if (!PAGE) close(); }
       else if (e.key === "ArrowUp"){ V.z--; draw(); e.preventDefault(); }
       else if (e.key === "ArrowDown"){ V.z++; draw(); e.preventDefault(); }
     };
