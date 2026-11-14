@@ -8922,7 +8922,9 @@ function buildGlove(side){
   });
   const th = chain([0.03, 0.024], 0.0098);
   /* the thumb leaves the palm at its base and points mostly forward, a little out -- on a controller it lies along the top */
-  th.root.position.set(0.032 * s, 0.038, 0.012); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; g.add(th.root); F.thumb = th.joints;
+  /* a little toward the palm (2026-11-14, Søren: "The thumb seems to sit a little behind the hand"): its base nearer
+     the palm's face, and the thumb angled in over it */
+  th.root.position.set(0.031 * s, 0.038, 0.02); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; th.root.rotation.x = 0.28; g.add(th.root); F.thumb = th.joints;
   g.userData.F = F;
   return g;
 }
@@ -9589,6 +9591,68 @@ function menuRows(){
   }
   return menuSections(rows, t);
 }
+/* ── SYMBOLS ON THE PALETTE (2026-11-14, Søren: "We could use symbols also in the VR headset controller menu") ──
+   The panel's own icons (UI_ICON, the same line drawings as the PC buttons) drawn on the palette's canvas: one on
+   every tab, every category header and every row, chosen from the row's words. A few the panel had no need for
+   (sound, clock, sleep, drug, hand, size) are added here. An SVG becomes an image asynchronously, so the palette is
+   redrawn once each has loaded; until then the row is simply drawn without it. */
+const MI_EXTRA = (p => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>');
+const MENU_SVG = Object.assign({}, window.UI_ICON || {}, {
+  speaker: MI_EXTRA('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
+  clock: MI_EXTRA('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'),
+  moon: MI_EXTRA('<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>'),
+  drug: MI_EXTRA('<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-35 12 12)"/><path d="M9.6 8.6l4.8 6.8"/>'),
+  hand: MI_EXTRA('<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V5.5a1.5 1.5 0 0 1 3 0V13M17 12a1.5 1.5 0 0 1 3 0v2a8 8 0 0 1-8 8h-1a7 7 0 0 1-6-3.5L3 15a1.5 1.5 0 0 1 2.5-1.6L8 16"/>'),
+  size: MI_EXTRA('<path d="M4 9V4h5M20 15v5h-5M4 4l7 7M20 20l-7-7"/>'),
+  temp: MI_EXTRA('<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/>'),
+  user: MI_EXTRA('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  grid: MI_EXTRA('<path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>'),
+  palette: MI_EXTRA('<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.9 1.4-2-.5-1.3.4-2.5 1.8-2.5H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>'),
+  exit: MI_EXTRA('<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>')
+});
+const MENU_TAB_ICON = { Show: "eye", Map: "map", Tools: "wrench", Spray: "spray", EM: "em", Cells: "nucleus", View: "view" };
+const MENU_ICON_RULES = [
+  [/^✓ Signed in|Not signed in/, "user"], [/see-through|solid/i, "glass"], [/^Cell models/, "mesh"], [/Colour by e|Vessel colour|Colour:|Colour by flow/i, "palette"],
+  [/^Nuclei/, "nucleus"], [/Axon initial/, "trace"], [/Organelle/i, "organelle"], [/centriole vectors|Vectors of/, "cvec"], [/Cilium base/, "lvec"],
+  [/Traced|Add the cells with these tracings|^ *Kind:|^ *Cell type:/, "pen"], [/Synapse markers|Synapses fire|Synaps/i, "synapse"],
+  [/Scale bar/, "scalebar"], [/Floor grid/, "grid"], [/Background/, "palette"], [/Cortical layers|^Layers:/, "layers"], [/V1 column/, "column"],
+  [/Region box/, "rbox"], [/Visual areas/, "areas"], [/skeleton|Capillaries:/i, "skel"], [/Perivascular|Width ×/, "pvs"],
+  [/Dura|Arachnoid|Pia|villus|menin/i, "layers"], [/CSF/, "vessel"], [/Ride a red cell|Blood cells|Red blood|Hypoxic|stalls|sphincter|Shih|Autoregulation|Blood|vascular|Vessel|Stroke|clot|collateral|Pericytes|Heartbeat in|pressure|Vasomotion|Breathing|Neurovascular|Alzheimer|Ly6G/i, "vessel"],
+  [/Hear spikes|Test: /, "speaker"], [/Feel spikes/, "hand"], [/Drug/, "drug"], [/Sleep|NREM|REM|Awake|Cycle:/, "moon"], [/Clock|clock/, "clock"],
+  [/temperature/i, "temp"], [/Intracranial/, "vessel"], [/Spreading|Coming from|another wave/i, "wave"], [/LFP|Power spectrum|probe|Background population/, "trace"],
+  [/plot|Plot:/i, "plot"], [/scanner|Overlay on|noise|Stimulus \(10|spot active|volume active|Activation|Shift the grid|BOLD|fUS|\bT\b/i, "screen"],
+  [/Identify a cell|Next cell|What is it|Which type|Impossible|^ {6}/, "help"], [/Movie screen|Screen:/, "screen"], [/Recorded|Clips|Inferred|Dim cells|Per-cell|Scale: /, "trace"],
+  [/▶|⏸|Play|Pause|Resume/, "play"], [/Electrode/, "pin"], [/Stimulat|⚡|Fire all|Drive it|Input strength|Hidden cells take part/i, "bolt"],
+  [/Ca²⁺|Gap junctions|ATP route|IP3/, "wave"], [/contact|Touching|Tripartite|File .* tripartite/i, "contact"], [/Connectivity|partners/, "synapse"],
+  [/Reset position/, "reset"], [/Reset/, "reset"], [/Measure|measurements/, "ruler"], [/Cut /, "scissors"], [/Tissue block|Peel|segmentation/, "cube"],
+  [/Only the picked/, "eye"], [/Fly with/, "headset"], [/neighbours/, "neighbours"],
+  [/Spray can|Nozzle/, "spray"], [/Glowing paint/, "sparkle"], [/Eraser/, "eraser"], [/Wipe all paint/, "trash"],
+  [/^Trace|^Draw:|Trace organelles/, "pen"], [/Next section|Previous section|\+5 µm|−5 µm/, "down"], [/Finish this|^Save|Save this scene|Save as a new/, "save"],
+  [/Undo/, "reset"], [/Stop tracing|Hide the EM/, "eyeoff"], [/EM section|Wide 65|Close 33|Move it to the picked/, "em"],
+  [/Tabletop|Room-sized|Walk inside|Bigger/, "size"], [/Turn 30°/, "turntable"], [/palette here/, "hand"], [/Help/, "help"], [/Exit VR/, "exit"],
+  [/All types|Page /, "nucleus"]
+];
+const MENU_SEC_ICON = [[/Stimulate/, "bolt"], [/Ca²⁺/, "wave"], [/Connections/, "synapse"], [/Blood|Vessels/, "vessel"], [/Clock/, "clock"],
+  [/scanner/, "screen"], [/game/, "help"], [/Recorded/, "trace"], [/Cut/, "scissors"], [/Organelles/, "organelle"], [/Synapses/, "synapse"],
+  [/Scale bar/, "scalebar"], [/Meninges/, "layers"]];
+function menuIconName(r){
+  if (r.icon) return r.icon;
+  const L = String(r.label || "").replace(/^[▸▾]\s*/, "");
+  for (const [re, n] of (r.head ? MENU_SEC_ICON : MENU_ICON_RULES)) if (re.test(L)) return n;
+  return null;
+}
+const MENU_IMG = {};
+function menuIcon(name, colour){
+  const svg = MENU_SVG[name]; if (!svg) return null;
+  const key = name + "|" + colour; let im = MENU_IMG[key];
+  if (!im){
+    im = MENU_IMG[key] = new Image();
+    const src = svg.replace(/currentColor/g, colour).replace("<svg ", svg.includes("xmlns") ? '<svg width="96" height="96" ' : '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" ');
+    im.onload = () => { if (typeof MENU !== "undefined") MENU.dirty = true; };
+    im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src);
+  }
+  return im.complete && im.naturalWidth ? im : null;
+}
 function drawMenu(){
   MENU.rows = menuRows();
   const FOOT_H = 96;                                    // the tool's logo (section 17)
@@ -9624,8 +9688,10 @@ function drawMenu(){
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : (hv ? "rgba(214,160,255,0.25)" : "rgba(255,255,255,0.07)");
     g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.fill();
     if (on){ g.shadowColor = "#e0b3ff"; g.shadowBlur = 18; g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.stroke(); g.shadowBlur = 0; }
-    g.fillStyle = on ? "#ffffff" : "#d7c4f2"; g.font = "600 34px system-ui, sans-serif"; g.textAlign = "center";
-    g.fillText(t, x + tw / 2, y + 54); g.textAlign = "left";
+    const ti = menuIcon(MENU_TAB_ICON[t], on ? "#ffffff" : "#e2d0fb");
+    if (ti) g.drawImage(ti, x + tw / 2 - 17, y + 12, 34, 34);
+    g.fillStyle = on ? "#ffffff" : "#d7c4f2"; g.font = "600 " + (ti ? 25 : 34) + "px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(t, x + tw / 2, ti ? y + 70 : y + 54); g.textAlign = "left";
   });
   g.fillStyle = "rgba(230,200,255,0.45)"; g.fillRect(MENU_PAD + 10, MENU_PAD + TAB_H + 2, MENU_W - MENU_PAD * 2 - 20, 2);
   const top = MENU_PAD + TAB_H + 10;
@@ -9634,7 +9700,12 @@ function drawMenu(){
     if (r.head){ g.fillStyle = r.open ? "rgba(214,160,255,0.30)" : "rgba(255,255,255,0.07)"; g.beginPath(); g.roundRect(22, y + 6, MENU_W - 44, ROW_H - 12, 14); g.fill(); }
     if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(255,255,255,0.13)"; g.beginPath(); g.roundRect(22, y + 4, MENU_W - 44, ROW_H - 8, 12); g.fill();
       g.strokeStyle = "rgba(240,220,255,0.7)"; g.lineWidth = 2; g.stroke(); }
-    if (r.head){ g.fillStyle = r.open ? "#f6e8ff" : "#dccbf5"; g.font = "600 40px system-ui, sans-serif"; g.fillText(r.label, 40, y + 50, MENU_W - 80); return; }
+    if (r.head){
+      const hi = menuIcon(menuIconName(r), r.open ? "#ffffff" : "#e2d0fb");
+      const arrow = r.label.slice(0, 1), rest = r.label.replace(/^[▸▾]\s*/, "");
+      g.fillStyle = r.open ? "#f6e8ff" : "#dccbf5"; g.font = "600 40px system-ui, sans-serif"; g.fillText(arrow, 40, y + 50);
+      let hx = 78; if (hi){ g.drawImage(hi, hx, y + 15, 42, 42); hx += 56; }
+      g.fillText(rest, hx, y + 50, MENU_W - hx - 40); return; }
     let x = 34;
     if (r.on !== undefined){
       g.fillStyle = r.on ? "#c98bff" : "rgba(255,255,255,0.16)"; g.beginPath(); g.roundRect(x, y + 18, 68, 36, 18); g.fill();
@@ -9643,8 +9714,11 @@ function drawMenu(){
       x += 90;
     }
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
+    let lab = r.label;
+    if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
+      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
-    g.fillText(r.label, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
+    g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
   if (!MENU.rows.length){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
