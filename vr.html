@@ -3884,6 +3884,8 @@ async function stimulateCell(c){
   if (from !== s0) setTimeout(() => { ctxNote.textContent = "⚡ " + c.label + " fired from its axon initial segment — the spike runs back into the soma and on along the axon."; }, 0);
 }
 function stimulateAt(c, node){
+  if (typeof TAKE !== "undefined" && TAKE.on && !TL.playing && cellClass(c) !== "glia")
+    TAKE.stims.push({ t: (performance.now() - TAKE.t0) / 1000, cell: c.i, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value });
   if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
   if (!inPlay(c)){ ctxNote.textContent = c.label + " is hidden, so it takes no part — show it, or turn on “Hidden cells too” (Activity)."; flashWarn(ctxNote.textContent); return; }
   if (!STIM.running) resetActivity();
@@ -5640,6 +5642,7 @@ function caNear(a, b){
   return r;
 }
 function caStartAt(c, node){
+  if (typeof TAKE !== "undefined" && TAKE.on && !TL.playing) TAKE.stims.push({ t: (performance.now() - TAKE.t0) / 1000, cell: c.i, kind: "ca" });
   if (!inPlay(c)){ ctxNote.textContent = c.label + " is hidden, so it takes no part — show it, or turn on “Hidden cells too”."; return; }
   if (!CA.running) caReset();
   findContacts();
@@ -8882,6 +8885,105 @@ function placeLabel(){
   label.position.set(stage.position.x, stage.position.y + r + 0.08, stage.position.z);
 }
 
+/* ── 47. THE TIMELINE IN THE HEADSET ──────────────────────────────────────────  2026-11-14
+   Søren: "it would be cool if we could edit the timeline also while in the headset or perhaps record what we are
+   doing when, so that it can be replayed. It should be more smooth than in real life when shown."
+
+   RECORD A TAKE (View → Timeline → ⏺): while it runs, where your head is and where it looks is sampled ten times a
+   second, what is shown is read twice a second, and every cell you stimulate (or start a Ca²⁺ wave in) is noted
+   with its moment. ⏹ turns the take into the timeline:
+     · the head's path is SMOOTHED -- position and gaze averaged over ±0.8 s, the head's roll dropped -- and a camera
+       key is set every 2 s, so the film glides along the same curve the timeline always draws between keys, without
+       the small shakes and glances of a real head;
+     · a view key wherever what was shown changed, a stimulus key at each stimulus;
+     · captions and effects already in the timeline stay; its old camera, view and stimulus keys are replaced (Ctrl+Z
+       on the PC brings them back), and the length becomes the take's.
+   EDIT IN THE HEADSET: play and pause (views, stimuli and captions -- the camera follows your head there), move the
+   playhead, add a camera key from where you stand, a view key or a stimulus key, delete the keys at the playhead,
+   undo. The full editor stays on the PC. */
+const TAKE = { on: false, t0: 0, samples: [], views: [], stims: [], lastS: 0, lastV: 0, lastVJ: "" };
+const _hk = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
+function vrHeadPose(){
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; cam.updateMatrixWorld();
+  cam.matrixWorld.decompose(_hk.p, _hk.q, _hk.s);
+  return { p: _hk.p.clone(), f: new THREE.Vector3(0, 0, -1).applyQuaternion(_hk.q) };
+}
+function vrCamKeyFrom(p, f, sp, sq, ss){
+  const c = new THREE.Vector3().fromArray(sp);
+  const d = Math.min(3, Math.max(0.2, p.distanceTo(c)));
+  return { p: p.toArray(), tg: p.clone().addScaledVector(f.clone().normalize(), d).toArray(), sp, sq, ss };
+}
+function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
+function takeStart(){
+  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], lastS: 0, lastV: 0, lastVJ: "" });
+  if (TL.playing) tlStop();
+  takeFrame(true);
+  ctxNote.textContent = "⏺ Recording a take: move, look, switch things on and off, stimulate — ⏹ when you are done.";
+  try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 3000, "#f85149"); } catch (e){}
+  MENU.dirty = true;
+}
+function takeFrame(force){
+  if (!TAKE.on) return;
+  const now = performance.now(), t = (now - TAKE.t0) / 1000;
+  if (force || now - TAKE.lastS >= 100){
+    TAKE.lastS = now; const h = vrHeadPose();
+    TAKE.samples.push({ t, p: h.p, f: h.f, sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.x });
+  }
+  if (force || now - TAKE.lastV >= 500){
+    TAKE.lastV = now;
+    try { const v = tlCaptureView(), j = JSON.stringify(v); if (j !== TAKE.lastVJ){ TAKE.lastVJ = j; TAKE.views.push({ t: TAKE.views.length ? t : 0, v }); } } catch (e){}
+  }
+  if (t > 600 && !force) takeStop();               // the timeline's own limit: 10 minutes
+  if (Math.floor(t) !== TAKE.shownS){ TAKE.shownS = Math.floor(t); MENU.dirty = true; }
+}
+function takeStop(){
+  if (!TAKE.on) return;
+  takeFrame(true); TAKE.on = false;               // the last moment, then stop
+  const S = TAKE.samples, T = S.length ? S[S.length - 1].t : 0;
+  if (S.length < 5 || T < 2){ ctxNote.textContent = "That take was too short to make a timeline (under 2 s)."; MENU.dirty = true; return; }
+  /* smoothing: a Gaussian over ±0.8 s (σ 0.4 s) of position, gaze and where the room stands */
+  const SIG = 0.4, smooth = t => {
+    const p = new THREE.Vector3(), f = new THREE.Vector3(), sp = new THREE.Vector3(); let w = 0, ssl = 0, best = S[0];
+    for (const x of S){ const d = x.t - t; if (Math.abs(d) > 3 * SIG) continue; const k = Math.exp(-d * d / (2 * SIG * SIG));
+      p.addScaledVector(x.p, k); f.addScaledVector(x.f, k); sp.addScaledVector(x.sp, k); ssl += Math.log(x.ss) * k; w += k;
+      if (Math.abs(d) < Math.abs(best.t - t)) best = x; }
+    return { p: p.multiplyScalar(1 / w), f: f.normalize(), sp: sp.multiplyScalar(1 / w), sq: best.sq, ss: Math.exp(ssl / w) };
+  };
+  const dur = Math.max(2, Math.min(600, Math.round(T * 10) / 10)), cam = [];
+  const step = dur > 40 ? 3 : 2;
+  for (let t = 0; t <= dur + 1e-6; t += step){ const m = smooth(Math.min(t, T)); cam.push({ t: Math.round(Math.min(t, dur) * 10) / 10, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
+  if (cam[cam.length - 1].t < dur - 0.5){ const m = smooth(T); cam.push({ t: dur, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
+  tlSave();                                         // what was there, for Ctrl+Z
+  TL.keys.cam = cam.map(k => tlKey("cam", k));
+  TL.keys.view = TAKE.views.map(x => tlKey("view", { t: Math.round(x.t * 10) / 10, v: x.v, fade: 0.5 }));
+  TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
+  TL.dur = dur; TL.t = 0;
+  tlSort(); tlSave(); tlSync();
+  try { TL.keys.cam.forEach(k => tlThumb(k)); } catch (e){}
+  ctxNote.textContent = "⏹ The take is the timeline: " + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys. ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
+  try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
+  MENU.dirty = true;
+}
+function tlHeadsetRows(rows){
+  const n = tlCount();
+  rows.push({ label: TAKE.on ? "⏹ Stop the take (" + Math.floor((performance.now() - TAKE.t0) / 1000) + " s) — it becomes the timeline" : "⏺ Record a take: what you do, smoothed into a timeline",
+              icon: TAKE.on ? "stop" : "rec", act: () => TAKE.on ? takeStop() : takeStart(),
+              /* while a take runs, its stop button stays at the top of the tab, whatever is folded */
+              ...(TAKE.on ? { sec: null } : {}) });
+  if (TAKE.on) return;
+  rows.push({ label: (TL.playing ? "⏸ Pause" : "▶ Play") + " the timeline" + (n ? "" : " (no keys yet)"), icon: "play", act: () => { if (!n) return; TL.playing ? tlStop() : tlPlay(); } });
+  rows.push({ label: "◂ −1 s   |   playhead " + TL.t.toFixed(1) + " / " + TL.dur + " s   |   +1 s ▸", icon: "timeline", act: () => tlSeek(TL.t - 1), act2: () => tlSeek(TL.t + 1) });
+  rows.push({ label: "Back to the start", icon: "reset", act: () => tlSeek(0) });
+  rows.push({ label: "+ Camera key here (where I stand and look)", icon: "camera", act: () => tlAdd("cam", vrCamKeyNow()) });
+  rows.push({ label: "+ View key here (what is shown now)", icon: "view", act: () => tlAdd("view", { v: tlCaptureView(), fade: 0.5 }) });
+  const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
+  rows.push({ label: pick >= 0 ? "+ Stimulus key here (the picked cell)" : "+ Stimulus key (pick a neuron first)", icon: "bolt",
+              act: () => { if (pick >= 0) tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 }); } });
+  const here = Object.keys(TL.keys).reduce((a, L) => a + TL.keys[L].filter(k => Math.abs(k.t - TL.t) <= 0.25).length, 0);
+  rows.push({ label: here ? "Delete the " + here + " key" + (here > 1 ? "s" : "") + " at the playhead" : "No key at the playhead", icon: "trash",
+              act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
+  rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
+}
 /* ── 46. GLOVED HANDS ─────────────────────────────────────────────────────────  2026-11-14
    Søren: "I want to explore the possibility of having hands instead of the black squares that are the controllers
    now. I imagine a couple of hands with light blue lab gloves on, and the menu being a purple see-through panel
@@ -8897,6 +8999,27 @@ function placeLabel(){
 const GLOVE_MAT = new THREE.MeshPhysicalMaterial({ color: 0x6db8f0, roughness: 0.48, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.4, sheen: 0.25, sheenColor: 0xbfe4ff });
 const GLOVE_CUFF = new THREE.MeshPhysicalMaterial({ color: 0x3f8cd0, roughness: 0.55, clearcoat: 0.2 });
 const GLOVE_WRIST = GLOVE_MAT.clone(); GLOVE_WRIST.side = THREE.DoubleSide;
+/* THE LAB COAT (2026-11-14, Søren: "The hands should look like you are wearing a white labcoat and blue gloves"):
+   a white cotton sleeve from under the glove's cuff back toward the elbow, widening as a sleeve does, with a
+   stitched hem at the wrist. Matte, a little warm, so it reads as cloth next to the glossy nitrile. */
+const COAT_MAT = new THREE.MeshStandardMaterial({ color: 0xf1f3f6, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+const COAT_HEM = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.95 });
+/* along -y from the wrist: 26 cm, 3.9 → 5.6 cm across, flattened like a forearm; built once and shared */
+const COAT_GEO = (() => {
+  const g = new THREE.CylinderGeometry(0.039, 0.056, 0.26, 20, 6, true);
+  const P = g.attributes.position;
+  for (let i = 0; i < P.count; i++){                    // a few soft folds along the sleeve
+    const y = P.getY(i), a = Math.atan2(P.getZ(i), P.getX(i)), r = 1 + 0.035 * Math.sin(y * 70 + a * 2) * (0.5 - y / 0.26);
+    P.setX(i, P.getX(i) * r); P.setZ(i, P.getZ(i) * r * 0.78);
+  }
+  g.translate(0, -0.13, 0); g.computeVertexNormals(); return g;
+})();
+function coatSleeve(){
+  const s = new THREE.Group();
+  s.add(new THREE.Mesh(COAT_GEO, COAT_MAT));
+  const hem = new THREE.Mesh(new THREE.TorusGeometry(0.039, 0.004, 6, 24), COAT_HEM); hem.rotation.x = Math.PI / 2; hem.scale.y = 0.78; hem.position.y = -0.004; s.add(hem);
+  return s;
+}
 /* one capsule for every finger bone: radius 0.5, 2 tall in all, centred -- scaled to (2r, length + r, 2r) */
 const GLOVE_SEG = new THREE.CapsuleGeometry(0.5, 1, 4, 10); GLOVE_SEG.scale(1, 1 / 2, 1);
 function gloveSeg(len, r){ const m = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); m.scale.set(2 * r, len + 1.2 * r, 2 * r); m.position.y = len / 2 + r * 0.6; return m; }
@@ -8910,6 +9033,7 @@ function buildGlove(side){
   /* the glove ends at a rolled cuff, open: from behind you look into it, as you would a real glove, not at a lid */
   const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.034, 0.05, 18, 1, true), GLOVE_WRIST); wrist.scale.z = 0.62; wrist.position.y = -0.015; g.add(wrist);
   const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.0335, 0.0055, 8, 24), GLOVE_CUFF); cuff.rotation.x = Math.PI / 2; cuff.scale.y = 0.62; cuff.position.y = -0.04; g.add(cuff);
+  const coat = coatSleeve(); coat.position.y = -0.03; g.add(coat);           // the lab coat's sleeve, under the glove's cuff
   const chain = (lengths, r) => {
     const root = new THREE.Group(), joints = []; let parent = root;
     lengths.forEach((L, i) => { const j = new THREE.Group(); parent.add(j); j.add(gloveSeg(L, r * (1 - i * 0.08))); joints.push(j);
@@ -8958,6 +9082,7 @@ function trackedGlove(){
   g.userData.bones = GLOVE_BONES.map(() => { const m = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); g.add(m); return m; });
   g.userData.palm = new THREE.Mesh(GLOVE_SEG, GLOVE_MAT); g.add(g.userData.palm);
   g.userData.cuff = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0055, 8, 24), GLOVE_CUFF); g.add(g.userData.cuff);
+  g.userData.coat = coatSleeve(); g.add(g.userData.coat);
   g.visible = false; return g;
 }
 const _ga = new THREE.Vector3(), _gb = new THREE.Vector3(), _gc = new THREE.Vector3(), _gd = new THREE.Vector3(), _gy = new THREE.Vector3(0, 1, 0), _gm = new THREE.Matrix4();
@@ -8982,6 +9107,9 @@ function trackedGloveFrame(h){
   P.position.copy(_ga).addScaledVector(up, len * 0.55);
   P.scale.set(wid + 0.022, Math.max(0.01, len * 1.05), 0.028);
   const C = tg.userData.cuff; C.position.copy(_ga).addScaledVector(up, -0.012); C.quaternion.copy(P.quaternion); C.rotateX(Math.PI / 2);
+  /* the sleeve runs back from the wrist, continuing the line from the knuckles through the wrist (the forearm is not
+     tracked; a hand bent at the wrist bends the sleeve's start with it, which reads as a relaxed arm) */
+  const K = tg.userData.coat; K.position.copy(_ga).addScaledVector(up, -0.02); K.quaternion.copy(P.quaternion);
 }
 function gloveFrame(){
   if (!renderer.xr.isPresenting) return;
@@ -9586,6 +9714,9 @@ function menuRows(){
       rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : ""), act: () => saveScene(true) });
       if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
+      S("Timeline");
+      tlHeadsetRows(rows);
+      S(null);
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
   }
@@ -10954,6 +11085,10 @@ function tlCamAt(t){
 const _tlM = new THREE.Matrix4(), _tlUp = new THREE.Vector3(0, 1, 0);
 function tlLookQ(k){ _tlM.lookAt(_tc2.fromArray(k.p), _tc3.fromArray(k.tg), k.up ? new THREE.Vector3().fromArray(k.up) : _tlUp); return new THREE.Quaternion().setFromRotationMatrix(_tlM); }
 function tlApplyCam(t){
+  /* In the headset your head is the camera: a camera key there would only carry the room away from you (it also
+     sets where the collection stands). The headset plays the views, stimuli and captions; the camera is for the
+     screen, the film and the dome (2026-11-14). */
+  if (renderer.xr.isPresenting) return;
   const s = tlCamAt(t); if (!s) return;
   if (s.pose){
     const k = s.pose;
@@ -16818,6 +16953,7 @@ renderer.setAnimationLoop(() => {
   try { imgFrame(sdt); } catch (e){ console.warn("[vr] imaging:", e); }
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { gloveFrame(); } catch (e){ if (!window.__gloveWarned){ window.__gloveWarned = true; console.warn("[vr] gloves:", e); } }
+  try { takeFrame(); } catch (e){ console.warn("[vr] take:", e); }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
