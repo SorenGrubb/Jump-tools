@@ -7246,7 +7246,12 @@ function padFullStyle(){
   st.textContent = "#tracePadStage.padfull{position:fixed!important;inset:0!important;z-index:9000;margin:0!important;border:0!important;border-radius:0!important;overflow:hidden!important;background:#111}"
     + "body.padfull-on{overflow:hidden!important}"
     + "#tracePadStage.padfull #tracePadFsInfo{display:block!important}"
-    + "#tracePadStage.padfull #tracePadTipBar{position:relative}";
+    + "#tracePadStage.padfull #tracePadTipBar{position:relative}"
+    /* 2026-11-14, Søren: "Going full screen on a mobile device should hide the tips and the VR collection and
+       chat." The VR collection and the chat go on every screen (they sit over the picture); the tips on a
+       phone or tablet, where they take a third of the screen. */
+    + "body.padfull-on #vrb-pill,body.padfull-on #vrb-tray,body.padfull-on #ujc-launch,body.padfull-on #ujc{display:none!important}"
+    + "@media (max-width:900px),(pointer:coarse){body.padfull-on #tracePadTipBar{display:none!important}}";
   document.head.appendChild(st);
 }
 function padFsInfo(){
@@ -7286,6 +7291,12 @@ function padCpPlace(){
   var cv = document.getElementById("tracePad"), btn = document.getElementById("tracePadCpBtn"), box = document.getElementById("tracePadCp");
   if (!cv || !btn || !box) return;
   var top = cv.offsetTop + 6;
+  /* full screen without the tips: the points chip floats in the top right over the pad -- the buttons go
+     below it rather than under it */
+  if (PAD_FULL){
+    var chip = document.getElementById("gameChip"), r = chip ? chip.getBoundingClientRect() : null;   /* fixed: no offsetParent */
+    if (r && r.height && r.bottom > 0 && r.right > window.innerWidth - 160) top = Math.max(top, Math.round(r.bottom) + 6);
+  }
   btn.style.top = top + "px"; box.style.top = (top + 46) + "px";
   var fsb = document.getElementById("tracePadFs"); if (fsb) fsb.style.top = top + "px";
   /* The four move-the-picture arrows step aside while the panel is open, so neither hides the other. */
