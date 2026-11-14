@@ -677,7 +677,7 @@
   </div>
   <div class="ctl">
     <button id="sndBtn" title="Every spike of a loaded neuron (stimulated, sleep, spreading depolarization, recorded) is a click from where its soma is, panned in 3D -- low for excitatory, high for inhibitory cells">Hear spikes</button>
-    <button id="hapBtn" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
+    <button id="hapBtn" style="display:none" title="In the headset: a controller near a firing neuron buzzes; held against a vessel it beats with the heart -- strong on arterioles, weak on capillaries, faint on venules">Feel spikes &amp; pulse</button>
     <label id="sndBodyRow" title="With Hear spikes on: a faint heartbeat and breathing of the mouse, at the model's own heart rate and breathing phase (they slow down with the clock). Needs the vascular regulation or blood-flow model running. Also in films made from the timeline." style="font-size:12px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="sndBody" checked> heartbeat &amp; breathing</label>
   </div>
   <div id="physBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
@@ -9413,9 +9413,10 @@ function menuRows(){
     rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
     rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
     rows.push({ label: "Hear spikes" + (spkAudioBlocked() ? "  (blocked — press the trigger once)" : ""), on: SPK.snd, act: () => { spkWake(); setSpkSound(!SPK.snd); } });
-    if (spkCanBuzz() === false) rows.push({ label: "Feel spikes — this browser cannot vibrate the controllers", note: true });
-    else rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
-    rows.push({ label: "   Test: click and buzz", act: spkTest });
+    /* Offered only where it works (2026-11-14, Søren: "If we really can't get it to work there should be no option
+       to feel it"): only when the headset's controllers actually offer vibration to the page. */
+    if (spkCanBuzz() === true) rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
+    rows.push({ label: spkCanBuzz() === true ? "   Test: click and buzz" : "   Test: a click", act: spkTest });
     S("Blood & vessels (models)");
     if (DS_HAS.flow){
       rows.push({ label: "Stroke (model)", on: STK.on && !STK.quiet, act: () => document.getElementById("stkBtn").click() });
@@ -14001,6 +14002,10 @@ function spkHapticInfo(){
    ("vibration actuators and haptic actuators absent on both hands") -- a web page cannot make those controllers
    buzz. The palette says so instead of offering a switch that does nothing. Other browsers (Wolvic, Chrome on a PC
    through Quest Link) may offer them, so the feature stays and lights up wherever they are. */
+/* Checked against Søren's Quest browser AND Chrome through Quest Link, 2026-11-14: both report no haptic or vibration
+   actuator on either controller. The Quest browser used to offer gamepad.hapticActuators[0].pulse; Chromium has never
+   given XR controllers a vibration actuator (crbug.com/955097). So on these the option does not exist at all, and a
+   saved scene that had it on does nothing. */
 function spkCanBuzz(){
   const se = renderer.xr.getSession && renderer.xr.getSession(); if (!se) return null;
   let any = false, seen = false;
@@ -14114,6 +14119,7 @@ function setSpkSound(v){
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function setSpkHaptic(v){
+  if (v && spkCanBuzz() === false) v = false;
   SPK.hap = !!v; document.getElementById("hapBtn").classList.toggle("on", SPK.hap);
   if (SPK.hap){ if (DSX.flowNet) stkNet().catch(() => {}); ctxNote.textContent = "Feel (in the headset): a controller near a firing neuron buzzes; held against a vessel it beats with the heart — strong on arterioles, weak on capillaries, faint on venules."; }
   if (typeof MENU !== "undefined") MENU.dirty = true;
