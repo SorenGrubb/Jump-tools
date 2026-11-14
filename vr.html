@@ -13981,8 +13981,23 @@ function spkCollect(){
    feel it"). Browsers differ: some give gamepad.hapticActuators[0].pulse, some gamepad.vibrationActuator with
    pulse or playEffect, and one that is present can still do nothing. Each is tried on its own; the routes that did
    not throw are remembered (SPK.hapRoutes) so "Test: click and buzz" can say what this headset offers. */
+/* The headset's own list of controllers, read fresh: a source kept since "connected" can be a stale object whose
+   gamepad has lost its actuators after the controller slept or the session re-paired it. */
+function xrSourceFor(h){
+  const se = renderer.xr.getSession && renderer.xr.getSession(); if (!se || !h.source) return h.source;
+  for (const s of se.inputSources) if (s.handedness === h.source.handedness && s.gamepad) return s;
+  return h.source;
+}
+function spkHapticInfo(){
+  const se = renderer.xr.getSession && renderer.xr.getSession(); if (!se) return "not in VR";
+  return [...se.inputSources].map(s => {
+    const gp = s.gamepad, ha = gp && gp.hapticActuators, va = gp && gp.vibrationActuator;
+    return (s.handedness || "?") + ": " + (!gp ? "no gamepad" : "hapticActuators " + (ha ? ha.length : "absent") + ", vibrationActuator "
+      + (va ? (va.type || "yes") + (va.effects ? " [" + [...va.effects].join("/") + "]" : "") + (va.pulse ? " +pulse" : "") + (va.playEffect ? " +playEffect" : "") : "absent"));
+  }).join(" · ") || "no input sources";
+}
 function spkHaptic(h, a, ms){
-  const gp = h.source && h.source.gamepad; if (!gp) return 0;
+  const src = xrSourceFor(h), gp = src && src.gamepad; if (!gp) return 0;
   const v = Math.min(1, a), used = [];
   const tryIt = (name, f) => { try { const r = f(); if (r && r.catch) r.catch(() => {}); used.push(name); } catch (e){} };
   const ha = gp.hapticActuators && gp.hapticActuators[0];
@@ -13992,7 +14007,7 @@ function spkHaptic(h, a, ms){
     if (va.pulse) tryIt("vibrationActuator.pulse", () => va.pulse(v, ms));
     if (va.playEffect) tryIt("vibrationActuator.playEffect", () => va.playEffect("dual-rumble", { startDelay: 0, duration: ms, strongMagnitude: v, weakMagnitude: v }));
   }
-  if (h.source.hapticActuators && h.source.hapticActuators[0] && h.source.hapticActuators[0].pulse) tryIt("inputSource.hapticActuators", () => h.source.hapticActuators[0].pulse(v, ms));
+  if (src.hapticActuators && src.hapticActuators[0] && src.hapticActuators[0].pulse) tryIt("inputSource.hapticActuators", () => src.hapticActuators[0].pulse(v, ms));
   SPK.hapRoutes = used.join(", ") || "none";
   return used.length;
 }
@@ -14075,7 +14090,8 @@ function spkTest(){
   const msg = "Test: " + (!okA ? "no Web Audio in this browser" : SPK.ctx.state === "running" ? "three clicks played" : "sound is blocked by the browser (" + SPK.ctx.state + ") — press the trigger once and try again")
     + " · " + (buzzed ? "buzzed " + buzzed + " controller" + (buzzed > 1 ? "s" : "") + " via " + SPK.hapRoutes : renderer.xr.isPresenting ? "no vibration route on these controllers (" + (SPK.hapRoutes || "none") + ")" : "buzz works only in the headset");
   ctxNote.textContent = msg;
-  try { if (renderer.xr.isPresenting) flashWarn(msg, 3500, "#c98bff"); } catch (e){}
+  try { if (renderer.xr.isPresenting) flashWarn([msg, "What the headset offers: " + spkHapticInfo()], 9000, "#c98bff"); } catch (e){}
+  console.log("[vr] haptics:", spkHapticInfo());
 }
 function setSpkSound(v){
   SPK.snd = !!v && spkAudioInit();
