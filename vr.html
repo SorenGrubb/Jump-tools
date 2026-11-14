@@ -3765,7 +3765,13 @@ function fireCell(c, node, t0){
   STIM.slowLog = Math.log(STIM.slow);
   /* The afterhyperpolarisation at the soma, once the spike has been there. */
   const soma = somaNode(c, node);
-  if (T[soma] < 1e8 && T[soma] >= t0) (c.spikesAt = c.spikesAt || []).push(T[soma]);
+  if (T[soma] < 1e8 && T[soma] >= t0){ (c.spikesAt = c.spikesAt || []).push(T[soma]);
+    /* A COUNT THAT ONLY GROWS (2026-11-14, Søren: "I don't hear or feel spikes"). The sound, the buzz and the
+       neurovascular coupling all counted NEW spikes as "spikesAt is longer than last frame" -- but a stimulus on a
+       resting cell first resets the activity (spikesAt back to empty) and then adds the new spike in the same
+       call, so the list was as long as before and the spike was never heard: only the very first stimulus of a
+       cell ever clicked. c.spkN is never reset, so every spike is one more. */
+    c.spkN = (c.spkN || 0) + 1; }
   if (T[soma] < 1e8){
     /* One afterhyperpolarisation at a time: a new spike replaces the old one rather than adding a
        slot each time -- at high rates the AHP slots were pushing the synaptic inputs out of the
@@ -7081,7 +7087,7 @@ function neuronRates(){
   const k = Math.exp(-dt / 1.0), out = new Map();
   for (const [c, r] of NR.est){ const v = r * k; if (v < 0.01) NR.est.delete(c); else NR.est.set(c, v); }
   for (const c of CELLS){
-    const n = (NV.drv.stim ? (c.spikesAt || []).length : 0) + (c._slN || 0) + (c._csdN || 0), was = NR.cnt.get(c);
+    const n = (NV.drv.stim ? (c.spkN || 0) : 0) + (c._slN || 0) + (c._csdN || 0), was = NR.cnt.get(c);
     if (was != null && n > was) NR.est.set(c, (NR.est.get(c) || 0) + (n - was) / 1.0);       // a spike adds 1 / τ
     NR.cnt.set(c, n);
   }
@@ -8915,7 +8921,7 @@ function selectWith(h){
   if (STK.arm && tool){ stkWithRay(rayOf(h)); return; }
   if (LFP.arm && tool){ lfpWithRay(rayOf(h)); return; }
   if (CA.on && tool){ caWithRay(rayOf(h)); return; }
-  if (STIM.on && tool){ stimulateWithRay(rayOf(h)); return; }
+  if (STIM.on && tool){ SPK.stimHand = h; stimulateWithRay(rayOf(h)); return; }
   if (MEAS.on && tool){ measureWithRay(rayOf(h)); return; }
   if ((CUT.mode === "hand" || CUT.mode === "frozen") && tool){
     setCut(CUT.mode === "hand" ? "frozen" : "hand"); return;
@@ -13813,9 +13819,9 @@ function spkCollect(){
   const out = SPK.q; out.length = 0;
   for (const c of CELLS){
     if (!c.mesh || caKind(c) !== "neuron") continue;
-    const n = (c.spikesAt || []).length + (c._slN || 0) + (c._csdN || 0), was = SPK.cnt.get(c);
+    const n = (c.spkN || 0) + (c._slN || 0) + (c._csdN || 0), was = SPK.cnt.get(c);
     SPK.cnt.set(c, n);
-    if (was != null && n > was) out.push([c, Math.min(6, n - was)]);
+    if (n > (was || 0)) out.push([c, Math.min(6, n - (was || 0))]);
   }
   if (typeof RA !== "undefined" && RA.on && RA.meta && (RA.tlKey || (RA.playing && !raOutside()))){
     const t = RA.t, tp = SPK.raT;
@@ -13857,8 +13863,11 @@ function spkFrame(){
       hands.forEach((h, k) => {
         if (!h.source || now - SPK.lastHap[k] < 30) return;
         const hp = new THREE.Vector3().setFromMatrixPosition(h.ctl.matrixWorld);
-        let best = null; for (const e of ev){ const d = e[0].distanceTo(hp); if (d < 0.08 && (!best || d < best[0])) best = [d, e[1]]; }
-        if (best){ spkHaptic(h, (best[1] ? 0.18 : 0.32) * (1 - best[0] / 0.1), 10); SPK.lastHap[k] = now; }
+        /* within 15 cm of a firing soma (was 8 cm, which meant holding the controller right on the soma), stronger
+           the closer; and the hand that fired the stimulus feels its own cells' spikes faintly wherever it is */
+        let best = null; for (const e of ev){ const d = e[0].distanceTo(hp); if (d < 0.15 && (!best || d < best[0])) best = [d, e[1]]; }
+        if (best){ spkHaptic(h, Math.max(0.12, (best[1] ? 0.3 : 0.55) * (1 - best[0] / 0.17)), 14); SPK.lastHap[k] = now; }
+        else if (h === SPK.stimHand){ spkHaptic(h, 0.15, 10); SPK.lastHap[k] = now; }
       });
     }
   }
