@@ -526,6 +526,8 @@
     if (T.part === "cells") showCell(it); else showSection(it);
     /* the next cell is fetched while this one is looked at */
     if (T.part === "cells" && T.items[T.k + 1]) prefetch(T.items[T.k + 1].rootId);
+    /* ...and so is the next organelle's section, so it is there when the question is */
+    if (T.part !== "cells" && T.items[T.k + 1]) setTimeout(function(){ if (T) prefetchSection(T.items[T.k + 1]); }, 1500);
   }
   async function answer(a, btn, auto){
     if (!T || T.busy) return;
@@ -655,6 +657,25 @@
     var st = document.getElementById("jaStart"); st.onclick = function(){ startTest("organelles"); };
     var sk = document.getElementById("jaSkipTo"); if (sk) sk.onclick = function(e){ e.preventDefault(); go(3); };
   }
+  /* ── THE FIRST SECTION OF EACH QUESTION LOOKED STUCK ──────────────────────────────  2026-11-14
+     Søren: *"Every time I load a new EM section, the image does not load and only when I change
+     slice it loads."* It was loading, just slowly and invisibly: the opening view is 8 nm data over
+     512x512 px, which is 25 cold chunks of a sharded volume, measured 5.6-9.7 s on the live bucket,
+     and nothing is painted until the last one arrives. A click on "section" in that time started a
+     new draw that reused the chunks already fetched -- so it looked as if the click had fixed it.
+     Three things now: the NEXT question's section is fetched while this one is being answered (the
+     reader caches by chunk, in-flight requests included, so the real draw reuses it); twice as many
+     requests run at once; and the label counts the pieces, so a slow load reads as progress. */
+  var SECTION_POOL = 12;
+  function prefetchSection(it){
+    try {
+      if (!it || !it.pos) return;
+      if (!UJ.emtiles.configured()) UJ.emtiles.configure(tracingSources());
+      var vw = VIEWS[1];
+      UJ.emtiles.drawSection(document.createElement("canvas"), { centre: [it.pos[0], it.pos[1], it.pos[2]],
+        mip: vw.mip, zoom: vw.zoom, w: 512, h: 512, concurrency: 4 }).catch(function(){});
+    } catch (_e){}
+  }
   function showSection(it){
     try { if (!UJ.emtiles.configured()) UJ.emtiles.configure(tracingSources()); } catch (_e){}
     var stage = document.getElementById("jaStage");
@@ -666,7 +687,10 @@
       load.textContent = "loading…";
       try {
         var info = await UJ.emtiles.drawSection(cv, { centre: [it.pos[0], it.pos[1], it.pos[2] + V.z], mip: vw.mip,
-                                                      zoom: vw.zoom, w: 512, h: 512, tighten: true });
+                                                      zoom: vw.zoom, w: 512, h: 512, tighten: true,
+                                                      concurrency: SECTION_POOL,
+                                                      onProgress: function(n, m){
+                                                        if (my === V.gen && n < m) load.textContent = "loading… " + n + " of " + m + " pieces"; } });
         if (my !== V.gen || !T) return;
         var px = function(nm){ return nm / info.effNmPerPx; };
         var r = Math.max(5, px(RING_NM)), a = Math.max(r + 4, px(TICK_IN_NM)), b2 = Math.max(a + 10, px(TICK_OUT_NM));
