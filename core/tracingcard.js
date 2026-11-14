@@ -7233,11 +7233,61 @@ function padCpSync(){
   padCpPlace();
 }
 /* The burger and the panel sit just under the tip bar, whatever its height. */
+/* ── FULL SCREEN (2026-11-13) ────────────────────────────────────────────────────────────────
+   The pad's own box (#tracePadStage: tips, canvas, arrows, ☰) is laid over the whole window, and on a
+   computer the browser goes full screen too (an iPhone has no such thing, so there it is the window).
+   The whole PAGE goes full screen, not the box: the pad's pop-ups (correct the AI, check finds) are
+   added to the page and would otherwise be hidden. What sits above the pad -- the status lines -- is out
+   of sight, so a small line in the bottom left says where you are and what the pad last said. */
+var PAD_FULL = false;
+function padFullStyle(){
+  if (document.getElementById("tracePadFullCss")) return;
+  var st = document.createElement("style"); st.id = "tracePadFullCss";
+  st.textContent = "#tracePadStage.padfull{position:fixed!important;inset:0!important;z-index:9000;margin:0!important;border:0!important;border-radius:0!important;overflow:hidden!important;background:#111}"
+    + "body.padfull-on{overflow:hidden!important}"
+    + "#tracePadStage.padfull #tracePadFsInfo{display:block!important}"
+    + "#tracePadStage.padfull #tracePadTipBar{position:relative}";
+  document.head.appendChild(st);
+}
+function padFsInfo(){
+  var el = document.getElementById("tracePadFsInfo"); if (!el || !PAD_FULL) return;
+  var z = (document.getElementById("tracePadZ") || {}).textContent || "";
+  var msg = "";
+  ["tracePadAiOutSay", "tracePadSay", "tracePadAiSay"].some(function(id){ var t = (document.getElementById(id) || {}).textContent || ""; if (t.trim()){ msg = t.trim(); return true; } return false; });
+  el.textContent = z.trim() + (msg ? " \u00b7 " + (msg.length > 220 ? msg.slice(0, 217) + "\u2026" : msg) : "");
+}
+function padFull(on){
+  var stg = document.getElementById("tracePadStage"); if (!stg) return;
+  padFullStyle();
+  PAD_FULL = !!on;
+  stg.classList.toggle("padfull", PAD_FULL); document.body.classList.toggle("padfull-on", PAD_FULL);
+  var b = document.getElementById("tracePadFs");
+  if (b){ b.innerHTML = PAD_FULL ? "&#10005;" : "&#9974;"; b.title = PAD_FULL ? "Leave full screen (Esc)" : "Full screen (Esc to leave)"; }
+  try {
+    if (PAD_FULL && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    if (!PAD_FULL && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){});
+  } catch (_e){}
+  if (!padFull.wired){
+    padFull.wired = true;
+    document.addEventListener("fullscreenchange", function(){ if (!document.fullscreenElement && PAD_FULL) padFull(false); else if (PAD_FULL) padFullRedraw(); });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && PAD_FULL && !document.fullscreenElement) padFull(false); });
+    window.addEventListener("resize", function(){ if (PAD_FULL) padFullRedraw(); });
+    var obs = new MutationObserver(function(){ padFsInfo(); });
+    ["tracePadZ", "tracePadAiOutSay", "tracePadSay", "tracePadAiSay"].forEach(function(id){ var el = document.getElementById(id); if (el) obs.observe(el, { childList: true, characterData: true, subtree: true }); });
+  }
+  padFsInfo();
+  padFullRedraw();
+}
+function padFullRedraw(){
+  clearTimeout(padFullRedraw.t);
+  padFullRedraw.t = setTimeout(function(){ try { padCpPlace(); } catch (_e){} if (PAD && PAD_CENTRE) padDraw(); }, 120);
+}
 function padCpPlace(){
   var cv = document.getElementById("tracePad"), btn = document.getElementById("tracePadCpBtn"), box = document.getElementById("tracePadCp");
   if (!cv || !btn || !box) return;
   var top = cv.offsetTop + 6;
   btn.style.top = top + "px"; box.style.top = (top + 46) + "px";
+  var fsb = document.getElementById("tracePadFs"); if (fsb) fsb.style.top = top + "px";
   /* The four move-the-picture arrows step aside while the panel is open, so neither hides the other. */
   var pan = document.getElementById("tracePadPan");
   if (pan) pan.style.right = (box.style.display !== "none" ? box.offsetWidth + 16 : 8) + "px";
@@ -7948,7 +7998,15 @@ async function padDraw(){
        voxels drawn, so it is set from the space available rather than fixed in the markup. Capped,
        because every extra 128 pixels is another column of chunks to fetch. */
     const host = cv.parentElement;
-    const wide = Math.max(320, Math.min(880, (host && host.clientWidth ? host.clientWidth - 2 : 560)));
+    /* FULL SCREEN: the whole window, wider than the card allows and as tall as the window less the tips */
+    if (!cv.dataset.h0) cv.dataset.h0 = String(cv.height);
+    if (PAD_FULL){
+      const tb = document.getElementById("tracePadTipBar");
+      const hh = Math.max(240, window.innerHeight - (tb && tb.offsetParent ? tb.offsetHeight : 0) - 2);
+      if (cv.height !== hh) cv.height = hh;
+    } else if (cv.height !== +cv.dataset.h0) cv.height = +cv.dataset.h0;
+    const wide = PAD_FULL ? Math.max(320, Math.min(1920, window.innerWidth))
+                          : Math.max(320, Math.min(880, (host && host.clientWidth ? host.clientWidth - 2 : 560)));
     /* THE WINDOW GOES IN. Without it emtiles uses 86/172 — minnie65's — on every volume; see
        tracingWindow's header for what that did to Lee16. */
     var PAD_WIN = tracingWindow();
@@ -8672,6 +8730,22 @@ function wirePad(){
     });
   });
   document.getElementById("tracePadNext").addEventListener("click", function(){ padStep(1); });
+  /* the slim section column beside the arrows, and the full-screen button (2026-11-13) */
+  [].slice.call(document.querySelectorAll("#tracePadPan .padzbtn")).forEach(function(bt){
+    bt.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); if (PAD) padStep(+bt.dataset.z); });
+  });
+  (function(){
+    var big = document.getElementById("tracePadStep"), mini = document.getElementById("tracePadStepMini");
+    if (!big || !mini) return;
+    mini.value = big.value;
+    var fromMini = function(){ var v = parseInt(mini.value, 10); if (v >= 1){ big.value = String(v); } };
+    mini.addEventListener("input", fromMini); mini.addEventListener("change", function(){ fromMini(); mini.value = big.value; });
+    big.addEventListener("input", function(){ mini.value = big.value; }); big.addEventListener("change", function(){ mini.value = big.value; });
+    /* keys typed in the little box are numbers, not pad shortcuts */
+    mini.addEventListener("keydown", function(e){ e.stopPropagation(); if (e.key === "Enter") mini.blur(); });
+  })();
+  var fsBtn = document.getElementById("tracePadFs");
+  if (fsBtn) fsBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); padFull(!PAD_FULL); });
   document.getElementById("tracePadMip").addEventListener("change", function(){
     padDraw();
   });
@@ -8687,6 +8761,7 @@ function wirePad(){
     else padSay("Nothing to redo.", true);
   });
   document.getElementById("tracePadClose").addEventListener("click", function(){
+    if (PAD_FULL) try { padFull(false); } catch (_e){}
     document.getElementById("tracePadWrap").style.display = "none";
     draftSave(false); draftRender();      // closing the pad is not losing the work
     /* The panel goes with the pad, and its context is handed back rather than left for the browser
@@ -9624,7 +9699,7 @@ function tracingCardHtml(){
     "<label id=\"tracePadFineWrap\" style=\"display:none;font-size:12px;align-items:center;gap:6px;flex:0 0 auto\" title=\"This volume publishes its finest levels in JPEG XL, which this browser cannot read, so the pad is showing you the coarsest ones it can. Ticking this fetches a JPEG XL decoder (about 1.7 MB, once) and the finer levels appear in the menu on the left. They are slower: about 45 ms a chunk against 8 for the levels you have now, and a view is around twenty chunks. The decoding happens off the page\u2019s own thread, so nothing freezes while it loads.\"><input type=\"checkbox\" id=\"tracePadFine\"> the finest levels (fetches a decoder)</label>",
     "<span class=\"hint\" id=\"tracePadFineSay\" style=\"flex:1 1 100%\"></span>",
     "</div>",
-    "<div style=\"position:relative;margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#111\">",
+    "<div id=\"tracePadStage\" style=\"position:relative;margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#111\">",
     "<!-- TIPS, 2026-09-22 (src/the_pad_gives_tips.py): the tick on the left turns them off. -->",
     "<style>#tracePadTipBar a{color:var(--accent);text-decoration:underline}</style>",
     "<div id=\"tracePadTipBar\" style=\"position:sticky;left:0;display:flex;gap:10px;align-items:center;padding:6px 10px;background:var(--panel);color:var(--ink);border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.4\">",
@@ -9644,13 +9719,20 @@ function tracingCardHtml(){
     "     image up, down, left or right. It should move half a screen every time... Then you can also",
     "     navigate around using a phone or tablet.\" Over the picture, in its corner, because on a phone",
     "     the toolbar above wraps out of sight. -->",
-    "<div id=\"tracePadPan\" style=\"position:absolute;right:8px;bottom:8px;display:grid;grid-template-columns:repeat(3,38px);grid-template-rows:repeat(3,38px);gap:3px;opacity:.9\">",
+    "<!-- SECTIONS, BESIDE THE ARROWS.  2026-11-13. Søren: \"buttons to change slices up or down on the tracing",
+    "     pad next to the movement buttons and a place you can change the number of slices up or down. Make it",
+    "     not fill too much of the screen.\" A slim fourth column on the left of the arrows: back a step, how",
+    "     many sections a step is (the same number as the box above the pad), on a step. -->",
+    "<div id=\"tracePadPan\" style=\"position:absolute;right:8px;bottom:8px;display:grid;grid-template-columns:38px repeat(3,38px);grid-template-rows:repeat(3,38px);gap:3px;opacity:.9\">",
+    "<button type=\"button\" class=\"padzbtn\" data-z=\"-1\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer;margin-right:5px;font-size:13px\" title=\"Back one step of sections (, key)\" aria-label=\"Previous section\">z&#9650;</button>",
     "<span></span>",
     "<button type=\"button\" class=\"padpan\" data-pan=\"0,-0.5\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer\" title=\"Move the picture half a screen up\" aria-label=\"Move up\">&#9650;</button>",
     "<span></span>",
+    "<input type=\"text\" id=\"tracePadStepMini\" inputmode=\"numeric\" value=\"5\" style=\"width:38px;height:38px;box-sizing:border-box;margin-right:5px;padding:0;text-align:center;font-size:14px;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4)\" title=\"How many sections a step moves (the same number as the box above the pad)\" aria-label=\"Sections per step\">",
     "<button type=\"button\" class=\"padpan\" data-pan=\"-0.5,0\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer\" title=\"Move the picture half a screen left\" aria-label=\"Move left\">&#9664;</button>",
     "<span></span>",
     "<button type=\"button\" class=\"padpan\" data-pan=\"0.5,0\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer\" title=\"Move the picture half a screen right\" aria-label=\"Move right\">&#9654;</button>",
+    "<button type=\"button\" class=\"padzbtn\" data-z=\"1\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer;margin-right:5px;font-size:13px\" title=\"On one step of sections (. key)\" aria-label=\"Next section\">z&#9660;</button>",
     "<span></span>",
     "<button type=\"button\" class=\"padpan\" data-pan=\"0,0.5\" style=\"padding:0;width:38px;height:38px;font-size:16px;line-height:1;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);cursor:pointer\" title=\"Move the picture half a screen down\" aria-label=\"Move down\">&#9660;</button>",
     "<span></span>",
@@ -9661,6 +9743,9 @@ function tracingCardHtml(){
     "     modifier-key gesture is a tool here instead: draw, AI outline, add part (shift), delete point",
     "     (right-click), delete contour (ctrl/cmd+right-click), correct the AI. ℹ shows the words. -->",
     "<button type=\"button\" id=\"tracePadCpBtn\" style=\"position:absolute;right:8px;top:44px;z-index:6;padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;\" title=\"Tools: draw, AI outline, add part, delete, follow, zoom\" aria-label=\"Tools\">&#9776;</button>",
+    "<!-- FULL SCREEN.  2026-11-13. Søren: \"It would be nice if the tracing pad could go fullscreen.\" -->",
+    "<button type=\"button\" id=\"tracePadFs\" style=\"position:absolute;right:54px;top:44px;z-index:6;padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;\" title=\"Full screen (Esc to leave)\" aria-label=\"Full screen\">&#9974;</button>",
+    "<div id=\"tracePadFsInfo\" style=\"position:absolute;left:8px;bottom:8px;z-index:5;display:none;max-width:calc(100% - 210px);padding:4px 8px;border-radius:7px;background:rgba(0,0,0,.6);color:#e6edf3;font-size:12px;line-height:1.35;pointer-events:none\"></div>",
     "<div id=\"tracePadCp\" style=\"position:absolute;right:8px;top:90px;z-index:6;display:none;grid-template-columns:repeat(2,40px);gap:4px;padding:6px;border-radius:10px;background:rgba(13,17,23,.82);border:1px solid rgba(255,255,255,.25);max-height:calc(100% - 100px);overflow:auto\">",
     "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Tools\"></div>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"hand\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Manual: click points, drag points to move them (key 1)\" aria-label=\"draw\"><span>&#9998;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">draw</span></button>",
