@@ -4673,6 +4673,40 @@ function previewJpeg(){
     return cv.toDataURL("image/jpeg", 0.78);
   } catch (e){ return ""; }
 }
+/* ── THE PICTURE ON THE SCENE'S CARD ─────────────────────────────────────────  2026-11-14
+   Søren, on the Academy's card for his planetarium scene (a black frame with a few specks): "it would be nice if
+   it was a picture from somewhere in the middle of the scene and not before cells are loaded." So the picture is
+   no longer simply whatever the screen showed when 💾 was pressed:
+     · it waits (up to 20 s) until the shown cells have their meshes and nothing is still loading;
+     · with a timeline, it is taken at the MIDDLE of the film -- past any fade from black, with the camera,
+       the view and the effects of that moment -- and the playhead, camera and view are put back afterwards.
+   The scene itself is captured BEFORE any of this, so what is saved is exactly what was on screen. */
+async function previewForSave(say){
+  if (renderer.xr.isPresenting) return previewJpeg();
+  const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+  const busy = () => CELLS.some(c => !c.hidden && !c.mesh && !c.nucMesh && !c.err)
+    || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length))
+    || (typeof tlWaiting === "function" && (() => { try { return tlWaiting(); } catch (e){ return false; } })());
+  const settle = async (maxS) => {
+    const t0 = performance.now();
+    while (busy() && performance.now() - t0 < maxS * 1000){ if (say) say(); await new Promise(r => setTimeout(r, 250)); }
+    for (let i = 0; i < 3; i++) await frame();
+  };
+  const useTl = typeof TL !== "undefined" && typeof tlCount === "function" && tlCount() > 0 && TL.dur > 0 && !TL.playing;
+  if (!useTl){ await settle(20); return previewJpeg(); }
+  const keep = { t: TL.t, pos: camera.position.clone(), q: camera.quaternion.clone(), up: camera.up.clone(), target: controls.target.clone() };
+  let pic = "";
+  try {
+    tlSeek(TL.dur / 2);
+    await settle(20);
+    tlSeek(TL.dur / 2);                     // once more, now that what loaded meanwhile is there to show
+    for (let i = 0; i < 3; i++) await frame();
+    pic = previewJpeg();
+  } catch (e){ console.warn("[vr] preview at mid-film:", e); }
+  try { tlSeek(keep.t); } catch (e){}
+  camera.position.copy(keep.pos); camera.quaternion.copy(keep.q); camera.up.copy(keep.up); controls.target.copy(keep.target); controls.update();
+  return pic || previewJpeg();
+}
 function sceneLink(id){ return location.href.replace(/[#?].*$/, "") + "#scene=" + id; }
 /* ── YOUR SCENES (2026-10-24, Søren: "When you are editing the scene yourself, you should be able to either update your
    scene by saving it or save as a new scene. When updating the scene the link ... should contain the update, so that
@@ -4700,7 +4734,9 @@ async function saveScene(fromVR, asNew){
   }
   const title = (document.getElementById("sceneTitle").value || "").trim()
     || SCENE.title || (CELLS.length + " cells · " + new Date().toLocaleDateString());
-  const sc = captureScene(), json = JSON.stringify(sc), preview = previewJpeg();
+  const sc = captureScene(), json = JSON.stringify(sc);
+  out.textContent = tlCount() ? "Taking the picture from the middle of the timeline…" : "Taking the picture…";
+  const preview = await previewForSave(() => { out.textContent = "Taking the picture — waiting for the cells to finish loading…"; });
   out.textContent = "Saving " + Math.round(json.length / 1024) + " kB…";
   const body = { type: "vr_scene", credential: CRED, title, scene: json, preview, cells: CELLS.length, ds: "ujump",
                  story: tlCount() ? Math.round(TL.dur) : 0 };      // the forum offers "▶ Play its story" when there is one
