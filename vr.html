@@ -1950,7 +1950,7 @@ async function loadOneInner(c, token, light){
     addActivityAttributes(g);
     const mesh = new THREE.Mesh(g, cellMaterial(cellTint(c, c.colour)));
     mesh.userData.cell = c.i;
-    content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3;
+    content.add(mesh); c.mesh = mesh; c.tris = geo.indices.length / 3; try { paintCell(c); } catch (e){}
     if (ds.mesh && ds.mesh.forceLegacy) c.status = (c.tris / 1000).toFixed(1) + "k triangles · " + (geo.fragmentCount || 1) + " of " + (1 + extras.length) + " fragments have a mesh"
              + (geo.simplified ? " · simplified (light detail)" : "");      /* χJump: cb2 has no LODs; its cells are many fragments */
     else c.status = (c.tris / 1000).toFixed(0) + "k triangles · LOD " + geo.lod + "/" + (geo.numLods - 1)
@@ -4556,6 +4556,23 @@ function tlPaintTo(t){
 function tlPaintStep(t0, t1){
   if (!TL.paint || !TL.paint.length) return;
   replayStrokes(TL.paint.filter(x => x[0] > t0 && x[0] <= t1).map(x => x[1]));
+}
+/* ── A NEW MESH GETS ITS PAINT (2026-11-15, Søren: "spraypaint does not show in the recording") ──
+   Paint lives in a mesh's own vertex colours, and a cell is given a new mesh more often than it looks: when the film
+   reads the cells at the detail its views ask for, when the detail is switched, when a level is swapped back in.
+   Each of those meshes started blank, so the paint of a take (and any other paint) vanished as the film began. Now
+   every mesh a cell receives is repainted from the remembered dabs: all of them, except a timeline's own dabs later
+   than the playhead while a timeline is being played or scrubbed. */
+function paintCell(c){
+  const m = c && c.mesh; if (!m || !m.geometry || !m.geometry.attributes.paint) return;
+  const key = "r:" + (c.root || c.nuc);
+  const a = m.geometry.attributes.paint, gl = m.geometry.attributes.paintGlow;
+  a.array.fill(0); a.needsUpdate = true; if (gl){ gl.array.fill(0); gl.needsUpdate = true; }
+  const tp = typeof TL !== "undefined" && TL.paint && TL.paint.length ? TL.paint : null;
+  if (!tp){ replayStrokes(STROKES, key); return; }
+  const later = new Set(tp.filter(x => x[0] > TL.t + 1e-6).map(x => JSON.stringify(x[1])));
+  const timed = (TL.playing || TL.paintAt != null);
+  replayStrokes(timed ? STROKES.filter(st => !later.has(JSON.stringify(st))) : STROKES, key);
 }
 function replayStrokes(list, onlyKey){
   for (const st of list){
@@ -8605,6 +8622,7 @@ function lodSwapIn(c, d){
   lodStash(c);
   for (const m of [e.mesh, e.nuc]) if (m) content.add(m);
   c.mesh = e.mesh; c.nucMesh = e.nuc; c.tris = e.tris; c.status = e.status; c.lod = d; c.deferred = false; c.graph = null;
+  try { paintCell(c); } catch (e2){}
 }
 /* Every cell the film shows, at every detail it is shown at, read now (hidden). */
 async function tlPrepCells(){
@@ -9012,6 +9030,22 @@ function takeStop(){
   try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
   MENU.dirty = true;
 }
+/* ── START OVER (2026-11-15, Søren: "We also need some way to delete the whole timeline and start over") ──
+   Every key in every lane and the take's own paint (its dabs are taken off the cells too); the length stays. The
+   timeline as it was is kept in the undo history first, so Undo brings it back. In the headset it asks twice: the
+   first press arms it for 4 s and says how much will go. */
+function tlClearAll(){
+  tlSave();
+  if (TL.playing) tlStop();
+  const mine = new Set((TL.paint || []).map(x => JSON.stringify(x[1])));
+  if (mine.size){ for (let i = STROKES.length - 1; i >= 0; i--) if (mine.has(JSON.stringify(STROKES[i]))) STROKES.splice(i, 1);
+    try { paintZero(); replayStrokes(STROKES); } catch (e){} }
+  TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintAt = null; TL.t = 0; TL.sel = null;
+  try { TLVR.sel = null; TLVR.dirty = true; } catch (e){}
+  tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
+  ctxNote.textContent = "The timeline is empty — record a new take or add keys. (Undo brings the old one back.)";
+  MENU.dirty = true;
+}
 function tlHeadsetRows(rows){
   const n = tlCount();
   rows.push({ label: TLVR.on ? "Hide the timeline panel" : "Show the timeline panel (edit it with the ray)", on: TLVR.on, icon: "timeline", act: () => setTlvr(!TLVR.on) });
@@ -9034,6 +9068,11 @@ function tlHeadsetRows(rows){
   rows.push({ label: here ? "Delete the " + here + " key" + (here > 1 ? "s" : "") + " at the playhead" : "No key at the playhead", icon: "trash",
               act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
+  if (n || (TL.paint && TL.paint.length)){
+    const armed = TL.clearArm && performance.now() - TL.clearArm < 4000;
+    rows.push({ label: armed ? "Press again to delete all " + n + " keys" + (TL.paint && TL.paint.length ? " and the take's paint" : "") : "Delete the whole timeline (start over)",
+                icon: "trash", exit: armed, act: () => { if (armed){ TL.clearArm = 0; tlClearAll(); } else { TL.clearArm = performance.now(); setTimeout(() => { MENU.dirty = true; }, 4100); } } });
+  }
 }
 /* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
    Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
@@ -10128,6 +10167,10 @@ function menuFaceHead(){
   _mq0.slerp(_mq1, 0.75);
   m.parent.getWorldQuaternion(_mqp);
   m.quaternion.copy(_mqp.invert().multiply(_mq0));
+  /* AIMING (2026-11-15, Søren: "it often marks the one below"): the turned palette must be the one the ray is tested
+     against. The world matrix was left at the hand's own angle, so the ray hit a palette tilted differently from
+     the one drawn -- one row off. */
+  m.updateMatrixWorld(true);
 }
 function menuFrame(){
   if (!MENU.open) return;
@@ -11763,7 +11806,7 @@ function tlBuild(){
   bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(600, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
   bar.querySelector("#tlRec").onclick = () => tlRecord();
   bar.querySelector("#tlLib").onclick = () => { const b = bar.querySelector("#tlLibBox"); if (b.style.display === "none"){ b.style.display = ""; tlLibOpen(); } else b.style.display = "none"; };
-  bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.sel = null; tlSave(); tlSync(); };
+  bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; tlClearAll(); };
   bar.querySelector("#tlClose").onclick = () => setTimeline(false);
   /* Mouse on the lanes: a key is picked and dragged; anywhere else scrubs. */
   const cv = TLD.cv;
