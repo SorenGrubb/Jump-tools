@@ -4702,6 +4702,7 @@ function captureScene(){
   const sc = {
     v: 1, savedAt: new Date().toISOString(),
     timeline: (tlCount()) ? tlData() : undefined,
+    voice: VOICE.data ? { data: VOICE.data, offset: VOICE.offset, dur: VOICE.dur } : undefined,
     cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass }, c.group ? { group: c.group } : {},
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
@@ -4821,6 +4822,7 @@ async function saveScene(fromVR, asNew){
   const wasId = SCENE.id;
   SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title; rememberMyScene(d.sceneId); sceneButtons();
   try { if (typeof TL !== "undefined") localStorage.setItem(tlStoreKey(), JSON.stringify(tlData())); } catch (e){}   // the draft follows the scene's (new) id
+  try { if (VOICE.data) voiceStore(); } catch (e){}                                                                 // ...and so does its voice
   history.replaceState(null, "", "#scene=" + d.sceneId);
   const link = sceneLink(d.sceneId);
   const what = d.updated ? "Updated — the same link; everybody who opens it now sees this version"
@@ -4992,6 +4994,7 @@ async function applyScene(sc){
     }
   }
   if (sc.timeline){ tlLoad(sc.timeline); tlSave(); }
+  try { voiceSet(sc.voice && sc.voice.data, sc.voice && sc.voice.offset, sc.voice && sc.voice.dur); } catch (e){}
   /* PLAY ITS STORY (2026-10-16): a link from the forum ending &play=1 opens the timeline and plays
      it once the cells are in -- a scene's story watched in anyone's browser, nothing downloaded. */
   /* AND NOW BY DEFAULT (2026-10-23, Søren: "When you share a scene that has a timeline it should by default
@@ -8981,6 +8984,7 @@ function vrCamKeyFrom(p, f, sp, sq, ss){
 function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
 function takeStart(){
   Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], lastS: 0, lastV: 0, lastVJ: "" });
+  voiceStart();
   if (TL.playing) tlStop();
   takeFrame(true);
   ctxNote.textContent = "⏺ Recording a take: move, look, switch things on and off, stimulate — ⏹ when you are done.";
@@ -9023,6 +9027,7 @@ function takeStop(){
   TL.keys.view = TAKE.views.map(x => tlKey("view", { t: Math.round(x.t * 10) / 10, v: x.v, fade: 0.5 }));
   TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
   TL.paint = TAKE.paint.filter(x => x[0] <= dur);
+  voiceStop(dur).then(got => { if (got){ ctxNote.textContent += " Your voice was recorded with it" + (VOICE.lang === "da" ? "" : "") + " — “Make subtitles from my voice” turns it into captions."; MENU.dirty = true; } });
   TL.dur = dur; TL.t = 0;
   tlSort(); tlSave(); tlSync();
   try { TL.keys.cam.forEach(k => tlThumb(k)); } catch (e){}
@@ -9041,6 +9046,7 @@ function tlClearAll(){
   if (mine.size){ for (let i = STROKES.length - 1; i >= 0; i--) if (mine.has(JSON.stringify(STROKES[i]))) STROKES.splice(i, 1);
     try { paintZero(); replayStrokes(STROKES); } catch (e){} }
   TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintAt = null; TL.t = 0; TL.sel = null;
+  try { voiceSet(null); } catch (e){}
   try { TLVR.sel = null; TLVR.dirty = true; } catch (e){}
   tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
   ctxNote.textContent = "The timeline is empty — record a new take or add keys. (Undo brings the old one back.)";
@@ -9068,11 +9074,261 @@ function tlHeadsetRows(rows){
   rows.push({ label: here ? "Delete the " + here + " key" + (here > 1 ? "s" : "") + " at the playhead" : "No key at the playhead", icon: "trash",
               act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
+  rows.push({ label: "Record my voice with takes", on: VOICE.on, icon: "speaker", act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
+  if (VOICE.data) rows.push({ label: VOICE.busy ? "… making subtitles" : "Make subtitles from my voice (" + (VOICE.lang === "da" ? "Danish" : "English") + ")", icon: "pen", act: voiceTranscribe });
+  rows.push({ label: "   Language: " + (VOICE.lang === "da" ? "Danish (bigger model, slower)" : "English") + "  ▸", icon: "speaker", act: () => { VOICE.lang = VOICE.lang === "da" ? "en" : "da"; voiceOpts(); } });
+  { const modes = ["none"].concat(VOICE.data ? ["rec"] : [], NARR_VOICES.map(v => v[0])), m = narrMode();
+    rows.push({ label: (NARR.busy ? "… preparing the voice-over" : "Voice-over: " + narrLabel(m)) + "  ▸", icon: "speaker",
+                act: () => { TL.narr = modes[(modes.indexOf(m) + 1) % modes.length]; tlSave(); if (TL.narr !== "none" && TL.narr !== "rec") narrPrep(); } }); }
+  if (VOICE.data) rows.push({ label: "Delete my voice recording (captions stay)", icon: "trash", act: narrDeleteRecording });
   if (n || (TL.paint && TL.paint.length)){
     const armed = TL.clearArm && performance.now() - TL.clearArm < 4000;
     rows.push({ label: armed ? "Press again to delete all " + n + " keys" + (TL.paint && TL.paint.length ? " and the take's paint" : "") : "Delete the whole timeline (start over)",
                 icon: "trash", exit: armed, act: () => { if (armed){ TL.clearArm = 0; tlClearAll(); } else { TL.clearArm = performance.now(); setTimeout(() => { MENU.dirty = true; }, 4100); } } });
   }
+}
+/* ── 49. YOUR VOICE, AND SUBTITLES FROM IT ──────────────────────────────────────  2026-11-15
+   Søren: "Could we look into whether it would be possible to transcribe what I am saying while recording and make
+   subtitles for the video? Would it be possible without having to buy or pay for those services?" -- "Yes build it."
+   -- "Mostly English".
+
+   · RECORDING. With "Record my voice with takes" on, a take also records the microphone (the browser asks once). It is
+     kept as a small Opus file (32 kbit/s, ~240 kB a minute) with the timeline: in this browser (IndexedDB) and in a
+     saved scene, so a take made in the headset can be transcribed on the PC. Takes are limited to 8 minutes of voice.
+   · SUBTITLES. Whisper (OpenAI's open speech model) runs IN THE BROWSER through transformers.js -- no account, no
+     service, nothing sent anywhere; the model is downloaded once from Hugging Face and cached. English uses
+     whisper-base.en (~80 MB); Danish whisper-small (~250 MB, slower, much better than the small models in Danish).
+     Each sentence it hears becomes a caption key at its moment (marked as from your voice, so transcribing again
+     replaces them and leaves your own captions alone), editable like any other caption -- so it is in the film
+     and in the headset. ⬇ .srt gives the same as a subtitle file for a video editor or YouTube.
+   · PLAYBACK. The voice plays with the timeline -- in the headset, on the PC, and into the film's sound track.
+   It runs on a PC in seconds to a minute (WebGPU when there is one); on a Quest 2 it works but slowly. */
+const VOICE = { on: true, lang: "en", rec: null, chunks: [], stream: null, data: null, offset: 0, dur: 0, audio: null, pcm48: null, busy: false };
+try { const o = JSON.parse(localStorage.getItem("vr_voice_opts") || "{}"); if (o.on === false) VOICE.on = false; if (o.lang) VOICE.lang = o.lang; } catch (e){}
+function voiceOpts(){ try { localStorage.setItem("vr_voice_opts", JSON.stringify({ on: VOICE.on, lang: VOICE.lang })); } catch (e){} MENU.dirty = true; }
+/* the voice beside the timeline, in IndexedDB (localStorage is too small and the undo history must not carry it) */
+function voiceDb(){ return new Promise((ok, no) => { const r = indexedDB.open("vr_voice", 1); r.onupgradeneeded = () => r.result.createObjectStore("v"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
+async function voiceStore(){ try { const db = await voiceDb(), tx = db.transaction("v", "readwrite"); tx.objectStore("v").put(VOICE.data ? { data: VOICE.data, offset: VOICE.offset, dur: VOICE.dur } : null, tlStoreKey()); } catch (e){} }
+async function voiceLoadStored(){
+  try { const db = await voiceDb(); const v = await new Promise(ok => { const r = db.transaction("v").objectStore("v").get(tlStoreKey()); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); });
+    if (v && v.data) voiceSet(v.data, v.offset, v.dur, false); } catch (e){}
+}
+function voiceSet(data, offset, dur, store){
+  VOICE.data = data || null; VOICE.offset = offset || 0; VOICE.dur = dur || 0; VOICE.pcm48 = null;
+  if (VOICE.audio){ try { VOICE.audio.pause(); } catch (e){} }
+  VOICE.audio = data ? new Audio(data) : null;
+  if (store !== false) voiceStore();
+  MENU.dirty = true; try { TLVR.dirty = true; } catch (e){}
+  const b = document.getElementById("tlSubs"); if (b) b.disabled = !data;
+  try { narrUi(); } catch (e){}
+}
+async function voiceStart(){
+  if (!VOICE.on || !navigator.mediaDevices || typeof MediaRecorder === "undefined") return;
+  try {
+    VOICE.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+    VOICE.chunks = [];
+    VOICE.rec = new MediaRecorder(VOICE.stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
+    VOICE.rec.ondataavailable = e => { if (e.data && e.data.size) VOICE.chunks.push(e.data); };
+    VOICE.rec.onstart = () => { VOICE.offset = Math.max(0, (performance.now() - TAKE.t0) / 1000); };
+    VOICE.rec.start(1000);
+  } catch (e){ ctxNote.textContent = "Recording without your voice: the microphone was not available (" + (e.message || e) + ")."; VOICE.rec = null; }
+}
+function voiceStop(dur){
+  const r = VOICE.rec; if (!r) return Promise.resolve(false);
+  VOICE.rec = null;
+  return new Promise(ok => {
+    r.onstop = async () => {
+      try { VOICE.stream && VOICE.stream.getTracks().forEach(t => t.stop()); } catch (e){}
+      const blob = new Blob(VOICE.chunks, { type: r.mimeType || "audio/webm" }); VOICE.chunks = [];
+      if (blob.size < 2000){ ok(false); return; }
+      if (blob.size > 2.4e6){ ctxNote.textContent = "Your voice was not kept: over 8 minutes is too much to save with a scene."; ok(false); return; }
+      const data = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+      voiceSet(data, VOICE.offset, dur); ok(true);
+    };
+    try { r.stop(); } catch (e){ ok(false); }
+  });
+}
+/* the voice follows the timeline's playhead */
+function voicePlay(){ const a = VOICE.audio; if (!a || TL.rec) return; try { a.currentTime = Math.max(0, TL.t - VOICE.offset); if (TL.t >= VOICE.offset - 0.05) a.play().catch(() => {}); else { VOICE.waitT = VOICE.offset; } } catch (e){} }
+function voicePause(){ const a = VOICE.audio; if (a) try { a.pause(); } catch (e){} VOICE.waitT = null; }
+function voiceFrame(){ if (VOICE.waitT != null && TL.playing && TL.t >= VOICE.waitT && narrMode() === "rec"){ VOICE.waitT = null; voicePlay(); } }
+/* for the film: the voice as 48 kHz samples, mixed into the sound track at the timeline's moment */
+async function voicePrep48(){
+  if (!VOICE.data || VOICE.pcm48) return;
+  try { const buf = await (await fetch(VOICE.data)).arrayBuffer(); const ac = new OfflineAudioContext(1, 48000, 48000);
+    VOICE.pcm48 = (await ac.decodeAudioData(buf)).getChannelData(0); } catch (e){ console.warn("[vr] voice for the film:", e); }
+}
+/* ── Whisper in the page ── */
+const WHISPER = { lib: null, pipes: {} };
+async function whisperPipe(lang, say){
+  if (!WHISPER.lib) WHISPER.lib = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js");
+  const model = lang === "da" ? "Xenova/whisper-small" : "Xenova/whisper-base.en";
+  if (WHISPER.pipes[model]) return WHISPER.pipes[model];
+  const gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null));
+  const prog = {};
+  const opts = { device: gpu ? "webgpu" : "wasm", dtype: gpu ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8",
+    progress_callback: p => { if (p.status === "progress" && p.total){ prog[p.file] = [p.loaded, p.total];
+      const L = Object.values(prog).reduce((a, x) => a + x[0], 0), T = Object.values(prog).reduce((a, x) => a + x[1], 0);
+      say("Downloading the speech model (once): " + Math.round(L / 1e6) + " of " + Math.round(T / 1e6) + " MB…"); } } };
+  try { WHISPER.pipes[model] = await WHISPER.lib.pipeline("automatic-speech-recognition", model, opts); }
+  catch (e){ if (!gpu) throw e; opts.device = "wasm"; opts.dtype = "q8"; WHISPER.pipes[model] = await WHISPER.lib.pipeline("automatic-speech-recognition", model, opts); }
+  return WHISPER.pipes[model];
+}
+async function voiceTranscribe(){
+  if (!VOICE.data || VOICE.busy) return;
+  VOICE.busy = true; MENU.dirty = true;
+  const say = t => { ctxNote.textContent = "🗣 " + t; MENU.dirty = true; };
+  try {
+    say("Getting the speech model ready…");
+    const asr = await whisperPipe(VOICE.lang, say);
+    say("Listening to your voice…");
+    const buf = await (await fetch(VOICE.data)).arrayBuffer();
+    const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0);
+    const t0 = performance.now();
+    const out = await asr(pcm, Object.assign({ return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 },
+                                             VOICE.lang === "da" ? { language: "danish", task: "transcribe" } : {}));
+    const chunks = (out.chunks || [{ timestamp: [0, pcm.length / 16000], text: out.text || "" }]).filter(c => String(c.text || "").trim());
+    /* one caption per sentence it heard; a long one is cut at the words, its time shared out by length */
+    const caps = [];
+    for (const c of chunks){
+      const a = +c.timestamp[0] || 0, b = c.timestamp[1] == null ? a + 3 : +c.timestamp[1], words = String(c.text).trim().split(/\s+/);
+      const parts = []; let cur = [];
+      for (const w of words){ cur.push(w); if (cur.join(" ").length > 70){ parts.push(cur.join(" ")); cur = []; } }
+      if (cur.length) parts.push(cur.join(" "));
+      const tot = parts.reduce((x, p) => x + p.length, 0); let t = a;
+      for (const p of parts){ const d = Math.max(1.2, (b - a) * p.length / tot); caps.push({ t: +(t + VOICE.offset).toFixed(2), dur: +d.toFixed(2), text: p }); t += d; }
+    }
+    tlSave();
+    TL.keys.cap = TL.keys.cap.filter(k => !k.voice);
+    for (const c of caps) if (c.t < TL.dur) TL.keys.cap.push(tlKey("cap", Object.assign({ pos: "bottom", size: "m" }, TL.capStyle || {}, c, { voice: true })));
+    tlSort(); tlSave(); tlSync(); try { TLVR.dirty = true; } catch (e){}
+    say(caps.length ? caps.length + " subtitles from your voice (" + ((performance.now() - t0) / 1000).toFixed(0) + " s) — they are caption keys now: edit, move or delete them like any other. ⬇ .srt for a subtitle file."
+                    : "No speech was heard in the take's recording.");
+    try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
+  } catch (e){ say("Subtitles failed: " + (e && e.message || e)); console.warn("[vr] whisper:", e); }
+  VOICE.busy = false; MENU.dirty = true;
+}
+function srtTime(t, vtt){ const ms = Math.round(t * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s2 = Math.floor(ms / 1000) % 60, r = ms % 1000;
+  const p = (x, n) => String(x).padStart(n, "0"); return p(h, 2) + ":" + p(m, 2) + ":" + p(s2, 2) + (vtt ? "." : ",") + p(r, 3); }
+function voiceSrt(){
+  const caps = TL.keys.cap.slice().sort((a, b) => a.t - b.t).filter(k => String(k.text || "").trim());
+  if (!caps.length){ ctxNote.textContent = "No captions to save."; return; }
+  const txt = caps.map((k, i) => (i + 1) + "\n" + srtTime(k.t) + " --> " + srtTime(k.t + (k.dur || 3)) + "\n" + String(k.text).trim() + "\n").join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/x-subrip" }));
+  a.download = (SCENE.title || "jump-vr").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") + ".srt"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  ctxNote.textContent = "Saved to your downloads: " + a.download + " (" + caps.length + " subtitles).";
+}
+/* ── 50. A VOICE-OVER FROM THE CAPTIONS ─────────────────────────────────────────  2026-11-15
+   Søren: "When people want to make and download the video of the scene. Can we make the captions into an AI voice,
+   so we don't have to save their recorded voices, but can generate them from the captions and overlay them on the
+   spike and heartbeat sounds?"
+   Kokoro (an open 82 M-parameter text-to-speech model, Apache 2.0) runs IN THE BROWSER through kokoro-js -- no
+   service, no cost, nothing sent anywhere; the model is downloaded once from Hugging Face (WebGPU: ~330 MB, about
+   real time; without WebGPU: ~90 MB, measured 2.3× slower than real time on Søren's PC). Each caption is spoken at
+   its moment; a spoken caption is kept (in memory and IndexedDB), so it is generated only once, and again only if
+   its text or the voice changes. English only (Kokoro has no Danish voice).
+   "Voice-over" (timeline bar; in the headset View → Timeline) is one of: none · your recording · four AI voices.
+   It plays with the timeline and goes into the film's sound track, on top of the spikes, heartbeat and breathing.
+   With an AI voice the recording is not needed: "Delete my recording" removes it from this browser and from the
+   scene the next time it is saved; the captions stay. */
+const NARR_VOICES = [["af_heart", "AI voice: Heart (US, female)"], ["am_michael", "AI voice: Michael (US, male)"], ["bf_emma", "AI voice: Emma (UK, female)"], ["bm_george", "AI voice: George (UK, male)"]];
+const NARR = { tts: null, loading: null, mem: new Map(), busy: false, clips: [], sig: "", srcs: [], ctx: null };
+function narrMode(){ return TL.narr || (VOICE.data ? "rec" : "none"); }
+function narrLabel(m){ return m === "none" ? "none" : m === "rec" ? "your recording" : (NARR_VOICES.find(v => v[0] === m) || [m, m])[1].replace("AI voice: ", "AI voice — "); }
+async function narrTts(say){
+  if (NARR.tts) return NARR.tts;
+  if (NARR.loading) return NARR.loading;
+  NARR.loading = (async () => {
+    const { KokoroTTS } = await import("https://cdn.jsdelivr.net/npm/kokoro-js@1.2.0/+esm");
+    const gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null)), prog = {};
+    const pc = p => { if (p.status === "progress" && p.total){ prog[p.file] = [p.loaded, p.total];
+      const L = Object.values(prog).reduce((a, x) => a + x[0], 0), T = Object.values(prog).reduce((a, x) => a + x[1], 0);
+      say("Downloading the AI voice (once): " + Math.round(L / 1e6) + " of " + Math.round(T / 1e6) + " MB…"); } };
+    try { NARR.tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: gpu ? "fp32" : "q8", device: gpu ? "webgpu" : "wasm", progress_callback: pc }); }
+    catch (e){ if (!gpu) throw e; NARR.tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: "q8", device: "wasm", progress_callback: pc }); }
+    return NARR.tts;
+  })();
+  try { return await NARR.loading; } finally { NARR.loading = null; }
+}
+function narrDb(){ return new Promise((ok, no) => { const r = indexedDB.open("vr_narr", 1); r.onupgradeneeded = () => r.result.createObjectStore("a"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
+async function narrClip(voice, text, say){
+  const key = voice + "|" + text;
+  if (NARR.mem.has(key)) return NARR.mem.get(key);
+  let pcm = null;
+  try { const db = await narrDb(); pcm = await new Promise(ok => { const r = db.transaction("a").objectStore("a").get(key); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch (e){}
+  if (!pcm){
+    const tts = await narrTts(say);
+    const out = await tts.generate(text, { voice });
+    /* 24 kHz from the model, 48 kHz for the film and the speakers (linear: speech has nothing up there to alias) */
+    const a = out.audio, r = out.sampling_rate || 24000, n = Math.round(a.length * 48000 / r);
+    pcm = new Float32Array(n);
+    for (let i = 0; i < n; i++){ const x = i * r / 48000, j = Math.floor(x), u = x - j; pcm[i] = (a[j] || 0) * (1 - u) + (a[j + 1] || 0) * u; }
+    try { const db = await narrDb(); db.transaction("a", "readwrite").objectStore("a").put(pcm, key); } catch (e){}
+  }
+  NARR.mem.set(key, pcm);
+  return pcm;
+}
+function narrCaps(){ return TL.keys.cap.filter(k => String(k.text || "").trim()).sort((a, b) => a.t - b.t); }
+async function narrPrep(){
+  const m = narrMode(); if (m === "none" || m === "rec"){ NARR.clips = []; NARR.sig = ""; return; }
+  const caps = narrCaps(), sig = m + "|" + JSON.stringify(caps.map(k => [k.t, k.text]));
+  if (sig === NARR.sig && NARR.clips.length === caps.length) return;
+  NARR.busy = true;
+  const say = t => { ctxNote.textContent = "🗣 " + t; MENU.dirty = true; };
+  try {
+    const clips = []; let i = 0;
+    for (const k of caps){
+      say("The voice-over: caption " + (++i) + " of " + caps.length + "…");
+      const text = String(k.text).replace(/\s+/g, " ").trim();
+      clips.push({ t: k.t, pcm: await narrClip(m, text, say) });
+    }
+    NARR.clips = clips; NARR.sig = sig;
+    say("Voice-over ready: " + clips.length + " caption" + (clips.length === 1 ? "" : "s") + " spoken by " + narrLabel(m).replace("AI voice — ", "") + ".");
+  } catch (e){ say("The voice-over could not be made: " + (e && e.message || e)); console.warn("[vr] voice-over:", e); NARR.clips = []; NARR.sig = ""; }
+  NARR.busy = false; MENU.dirty = true;
+}
+/* live: each spoken caption scheduled from the playhead */
+function narrStart(){
+  const m = narrMode();
+  if (m === "rec"){ voicePlay(); return; }
+  if (m === "none") return;
+  const go = () => {
+    narrStopAll();
+    if (!TL.playing || TL.rec || !NARR.clips.length) return;          // a film gets it in its sound track, not the speakers
+    spkWake(); const ctx = SPK.ctx; if (!ctx) return;
+    for (const c of NARR.clips){
+      const len = c.pcm.length / 48000; if (c.t + len <= TL.t) continue;
+      const b = ctx.createBuffer(1, c.pcm.length, 48000); b.copyToChannel(c.pcm, 0);
+      const src = ctx.createBufferSource(), g = ctx.createGain(); g.gain.value = 0.9; src.buffer = b; src.connect(g); g.connect(ctx.destination);
+      const wait = Math.max(0, c.t - TL.t), off = Math.max(0, TL.t - c.t);
+      src.start(ctx.currentTime + wait, off); NARR.srcs.push(src);
+    }
+  };
+  if (NARR.busy) { const w = setInterval(() => { if (!NARR.busy){ clearInterval(w); go(); } }, 200); }
+  else narrPrep().then(go);
+}
+function narrStopAll(){ for (const s2 of NARR.srcs) try { s2.stop(); } catch (e){} NARR.srcs = []; voicePause(); }
+/* the film: the spoken captions mixed in at their moments (audFrame) */
+function narrSample(si){
+  let v = 0;
+  for (const c of NARR.clips){ const j = si - Math.round(c.t * 48000); if (j >= 0 && j < c.pcm.length) v += c.pcm[j]; }
+  return v;
+}
+function narrDeleteRecording(){
+  if (!VOICE.data) return;
+  if (narrMode() === "rec") TL.narr = "none";
+  voiceSet(null);
+  ctxNote.textContent = "Your recording is deleted from this browser (and from the scene when you save it again). The captions stay — choose an AI voice for the voice-over.";
+  tlSave(); MENU.dirty = true; narrUi();
+}
+function narrUi(){
+  const s2 = document.getElementById("tlNarr"); if (!s2) return;
+  s2.innerHTML = '<option value="none">Voice-over: none</option>' + (VOICE.data ? '<option value="rec">Voice-over: your recording</option>' : "")
+    + NARR_VOICES.map(([v, l]) => '<option value="' + v + '">Voice-over: ' + l.replace("AI voice: ", "AI — ") + '</option>').join("");
+  s2.value = narrMode();
+  const d = document.getElementById("tlVoiceDel"); if (d) d.style.display = VOICE.data ? "" : "none";
 }
 /* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
    Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
@@ -10731,14 +10987,19 @@ function audFrame(v){
     /* the breath: white noise through a two-pole band (~350–1000 Hz), the same sound as the live band-pass */
     const w = Math.random() * 2 - 1; A.lp += 0.12 * (w - A.lp); A.hp = 0.955 * (A.hp + A.lp - A.lpPrev); A.lpPrev = A.lp;
     const b = A.hp * (g0 + (g1 - g0) * i / n) * 2.2, k = (s0 + i) & AUD_M;
-    d[i] = Math.max(-1, Math.min(1, A.L[k] + b)); d[n + i] = Math.max(-1, Math.min(1, A.R[k] + b)); A.L[k] = 0; A.R[k] = 0;
+    /* your voice (section 49), at the timeline's moment: the film's sound starts with the timeline at 0 */
+    let vo = 0;
+    if (TL.rec){ const nm = narrMode();
+      if (nm === "rec" && VOICE.pcm48){ const vi = s0 + i - Math.round(VOICE.offset * AUD_SR); if (vi >= 0 && vi < VOICE.pcm48.length) vo = VOICE.pcm48[vi] * 0.9; }
+      else if (nm !== "none" && NARR.clips.length) vo = narrSample(s0 + i) * 0.9; }
+    d[i] = Math.max(-1, Math.min(1, A.L[k] + b + vo)); d[n + i] = Math.max(-1, Math.min(1, A.R[k] + b + vo)); A.L[k] = 0; A.R[k] = 0;
   }
   A.gPrev = g1; A.pos = s1;
   try { const ad = new AudioData({ format: "f32-planar", sampleRate: AUD_SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(s0 * 1e6 / AUD_SR), data: d }); A.enc.encode(ad); ad.close(); }
   catch (e){ console.warn("[vr] film sound:", e); }
 }
 async function audConfig(){
-  if (!SPK.snd || typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return null;
+  if (!(SPK.snd || (narrMode() === "rec" && VOICE.pcm48) || (narrMode() !== "none" && narrMode() !== "rec" && NARR.clips.length)) || typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return null;
   for (const [codec, mux] of [["mp4a.40.2", "aac"], ["opus", "opus"]]){
     const c = { codec, sampleRate: AUD_SR, numberOfChannels: 2, bitrate: 160000 };
     try { const r = await AudioEncoder.isConfigSupported(c); if (r && r.supported) return { cfg: c, mux }; } catch (e){}
@@ -11575,6 +11836,7 @@ function tlFrame(dt){
     });
   }
   try { tlPaintStep(t0, t1); } catch (e){}
+  try { voiceFrame(); } catch (e){}
   for (const f of [() => tlApplyViewAt(TL.t, true), () => { if (!RIDE.on) tlApplyCam(TL.t); }, () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
     try { f(); } catch (e){ if (!TL.errWarned){ TL.errWarned = true; console.warn("[vr] timeline:", e); } }
   if (TL.t >= TL.dur) tlStop(true);
@@ -11582,7 +11844,7 @@ function tlFrame(dt){
 }
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
-  tlVrStart(); tlPaintTo(TL.t);
+  tlVrStart(); tlPaintTo(TL.t); narrStart();
   /* A FRESH RUN (2026-10-24, Søren: "the cell is spiking even though that should not be active"): spikes, potentials and
      synaptic events left from the last run went on into the replay. Played from before the film's first stimulus, the
      activity starts clean. */
@@ -11595,7 +11857,7 @@ function tlPlay(){
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
-  tlVrEnd();
+  tlVrEnd(); narrStopAll();
   if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
   TL.playing = false; TL.frozen = false; TL.follow = null; TL.starting = false; controls.enabled = true; controls.update();
@@ -11606,6 +11868,7 @@ async function tlRecord(){
   if (REC.on) return;
   REC.fileCancelled = false; await recPickFile(); if (REC.fileCancelled) return;   // first, while the click still counts
   await tlPrepBlock();
+  if (narrMode() === "rec") await voicePrep48(); else { VOICE.pcm48 = null; await narrPrep(); }
   TL.t = 0; tlApplyViewAt(0); tlApplyCam(0);
   const mode = document.getElementById("recMode"); mode.value = "free";
   await startRecording();
@@ -11762,6 +12025,11 @@ function tlBuild(){
       <label class="tlLab">Length <input id="tlDur" type="number" min="2" max="600" step="1" value="20"> s</label>
       <label class="tlLab" title="Fade in from black at the start and out to black at the end, in seconds (0 = none). Shown only while playing and in the movie.">Black in <input id="tlFin" type="number" min="0" max="10" step="0.5" value="0"> out <input id="tlFout" type="number" min="0" max="10" step="0.5" value="0"> s</label>
       <button id="tlRec" title="Film the timeline from start to end with the recorder's size, shape and frame rate">⏺ Film it</button>
+      <button id="tlSubs" title="Subtitles from your voice: Whisper runs in this browser (free, nothing is sent anywhere) and writes caption keys at the moments you spoke. Record a take with the voice switch on first (in the headset: View → Timeline)." disabled>🗣 Subtitles</button>
+      <select id="tlSubsLang" title="The language you spoke in: English uses whisper-base.en (~80 MB, fast); Danish whisper-small (~250 MB, slower)"><option value="en">English</option><option value="da">Danish</option></select>
+      <select id="tlNarr" title="Who speaks the captions in the film and when the timeline plays: nobody, your own recording, or an AI voice made from the captions (Kokoro, free, runs in this browser; English)"></select>
+      <button id="tlVoiceDel" style="display:none" title="Delete your recorded voice (from this browser, and from the scene the next time you save it); the captions stay">🗑 My recording</button>
+      <button id="tlSrt" title="Save the captions as a subtitle file (.srt) for a video editor or YouTube">⬇ .srt</button>
       <button id="tlLib" title="Timelines saved on your profile: save this one (named after its scene -- also from somebody else's scene), or use one you saved here, on these cells">📚 My timelines</button>
       <button id="tlClear" title="Remove every key">Clear</button>
       <button id="tlClose" title="Close the timeline">✕</button>
@@ -11805,6 +12073,13 @@ function tlBuild(){
   bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
   bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(600, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
   bar.querySelector("#tlRec").onclick = () => tlRecord();
+  bar.querySelector("#tlSubs").onclick = () => voiceTranscribe();
+  bar.querySelector("#tlSubs").disabled = !VOICE.data;
+  { const ls = bar.querySelector("#tlSubsLang"); ls.value = VOICE.lang; ls.onchange = () => { VOICE.lang = ls.value; voiceOpts(); }; }
+  bar.querySelector("#tlSrt").onclick = () => voiceSrt();
+  narrUi();
+  bar.querySelector("#tlNarr").onchange = e => { TL.narr = e.target.value; tlSave(); if (TL.narr !== "none" && TL.narr !== "rec") narrPrep(); };
+  bar.querySelector("#tlVoiceDel").onclick = () => { if (confirm("Delete your recorded voice? The captions stay.")) narrDeleteRecording(); };
   bar.querySelector("#tlLib").onclick = () => { const b = bar.querySelector("#tlLibBox"); if (b.style.display === "none"){ b.style.display = ""; tlLibOpen(); } else b.style.display = "none"; };
   bar.querySelector("#tlClear").onclick = () => { if (!confirmClear()) return; tlClearAll(); };
   bar.querySelector("#tlClose").onclick = () => setTimeline(false);
@@ -11916,6 +12191,7 @@ function tlSeek(t){
   if (TL.keys.stim.length) try { resetActivity(); } catch (e){}
   TL.stateForce = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
   try { tlPaintTo(TL.t); } catch (e){}
+  if (TL.playing){ narrStopAll(); narrStart(); }
   /* each part on its own: one that fails must not leave the camera and the rest where they were */
   for (const f of [() => tlApplyViewAt(TL.t), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t)])
     try { f(); } catch (e){ console.warn("[vr] timeline seek:", e); }
@@ -12205,7 +12481,7 @@ function setTimeline(v){
   tlSync(); STIM._edgeKey = null;
 }
 /* Kept in this browser between visits, and in saved scenes. */
-function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}) }; }
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}), ...(TL.narr ? { narr: TL.narr } : {}) }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
 /* ONE TIMELINE PER SCENE (2026-10-29, Søren: "when I open a new VR instance and go to timeline, it has remembered the
    timeline I did for another scene ... the timeline should be individual for the scenes and saved with the scene").
@@ -12311,12 +12587,14 @@ function tlLoad(o, fromHistory){
   TL.cards = !!o.cards; { const b = document.getElementById("tlCards"); if (b) b.classList.toggle("on", TL.cards); }
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
   TL.paint = Array.isArray(o.paint) ? o.paint : [];
+  TL.narr = o.narr || null; try { narrUi(); } catch (e){}
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
   TL.sel = null; TL.multi.clear(); TL.viewApplied = null; tlSync(); tlPathBuild();
 }
 try { const o = JSON.parse(localStorage.getItem(tlStoreKey()) || "null"); if (o) tlLoad(o); } catch (e){}
+voiceLoadStored();                                       // the take's voice, kept beside this timeline (section 49)
 document.getElementById("tlBtn").addEventListener("click", () => setTimeline(!TL.open));
 addEventListener("keydown", e => {
   if (!TL.open || e.target.closest && e.target.closest("input, select, textarea")) return;
@@ -17766,7 +18044,7 @@ async function tlPrepMovie(){
     for (let k = 0; k < 300 && v.readyState < 2 && !v.error; k++) await new Promise(r => setTimeout(r, 100));
   } catch (e){ console.warn("[vr] film movie", e); }
 }
-function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || NV.recolBusy || NV._attaching || raVidWait()
+function tlWaiting(){ return !!(BLOCK.loading || VASC.tlBusy || STK.tlBusy || TL.prepBusy || NARR.busy || NV.recolBusy || NV._attaching || raVidWait()
   || (typeof LOD !== "undefined" && (LOD.busy || LOD.queue.length) && (TL.rec || REC.on || !TL.playing))); }
 function tlVessels(want){
   const sel = document.getElementById("vascSel");
