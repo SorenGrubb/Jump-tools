@@ -10111,8 +10111,27 @@ function menuAct(hit){
   else if (hit.row != null){ const r = MENU.rows[hit.row]; (hit.half && r.act2 ? r.act2 : r.act)(); }
   MENU.dirty = true;
 }
+/* ── THE PALETTE TURNS TOWARD YOUR EYES (2026-11-15, Søren: "I have to bend my wrist a bit down and to the left to
+   see it, I think it should be tilted slightly relative to the hand and slightly rotated so that it is facing my view
+   without having to bend my wrist") ── It stays on the hand, but each frame its face is turned three-quarters of the
+   way from the hand's own angle toward your eyes, upright. So it reads straight on from a relaxed wrist, and still
+   moves with the hand enough that you can tip it away. */
+const _mq0 = new THREE.Quaternion(), _mq1 = new THREE.Quaternion(), _mqp = new THREE.Quaternion(), _mp = new THREE.Vector3(), _mh = new THREE.Vector3(), _mm = new THREE.Matrix4();
+function menuFaceHead(){
+  const m = MENU.mesh; if (!m || !m.parent || MENU.floating || !renderer.xr.isPresenting) return;
+  m.rotation.set(-0.75, 0, 0); m.updateMatrixWorld(true);          // the hand's own angle, as before
+  m.getWorldQuaternion(_mq0); m.getWorldPosition(_mp);
+  _mh.setFromMatrixPosition(renderer.xr.getCamera().matrixWorld);
+  /* a plane's face is +z: look from the head to the panel's middle, so +z points back at the eyes, upright */
+  const mid = _mp.clone().add(new THREE.Vector3(0, PAL_W * (MENU.canvas ? MENU.canvas.height / MENU_W : 1) / 2, 0).applyQuaternion(_mq0));
+  _mm.lookAt(_mh, mid, new THREE.Vector3(0, 1, 0)); _mq1.setFromRotationMatrix(_mm);
+  _mq0.slerp(_mq1, 0.75);
+  m.parent.getWorldQuaternion(_mqp);
+  m.quaternion.copy(_mqp.invert().multiply(_mq0));
+}
 function menuFrame(){
   if (!MENU.open) return;
+  try { menuFaceHead(); } catch (e){}
   let hv = null;
   for (const h of hands){ const x = menuHit(h); if (x && !x.none){ hv = x; break; } }
   if (JSON.stringify(hv) !== JSON.stringify(MENU.hover)){ MENU.hover = hv; MENU.dirty = true; }
