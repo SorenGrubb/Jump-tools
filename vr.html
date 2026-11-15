@@ -9074,6 +9074,7 @@ function tlHeadsetRows(rows){
   rows.push({ label: here ? "Delete the " + here + " key" + (here > 1 ? "s" : "") + " at the playhead" : "No key at the playhead", icon: "trash",
               act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
+  rows.push({ label: "Captions in the headset", on: VR_CAPS_ON, icon: "pen", act: () => setVrCaps(!VR_CAPS_ON) });
   rows.push({ label: "Record my voice with takes", on: VOICE.on, icon: "speaker", act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
   if (VOICE.data) rows.push({ label: VOICE.busy ? "… making subtitles" : "Make subtitles from my voice (" + (VOICE.lang === "da" ? "Danish" : "English") + ")", icon: "pen", act: voiceTranscribe });
   rows.push({ label: "   Language: " + (VOICE.lang === "da" ? "Danish (bigger model, slower)" : "English") + "  ▸", icon: "speaker", act: () => { VOICE.lang = VOICE.lang === "da" ? "en" : "da"; voiceOpts(); } });
@@ -9159,7 +9160,58 @@ async function voicePrep48(){
   try { const buf = await (await fetch(VOICE.data)).arrayBuffer(); const ac = new OfflineAudioContext(1, 48000, 48000);
     VOICE.pcm48 = (await ac.decodeAudioData(buf)).getChannelData(0); } catch (e){ console.warn("[vr] voice for the film:", e); }
 }
-/* ── Whisper in the page ── */
+/* ── THE MODELS RUN IN A WORKER (2026-11-15, Søren: "When it starts making the captions the whole system freezes for a
+   minute or two ... When I start playing the scene ... it said preparing voice over and froze and then crashed") ──
+   Whisper and Kokoro ran on the page's own thread, so while they worked nothing else could: no drawing, no clicks,
+   and in a headset a frozen page is a crashed page. They now run in a background worker (measured on Søren's PC: the
+   page never paused more than 65 ms while both ran). The worker is made once and keeps its models. */
+const ML_WORKER_SRC = `
+let lib = null; const asr = {}; let tts = null;
+const say = t => self.postMessage({ op: "progress", text: t });
+async function gpu(){ try { return !!(self.navigator && navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e){ return false; } }
+function prog(what){ const p = {}; return x => { if (x.status === "progress" && x.total){ p[x.file] = [x.loaded, x.total];
+  let L = 0, T = 0; for (const k in p){ L += p[k][0]; T += p[k][1]; } say("Downloading " + what + " (once): " + Math.round(L / 1e6) + " of " + Math.round(T / 1e6) + " MB…"); } }; }
+self.onmessage = async e => { const m = e.data; try {
+  if (m.op === "asr"){
+    lib = lib || await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js");
+    const model = m.lang === "da" ? "Xenova/whisper-small" : "Xenova/whisper-base.en";
+    if (!asr[model]){ const g = !m.small && await gpu(), pc = prog("the speech model");
+      try { asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: g ? "webgpu" : "wasm", dtype: g ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8", progress_callback: pc }); }
+      catch (er){ asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: "wasm", dtype: "q8", progress_callback: pc }); } }
+    say("Listening to your voice…");
+    const out = await asr[model](m.pcm, m.opts || {});
+    self.postMessage({ id: m.id, ok: true, out });
+  } else if (m.op === "tts"){
+    if (!tts){ const { KokoroTTS } = await import("https://cdn.jsdelivr.net/npm/kokoro-js@1.2.0/+esm"); const g = !m.small && await gpu(), pc = prog("the AI voice");
+      try { tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: g ? "fp32" : "q8", device: g ? "webgpu" : "wasm", progress_callback: pc }); }
+      catch (er){ tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: "q8", device: "wasm", progress_callback: pc }); } }
+    const r = await tts.generate(m.text, { voice: m.voice });
+    self.postMessage({ id: m.id, ok: true, audio: r.audio, sr: r.sampling_rate }, [r.audio.buffer]);
+  }
+} catch (err){ self.postMessage({ id: m.id, ok: false, error: String(err && err.message || err) }); } };`;
+const MLW = { w: null, id: 0, cb: new Map(), say: null };
+function mlWorker(){
+  if (MLW.w) return MLW.w;
+  MLW.w = new Worker(URL.createObjectURL(new Blob([ML_WORKER_SRC], { type: "text/javascript" })), { type: "module" });
+  MLW.w.onmessage = e => { const d = e.data; if (d.op === "progress"){ if (MLW.say) MLW.say(d.text); return; }
+    const c = MLW.cb.get(d.id); if (c){ MLW.cb.delete(d.id); d.ok ? c[0](d) : c[1](new Error(d.error)); } };
+  MLW.w.onerror = e => { const err = new Error("the model worker stopped (" + (e.message || "error") + ")"); MLW.cb.forEach(c => c[1](err)); MLW.cb.clear(); try { MLW.w.terminate(); } catch (x){} MLW.w = null; };
+  return MLW.w;
+}
+function mlCall(msg, transfer, say){
+  return new Promise((ok, no) => { const id = ++MLW.id; MLW.cb.set(id, [ok, no]); MLW.say = say || null; mlWorker().postMessage(Object.assign({ id }, msg), transfer || []); });
+}
+/* NOT IN THE HEADSET: the models are 80-330 MB; a Quest 2 has too little memory to hold them beside the scene, and
+   running out of memory is a crash, not a slow answer. Subtitles and the AI voice-over are made on the PC; the headset
+   plays what was made (captions always; a voice-over spoken earlier in this browser). */
+function mlHeadsetRefuse(what){ return false; }
+/* IN THE HEADSET, SMALL AND LET GO (2026-11-15, Søren: "I'm a bit hesitant to remove the option of ai voice from the
+   headset, it worked fine the first time I tried it"). The models are allowed in the headset again, but sized for it:
+   the compact 8-bit versions on the CPU (~80-90 MB rather than the 330 MB GPU version), one at a time, and the worker
+   holding them is closed as soon as the job is done, so the memory goes back to the scene. It is slower there than
+   on the PC (the first time also the download), and the page goes on responding while it works. */
+function mlSmall(){ return !!(renderer.xr && renderer.xr.isPresenting); }
+function mlRelease(){ if (mlSmall() && MLW.w){ try { MLW.w.terminate(); } catch (e){} MLW.w = null; MLW.cb.clear(); } }
 const WHISPER = { lib: null, pipes: {} };
 async function whisperPipe(lang, say){
   if (!WHISPER.lib) WHISPER.lib = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js");
@@ -9177,17 +9229,17 @@ async function whisperPipe(lang, say){
 }
 async function voiceTranscribe(){
   if (!VOICE.data || VOICE.busy) return;
+  if (mlHeadsetRefuse("Subtitles")) return;
   VOICE.busy = true; MENU.dirty = true;
   const say = t => { ctxNote.textContent = "🗣 " + t; MENU.dirty = true; };
   try {
-    say("Getting the speech model ready…");
-    const asr = await whisperPipe(VOICE.lang, say);
-    say("Listening to your voice…");
+    say("Making subtitles in the background — the first time the speech model is downloaded (" + (VOICE.lang === "da" ? "~250" : "~80") + " MB) and this can take a minute or two. You can go on working.");
     const buf = await (await fetch(VOICE.data)).arrayBuffer();
-    const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0);
+    const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0).slice();
     const t0 = performance.now();
-    const out = await asr(pcm, Object.assign({ return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 },
-                                             VOICE.lang === "da" ? { language: "danish", task: "transcribe" } : {}));
+    const out = WHISPER.lib ? await (await whisperPipe(VOICE.lang, say))(pcm, { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 })   // (a test hook)
+      : (await mlCall({ op: "asr", lang: VOICE.lang, small: mlSmall(), pcm, opts: Object.assign({ return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 },
+                                                                         VOICE.lang === "da" ? { language: "danish", task: "transcribe" } : {}) }, [pcm.buffer], say)).out;
     const chunks = (out.chunks || [{ timestamp: [0, pcm.length / 16000], text: out.text || "" }]).filter(c => String(c.text || "").trim());
     /* one caption per sentence it heard; a long one is cut at the words, its time shared out by length */
     const caps = [];
@@ -9203,10 +9255,11 @@ async function voiceTranscribe(){
     TL.keys.cap = TL.keys.cap.filter(k => !k.voice);
     for (const c of caps) if (c.t < TL.dur) TL.keys.cap.push(tlKey("cap", Object.assign({ pos: "bottom", size: "m" }, TL.capStyle || {}, c, { voice: true })));
     tlSort(); tlSave(); tlSync(); try { TLVR.dirty = true; } catch (e){}
+    mlRelease();
     say(caps.length ? caps.length + " subtitles from your voice (" + ((performance.now() - t0) / 1000).toFixed(0) + " s) — they are caption keys now: edit, move or delete them like any other. ⬇ .srt for a subtitle file."
                     : "No speech was heard in the take's recording.");
     try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
-  } catch (e){ say("Subtitles failed: " + (e && e.message || e)); console.warn("[vr] whisper:", e); }
+  } catch (e){ say("Subtitles failed: " + (e && e.message || e)); console.warn("[vr] whisper:", e); mlRelease(); }
   VOICE.busy = false; MENU.dirty = true;
 }
 function srtTime(t, vtt){ const ms = Math.round(t * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s2 = Math.floor(ms / 1000) % 60, r = ms % 1000;
@@ -9253,14 +9306,15 @@ async function narrTts(say){
   try { return await NARR.loading; } finally { NARR.loading = null; }
 }
 function narrDb(){ return new Promise((ok, no) => { const r = indexedDB.open("vr_narr", 1); r.onupgradeneeded = () => r.result.createObjectStore("a"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
-async function narrClip(voice, text, say){
+async function narrClip(voice, text, say, cachedOnly){
   const key = voice + "|" + text;
   if (NARR.mem.has(key)) return NARR.mem.get(key);
   let pcm = null;
   try { const db = await narrDb(); pcm = await new Promise(ok => { const r = db.transaction("a").objectStore("a").get(key); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch (e){}
+  if (!pcm && cachedOnly) return null;
   if (!pcm){
-    const tts = await narrTts(say);
-    const out = await tts.generate(text, { voice });
+    const out = NARR.tts ? await NARR.tts.generate(text, { voice })                                        // (a test hook)
+                         : await mlCall({ op: "tts", voice, text, small: mlSmall() }, [], say).then(d => ({ audio: d.audio, sampling_rate: d.sr }));
     /* 24 kHz from the model, 48 kHz for the film and the speakers (linear: speech has nothing up there to alias) */
     const a = out.audio, r = out.sampling_rate || 24000, n = Math.round(a.length * 48000 / r);
     pcm = new Float32Array(n);
@@ -9278,15 +9332,19 @@ async function narrPrep(){
   NARR.busy = true;
   const say = t => { ctxNote.textContent = "🗣 " + t; MENU.dirty = true; };
   try {
-    const clips = []; let i = 0;
+    const clips = []; let i = 0, missing = 0;
+    const vr = false;                                              // (the headset makes them too now, small; see mlSmall)
     for (const k of caps){
-      say("The voice-over: caption " + (++i) + " of " + caps.length + "…");
+      say((vr ? "The voice-over: " : "Making the voice-over in the background (the first time the AI voice is downloaded, " + (mlSmall() ? "~90 MB; slower in the headset" : "up to ~330 MB") + "): ") + "caption " + (++i) + " of " + caps.length + "…");
       const text = String(k.text).replace(/\s+/g, " ").trim();
-      clips.push({ t: k.t, pcm: await narrClip(m, text, say) });
+      const pcm = await narrClip(m, text, say, vr);
+      if (pcm) clips.push({ t: k.t, pcm }); else missing++;
     }
-    NARR.clips = clips; NARR.sig = sig;
-    say("Voice-over ready: " + clips.length + " caption" + (clips.length === 1 ? "" : "s") + " spoken by " + narrLabel(m).replace("AI voice — ", "") + ".");
-  } catch (e){ say("The voice-over could not be made: " + (e && e.message || e)); console.warn("[vr] voice-over:", e); NARR.clips = []; NARR.sig = ""; }
+    NARR.clips = clips; NARR.sig = missing ? "" : sig;
+    mlRelease();
+    say(missing ? "The AI voice-over is made on the PC (too big for the headset's memory): " + missing + " caption" + (missing === 1 ? " is" : "s are") + " shown without it."
+                : "Voice-over ready: " + clips.length + " caption" + (clips.length === 1 ? "" : "s") + " spoken by " + narrLabel(m).replace("AI voice — ", "") + ".");
+  } catch (e){ say("The voice-over could not be made: " + (e && e.message || e)); console.warn("[vr] voice-over:", e); NARR.clips = []; NARR.sig = ""; mlRelease(); }
   NARR.busy = false; MENU.dirty = true;
 }
 /* live: each spoken caption scheduled from the playhead */
@@ -11398,6 +11456,39 @@ function capFrame(W, H){
     }
   }
   CAPS.forEach((c, id) => { if (!live.has(id)) c.mesh.visible = false; });
+}
+/* ── CAPTIONS IN THE HEADSET (2026-11-15, Søren: "I haven't seen the text captions subtitles play while running the
+   scene in the headset. Please make sure it is shown") ── The captions are drawn in the screen's second pass, which a
+   headset never has (and only with the PC's timeline bar open). In the headset each caption is a card in the room:
+   1.4 m ahead of you and a little below your eyes, facing you, following where you look slowly (half a second
+   behind) so it reads like a subtitle without swimming. Same card, same fade, same stacking as on the screen. */
+const VR_CAPS = new Map(), _vcF = new THREE.Vector3(), _vcP = new THREE.Vector3();
+/* an option (Søren: "Or make it an option to show"): View → Timeline → "Captions in the headset", on by default */
+let VR_CAPS_ON = true; try { VR_CAPS_ON = localStorage.getItem("vr_caps_headset") !== "0"; } catch (e){}
+function setVrCaps(v){ VR_CAPS_ON = !!v; try { localStorage.setItem("vr_caps_headset", v ? "1" : "0"); } catch (e){} MENU.dirty = true; }
+function capVrFrame(dt){
+  const live = new Set();
+  if (VR_CAPS_ON && renderer.xr.isPresenting && typeof TL !== "undefined" && TL.keys.cap.length){
+    const h = vrHeadPose(), f = h.f.clone(); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, -1); f.normalize();
+    if (!VR_CAPS.fwd) VR_CAPS.fwd = f.clone(); else VR_CAPS.fwd.lerp(f, Math.min(1, (dt || 0.016) * 2)).normalize();
+    const fw = VR_CAPS.fwd, PXM = 0.0011;                                   // 1080 px of card height ≈ 1.2 m at 1.4 m away
+    let stack = 0;
+    for (const k of TL.keys.cap.slice().sort((a, b) => a.t - b.t)){
+      const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
+      const fade = Math.min(1, a / 0.4, (k.dur - a) / 0.4), c = capCard(k, 1080);
+      let m = VR_CAPS.get(k.id);
+      if (!m){ m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+        m.renderOrder = 40; m.frustumCulled = false; scene.add(m); VR_CAPS.set(k.id, m); }
+      if (m.material.map !== c.tex){ m.material.map = c.tex; m.material.needsUpdate = true; }
+      const w = c.w * PXM, hh = c.h * PXM;
+      const up = k.pos === "top" ? 0.32 : k.pos === "middle" ? 0 : -0.3;
+      _vcP.copy(h.p).addScaledVector(fw, 1.4); _vcP.y = h.p.y + up - (k.pos === "top" ? -stack : stack) - (k.pos === "top" ? 0 : hh / 2);
+      m.position.copy(_vcP); m.scale.set(w, hh, 1); m.lookAt(h.p.x, m.position.y, h.p.z);
+      m.material.opacity = fade; m.visible = true; live.add(k.id);
+      stack += hh + 0.015;
+    }
+  }
+  VR_CAPS.forEach((m, id) => { if (id !== "fwd" && !live.has(id)) m.visible = false; });
 }
 const _ls = new THREE.Vector2();
 /* The second pass: top right, about 7 % of the canvas height. */
@@ -17518,6 +17609,7 @@ renderer.setAnimationLoop(() => {
      never ticked */
   if (renderer.xr.isPresenting){ xrMark("frame: controllers"); inputFrame(); sticks(dt); grabUpdate(); xrMark("frame: palette"); menuFrame(); try { tlFrame(dt); } catch (e){ console.warn("[vr] timeline in the headset:", e); } }
   else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
+  try { capVrFrame(dt); } catch (e){ if (!window.__capVrWarned){ window.__capVrWarned = true; console.warn("[vr] captions in the headset:", e); } }
   placeLabel();
   try { recGuide(); } catch (e){}
   cutFrame();
