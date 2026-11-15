@@ -4546,10 +4546,11 @@ function paintZero(){
   }
 }
 function tlPaintTo(t){
-  if (typeof TL === "undefined" || !TL.paint || !TL.paint.length) return;
+  if (typeof TL === "undefined" || ((!TL.paint || !TL.paint.length) && !Array.isArray(TL.paintBase))) return;
+  TL.paint = TL.paint || [];
   const mine = new Set(TL.paint.map(x => JSON.stringify(x[1])));
   paintZero();
-  replayStrokes(STROKES.filter(st => !mine.has(JSON.stringify(st))));
+  replayStrokes(Array.isArray(TL.paintBase) ? TL.paintBase : STROKES.filter(st => !mine.has(JSON.stringify(st))));
   replayStrokes(TL.paint.filter(x => x[0] <= t + 1e-6).map(x => x[1]));
   TL.paintAt = t;
 }
@@ -4568,11 +4569,13 @@ function paintCell(c){
   const key = "r:" + (c.root || c.nuc);
   const a = m.geometry.attributes.paint, gl = m.geometry.attributes.paintGlow;
   a.array.fill(0); a.needsUpdate = true; if (gl){ gl.array.fill(0); gl.needsUpdate = true; }
-  const tp = typeof TL !== "undefined" && TL.paint && TL.paint.length ? TL.paint : null;
+  const tp = typeof TL !== "undefined" && ((TL.paint && TL.paint.length) || Array.isArray(TL.paintBase)) ? (TL.paint || []) : null;
   if (!tp){ replayStrokes(STROKES, key); return; }
-  const later = new Set(tp.filter(x => x[0] > TL.t + 1e-6).map(x => JSON.stringify(x[1])));
   const timed = (TL.playing || TL.paintAt != null);
-  replayStrokes(timed ? STROKES.filter(st => !later.has(JSON.stringify(st))) : STROKES, key);
+  if (!timed){ replayStrokes(STROKES, key); return; }
+  if (Array.isArray(TL.paintBase)){ replayStrokes(TL.paintBase, key); replayStrokes(tp.filter(x => x[0] <= TL.t + 1e-6).map(x => x[1]), key); return; }
+  const later = new Set(tp.filter(x => x[0] > TL.t + 1e-6).map(x => JSON.stringify(x[1])));
+  replayStrokes(STROKES.filter(st => !later.has(JSON.stringify(st))), key);
 }
 function replayStrokes(list, onlyKey){
   for (const st of list){
@@ -4694,6 +4697,33 @@ function signInUI(boxId){
     google.accounts.id.prompt();
   } catch (e){ box.textContent = "Google sign-in could not start: " + (e.message || e); }
 }
+/* ── SIGNED OUT IN THE HEADSET (2026-11-15, Søren: "When I press save the scene and I'm logged out for some reason of
+   Google, there's no warning, and there's no option to log into Google in the headset.") A Google sign-in lasts an
+   hour, and Google's button cannot be drawn inside a headset. So:
+   · while you are in the headset the sign-in is renewed by itself shortly before it runs out (Google's automatic
+     sign-in, which needs no click when you have signed in on this device before);
+   · if a save finds you signed out, it says so in the headset at once, tries that automatic sign-in, and finishes the
+     save by itself when it works;
+   · if it does not, View → "Leave VR to sign in" takes the headset out to the page with Google's button showing; the
+     waiting save finishes as soon as you have signed in, and you can enter VR again. */
+function vrSilentSignIn(){
+  try { if (window.google && google.accounts && google.accounts.id){ google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCred, auto_select: true }); google.accounts.id.prompt(); } } catch (e){}
+}
+function vrSignInAgain(){
+  const msg = "You are signed out of Google (a sign-in lasts an hour). Signing you in again… The save finishes by itself once you are signed in.";
+  ctxNote.textContent = msg; try { flashWarn(msg, 5000, "#f0a742"); } catch (e){}
+  vrSilentSignIn(); MENU.dirty = true;
+  setTimeout(() => { if (!credOk() && renderer.xr.isPresenting){
+    const m2 = "Could not sign in from inside the headset. Palette → View → “Leave VR to sign in”: Google's button is then on the page; your save finishes as soon as you are signed in.";
+    ctxNote.textContent = m2; try { flashWarn(m2, 9000, "#f0a742"); } catch (e){} MENU.dirty = true; } }, 7000);
+}
+function vrLeaveToSignIn(){
+  const se = renderer.xr.getSession(); if (se) se.end();
+  setTimeout(() => { signInUI("sceneSignin"); const b = document.getElementById("sceneBox"); if (b) b.scrollIntoView({ behavior: "smooth", block: "center" });
+    ctxNote.textContent = "Sign in with Google here (the button under the scene title)" + (SCENE.waiting ? " — the scene is then saved" : "") + ", and enter VR again."; }, 400);
+}
+/* renewed quietly in the headset 5 minutes before it runs out */
+setInterval(() => { try { if (renderer.xr.isPresenting && CRED && CRED_EXP * 1000 - Date.now() < 5 * 60000) vrSilentSignIn(); } catch (e){} }, 60000);
 window.UJ_CHAT_SIGNIN = el => signInUI(el);
 signInUI("vrSignin");
 const v3 = v => [+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)];
@@ -4801,6 +4831,7 @@ async function saveScene(fromVR, asNew){
   if (!credOk()){
     SCENE.waiting = { vr: fromVR, asNew: !!asNew };
     out.textContent = "Sign in with Google to save — the scene will carry your name.";
+    if (renderer.xr.isPresenting){ vrSignInAgain(); return; }
     if (fromVR) ctxNote.textContent = "To save from the headset, sign in once on the PC panel (the button under the scene title), then save again here.";
     signInUI(); return;
   }
@@ -8983,7 +9014,7 @@ function vrCamKeyFrom(p, f, sp, sq, ss){
 }
 function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
 function takeStart(){
-  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], lastS: 0, lastV: 0, lastVJ: "" });
+  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], base: STROKES.slice(), lastS: 0, lastV: 0, lastVJ: "" });
   voiceStart();
   if (TL.playing) tlStop();
   takeFrame(true);
@@ -9027,6 +9058,7 @@ function takeStop(){
   TL.keys.view = TAKE.views.map(x => tlKey("view", { t: Math.round(x.t * 10) / 10, v: x.v, fade: 0.5 }));
   TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
   TL.paint = TAKE.paint.filter(x => x[0] <= dur);
+  TL.paintBase = TAKE.base;                          // the paint that was there when the take began; later paint is not in the film
   voiceStop(dur).then(got => { if (got){ ctxNote.textContent += " Your voice was recorded with it" + (VOICE.lang === "da" ? "" : "") + " — “Make subtitles from my voice” turns it into captions."; MENU.dirty = true; } });
   TL.dur = dur; TL.t = 0;
   tlSort(); tlSave(); tlSync();
@@ -9045,7 +9077,7 @@ function tlClearAll(){
   const mine = new Set((TL.paint || []).map(x => JSON.stringify(x[1])));
   if (mine.size){ for (let i = STROKES.length - 1; i >= 0; i--) if (mine.has(JSON.stringify(STROKES[i]))) STROKES.splice(i, 1);
     try { paintZero(); replayStrokes(STROKES); } catch (e){} }
-  TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintAt = null; TL.t = 0; TL.sel = null;
+  TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintBase = undefined; TL.paintAt = null; TL.t = 0; TL.sel = null;
   try { voiceSet(null); } catch (e){}
   try { TLVR.sel = null; TLVR.dirty = true; } catch (e){}
   tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
@@ -9914,8 +9946,8 @@ function menuRows(){
   if (t === "Show"){
     /* Google's button cannot be drawn inside an immersive session, so the headset says where you stand and where to
        sign in: on the page (top of the panel), before Enter VR -- the Quest browser shows that page first. */
-    rows.push({ label: credOk() ? "✓ Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — sign in with Google at the top of the page, then Enter VR",
-                act: () => { if (!credOk()) ctxNote.textContent = "Sign in with Google at the top of the panel (leave VR first); your identifications, tracings and scenes are then saved under your name."; } });
+    rows.push({ label: credOk() ? "✓ Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to leave VR and sign in with Google",
+                act: () => { if (!credOk()) vrLeaveToSignIn(); } });
     const allShown = CELLS.every(c => !c.hidden);
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
     rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
@@ -10270,7 +10302,8 @@ function menuRows(){
       rows.push({ label: "◂ Bigger ×1.5   |   smaller ▸", act: () => setSize(stage.scale.x / FIT_SCALE * 1.5),
                   act2: () => setSize(stage.scale.x / FIT_SCALE / 1.5) });
       if (INPUT.mode === "hands") rows.push({ label: "Bring the palette here", act: floatMenu });
-      rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : ""), act: () => saveScene(true) });
+      if (!credOk()) rows.push({ label: "Not signed in — leave VR to sign in with Google", icon: "user", exit: true, act: vrLeaveToSignIn });
+      rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : "") + (credOk() ? "" : " (needs sign-in)"), act: () => saveScene(true) });
       if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       S("Timeline");
@@ -11560,11 +11593,30 @@ function tlCaptureView(){
            vpart: Object.assign({}, VPART.on),
            /* the perivascular space too (2026-10-24, Søren: "I tried to add the perivascular space and it added it to all
               the views"); a key made before it was kept counts as "off", like the CSF tracer */
-           pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w } };
+           pvs: { mode: document.getElementById("pvsSel").value, w: PVS.w },
+           /* ── WHAT CAME LATER IS NOT IN THE FILM (2026-11-15, Søren: "If paint has been applied after the scene was
+              recorded, it should not be there when the timeline starts playing. This goes for other things as well.")
+              A view also holds the EM section, the cut and the measurements, so a view key puts them back as they were
+              when it was made; a key made before this holds none of them and leaves them as they are. */
+           em: EM.centre && (EM.mesh || EM.loading) ? { c: EM.centre.map(x => +x.toFixed(3)), size: EM.size } : null,
+           cut: CUT.mode === "desk" || CUT.mode === "em" || CUT.mode === "off" ? CUT.mode : undefined,
+           meas: MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]) };
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
   if (!v) return;
+  try {
+    if (v.em !== undefined){
+      if (v.em){ const same = EM.centre && EM.mesh && v.em.c.every((x, i) => Math.abs(x - EM.centre[i]) < 0.01) && (v.em.size || "wide") === EM.size;
+        if (!same){ document.getElementById("emSize").value = v.em.size || "wide"; showEM(v.em.c); } }
+      else if (EM.mesh || EM.loading) hideEM();
+    }
+    if (v.cut !== undefined && v.cut !== CUT.mode && CUT.mode !== "hand") setCut(v.cut);
+    if (Array.isArray(v.meas)){
+      const now = JSON.stringify(MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]));
+      if (now !== JSON.stringify(v.meas)){ clearMeasure(); v.meas.forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); }); }
+    }
+  } catch (e){ console.warn("[vr] timeline view (EM, cut, measurements):", e); }
   /* Detail first, then the cells it applies to: each cell on show is re-read at this view's detail (lodCheck, run
      again by applyLook once the hidden/shown cells below are set), and the film holds until they are in (tlWaiting). */
   /* set quietly here; the cells are re-read at the END of this function, once this view's hidden/shown cells are set --
@@ -11936,6 +11988,8 @@ function tlFrame(dt){
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
   tlVrStart(); tlPaintTo(TL.t); narrStart();
+  /* your own measurements are not lost to a film's views: put back when it stops */
+  if (!TL.preMeas) TL.preMeas = MEAS.items.map(g => [g.userData.a.toArray(), g.userData.b.toArray()]);
   /* A FRESH RUN (2026-10-24, Søren: "the cell is spiking even though that should not be active"): spikes, potentials and
      synaptic events left from the last run went on into the replay. Played from before the film's first stimulus, the
      activity starts clean. */
@@ -11949,6 +12003,10 @@ function tlPlay(){
 }
 function tlStop(ended){
   tlVrEnd(); narrStopAll();
+  /* the paint of now again, once the film stops (the film showed only what its take had) */
+  if (Array.isArray(TL.paintBase) && TL.paintAt != null && !TL.rec){ TL.paintAt = null; try { paintZero(); replayStrokes(STROKES); } catch (e){} }
+  if (TL.preMeas){ const pm = TL.preMeas; TL.preMeas = null;
+    try { if (JSON.stringify(pm) !== JSON.stringify(MEAS.items.map(g => [g.userData.a.toArray(), g.userData.b.toArray()]))){ clearMeasure(); pm.forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); }); } } catch (e){} }
   if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
   TL.playing = false; TL.frozen = false; TL.follow = null; TL.starting = false; controls.enabled = true; controls.update();
@@ -12572,7 +12630,7 @@ function setTimeline(v){
   tlSync(); STIM._edgeKey = null;
 }
 /* Kept in this browser between visits, and in saved scenes. */
-function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}), ...(TL.narr ? { narr: TL.narr } : {}) }; }
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}), ...(TL.narr ? { narr: TL.narr } : {}), ...(Array.isArray(TL.paintBase) ? { paintBase: TL.paintBase } : {}) }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
 /* ONE TIMELINE PER SCENE (2026-10-29, Søren: "when I open a new VR instance and go to timeline, it has remembered the
    timeline I did for another scene ... the timeline should be individual for the scenes and saved with the scene").
@@ -12679,6 +12737,7 @@ function tlLoad(o, fromHistory){
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
   TL.paint = Array.isArray(o.paint) ? o.paint : [];
   TL.narr = o.narr || null; try { narrUi(); } catch (e){}
+  TL.paintBase = Array.isArray(o.paintBase) ? o.paintBase : undefined;
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
