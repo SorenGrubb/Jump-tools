@@ -4534,6 +4534,28 @@ function recordStroke(mesh, p, r){
   if (last && last[0] === k && last[5] === col && last[6] === fl && Math.abs(last[4] - r) < r * 0.05
       && Math.hypot(last[1] - p.x, last[2] - p.y, last[3] - p.z) < r / 3) return;
   STROKES.push([k, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +r.toFixed(2), col, fl]);
+  /* in a take, each dab remembers its moment, so the film sprays it when it was sprayed (section 47) */
+  if (typeof TAKE !== "undefined" && TAKE.on) TAKE.paint.push([+((performance.now() - TAKE.t0) / 1000).toFixed(2), STROKES[STROKES.length - 1]]);
+}
+/* Paint that belongs to the timeline (TL.paint: [t, dab]) is shown up to the playhead; every other dab always.
+   Repainting from scratch is cheap next to a frame, and only happens on ▶ and on a jump of the playhead. */
+function paintZero(){
+  for (const m of sprayTargets().concat(CELLS.filter(c => c.mesh).map(c => c.mesh))){
+    const a = m.geometry.attributes.paint; if (a){ a.array.fill(0); a.needsUpdate = true; }
+    const gl = m.geometry.attributes.paintGlow; if (gl){ gl.array.fill(0); gl.needsUpdate = true; }
+  }
+}
+function tlPaintTo(t){
+  if (typeof TL === "undefined" || !TL.paint || !TL.paint.length) return;
+  const mine = new Set(TL.paint.map(x => JSON.stringify(x[1])));
+  paintZero();
+  replayStrokes(STROKES.filter(st => !mine.has(JSON.stringify(st))));
+  replayStrokes(TL.paint.filter(x => x[0] <= t + 1e-6).map(x => x[1]));
+  TL.paintAt = t;
+}
+function tlPaintStep(t0, t1){
+  if (!TL.paint || !TL.paint.length) return;
+  replayStrokes(TL.paint.filter(x => x[0] > t0 && x[0] <= t1).map(x => x[1]));
 }
 function replayStrokes(list, onlyKey){
   for (const st of list){
@@ -8926,7 +8948,7 @@ function placeLabel(){
    EDIT IN THE HEADSET: play and pause (views, stimuli and captions -- the camera follows your head there), move the
    playhead, add a camera key from where you stand, a view key or a stimulus key, delete the keys at the playhead,
    undo. The full editor stays on the PC. */
-const TAKE = { on: false, t0: 0, samples: [], views: [], stims: [], lastS: 0, lastV: 0, lastVJ: "" };
+const TAKE = { on: false, t0: 0, samples: [], views: [], stims: [], paint: [], lastS: 0, lastV: 0, lastVJ: "" };
 const _hk = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
 function vrHeadPose(){
   const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; cam.updateMatrixWorld();
@@ -8940,7 +8962,7 @@ function vrCamKeyFrom(p, f, sp, sq, ss){
 }
 function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
 function takeStart(){
-  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], lastS: 0, lastV: 0, lastVJ: "" });
+  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], lastS: 0, lastV: 0, lastVJ: "" });
   if (TL.playing) tlStop();
   takeFrame(true);
   ctxNote.textContent = "⏺ Recording a take: move, look, switch things on and off, stimulate — ⏹ when you are done.";
@@ -8982,15 +9004,17 @@ function takeStop(){
   TL.keys.cam = cam.map(k => tlKey("cam", k));
   TL.keys.view = TAKE.views.map(x => tlKey("view", { t: Math.round(x.t * 10) / 10, v: x.v, fade: 0.5 }));
   TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
+  TL.paint = TAKE.paint.filter(x => x[0] <= dur);
   TL.dur = dur; TL.t = 0;
   tlSort(); tlSave(); tlSync();
   try { TL.keys.cam.forEach(k => tlThumb(k)); } catch (e){}
-  ctxNote.textContent = "⏹ The take is the timeline: " + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys. ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
+  ctxNote.textContent = "⏹ The take is the timeline: " + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys" + (TL.paint.length ? ", " + TL.paint.length + " paint dabs" : "") + ". ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
   try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
   MENU.dirty = true;
 }
 function tlHeadsetRows(rows){
   const n = tlCount();
+  rows.push({ label: TLVR.on ? "Hide the timeline panel" : "Show the timeline panel (edit it with the ray)", on: TLVR.on, icon: "timeline", act: () => setTlvr(!TLVR.on) });
   rows.push({ label: TAKE.on ? "⏹ Stop the take (" + Math.floor((performance.now() - TAKE.t0) / 1000) + " s) — it becomes the timeline" : "⏺ Record a take: what you do, smoothed into a timeline",
               icon: TAKE.on ? "stop" : "rec", act: () => TAKE.on ? takeStop() : takeStart(),
               /* while a take runs, its stop button stays at the top of the tab, whatever is folded */
@@ -8999,6 +9023,8 @@ function tlHeadsetRows(rows){
   rows.push({ label: (TL.playing ? "⏸ Pause" : "▶ Play") + " the timeline" + (n ? "" : " (no keys yet)"), icon: "play", act: () => { if (!n) return; TL.playing ? tlStop() : tlPlay(); } });
   rows.push({ label: "◂ −1 s   |   playhead " + TL.t.toFixed(1) + " / " + TL.dur + " s   |   +1 s ▸", icon: "timeline", act: () => tlSeek(TL.t - 1), act2: () => tlSeek(TL.t + 1) });
   rows.push({ label: "Back to the start", icon: "reset", act: () => tlSeek(0) });
+  rows.push({ label: TL.vrRide === false ? "Camera: I stay where I am  ▸" : "Camera: the room follows the recording  ▸", icon: "camera",
+              act: () => { const was = TL.playing; if (was) tlVrEnd(); TL.vrRide = TL.vrRide === false; if (was) tlVrStart(); } });
   rows.push({ label: "+ Camera key here (where I stand and look)", icon: "camera", act: () => tlAdd("cam", vrCamKeyNow()) });
   rows.push({ label: "+ View key here (what is shown now)", icon: "view", act: () => tlAdd("view", { v: tlCaptureView(), fade: 0.5 }) });
   const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
@@ -9008,6 +9034,157 @@ function tlHeadsetRows(rows){
   rows.push({ label: here ? "Delete the " + here + " key" + (here > 1 ? "s" : "") + " at the playhead" : "No key at the playhead", icon: "trash",
               act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
+}
+/* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
+   Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
+   View → Timeline → "Show the timeline panel" puts the timeline in the room, ~70 cm ahead and below your eyes,
+   tilted up toward you, in the palette's purple glass: the same lanes as the PC (camera, view, stimulus, caption,
+   effect, and the take's paint), the ruler, the playhead.
+   With the right hand's ray:
+     · trigger on the ruler or an empty part of a lane: the playhead jumps there (hold and move to scrub);
+     · trigger on a key: it is picked (white outline) -- hold and move to slide it in time (snapped to 0.1 s);
+     · the buttons along the top: play/pause, start, + camera key (where you stand), + view, + stimulus (picked
+       neuron), delete (the picked key, or the keys at the playhead), undo, bring the panel back in front of you,
+       close. Everything goes through the same timeline the PC edits, so undo, save and the PC editor see it. */
+const TLVR = { mesh: null, cv: null, g: null, tex: null, on: false, dirty: true, hover: null, drag: null, sel: null, lastDraw: 0 };
+const TLVR_W = 2048, TLVR_H = 700, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 196, TLVR_LH = 76;
+/* read when drawn: TL_LANES is declared further down the page */
+const tlvrLanes = () => TL_LANES.concat([["paint", "Paint", "#f778ba"]]);
+const TLVR_BTNS = [["play", "▶", "Play / pause"], ["home", "⏮", "To the start"], ["cam", "+ Camera"], ["view", "+ View"], ["stim", "+ Stimulus"],
+                   ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["close", "✕"]];
+function tlvrBtnRects(){
+  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" ? 96 : 190; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
+}
+const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * (TL.dur ? t / TL.dur : 0);
+const tlvrT = x => Math.max(0, Math.min(TL.dur, (x - TLVR_X0) / (TLVR_X1 - TLVR_X0) * TL.dur));
+function tlvrDraw(){
+  if (!TLVR.cv){ TLVR.cv = document.createElement("canvas"); TLVR.cv.width = TLVR_W; TLVR.cv.height = TLVR_H; TLVR.g = TLVR.cv.getContext("2d"); }
+  const g = TLVR.g, W = TLVR_W, H = TLVR_H;
+  g.clearRect(0, 0, W, H);
+  const pg = g.createLinearGradient(0, 0, 0, H); pg.addColorStop(0, "rgba(120,60,230,0.55)"); pg.addColorStop(1, "rgba(70,30,160,0.45)");
+  g.fillStyle = pg; g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 30); g.fill();
+  g.shadowColor = "#c58bff"; g.shadowBlur = 24; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 28); g.stroke(); g.shadowBlur = 0;
+  /* buttons */
+  for (const b of tlvrBtnRects()){
+    const hv = TLVR.hover && TLVR.hover.btn === b.id, on = b.id === "play" && TL.playing;
+    g.fillStyle = on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 16); g.fill();
+    if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
+    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.w < 100 ? 46 : 36) + "px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.label, b.x + b.w / 2, b.y + (b.w < 100 ? 64 : 60)); g.textAlign = "left";
+  }
+  g.fillStyle = "#f6ecff"; g.font = "600 40px system-ui, sans-serif"; g.textAlign = "right";
+  g.fillText(TL.t.toFixed(1) + " / " + TL.dur + " s", W - 40, 84); g.textAlign = "left";
+  /* ruler */
+  const ry = 140; g.strokeStyle = "rgba(240,220,255,0.6)"; g.lineWidth = 2; g.beginPath(); g.moveTo(TLVR_X0, ry + 40); g.lineTo(TLVR_X1, ry + 40); g.stroke();
+  const step = TL.dur > 120 ? 20 : TL.dur > 60 ? 10 : TL.dur > 20 ? 5 : TL.dur > 8 ? 2 : 1;
+  g.fillStyle = "#e9d5ff"; g.font = "28px system-ui, sans-serif"; g.textAlign = "center";
+  for (let t = 0; t <= TL.dur + 1e-6; t += step){ const x = tlvrX(t); g.beginPath(); g.moveTo(x, ry + 28); g.lineTo(x, ry + 40); g.stroke(); g.fillText(t + " s", x, ry + 20); }
+  g.textAlign = "left";
+  /* lanes and keys */
+  tlvrLanes().forEach(([lane, name, col], i) => {
+    const y = TLVR_LANE0 + i * TLVR_LH;
+    g.fillStyle = i % 2 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.09)"; g.fillRect(TLVR_X0, y, TLVR_X1 - TLVR_X0, TLVR_LH - 8);
+    /* the lane's colour as a dot, the name in white: blue and lilac names vanish on the purple glass */
+    g.fillStyle = col; g.beginPath(); g.arc(44, y + 34, 12, 0, 7); g.fill();
+    g.fillStyle = "#f6ecff"; g.font = "600 32px system-ui, sans-serif"; g.fillText(name, 66, y + 46);
+    const cy = y + (TLVR_LH - 8) / 2;
+    if (lane === "paint"){ (TL.paint || []).forEach(x => { const px = tlvrX(x[0]); g.fillStyle = x[1][5] || col; g.fillRect(px - 1.5, cy - 14, 3, 28); }); return; }
+    for (const k of TL.keys[lane] || []){
+      const x = tlvrX(k.t), sel = TLVR.sel === k, hv = TLVR.hover && TLVR.hover.key === k;
+      if (lane === "cap" || lane === "fx"){
+        const x2 = tlvrX(Math.min(TL.dur, k.t + (k.dur || 3)));
+        g.fillStyle = lane === "cap" ? "rgba(230,237,243,0.30)" : "rgba(210,168,255,0.35)"; g.beginPath(); g.roundRect(x, cy - 20, Math.max(14, x2 - x), 40, 8); g.fill();
+      }
+      g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : hv ? "#f3e2ff" : "#1b0f33"; g.lineWidth = sel ? 6 : 3;
+      g.beginPath();
+      if (lane === "cam"){ g.moveTo(x, cy - 22); g.lineTo(x + 22, cy); g.lineTo(x, cy + 22); g.lineTo(x - 22, cy); g.closePath(); }
+      else if (lane === "view") g.rect(x - 18, cy - 18, 36, 36);
+      else g.arc(x, cy, 18, 0, 7);
+      g.fill(); g.stroke();
+    }
+  });
+  /* the playhead */
+  const px = tlvrX(TL.t); g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.beginPath(); g.moveTo(px, ry + 30); g.lineTo(px, TLVR_LANE0 + tlvrLanes().length * TLVR_LH); g.stroke();
+  g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(px - 14, ry + 22); g.lineTo(px + 14, ry + 22); g.lineTo(px, ry + 42); g.closePath(); g.fill();
+  if (TLVR.sel){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
+    g.fillText("Picked: " + ({ cam: "camera", view: "view", stim: "stimulus", cap: "caption", fx: "effect" })[TLVR.sel.lane] + " key at " + TLVR.sel.t.toFixed(1) + " s — hold the trigger on it and move to slide it", TLVR_X0, H - 24); }
+  if (!TLVR.tex){ TLVR.tex = new THREE.CanvasTexture(TLVR.cv); TLVR.tex.colorSpace = THREE.SRGBColorSpace; }
+  TLVR.tex.needsUpdate = true;
+  if (!TLVR.mesh){
+    const w = 0.84, h = w * TLVR_H / TLVR_W;
+    TLVR.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: TLVR.tex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    TLVR.mesh.renderOrder = 31;
+  }
+  TLVR.dirty = false; TLVR.lastDraw = performance.now();
+}
+function tlvrPlace(){
+  const h = vrHeadPose(), f = h.f.clone(); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, -1); f.normalize();
+  TLVR.mesh.position.copy(h.p).addScaledVector(f, 0.7).add(new THREE.Vector3(0, -0.38, 0));
+  TLVR.mesh.lookAt(h.p.x, h.p.y - 0.1, h.p.z);
+}
+function setTlvr(on){
+  TLVR.on = !!on;
+  if (TLVR.on){ tlvrDraw(); if (!TLVR.mesh.parent) scene.add(TLVR.mesh); tlvrPlace(); }
+  else { if (TLVR.mesh && TLVR.mesh.parent) TLVR.mesh.parent.remove(TLVR.mesh); TLVR.drag = null; }
+  MENU.dirty = true;
+}
+const _tlvrRay = new THREE.Raycaster();
+function tlvrHit(h){
+  if (!TLVR.on || !TLVR.mesh || !TLVR.mesh.parent) return null;
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  _tlvrRay.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld); _tlvrRay.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  const hit = _tlvrRay.intersectObject(TLVR.mesh, false)[0]; if (!hit || !hit.uv) return null;
+  const x = hit.uv.x * TLVR_W, y = (1 - hit.uv.y) * TLVR_H;
+  for (const b of tlvrBtnRects()) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return { btn: b.id, x, y };
+  const li = Math.floor((y - TLVR_LANE0) / TLVR_LH), lane = tlvrLanes()[li] && tlvrLanes()[li][0];
+  let key = null;
+  if (lane && lane !== "paint" && x >= TLVR_X0 - 30){ let best = 34; for (const k of TL.keys[lane] || []){ const d = Math.abs(tlvrX(k.t) - x); if (d < best){ best = d; key = k; } } }
+  return { x, y, key, track: x >= TLVR_X0 - 30 && x <= TLVR_X1 + 30 && y >= 120 };
+}
+function tlvrButton(id){
+  const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
+  if (id === "play"){ if (TL.playing) tlStop(); else if (tlCount()) tlPlay(); }
+  else if (id === "home") tlSeek(0);
+  else if (id === "cam") tlAdd("cam", vrCamKeyNow());
+  else if (id === "view") tlAdd("view", { v: tlCaptureView(), fade: 0.5 });
+  else if (id === "stim"){ if (pick >= 0) tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 }); else ctxNote.textContent = "Pick a neuron first (trigger on it), then + Stimulus."; }
+  else if (id === "del"){
+    if (TLVR.sel){ const L = TLVR.sel.lane; TL.keys[L] = TL.keys[L].filter(k => k !== TLVR.sel); TLVR.sel = null; }
+    else for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25);
+    tlSave(); tlSync();
+  }
+  else if (id === "undo"){ tlUndo(-1); TLVR.sel = null; }
+  else if (id === "here") tlvrPlace();
+  else if (id === "close") setTlvr(false);
+  TLVR.dirty = true;
+}
+/* trigger pressed with the ray on the panel: true = the panel took it */
+function tlvrSelect(h){
+  const x = tlvrHit(h); if (!x) return false;
+  if (x.btn){ tlvrButton(x.btn); return true; }
+  if (x.key){ TLVR.sel = x.key; TLVR.drag = { h, key: x.key, t0: x.key.t, moved: false }; }
+  else if (x.track){ TLVR.sel = null; TLVR.drag = { h, scrub: true }; tlSeek(tlvrT(x.x)); }
+  TLVR.dirty = true; return true;
+}
+function tlvrRelease(h){
+  const d = TLVR.drag; if (!d || d.h !== h) return;
+  TLVR.drag = null;
+  if (d.key && d.moved){ tlSort(); tlSave(); tlSync(); try { tlPathBuild(); } catch (e){} }
+  TLVR.dirty = true;
+}
+function tlvrFrame(){
+  if (!TLVR.on || !renderer.xr.isPresenting) return;
+  let hv = null;
+  for (const h of hands){ const x = tlvrHit(h); if (x){ hv = { btn: x.btn || null, key: x.key || null }; break; } }
+  if ((hv && hv.btn) !== (TLVR.hover && TLVR.hover.btn) || (hv && hv.key) !== (TLVR.hover && TLVR.hover.key)){ TLVR.hover = hv; TLVR.dirty = true; }
+  const d = TLVR.drag;
+  if (d){ const x = tlvrHit(d.h);
+    if (x && !x.btn){
+      if (d.scrub){ const t = tlvrT(x.x); if (Math.abs(t - TL.t) > 0.04){ tlSeek(t); TLVR.dirty = true; } }
+      else if (d.key){ const t = Math.round(tlvrT(x.x) * 10) / 10; if (t !== d.key.t){ d.key.t = t; d.moved = true; TLVR.dirty = true; } }
+    } }
+  /* while playing the playhead moves: ten redraws a second is smooth enough and cheap enough for a Quest */
+  if (TLVR.dirty || (TL.playing && performance.now() - TLVR.lastDraw > 100)) tlvrDraw();
 }
 /* ── 46. GLOVED HANDS ─────────────────────────────────────────────────────────  2026-11-14
    Søren: "I want to explore the possibility of having hands instead of the black squares that are the controllers
@@ -9184,7 +9361,7 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "R" : "L", hand, tglove };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); });
+  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); tlvrRelease(h); });
   ctl.addEventListener("select", () => spkWake());
   ctl.addEventListener("selectstart", () => {
     /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
@@ -9200,6 +9377,7 @@ const hands = [0, 1].map(k => {
 function selectWith(h){
   const mh = menuHit(h);
   if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
+  if (tlvrSelect(h)) return;                         // on the timeline panel (section 48)
   const tool = isToolHand(h);
   if (TRW.on && tool){ trwHandStart(h); return; }
   if (FLY.trigger && tool){ flyWithHand(h); return; }
@@ -10339,7 +10517,7 @@ renderer.xr.setSession = async session => {
     } catch (e){}
   }
 };
-renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false;
+renderer.xr.addEventListener("sessionend", () => { INPUT.mode = "pads"; try { setTlvr(false); } catch (e){} if (MENU.mesh) MENU.mesh.scale.setScalar(1); MENU.floating = false;
   XRDBG.on = false; try { localStorage.removeItem("vr_xr_trace"); } catch (e){} });
 
 /* ── 15. A MOVIE OF THE VIEW, straight to the user's own disk ────────────────  2026-10-15
@@ -11114,11 +11292,39 @@ function tlCamAt(t){
 }
 const _tlM = new THREE.Matrix4(), _tlUp = new THREE.Vector3(0, 1, 0);
 function tlLookQ(k){ _tlM.lookAt(_tc2.fromArray(k.p), _tc3.fromArray(k.tg), k.up ? new THREE.Vector3().fromArray(k.up) : _tlUp); return new THREE.Quaternion().setFromRotationMatrix(_tlM); }
+/* ── THE RECORDING'S CAMERA, IN THE HEADSET (2026-11-15) ──
+   Your head is the headset's camera, so a camera key cannot move it. Instead, while ▶ plays, the ROOM is carried so
+   that what you see from where you stood when you pressed ▶ is what the recorded camera saw: the collection glides
+   past as it did in the take. Only the camera's heading is used, not its tilt, so the floor stays level; your own
+   head still turns and looks freely. The room goes back where it was when the film stops. "Camera: stay where I
+   am" (Timeline) turns this off and keeps the room still. */
+const _yv = new THREE.Vector3(0, 1, 0), _cm1 = new THREE.Matrix4(), _cm2 = new THREE.Matrix4(), _cm3 = new THREE.Matrix4();
+function yawQ(f){ return new THREE.Quaternion().setFromAxisAngle(_yv, Math.atan2(-f.x, -f.z)); }
+function tlVrStart(){
+  if (!renderer.xr.isPresenting) return;
+  const h = vrHeadPose();
+  TL.vrH0 = new THREE.Matrix4().compose(h.p, yawQ(h.f), new THREE.Vector3(1, 1, 1));
+  TL.vrStage0 = { p: stage.position.clone(), q: stage.quaternion.clone(), s: stage.scale.x };
+}
+function tlVrEnd(){
+  if (!TL.vrStage0) return;
+  if (TL.vrRide !== false && renderer.xr.isPresenting){ stage.position.copy(TL.vrStage0.p); stage.quaternion.copy(TL.vrStage0.q); stage.scale.setScalar(TL.vrStage0.s); }
+  TL.vrStage0 = null; TL.vrH0 = null;
+}
 function tlApplyCam(t){
-  /* In the headset your head is the camera: a camera key there would only carry the room away from you (it also
-     sets where the collection stands). The headset plays the views, stimuli and captions; the camera is for the
-     screen, the film and the dome (2026-11-14). */
-  if (renderer.xr.isPresenting) return;
+  if (!renderer.xr.isPresenting){ tlApplyCamDesk(t); return; }
+  if (!TL.playing || TL.vrRide === false || !TL.vrH0) return;
+  const keepP = camera.position.clone(), keepQ = camera.quaternion.clone(), keepU = camera.up.clone(), keepT = controls.target.clone();
+  tlApplyCamDesk(t);                                  // the key's camera and room, as the PC would show them
+  const cp = camera.position.clone(), cf = controls.target.clone().sub(cp);
+  if (cf.lengthSq() < 1e-12) cf.set(0, 0, -1); cf.normalize();
+  _cm3.compose(stage.position, stage.quaternion, stage.scale);
+  _cm1.compose(cp, yawQ(cf), new THREE.Vector3(1, 1, 1));
+  _cm2.copy(TL.vrH0).multiply(_cm1.invert()).multiply(_cm3);
+  _cm2.decompose(stage.position, stage.quaternion, stage.scale);
+  camera.position.copy(keepP); camera.quaternion.copy(keepQ); camera.up.copy(keepU); controls.target.copy(keepT);
+}
+function tlApplyCamDesk(t){
   const s = tlCamAt(t); if (!s) return;
   if (s.pose){
     const k = s.pose;
@@ -11306,6 +11512,7 @@ function tlFrame(dt){
       if (tp >= t0 - 1e-9 && (tp < t1 || (t1 >= TL.dur && tp <= t1))) tlFireStim(k, ci);
     });
   }
+  try { tlPaintStep(t0, t1); } catch (e){}
   for (const f of [() => tlApplyViewAt(TL.t, true), () => { if (!RIDE.on) tlApplyCam(TL.t); }, () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
     try { f(); } catch (e){ if (!TL.errWarned){ TL.errWarned = true; console.warn("[vr] timeline:", e); } }
   if (TL.t >= TL.dur) tlStop(true);
@@ -11313,6 +11520,7 @@ function tlFrame(dt){
 }
 function tlPlay(){
   if (TL.t >= TL.dur - 1e-3) TL.t = 0;
+  tlVrStart(); tlPaintTo(TL.t);
   /* A FRESH RUN (2026-10-24, Søren: "the cell is spiking even though that should not be active"): spikes, potentials and
      synaptic events left from the last run went on into the replay. Played from before the film's first stimulus, the
      activity starts clean. */
@@ -11325,6 +11533,7 @@ function tlPlay(){
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
+  tlVrEnd();
   if (RIDE.on && RIDE.tlFx){ RIDE.tlFx = null; setRide(false); }
   camera.up.set(0, 1, 0);                    // the mouse orbits about the vertical again
   TL.playing = false; TL.frozen = false; TL.follow = null; TL.starting = false; controls.enabled = true; controls.update();
@@ -11644,6 +11853,7 @@ function tlSeek(t){
   /* a jump in time leaves no spike of another moment running */
   if (TL.keys.stim.length) try { resetActivity(); } catch (e){}
   TL.stateForce = true; TL.viewApplied = null; TL.elApplied = null; TL.synApplied = null;
+  try { tlPaintTo(TL.t); } catch (e){}
   /* each part on its own: one that fails must not leave the camera and the rest where they were */
   for (const f of [() => tlApplyViewAt(TL.t), () => tlApplyCam(TL.t), () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t)])
     try { f(); } catch (e){ console.warn("[vr] timeline seek:", e); }
@@ -11933,7 +12143,7 @@ function setTimeline(v){
   tlSync(); STIM._edgeKey = null;
 }
 /* Kept in this browser between visits, and in saved scenes. */
-function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) } }; }
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}) }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
 /* ONE TIMELINE PER SCENE (2026-10-29, Søren: "when I open a new VR instance and go to timeline, it has remembered the
    timeline I did for another scene ... the timeline should be individual for the scenes and saved with the scene").
@@ -12038,6 +12248,7 @@ function tlLoad(o, fromHistory){
   if (!o || !o.keys) return;
   TL.cards = !!o.cards; { const b = document.getElementById("tlCards"); if (b) b.classList.toggle("on", TL.cards); }
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
+  TL.paint = Array.isArray(o.paint) ? o.paint : [];
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
   tlSort(); if (!fromHistory){ TL.t = 0; TL.hist = [JSON.stringify(tlData())]; TL.hpos = 0; }
@@ -16962,7 +17173,10 @@ renderer.setAnimationLoop(() => {
   const dt = recDt(Math.min(clock.getDelta(), 0.1));        // while a movie is built: at most one movie frame
   if (XRDBG.on){ XRDBG.n++; xrMark("frame: start"); }
   flyFrame(dt); recFrame(dt);
-  if (renderer.xr.isPresenting){ xrMark("frame: controllers"); inputFrame(); sticks(dt); grabUpdate(); xrMark("frame: palette"); menuFrame(); }
+  /* the timeline runs in the headset too (2026-11-15, Søren: "When I play something I have recorded ... Nothing
+     happens"): it was only ever advanced in the PC branch of this loop, so ▶ in the headset started a clock that
+     never ticked */
+  if (renderer.xr.isPresenting){ xrMark("frame: controllers"); inputFrame(); sticks(dt); grabUpdate(); xrMark("frame: palette"); menuFrame(); try { tlFrame(dt); } catch (e){ console.warn("[vr] timeline in the headset:", e); } }
   else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
   placeLabel();
   try { recGuide(); } catch (e){}
@@ -16984,6 +17198,7 @@ renderer.setAnimationLoop(() => {
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { gloveFrame(); } catch (e){ if (!window.__gloveWarned){ window.__gloveWarned = true; console.warn("[vr] gloves:", e); } }
   try { takeFrame(); } catch (e){ console.warn("[vr] take:", e); }
+  try { tlvrFrame(); } catch (e){ if (!window.__tlvrWarned){ window.__tlvrWarned = true; console.warn("[vr] timeline panel:", e); } }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
