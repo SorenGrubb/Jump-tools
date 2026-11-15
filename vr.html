@@ -348,6 +348,7 @@
       <option value="off">Vessels: off</option>
       <option value="whole">Vessels: whole volume (2.8 M triangles)</option>
       <option value="box">Vessels: only around the cells</option>
+      <option value="cell">Vessels: around the picked cell (200 µm)</option>
     </select>
     <div id="vpartRow" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:2px 0 6px;font-size:12px" title="Which vessels to draw. The kind is read from the vessel's order (Søren's tracings, then Shih et al.'s skeletons — the same as Colour: by order); pial or penetrating / ascending from the depth: within 25 µm of the traced pia counts as pial. The first change reads the orders (~30 MB) once.">
       <label><input type="checkbox" data-vpart="pa" checked> pial arterioles</label>
@@ -2190,6 +2191,14 @@ const AREAS = { on: false, group: null };
 const MEN = { on: { glia: false, arach: false, wm: false, villus: false, box: false }, data: null, loading: null, groups: {} };
 const SKEL = { mode: "off", groups: new Set(["art", "ven", "deep", "pial", "cap"]), cap: "act", raw: {}, loading: {}, group: null, n: 0 };
 const ctxNote = document.getElementById("ctxNote");
+/* 200 µm on a side, centred on the picked cell's soma (its nucleus, else the densest part of its mesh); with nothing
+   picked, the box around all the cells. */
+function pickedCellBox(){
+  const c = CELLS[SELECTED];
+  let p = c ? (nucCentreOf(c) || somaCentreOf(c)) : null;
+  if (!p) return regionBox();
+  return new THREE.Box3(p.clone().subScalar(100), p.clone().addScalar(100));
+}
 function regionBox(){
   const b = CELL_BOX.clone(), size = b.getSize(new THREE.Vector3());
   b.expandByScalar(Math.max(40, 0.3 * Math.max(size.x, size.y, size.z)));
@@ -2216,6 +2225,7 @@ async function loadVascRaw(ds){
   return VASC.loading;
 }
 async function buildVessels(){
+  { const sel = document.getElementById("vascSel"), m = vascModeFor(sel.value); if (m !== sel.value) sel.value = m; }
   const mode = document.getElementById("vascSel").value;
   VASC.tlOff = false;
   if (VASC.mesh){ content.remove(VASC.mesh); VASC.mesh.geometry.dispose(); VASC.mesh = null; VASC.tris = 0; }
@@ -2227,9 +2237,9 @@ async function buildVessels(){
   catch (e){ ctxNote.textContent = "Vessels could not be loaded: " + (e.message || e); VASC.loading = null; return; }
   if (document.getElementById("vascSel").value !== mode) return;     // changed while downloading
   let pos = raw.pos, idx = raw.idx;
-  if (mode === "box"){
+  if (mode === "box" || mode === "cell"){
     /* Keep a triangle when any corner is inside the box; then keep only the vertices used. */
-    const b = regionBox(), P = raw.pos, I = raw.idx, inB = new Uint8Array(P.length / 3);
+    const b = mode === "cell" ? pickedCellBox() : regionBox(), P = raw.pos, I = raw.idx, inB = new Uint8Array(P.length / 3);
     for (let v = 0, k = 0; v < inB.length; v++, k += 3)
       inB[v] = P[k] >= b.min.x && P[k] <= b.max.x && P[k+1] >= b.min.y && P[k+1] <= b.max.y && P[k+2] >= b.min.z && P[k+2] <= b.max.z ? 1 : 0;
     const keep = [];
@@ -2243,7 +2253,7 @@ async function buildVessels(){
     }
     pos = new Float32Array(np); idx = ni;
   }
-  if (!idx.length){ ctxNote.textContent = "No vessels inside the box around these cells."; updateTri(); return; }
+  if (!idx.length){ ctxNote.textContent = mode === "cell" ? "No vessels within 100 µm of the picked cell." : "No vessels inside the box around these cells."; updateTri(); return; }
   const g = geometryFrom(pos, idx);
   /* OPAQUE. Søren, after the first session in the headset: "The vasculature should not be
      transparent, that confuses more than it helps." In VR you can lean round a vessel, which is
@@ -2369,7 +2379,20 @@ async function buildLayers(){
 }
 function layersOn(){ return document.getElementById("layerBtn").classList.contains("on"); }
 function setLayers(v){ document.getElementById("layerBtn").classList.toggle("on", v); buildLayers(); }
-function setVessels(mode){ document.getElementById("vascSel").value = mode; buildVessels(); }
+/* ── NO WHOLE VOLUME IN THE HEADSET (2026-11-15, Søren: "I tried to enable vasculature in the quest browser VR and it
+   froze. We need to limit vasculature to only around the cells, maybe only around the selected cell.") The whole
+   volume is 2.8 M triangles: fine on a PC, too much for a Quest's GPU and memory. In the headset every request for
+   the whole volume -- the palette, a scene, a timeline view, or a model that switches the vessels on by itself
+   (vascular regulation, colour by order, stroke, flow) -- becomes "around the picked cell" (a 200 µm cube on its
+   soma), or "around the cells" when nothing is picked. The palette offers only those two there. */
+function vascModeFor(mode){
+  if (mode === "whole" && renderer.xr && renderer.xr.isPresenting){
+    ctxNote.textContent = "In the headset the vessels are drawn only " + (SELECTED >= 0 ? "around the picked cell" : "around the cells") + " — the whole volume is too much for it.";
+    return SELECTED >= 0 ? "cell" : "box";
+  }
+  return mode;
+}
+function setVessels(mode){ document.getElementById("vascSel").value = vascModeFor(mode); buildVessels(); }
 document.getElementById("layerBtn").addEventListener("click", () => setLayers(!layersOn()));
 document.getElementById("layerScope").addEventListener("change", buildLayers);
 document.getElementById("vascSel").addEventListener("change", buildVessels);
@@ -8508,7 +8531,9 @@ function applyLook(){
   if (typeof STIM !== "undefined" && STIM.markers) colourSynapses();
   if (typeof LOD !== "undefined") lodCheck();
 }
-function select(i){ SELECTED = i; applyLook(); renderList(); try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); if (ORBIT.mode === "cell") orbitAim(); } catch (e){} }
+function select(i){ SELECTED = i; applyLook(); renderList();
+  try { if (document.getElementById("vascSel").value === "cell"){ clearTimeout(VASC.selT); VASC.selT = setTimeout(buildVessels, 400); } } catch (e){}
+  try { fixInfo(); trwInfo(); cnOnSelect(); blkSrcUI(); if (ORBIT.mode === "cell") orbitAim(); } catch (e){} }
 
 /* ── DETAIL FOR WHAT IS SHOWN (2026-10-24, Søren: "If you have selected a single cell out of many and then press full
    resolution, it starts loading all of the cells in full resolution. I want it so that you can just load the full
@@ -9048,7 +9073,9 @@ function buildGlove(side){
   /* the thumb leaves the palm at its base and points mostly forward, a little out -- on a controller it lies along the top */
   /* a little toward the palm (2026-11-14, Søren: "The thumb seems to sit a little behind the hand"): its base nearer
      the palm's face, and the thumb angled in over it */
-  th.root.position.set(0.031 * s, 0.038, 0.02); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; th.root.rotation.x = 0.28; g.add(th.root); F.thumb = th.joints;
+  /* ...and back the other way the next morning ("The thumbs moved in the wrong direction"): on the controller the
+     palm's face is the other side of this model (the gloves were swapped between hands), so "toward the palm" is -z */
+  th.root.position.set(0.031 * s, 0.038, 0.002); th.root.rotation.z = -0.45 * s; th.root.rotation.y = 0.35 * s; th.root.rotation.x = -0.28; g.add(th.root); F.thumb = th.joints;
   g.userData.F = F;
   return g;
 }
@@ -9418,8 +9445,9 @@ function menuRows(){
     if (DS_HAS.men) for (const k in MEN_PARTS) rows.push({ label: MEN_PARTS[k].label + (k === "villus" ? " (3 outlines)" : ""), on: MEN.on[k], act: () => setMen(k, !MEN.on[k]) });
     S("Vessels & blood");
     const vm = document.getElementById("vascSel").value;
-    if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
-                on: vm !== "off", act: () => setVessels(({ off: "whole", whole: "box", box: "off" })[vm]) });
+    if (DS_HAS.vasc) rows.push({ label: "Vessels: " + ({ off: "off", cell: "around the picked cell", box: "around the cells", whole: "whole volume" })[vm] + "  ▸",
+                on: vm !== "off", act: () => setVessels(renderer.xr.isPresenting ? ({ off: SELECTED >= 0 ? "cell" : "box", cell: "box", box: "off", whole: "box" })[vm]
+                                                                               : ({ off: "box", box: "cell", cell: "whole", whole: "off" })[vm]) });
     if (DS_HAS.pvs){ const pm = document.getElementById("pvsSel").value;
       rows.push({ label: "Perivascular space: " + ({ off: "off", box: "around the cells", whole: "whole volume" })[pm] + "  ▸", on: pm !== "off", act: () => { document.getElementById("pvsSel").value = ({ off: "whole", whole: "box", box: "off" })[pm]; buildPvs(); } });
       if (pm !== "off"){ rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " − ", act: () => setPvsW(Math.max(0.5, PVS.w - 0.25)) }); rows.push({ label: "   Width ×" + PVS.w.toFixed(2) + " + ", act: () => setPvsW(Math.min(2, PVS.w + 0.25)) }); }
@@ -10213,7 +10241,9 @@ function toggleKeysCard(force){
 }
 document.getElementById("keysCard").addEventListener("click", () => toggleKeysCard());
 try { if (localStorage.getItem("vr_keys_card") === "0") toggleKeysCard(false); } catch (e){}
-renderer.xr.addEventListener("sessionstart", () => { FLY.on = false; KEYS.clear(); });
+renderer.xr.addEventListener("sessionstart", () => { FLY.on = false; KEYS.clear();
+  /* whole-volume vessels shown on the PC are cut down as you put the headset on (section: no whole volume in the headset) */
+  setTimeout(() => { try { if (document.getElementById("vascSel").value === "whole") setVessels("whole"); } catch (e){} }, 0); });
 
 /* ── 14. OTHER HEADSETS ─────────────────────────────────────────────────────  2026-10-15
    Søren: "make sure that the VR is compatible also with other common VR headset types … as long as
