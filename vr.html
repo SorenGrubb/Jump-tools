@@ -9108,11 +9108,12 @@ function tlHeadsetRows(rows){
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
   rows.push({ label: "Captions in the headset", on: VR_CAPS_ON, icon: "pen", act: () => setVrCaps(!VR_CAPS_ON) });
   rows.push({ label: "Record my voice with takes", on: VOICE.on, icon: "speaker", act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
-  if (VOICE.data) rows.push({ label: VOICE.busy ? "… making subtitles" : "Make subtitles from my voice (" + (VOICE.lang === "da" ? "Danish" : "English") + ")", icon: "pen", act: voiceTranscribe });
+  if (VOICE.data) rows.push({ label: VOICE.busy ? "… making subtitles (" + mmss((performance.now() - VOICE.t0) / 1000) + ") — press to stop" : "Make subtitles from my voice (" + (VOICE.lang === "da" ? "Danish" : "English") + (renderer.xr.isPresenting ? "; faster on the PC" : "") + ")",
+                              icon: "pen", act: () => VOICE.busy ? voiceStopWork() : voiceTranscribe() });
   rows.push({ label: "   Language: " + (VOICE.lang === "da" ? "Danish (bigger model, slower)" : "English") + "  ▸", icon: "speaker", act: () => { VOICE.lang = VOICE.lang === "da" ? "en" : "da"; voiceOpts(); } });
   { const modes = ["none"].concat(VOICE.data ? ["rec"] : [], NARR_VOICES.map(v => v[0])), m = narrMode();
-    rows.push({ label: (NARR.busy ? "… preparing the voice-over" : "Voice-over: " + narrLabel(m)) + "  ▸", icon: "speaker",
-                act: () => { TL.narr = modes[(modes.indexOf(m) + 1) % modes.length]; tlSave(); if (TL.narr !== "none" && TL.narr !== "rec") narrPrep(); } }); }
+    rows.push({ label: (NARR.busy ? "… preparing the voice-over — press to stop" : "Voice-over: " + narrLabel(m)) + "  ▸", icon: "speaker",
+                act: () => { if (NARR.busy){ voiceStopWork(); return; } TL.narr = modes[(modes.indexOf(m) + 1) % modes.length]; tlSave(); if (TL.narr !== "none" && TL.narr !== "rec") narrPrep(); } }); }
   if (VOICE.data) rows.push({ label: "Delete my voice recording (captions stay)", icon: "trash", act: narrDeleteRecording });
   if (n || (TL.paint && TL.paint.length)){
     const armed = TL.clearArm && performance.now() - TL.clearArm < 4000;
@@ -9210,9 +9211,34 @@ self.onmessage = async e => { const m = e.data; try {
     if (!asr[model]){ const g = !m.small && await gpu(), pc = prog("the speech model");
       try { asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: g ? "webgpu" : "wasm", dtype: g ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8", progress_callback: pc }); }
       catch (er){ asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: "wasm", dtype: "q8", progress_callback: pc }); } }
-    say("Listening to your voice…");
-    const out = await asr[model](m.pcm, m.opts || {});
-    self.postMessage({ id: m.id, ok: true, out });
+    /* ONE SPOKEN PHRASE AT A TIME. Measured on a test recording (five repeats of an 11 s speech, 2 s apart): Whisper's
+       own 30 s chunking with timestamps lost a whole sentence at a seam and put others seconds off, and fixed 30 s
+       windows lost more. So the recording is first cut where you pause (the loudness of every 0.1 s against the
+       recording's own quiet and loud levels; a phrase ends after 0.5 s of quiet; joined to the next when the pause is
+       under 0.35 s and both fit in 10 s; anything over 20 s cut at its quietest moment), and each phrase is
+       transcribed on its own: every sentence came back, timed to a tenth of a second, and it can say "part 3 of 12".
+       Whisper's guesses at sounds -- "(laughing)", "[Music]" -- are left out. */
+    const SR = 16000, F = 1600, pcm = m.pcm, nf = Math.floor(pcm.length / F), en = new Float32Array(nf);
+    for (let i = 0; i < nf; i++){ let q = 0; for (let j = i * F; j < (i + 1) * F; j++) q += pcm[j] * pcm[j]; en[i] = Math.sqrt(q / F); }
+    const so = Array.from(en).sort((a, b) => a - b), lo = so[Math.floor(nf * 0.1)] || 0, hi = so[Math.floor(nf * 0.95)] || 0, thr = lo + 0.12 * (hi - lo);
+    let segs = []; for (let i = 0; i < nf;){ if (en[i] <= thr){ i++; continue; } let j = i, quiet = 0;
+      while (j < nf && quiet < 5){ quiet = en[j] > thr ? 0 : quiet + 1; j++; }
+      segs.push([Math.max(0, i - 2), Math.min(nf, j - quiet + 2)]); i = j; }
+    const merged = []; for (const sg of segs){ const p = merged[merged.length - 1];
+      if (p && sg[0] - p[1] <= 3.5 && sg[1] - p[0] <= 100) p[1] = sg[1]; else merged.push(sg.slice()); }
+    const parts = []; for (let [a, b] of merged){ while (b - a > 200){ let best = a + 120, bv = Infinity;
+        for (let k = a + 120; k < a + 200; k++){ const v = en[k] + (en[k + 1] || 0) + (en[k - 1] || 0); if (v < bv){ bv = v; best = k; } }
+        parts.push([a, best]); a = best; } parts.push([a, b]); }
+    const use = parts.filter(([a, b]) => b - a >= 4);
+    const chunks = [];
+    for (let i = 0; i < use.length; i++){
+      say("Listening to your voice: part " + (i + 1) + " of " + use.length + "…");
+      const [a, b] = use[i], o = await asr[model](pcm.subarray(a * F, b * F), m.lang === "da" ? { language: "danish", task: "transcribe" } : {});
+      const text = String(o.text || "").trim();
+      if (!text || ("([*".includes(text[0]) && ")]*".includes(text[text.length - 1]))) continue;      // "(laughing)", "[Music]"
+      chunks.push({ text, timestamp: [a * F / SR, b * F / SR] });
+    }
+    self.postMessage({ id: m.id, ok: true, out: { chunks } });
   } else if (m.op === "tts"){
     if (!tts){ const { KokoroTTS } = await import("https://cdn.jsdelivr.net/npm/kokoro-js@1.2.0/+esm"); const g = !m.small && await gpu(), pc = prog("the AI voice");
       try { tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: g ? "fp32" : "q8", device: g ? "webgpu" : "wasm", progress_callback: pc }); }
@@ -9262,10 +9288,18 @@ async function whisperPipe(lang, say){
 async function voiceTranscribe(){
   if (!VOICE.data || VOICE.busy) return;
   if (mlHeadsetRefuse("Subtitles")) return;
-  VOICE.busy = true; MENU.dirty = true;
-  const say = t => { ctxNote.textContent = "🗣 " + t; MENU.dirty = true; };
+  VOICE.busy = true; VOICE.t0 = performance.now(); MENU.dirty = true;
+  /* NO SIGN-IN IS INVOLVED (2026-11-15, Søren: "making subtitles should also check if you are logged in to Google
+     first, because I just tried it and it took forever"): Whisper runs here, nothing goes to a server. What takes
+     long is the model: the first time its download, and in the headset its small CPU version (a minute of speech
+     can take several minutes there; on the PC seconds). So it now says how far it has come and how long it has
+     run, and can be stopped. */
+  let lastSay = "";
+  const tick = setInterval(() => { if (!VOICE.busy){ clearInterval(tick); return; } ctxNote.textContent = "🗣 " + lastSay + "  (" + mmss((performance.now() - VOICE.t0) / 1000) + ")"; MENU.dirty = true; }, 1000);
+  const say = t => { lastSay = t; ctxNote.textContent = "🗣 " + t + "  (" + mmss((performance.now() - VOICE.t0) / 1000) + ")"; MENU.dirty = true; };
   try {
-    say("Making subtitles in the background — the first time the speech model is downloaded (" + (VOICE.lang === "da" ? "~250" : "~80") + " MB) and this can take a minute or two. You can go on working.");
+    say("Making subtitles here in the browser (no sign-in needed) — the first time the speech model is downloaded (" + (VOICE.lang === "da" ? "~250" : "~80") + " MB)"
+        + (renderer.xr.isPresenting ? "; in the headset it is slow, several minutes for a minute of speech — faster on the PC" : "") + ". You can go on working.");
     const buf = await (await fetch(VOICE.data)).arrayBuffer();
     const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0).slice();
     const t0 = performance.now();
@@ -9293,6 +9327,12 @@ async function voiceTranscribe(){
     try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
   } catch (e){ say("Subtitles failed: " + (e && e.message || e)); console.warn("[vr] whisper:", e); mlRelease(); }
   VOICE.busy = false; MENU.dirty = true;
+}
+function mmss(x){ x = Math.round(x); return Math.floor(x / 60) + ":" + String(x % 60).padStart(2, "0"); }
+function voiceStopWork(){
+  if (!VOICE.busy && !NARR.busy) return;
+  if (MLW.w){ try { MLW.w.terminate(); } catch (e){} MLW.w = null; MLW.cb.forEach(c => c[1](new Error("stopped"))); MLW.cb.clear(); }
+  VOICE.busy = false; NARR.busy = false; ctxNote.textContent = "Stopped. (On the PC this takes seconds to a minute; in the headset much longer.)"; MENU.dirty = true;
 }
 function srtTime(t, vtt){ const ms = Math.round(t * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s2 = Math.floor(ms / 1000) % 60, r = ms % 1000;
   const p = (x, n) => String(x).padStart(n, "0"); return p(h, 2) + ":" + p(m, 2) + ":" + p(s2, 2) + (vtt ? "." : ",") + p(r, 3); }
