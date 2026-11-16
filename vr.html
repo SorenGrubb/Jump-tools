@@ -4895,6 +4895,13 @@ async function saveScene(fromVR, asNew){
   const title = (document.getElementById("sceneTitle").value || "").trim()
     || SCENE.title || (CELLS.length + (CELLS.length === 1 ? " cell · " : " cells · ") + new Date().toLocaleDateString());
   const sc = captureScene(), json = JSON.stringify(sc);
+  /* SAID IN THE HEADSET TOO (2026-11-16, Søren: "When pressing save the scene in VR there is no confirmation that the
+     scene has been saved."): the messages went only to the PC panel. In VR each step now shows in front of you, the
+     result for 6 s (green when saved, red when not), and the palette row says "saved ✓ hh:mm". */
+  const vrSay = (t, col, ms) => { try { if (renderer.xr.isPresenting){ flashWarn(t, ms || 4000, col || "#c98bff"); ctxNote.textContent = t; } } catch (e){} };
+  SCENE.saving = true; try { MENU.dirty = true; } catch (e){}
+  setTimeout(() => { if (SCENE.saving){ SCENE.saving = false; try { MENU.dirty = true; } catch (e){} } }, 90000);   // never stuck on "Saving…"
+  vrSay("💾 Saving the scene… taking its picture first" + (tlCount() ? " (from the middle of the timeline)" : "") + ".");
   out.textContent = tlCount() ? "Taking the picture from the middle of the timeline…" : "Taking the picture…";
   const preview = await previewForSave(() => { out.textContent = "Taking the picture — waiting for the cells to finish loading…"; });
   out.textContent = "Saving " + Math.round(json.length / 1024) + " kB…";
@@ -4906,7 +4913,9 @@ async function saveScene(fromVR, asNew){
     const r = await fetch(dsOfCells().backend, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
     d = JSON.parse(await r.text());
   } catch (e){ d = { ok: false, error: "could not reach the server" }; }
-  if (!d || !d.ok){ out.textContent = "Not saved: " + ((d && d.error) || "no answer") + (d && /unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : ""); return; }
+  SCENE.saving = false; try { MENU.dirty = true; } catch (e){}
+  if (!d || !d.ok){ out.textContent = "Not saved: " + ((d && d.error) || "no answer") + (d && /unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : "");
+    vrSay("✗ " + out.textContent, "#f85149", 8000); return; }
   const wasId = SCENE.id;
   SCENE.id = d.sceneId; SCENE.mine = true; SCENE.title = title; rememberMyScene(d.sceneId); sceneButtons();
   try { if (typeof TL !== "undefined") localStorage.setItem(tlStoreKey(), JSON.stringify(tlData())); } catch (e){}   // the draft follows the scene's (new) id
@@ -4922,6 +4931,8 @@ async function saveScene(fromVR, asNew){
   document.getElementById("sceneForum").onclick = () => forumComposer(title, link);
   document.getElementById("sceneAcad").onclick = () => academyComposer(d.sceneId, title);
   ctxNote.textContent = "💾 Scene " + (d.updated ? "updated" : "saved") + ": " + title;
+  SCENE.savedAt = new Date();
+  vrSay("✓ Scene " + (d.updated ? "updated" : "saved") + ": “" + title + "”. " + (d.updated ? "Same link — everybody who opens it sees this version." : "Find it under View → 🖼 My scenes."), "#3fb950", 6000);
   try { MENU.dirty = true; } catch (e){}             // not yet declared during start-up
 }
 /* ── INTO JUMP ACADEMY (2026-11-14) ── Søren: "Jump academy should also feature chosen scenes made in VR, you
@@ -9292,18 +9303,22 @@ async function voicePrep48(){
    and in a headset a frozen page is a crashed page. They now run in a background worker (measured on Søren's PC: the
    page never paused more than 65 ms while both ran). The worker is made once and keeps its models. */
 const ML_WORKER_SRC = `
-let lib = null; const asr = {}; let tts = null;
+let lib = null; const asr = {}, asrP = {}; let tts = null;
 const say = t => self.postMessage({ op: "progress", text: t });
 async function gpu(){ try { return !!(self.navigator && navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e){ return false; } }
 function prog(what){ const p = {}; return x => { if (x.status === "progress" && x.total){ p[x.file] = [x.loaded, x.total];
   let L = 0, T = 0; for (const k in p){ L += p[k][0]; T += p[k][1]; } say("Downloading " + what + " (once): " + Math.round(L / 1e6) + " of " + Math.round(T / 1e6) + " MB…"); } }; }
 self.onmessage = async e => { const m = e.data; try {
-  if (m.op === "asr"){
+  if (m.op === "asr" || m.op === "load"){
     lib = lib || await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js");
-    const model = m.lang === "da" ? "Xenova/whisper-small" : "Xenova/whisper-base.en";
-    if (!asr[model]){ const g = !m.small && await gpu(), pc = prog("the speech model");
-      try { asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: g ? "webgpu" : "wasm", dtype: g ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8", progress_callback: pc }); }
-      catch (er){ asr[model] = await lib.pipeline("automatic-speech-recognition", model, { device: "wasm", dtype: "q8", progress_callback: pc }); } }
+    /* m.fast (the chat in the headset, 2026-11-16): the small quick models -- tiny.en for English, base for Danish */
+    const model = m.lang === "da" ? (m.fast ? "Xenova/whisper-base" : "Xenova/whisper-small") : (m.fast ? "Xenova/whisper-tiny.en" : "Xenova/whisper-base.en");
+    /* one load per model, even when a warm-up ("load") and a first phrase arrive together */
+    if (!asr[model]){ asrP[model] = asrP[model] || (async () => { const g = !m.small && await gpu(), pc = prog("the speech model");
+        try { return await lib.pipeline("automatic-speech-recognition", model, { device: g ? "webgpu" : "wasm", dtype: g ? { encoder_model: "fp32", decoder_model_merged: "q4" } : "q8", progress_callback: pc }); }
+        catch (er){ return await lib.pipeline("automatic-speech-recognition", model, { device: "wasm", dtype: "q8", progress_callback: pc }); } })();
+      try { asr[model] = await asrP[model]; } catch (er){ delete asrP[model]; throw er; } }
+    if (m.op === "load"){ self.postMessage({ id: m.id, ok: true }); return; }
     /* ONE SPOKEN PHRASE AT A TIME. Measured on a test recording (five repeats of an 11 s speech, 2 s apart): Whisper's
        own 30 s chunking with timestamps lost a whole sentence at a seam and put others seconds off, and fixed 30 s
        windows lost more. So the recording is first cut where you pause (the loudness of every 0.1 s against the
@@ -9933,31 +9948,94 @@ function scpReenterOffer(){
 }
 
 /* ── 💬 THE CHAT ── */
-const CHP = vrPanel("chat", 1400, 1360, 0.66, 1, chpDraw);
-Object.assign(CHP, { draft: "", rec: null, busy: false, status: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, idle: 0 });
+/* EDITING BEFORE SENDING, AND FASTER (2026-11-16, Søren: "For the text to chat it is really slow, but it works. However,
+   it is frustrating that you can't edit the text before sending. Could you either mark the word an change it by
+   speaking, or by typing on a keyboard? Can we make the talk to words faster?")
+   · THE TEXT IS WORDS YOU CAN PICK. Trigger on a word marks it (again to unmark). With a word marked, holding 🎙 says
+     the word(s) that replace it; ⌨ opens a keyboard on the panel (with æ ø å) that types into the marked word
+     (⌫ takes a letter, and the word when it is empty; space starts a new word after it); "Delete word" removes it.
+     With nothing marked, talking and typing add at the end.
+   · FASTER: (1) where the browser has its own speech recognition (Chrome and Edge on the PC, so also the headset on
+     the PC through Link) that is used: the words appear while you speak, and are done when you let go. (2) Otherwise
+     (the Quest's own browser) Whisper runs here as before, but in the headset the small, quick versions: tiny.en for
+     English (~40 MB, about four times quicker than before), base for Danish (~150 MB, about three times quicker; a
+     little less accurate than small). (3) The model is loaded while the panel opens, not when you first speak. */
+const CHP = vrPanel("chat", 1400, 1560, 0.66, 1, chpDraw);
+Object.assign(CHP, { w: [], sel: null, kb: false, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
 const chatApi = () => (window.UJ && UJ.chat && UJ.chat.vr) ? UJ.chat.vr : null;
 window.UJ_CHAT_ONCHANGE = () => {
   if (CHP.on){ CHP.dirty = true; if (!CHP.marking){ CHP.marking = true; try { const c = chatApi(); if (c) c.markRead(); } catch (e){} CHP.marking = false; } }
   try { MENU.dirty = true; } catch (e){}
 };
-CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} };
-CHP.onClose = () => { chpStopRec(true); if (!CHP.busy) mlRelease(); };
+const chpSR = () => (window.SpeechRecognition || window.webkitSpeechRecognition || null);
+const chpEngine = () => chpSR() && CHP.srOk ? "browser" : "whisper";
+const chpText = () => CHP.w.filter(Boolean).join(" ").trim();
+function chpWarm(){
+  if (chpEngine() !== "whisper" || CHP.warm === CHP.lang) return;
+  CHP.warm = CHP.lang; const lang = CHP.lang;
+  mlCall({ op: "load", lang, small: mlSmall(), fast: mlSmall() }, [], t => { if (!CHP.busy){ CHP.status = t.replace(/^Downloading/, "Getting ready: downloading"); CHP.dirty = true; } })
+    .then(() => { if (!CHP.busy && CHP.lang === lang){ CHP.status = "Ready: hold the trigger on 🎙 and speak."; CHP.dirty = true; } })
+    .catch(e => { CHP.warm = null; if (!CHP.busy){ CHP.status = "The speech model could not load: " + (e.message || e); CHP.dirty = true; } });
+}
+CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} chpWarm(); };
+CHP.onClose = () => { chpStopRec(true); if (!CHP.busy){ mlRelease(); CHP.warm = null; } };
 CHP.tick = () => (CHP.rec || CHP.busy) && performance.now() - CHP.lastDraw > 250;
 function chatUnread(){ const c = chatApi(); if (!c) return 0; try { const u = c.unread(); return Object.keys(u).reduce((a, k) => a + (u[k] || 0), 0); } catch (e){ return 0; } }
+/* spoken words go in place of the marked word, or at the end */
+function chpInsert(text){
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean); if (!words.length) return;
+  if (CHP.sel != null && CHP.sel < CHP.w.length){ CHP.w.splice(CHP.sel, 1, ...words); CHP.sel = null; }
+  else CHP.w.push(...words);
+  CHP.w = CHP.w.filter(Boolean);
+}
+/* the keyboard edits the marked word, or the last one */
+function chpKey(k){
+  if (k === "⇧"){ CHP.shift = !CHP.shift; return; }
+  if (k === "⌨"){ CHP.kb = false; return; }
+  let i = CHP.sel != null ? CHP.sel : CHP.w.length - 1;
+  if (k === "space"){ if (i < 0 || CHP.w[i] === "") return; CHP.w.splice(i + 1, 0, ""); CHP.sel = i + 1; return; }
+  if (k === "⌫"){
+    if (i < 0) return;
+    if (CHP.w[i].length){ CHP.w[i] = CHP.w[i].slice(0, -1); if (CHP.sel == null && !CHP.w[i]) CHP.w.splice(i, 1); }
+    else { CHP.w.splice(i, 1); CHP.sel = i - 1 >= 0 ? i - 1 : (CHP.w.length ? 0 : null); }
+    return;
+  }
+  if (i < 0){ CHP.w.push(""); i = 0; }
+  CHP.w[i] += CHP.shift ? k.toUpperCase() : k; CHP.shift = false;
+}
 async function chpStartRec(){
   if (CHP.busy || CHP.rec) return;
+  CHP.interim = "";
+  if (chpEngine() === "browser"){
+    try {
+      const SR = chpSR(), r = new SR(); r.lang = CHP.lang === "da" ? "da-DK" : "en-US"; r.interimResults = true; r.continuous = true;
+      const R = CHP.rec = { sr: r, fin: "", released: false, t0: performance.now() };
+      r.onresult = ev => { let fin = "", tmp = ""; for (let i = 0; i < ev.results.length; i++){ const x = ev.results[i]; if (x.isFinal) fin += x[0].transcript + " "; else tmp += x[0].transcript + " "; }
+        R.fin = fin.trim(); CHP.interim = (R.fin + " " + tmp).trim(); CHP.dirty = true; };
+      r.onerror = ev => { R.err = ev.error;
+        if (/not-allowed|service-not-allowed|network|language-not-supported|audio-capture/.test(ev.error || "")){ CHP.srOk = false; chpWarm();
+          CHP.status = "This browser's speech recognition is not available (" + ev.error + ") — using the speech model here instead: hold 🎙 again."; CHP.dirty = true; } };
+      r.onend = () => { if (CHP.rec === R) CHP.rec = null; const t = R.fin || CHP.interim; CHP.interim = "";
+        if (t && !R.discard){ chpInsert(t); CHP.status = "Check the words (trigger on one to change it), then Send."; }
+        else if (!R.err && !R.discard) CHP.status = "No words were heard. Hold the trigger on 🎙 and speak.";
+        CHP.dirty = true; };
+      r.start(); CHP.status = "Listening… let go of the trigger when you have said it."; CHP.dirty = true;
+      return;
+    } catch (e){ CHP.srOk = false; CHP.rec = null; chpWarm(); }
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
     const rec = new MediaRecorder(stream, type ? { mimeType: type } : {}), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    CHP.rec = { rec, stream, chunks, t0: performance.now(), released: false };
+    const R = CHP.rec = { rec, stream, chunks, t0: performance.now(), released: false };
     rec.start(250); CHP.status = "Listening… let go of the trigger when you have said it."; CHP.dirty = true;
-    if (CHP.rec.released) chpStopRec();                    // let go before the microphone was ready
+    if (R.released) chpStopRec();                    // let go before the microphone was ready
   } catch (e){ CHP.status = "The microphone is not available here (" + (e.message || e) + "). Allow it for this site, then try again."; CHP.rec = null; CHP.dirty = true; }
 }
 function chpStopRec(discard){
   const R = CHP.rec; if (!R){ return; }
+  if (R.sr){ R.discard = !!discard; try { R.sr.stop(); } catch (e){} return; }
   if (!R.rec){ R.released = true; return; }
   CHP.rec = null;
   R.rec.onstop = async () => {
@@ -9972,26 +10050,29 @@ function chpStopRec(discard){
 async function chpTranscribe(blob){
   CHP.busy = true; CHP.t0 = performance.now(); CHP.dirty = true;
   const say = t => { CHP.status = t; CHP.dirty = true; };
-  say("Turning your words into text here in the browser" + (MLW.w ? "…" : " — the first time the speech model is downloaded (" + (CHP.lang === "da" ? "~250" : "~80") + " MB)…"));
+  say("Turning your words into text…");
   try {
     const buf = await blob.arrayBuffer();
     const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0).slice();
-    const out = (await mlCall({ op: "asr", lang: CHP.lang, small: mlSmall(), pcm }, [pcm.buffer], t => say(/part 1 of 1/.test(t) ? "Listening to your words…" : t))).out;
+    const out = (await mlCall({ op: "asr", lang: CHP.lang, small: mlSmall(), fast: mlSmall(), pcm }, [pcm.buffer], t => say(/part \d+ of/.test(t) ? "Turning your words into text…" : t))).out;
     const text = (out.chunks || []).map(c => String(c.text || "").trim()).filter(Boolean).join(" ").trim();
-    if (text){ CHP.draft = (CHP.draft ? CHP.draft + " " : "") + text; say("Check the text, then Send — or hold 🎙 again to add more."); }
+    if (text){ chpInsert(text); say("Check the words (trigger on one to change it), then Send.  (" + ((performance.now() - CHP.t0) / 1000).toFixed(1) + " s)"); }
     else say("No words were heard. Hold the trigger on 🎙 and speak a little louder.");
-  } catch (e){ say("Could not turn it into text: " + (e && e.message || e)); mlRelease(); }
+    CHP.warm = CHP.lang;
+  } catch (e){ say("Could not turn it into text: " + (e && e.message || e)); mlRelease(); CHP.warm = null; }
   CHP.busy = false; CHP.dirty = true;
 }
 async function chpSend(){
-  const c = chatApi(), text = CHP.draft.trim(); if (!text || !c) return;
+  const c = chatApi(), text = chpText(); if (!text || !c) return;
   if (!c.on()){ CHP.status = c.status(); CHP.dirty = true; return; }
-  try { if (text[0] === "/") await UJ.chat.command(text); else await UJ.chat.post({ text }); CHP.draft = ""; CHP.status = "✓ Sent."; }
+  try { if (text[0] === "/") await UJ.chat.command(text); else await UJ.chat.post({ text }); CHP.w = []; CHP.sel = null; CHP.status = "✓ Sent."; }
   catch (e){ CHP.status = "Not sent: " + (e && e.message || e); }
   CHP.dirty = true;
 }
+const CHP_KEYS = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "@"], ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
+                  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"], ["⇧", "z", "x", "c", "v", "b", "n", "m", ",", ".", "?"], ["/", "-", "!", "space", "'", "⌫", "⌨"]];
 function chpDraw(P, g){
-  const c = chatApi(), W = P.W;
+  const c = chatApi(), W = P.W, kb = CHP.kb;
   g.fillStyle = "#f6ecff"; g.font = "700 50px system-ui, sans-serif"; g.fillText("💬  Chat", 40, 84);
   if (c){ const room = c.room();
     vrpBtn(P, g, 330, 32, 250, 80, "All tools", () => { c.setRoom("all"); }, { on: room === "all" });
@@ -10001,16 +10082,16 @@ function chpDraw(P, g){
   vrpBtn(P, g, 1150, 32, 130, 80, "Here", () => vrpPlace(P));
   vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
   /* the messages: the newest that fit, from the bottom up */
-  const top = 140, bottom = 900, mx = 44, mw = W - 88;
+  const top = 140, bottom = kb ? 560 : 1050, mx = 44, mw = W - 88;
   g.fillStyle = "rgba(20,8,48,0.42)"; g.beginPath(); g.roundRect(28, top - 14, W - 56, bottom - top + 28, 18); g.fill();
   if (!c){ g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; g.fillText("The chat has not loaded on this page.", mx, top + 60); }
   else if (!c.on()){
     g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; vrpWrap(g, c.status(), mw, 3).forEach((l, k) => g.fillText(l, mx, top + 60 + k * 44));
-    if (!credOk()) vrpBtn(P, g, mx, top + 220, 760, 100, "Sign in with Google (leaves VR for a moment)", () => vrLeaveToSignIn(), { size: 32 });
+    if (!credOk()) vrpBtn(P, g, mx, top + 200, 760, 100, "Sign in with Google (leaves VR for a moment)", () => vrLeaveToSignIn(), { size: 32 });
   } else {
     const L = c.messages().slice(-40), blocks = [];
     for (const m of L){
-      g.font = "600 30px system-ui"; const name = (m.flagEmoji ? m.flagEmoji + " " : "") + (m.name || "somebody");
+      const name = (m.flagEmoji ? m.flagEmoji + " " : "") + (m.name || "somebody");
       g.font = "32px system-ui"; const lines = vrpWrap(g, m.text || (m.kind === "pic" ? "(a picture)" : m.kind === "vote" ? "(a vote — open it on the PC)" : ""), mw - 20, 6);
       blocks.push({ name, tool: m.toolName, col: m.toolCol, lines, me: m.me, hl: m.hl, h: 40 + lines.length * 40 + 14 });
     }
@@ -10025,20 +10106,51 @@ function chpDraw(P, g){
       g.fillStyle = "#f6ecff"; g.font = "32px system-ui"; b.lines.forEach((l, k) => g.fillText(l, mx + 8, by + 76 + k * 40));
     }
   }
-  /* what you are about to send */
-  const dy = 930;
-  g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, 170, 16); g.fill();
-  g.font = "34px system-ui"; g.fillStyle = CHP.draft ? "#ffffff" : "rgba(246,236,255,0.55)";
-  vrpWrap(g, CHP.draft || "Hold the trigger on 🎙 and speak — your words appear here.", W - 100, 3).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
+  /* what you are about to send: one button per word */
+  const dy = bottom + 30, dh = 230;
+  g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, dh, 16); g.fill();
+  if (!CHP.w.length && !CHP.interim){
+    g.font = "32px system-ui"; g.fillStyle = "rgba(246,236,255,0.6)";
+    vrpWrap(g, "Hold the trigger on 🎙 and speak, or ⌨ type. Your words appear here; trigger on a word to change it.", W - 100, 3).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
+  } else {
+    g.font = "600 34px system-ui";
+    const lay = []; let x = 44, row = 0;
+    CHP.w.forEach((wd, i) => { const ww = Math.min(W - 100, Math.max(56, g.measureText(wd || " ").width + 28 + (CHP.sel === i ? 18 : 0)));
+      if (x + ww > W - 44 && x > 44){ row++; x = 44; } lay.push([i, x, row, ww]); x += ww + 8; });
+    const last = lay.length ? lay[lay.length - 1][2] : 0, selRow = CHP.sel != null && lay[CHP.sel] ? lay[CHP.sel][2] : last;
+    const first = Math.max(0, Math.min(selRow, last) - 2);                              // three rows show, kept round the marked word
+    for (const [i, wx, r, ww] of lay){ if (r < first || r > first + 2) continue;
+      const wy = dy + 12 + (r - first) * 70;
+      vrpBtn(P, g, wx, wy, ww, 60, (CHP.w[i] || "") + (CHP.sel === i && kb ? "|" : ""), () => { CHP.sel = CHP.sel === i ? null : i; }, { on: CHP.sel === i, size: 34, key: "w" + i }); }
+    if (CHP.interim){ g.fillStyle = "rgba(246,236,255,0.65)"; g.font = "italic 32px system-ui"; g.fillText(vrpFit(g, "… " + CHP.interim, W - 100), 50, dy + dh - 18); }
+  }
+  /* the keyboard */
+  let by = dy + dh + 20;
+  if (kb){
+    const kw = (W - 56 - 10 * 8) / 11, kh = 84;
+    CHP_KEYS.forEach((rowKeys, r) => {
+      let x = 28;
+      for (const k of rowKeys){
+        const w = k === "space" ? kw * 4 + 24 : k === "⌫" || k === "⌨" ? kw * 1.5 + 4 : kw;
+        const lab = k === "space" ? "space" : k === "⇧" ? "⇧" : CHP.shift ? k.toUpperCase() : k;
+        vrpBtn(P, g, x, by + r * (kh + 8), w, kh, lab, () => chpKey(k), { size: 38, on: k === "⇧" && CHP.shift, key: "k" + k });
+        x += w + 8;
+      }
+    });
+    by += CHP_KEYS.length * (kh + 8) + 12;
+  }
   /* the buttons */
-  const by = 1120, rec = !!CHP.rec;
-  vrpBtn(P, g, 28, by, 470, 120, rec ? "● Listening… let go to stop" : CHP.busy ? "… turning into text" : "🎙 Hold to talk", () => {},
-    { size: 36, on: rec, off: CHP.busy, hold: { start: () => { if (!CHP.busy) chpStartRec(); }, end: () => chpStopRec() }, key: "talk" });
-  vrpBtn(P, g, 512, by, 190, 120, CHP.lang === "da" ? "Dansk" : "English", () => { CHP.lang = CHP.lang === "da" ? "en" : "da"; CHP.status = "Speech: " + (CHP.lang === "da" ? "Danish" : "English") + "."; }, { size: 32, key: "lang" });
-  vrpBtn(P, g, 716, by, 190, 120, "Clear", () => { CHP.draft = ""; CHP.status = ""; }, { off: !CHP.draft, size: 32 });
-  vrpBtn(P, g, 920, by, 452, 120, "Send ➤", () => chpSend(), { off: !CHP.draft.trim() || !(c && c.on()), on: !!CHP.draft.trim() && !!(c && c.on()), size: 40 });
-  if (CHP.status || CHP.busy){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui";
-    g.fillText(vrpFit(g, CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : ""), W - 80), 40, 1290); }
+  const rec = !!CHP.rec, selW = CHP.sel != null ? CHP.w[CHP.sel] : null;
+  vrpBtn(P, g, 28, by, 420, 110, rec ? "● Listening… let go" : CHP.busy ? "… turning into text" : selW != null ? "🎙 Hold: replace “" + selW + "”" : "🎙 Hold to talk", () => {},
+    { size: 32, on: rec, off: CHP.busy, hold: { start: () => { if (!CHP.busy) chpStartRec(); }, end: () => chpStopRec() }, key: "talk" });
+  vrpBtn(P, g, 460, by, 150, 110, CHP.lang === "da" ? "Dansk" : "English", () => { CHP.lang = CHP.lang === "da" ? "en" : "da"; CHP.status = "Speech: " + (CHP.lang === "da" ? "Danish" : "English") + "."; chpWarm(); }, { size: 30, key: "lang" });
+  vrpBtn(P, g, 622, by, 110, 110, "⌨", () => { CHP.kb = !CHP.kb; }, { on: kb, size: 46, key: "kbd" });
+  if (selW != null) vrpBtn(P, g, 744, by, 250, 110, "Delete word", () => { CHP.w.splice(CHP.sel, 1); CHP.sel = null; }, { size: 30, key: "delw" });
+  else vrpBtn(P, g, 744, by, 250, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
+  const ok = !!chpText() && !!(c && c.on());
+  vrpBtn(P, g, 1006, by, 366, 110, "Send ➤", () => chpSend(), { off: !ok, on: ok, size: 40, key: "send" });
+  const st = CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : "");
+  if (st.trim()){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui"; vrpWrap(g, st, W - 80, 2).forEach((l, k) => g.fillText(l, 40, by + 150 + k * 34)); }
 }
 /* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
    Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
@@ -10948,7 +11060,8 @@ function menuRows(){
                   act2: () => setSize(stage.scale.x / FIT_SCALE / 1.5) });
       if (INPUT.mode === "hands") rows.push({ label: "Bring the palette here", act: floatMenu });
       if (!credOk()) rows.push({ label: "Not signed in — leave VR to sign in with Google", icon: "user", exit: true, act: vrLeaveToSignIn });
-      rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : "") + (credOk() ? "" : " (needs sign-in)"), act: () => saveScene(true) });
+      rows.push({ label: SCENE.saving ? "Saving the scene…" : "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : "") + (credOk() ? "" : " (needs sign-in)")
+                  + (SCENE.savedAt && !SCENE.saving ? "  · saved ✓ " + SCENE.savedAt.toTimeString().slice(0, 5) : ""), act: () => { if (!SCENE.saving) saveScene(true); } });
       rows.push({ label: "🖼 My scenes — open, share, delete", on: SCP.on, icon: "film", act: () => vrpShow(SCP, !SCP.on) });
       { const n = chatUnread(); rows.push({ label: "💬 Chat" + (n ? " (" + n + " new)" : "") + " — talk to type", on: CHP.on, icon: "user", act: () => vrpShow(CHP, !CHP.on) }); }
       if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
