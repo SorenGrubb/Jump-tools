@@ -424,7 +424,19 @@ UJ.chat = (function(){
     el.querySelectorAll("[data-vote]").forEach(function(b){ b.onclick = function(){ A.castVote(b.dataset.vote, b.dataset.v); }; });
   }
   var LOCAL = {};
-  function sys(t){ (LOCAL[ST.room] = LOCAL[ST.room] || []).push(t); if (LOCAL[ST.room].length > 8) LOCAL[ST.room].shift(); render(); }
+  function sys(t){ (LOCAL[ST.room] = LOCAL[ST.room] || []).push(t); if (LOCAL[ST.room].length > 8) LOCAL[ST.room].shift(); render(); vrNotify(ST.room); }
+  /* ── THE CHAT IN THE HEADSET (2026-11-16) ── vr.html draws the chat on a panel in the room; it is told when something
+     changes (window.UJ_CHAT_ONCHANGE) and reads the room through UJ.chat.vr below -- plain data, no HTML. */
+  function vrNotify(room){ try { if (typeof window.UJ_CHAT_ONCHANGE === "function") window.UJ_CHAT_ONCHANGE(room); } catch (e){} }
+  function vrMessages(){
+    var me = (ST.name || "").replace(/\s+/g, "").toLowerCase();
+    var L = (ST.rooms[ST.room] || []).filter(function(m){ return !ST.mutedUsers[m.uid]; }).map(function(m){
+      var t = String(m.text || "");
+      return { name: m.name || nameOf(m.uid), flagEmoji: flag(m.flag), text: t, kind: m.kind || "msg", toolName: toolName(m.tool), toolCol: toolCol(m.tool), ts: m.ts,
+               me: m.uid === ME, hl: !!me && t.toLowerCase().indexOf("@" + me) >= 0 };
+    });
+    return L.concat((LOCAL[ST.room] || []).map(function(t){ return { name: "Chat", flagEmoji: "", text: t, kind: "sys", toolName: "ℹ", toolCol: "#8b949e" }; }));
+  }
   /* a new message while the window is closed: a moment's peek at the last few lines, unless muted */
   var peekT = 0;
   function peek(room){
@@ -666,7 +678,7 @@ UJ.chat = (function(){
       else markRead();
       if (room === ST.room) render();
       if (list.length > before && before && !(ST.open && ST.room === room)){ var nm = list[list.length - 1]; if (nm.uid !== ME) peek(room); }
-      syncLaunch(); syncHead();
+      syncLaunch(); syncHead(); vrNotify(room);
     });
   }
   function ensure(){
@@ -760,5 +772,8 @@ UJ.chat = (function(){
     EL.inp.focus();
   }
   return { open: function(){ setOpen(true); }, close: function(){ setOpen(false); }, askVote: askVote, post: post, command: command,
+           vr: { on: function(){ return ON; }, status: function(){ return STATUS; }, ensure: ensure, room: function(){ return ST.room; }, thisRoom: THIS_ROOM,
+                 roomName: roomName, setRoom: function(r){ setRoom(r); vrNotify(r); }, markRead: function(){ markRead(); vrNotify(ST.room); },
+                 unread: function(){ return ST.unread; }, messages: vrMessages },
            _st: ST, _flag: flag, _toCC: toCC, _body: body, _configured: function(){ return CONFIGURED; }, _note: noteContribution };
 })();

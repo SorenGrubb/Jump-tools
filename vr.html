@@ -1096,6 +1096,15 @@
   ab.addEventListener("click", () => window.setAdvanced(!window.VR_ADV, true));
   { const g = $("grpBtn"); if (g) g.after(ab); else $("hide").before(ab); }
   window.setAdvanced(window.VR_ADV, false);
+  /* THE TUTORIAL SEES EVERYTHING (2026-11-16, Søren: "Switch on the advanced for the tutorial."): the walkthrough points
+     at controls in both sets, so while it runs (core/tour.js marks the page "tour-on") the advanced tools are shown;
+     when it ends, a page that was in basic goes back to basic. Neither is remembered as your choice. */
+  { let tourMadeAdv = false;
+    new MutationObserver(() => {
+      const on = document.documentElement.classList.contains("tour-on");
+      if (on && !window.VR_ADV){ tourMadeAdv = true; window.setAdvanced(true, false); }
+      else if (!on && tourMadeAdv){ tourMadeAdv = false; if (advStored() !== "1") window.setAdvanced(false, false); }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] }); }
 
   function openTab(key){
     bar.querySelectorAll("button").forEach(b => b.classList.toggle("cur", b.dataset.tab === key));
@@ -4884,7 +4893,7 @@ async function saveScene(fromVR, asNew){
     signInUI(); return;
   }
   const title = (document.getElementById("sceneTitle").value || "").trim()
-    || SCENE.title || (CELLS.length + " cells · " + new Date().toLocaleDateString());
+    || SCENE.title || (CELLS.length + (CELLS.length === 1 ? " cell · " : " cells · ") + new Date().toLocaleDateString());
   const sc = captureScene(), json = JSON.stringify(sc);
   out.textContent = tlCount() ? "Taking the picture from the middle of the timeline…" : "Taking the picture…";
   const preview = await previewForSave(() => { out.textContent = "Taking the picture — waiting for the cells to finish loading…"; });
@@ -9676,6 +9685,361 @@ function cutPlayEnd(){
   else if (pre.mode === "frozen" && pre.km){ setCut("frozen"); pre.km.decompose(k.position, k.quaternion, k.scale); k.updateMatrixWorld(true); }
   else setCut(pre.mode === "frozen" || pre.mode === "hand" ? "off" : pre.mode);
 }
+/* ── 53. PANELS IN THE ROOM: YOUR SCENES AND THE CHAT ─────────────────────────────────────  2026-11-16
+   Søren: "There should be an option to load saved scenes in the headset. Would be cool if there was an image of the
+   scene also shown next to it and that you can delete scenes or suggest them featured in Jump academy or post them on
+   the forum. Would it be possible also to have the chat in the headset and use voice recognition to type in the chat?"
+
+   Two panels in the palette's purple glass, opened from View (both in basic):
+   · 🖼 MY SCENES -- your saved scenes, four to a page, each with its picture, title, date, cells and story length,
+     and where it stands in Jump Academy. Open (the page reloads with that scene; press Enter VR again -- a big button
+     says so), 🎓 submit to / withdraw from the Academy, 💬 post in the forum, 🗑 delete. Everything that cannot be
+     undone with one press asks twice (the button turns orange for 4 s); a featured scene cannot be deleted until it
+     is withdrawn, as on the Academy page. The same backend calls as the Academy page and the PC panel.
+   · 💬 CHAT -- the room you are in (All tools / This tool), the newest messages that fit, and dictation: HOLD the
+     trigger on 🎙 and speak, let go, and Whisper turns it into text here in the browser (nothing is sent anywhere until
+     you press Send; the first time the speech model is downloaded, ~80 MB for English, ~250 MB for Danish). The text
+     can be added to by talking again, cleared, or sent. A text starting with / is a chat command, as on the PC. The
+     speech model stays loaded while the chat panel is open and is let go when it closes, so the memory goes back to
+     the scene.
+   With the ray: trigger on a button. The panels face you where they open; "Bring here" puts them in front again. */
+const VRP = [];
+const vrBackend = () => { try { return dsOfCells().backend; } catch (e){ return VR_DATASETS.microns.backend; } };
+function vrPanel(id, W, H, worldW, side, draw){
+  const P = { id, W, H, worldW, side, draw, on: false, dirty: true, btns: [], hover: null, cv: null, g: null, tex: null, mesh: null, lastDraw: 0, hold: null };
+  VRP.push(P); return P;
+}
+function vrpRender(P){
+  if (!P.cv){ P.cv = document.createElement("canvas"); P.cv.width = P.W; P.cv.height = P.H; P.g = P.cv.getContext("2d"); }
+  const g = P.g, W = P.W, H = P.H;
+  g.clearRect(0, 0, W, H);
+  const pg = g.createLinearGradient(0, 0, 0, H); pg.addColorStop(0, "rgba(120,60,230,0.62)"); pg.addColorStop(1, "rgba(70,30,160,0.55)");
+  g.fillStyle = pg; g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 30); g.fill();
+  g.shadowColor = "#c58bff"; g.shadowBlur = 24; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 28); g.stroke(); g.shadowBlur = 0;
+  P.btns = [];
+  try { P.draw(P, g); } catch (e){ g.fillStyle = "#ffb070"; g.font = "32px system-ui"; g.fillText("Could not draw: " + (e.message || e), 40, H - 40); console.warn("[vr] panel " + P.id, e); }
+  if (!P.tex){ P.tex = new THREE.CanvasTexture(P.cv); P.tex.colorSpace = THREE.SRGBColorSpace; }
+  P.tex.needsUpdate = true;
+  if (!P.mesh){
+    const w = P.worldW, h = w * H / W;
+    P.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: P.tex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    P.mesh.renderOrder = 32;
+  }
+  P.dirty = false; P.lastDraw = performance.now();
+}
+/* a button: drawn, and remembered for the ray. opt: {on, warn, off (greyed, still pressable), hold:{start, end}, size} */
+function vrpBtn(P, g, x, y, w, h, label, act, opt){
+  opt = opt || {};
+  const key = P.id + ":" + (opt.key || label) + ":" + Math.round(x) + ":" + Math.round(y), hv = P.hover === key, held = P.hold && P.hold.key === key;
+  g.fillStyle = held ? "rgba(255,120,120,0.55)" : opt.warn ? "rgba(255,150,60,0.55)" : opt.on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.24)" : opt.off ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.10)";
+  g.beginPath(); g.roundRect(x, y, w, h, 14); g.fill();
+  if (hv && !opt.off){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
+  g.fillStyle = opt.off ? "rgba(246,236,255,0.45)" : "#f6ecff"; g.font = "600 " + (opt.size || 30) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(vrpFit(g, label, w - 16), x + w / 2, y + h / 2 + 1); g.textAlign = "left"; g.textBaseline = "alphabetic";
+  P.btns.push({ x, y, w, h, key, act, hold: opt.hold || null });
+}
+function vrpFit(g, s, maxW){ s = String(s || ""); if (g.measureText(s).width <= maxW) return s; while (s.length > 1 && g.measureText(s + "…").width > maxW) s = s.slice(0, -1); return s + "…"; }
+function vrpWrap(g, s, maxW, maxLines){
+  const words = String(s || "").split(/\s+/).filter(Boolean), lines = []; let cur = "";
+  for (const w of words){ const t = cur ? cur + " " + w : w; if (g.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur);
+  if (maxLines && lines.length > maxLines){ const k = lines.slice(0, maxLines); k[maxLines - 1] = vrpFit(g, k[maxLines - 1] + " …", maxW); return k; }
+  return lines.map(l => vrpFit(g, l, maxW));
+}
+function vrpPlace(P){
+  const h = vrHeadPose(), f = h.f.clone(); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, -1); f.normalize();
+  const right = new THREE.Vector3(-f.z, 0, f.x);
+  P.mesh.position.copy(h.p).addScaledVector(f, 0.78).addScaledVector(right, P.side * 0.42).add(new THREE.Vector3(0, -0.08, 0));
+  P.mesh.lookAt(h.p.x, h.p.y - 0.05, h.p.z);
+}
+function vrpShow(P, on){
+  P.on = !!on;
+  if (P.on){ vrpRender(P); if (!P.mesh.parent) scene.add(P.mesh); vrpPlace(P); if (P.onOpen) P.onOpen(); }
+  else { if (P.mesh && P.mesh.parent) P.mesh.parent.remove(P.mesh); if (P.onClose) P.onClose(); }
+  try { MENU.dirty = true; } catch (e){}
+}
+const _vrpRay = new THREE.Raycaster();
+function vrpHit(P, h){
+  if (!P.on || !P.mesh || !P.mesh.parent) return null;
+  tmpM.identity().extractRotation(h.ctl.matrixWorld);
+  _vrpRay.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld); _vrpRay.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  const hit = _vrpRay.intersectObject(P.mesh, false)[0]; if (!hit || !hit.uv) return null;
+  const x = hit.uv.x * P.W, y = (1 - hit.uv.y) * P.H;
+  let btn = null; for (const b of P.btns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h){ btn = b; break; }
+  return { x, y, btn, dist: hit.distance };
+}
+/* trigger pressed: true = a panel took it */
+function vrpSelect(h){
+  let best = null, bp = null;
+  for (const P of VRP){ const x = vrpHit(P, h); if (x && (!best || x.dist < best.dist)){ best = x; bp = P; } }
+  if (!best) return false;
+  const b = best.btn;
+  if (b){
+    if (b.hold){ bp.hold = { h, key: b.key, end: b.hold.end }; try { b.hold.start(); } catch (e){ console.warn("[vr] panel", e); } }
+    else try { b.act && b.act(); } catch (e){ console.warn("[vr] panel", e); }
+    bp.dirty = true;
+  }
+  return true;
+}
+function vrpRelease(h){
+  for (const P of VRP) if (P.hold && P.hold.h === h){ const e = P.hold.end; P.hold = null; P.dirty = true; try { e && e(); } catch (x){ console.warn("[vr] panel", x); } }
+}
+function vrpFrame(){
+  if (!renderer.xr.isPresenting) return;
+  for (const P of VRP){
+    if (!P.on) continue;
+    let hv = null;
+    for (const h of hands){ const x = vrpHit(P, h); if (x && x.btn){ hv = x.btn.key; break; } }
+    if (hv !== P.hover){ P.hover = hv; P.dirty = true; }
+    if (P.tick && P.tick()) P.dirty = true;
+    if (P.dirty && performance.now() - P.lastDraw > 90) vrpRender(P);
+  }
+}
+renderer.xr.addEventListener("sessionend", () => { for (const P of VRP) if (P.on) vrpShow(P, false); });
+async function vrPost(body){
+  try {
+    const r = await fetch(vrBackend(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ credential: CRED, ds: "ujump" }, body)) });
+    return JSON.parse(await r.text());
+  } catch (e){ return { ok: false, error: "could not reach the server" }; }
+}
+
+/* ── 🖼 MY SCENES ── */
+const SCP = vrPanel("scenes", 1600, 1300, 0.8, 0, scpDraw);
+Object.assign(SCP, { list: null, page: 0, status: "", loading: false, armed: null, imgs: {}, posted: {} });
+SCP.onOpen = () => scpLoad();
+SCP.tick = () => { if (SCP.armed && performance.now() - SCP.armed.t > 4000){ SCP.armed = null; return true; } return false; };
+async function scpLoad(){
+  if (!credOk()){ SCP.list = null; SCP.status = "Sign in with Google to see your scenes."; SCP.dirty = true; return; }
+  SCP.loading = true; SCP.status = "Reading your scenes…"; SCP.dirty = true;
+  const d = await vrPost({ type: "vr_scene_academy", action: "mine" });
+  SCP.loading = false;
+  if (!d.ok){ SCP.status = "Your scenes could not be read: " + (d.error || "no answer"); SCP.dirty = true; return; }
+  SCP.list = d.scenes || []; SCP.page = Math.min(SCP.page, Math.max(0, Math.ceil(SCP.list.length / 4) - 1));
+  SCP.status = SCP.list.length ? SCP.list.length + " saved scene" + (SCP.list.length === 1 ? "" : "s") + "." : "You have not saved a scene yet: View → Save this scene.";
+  SCP.dirty = true;
+}
+function scpImg(id){
+  if (SCP.imgs[id]) return SCP.imgs[id].img;
+  const o = SCP.imgs[id] = { img: null };
+  fetch(vrBackend() + "?vrScene=" + encodeURIComponent(id) + "&meta=1&ds=ujump").then(r => r.json()).then(m => {
+    if (!m || !m.preview){ o.none = true; SCP.dirty = true; return; }
+    const im = new Image(); im.onload = () => { o.img = im; SCP.dirty = true; }; im.onerror = () => { o.none = true; SCP.dirty = true; }; im.src = m.preview;
+  }).catch(() => { o.none = true; SCP.dirty = true; });
+  return null;
+}
+/* press twice: the first press arms the button for 4 s */
+function scpTwice(id, what, run){
+  if (SCP.armed && SCP.armed.id === id && SCP.armed.what === what){ SCP.armed = null; run(); return; }
+  SCP.armed = { id, what, t: performance.now() };
+}
+const scpArmed = (id, what) => !!(SCP.armed && SCP.armed.id === id && SCP.armed.what === what);
+function scpOpen(sc){
+  if (SCENE.id === sc.sceneId){ SCP.status = "That is the scene you are in."; return; }
+  SCP.status = "Opening “" + sc.title + "” — the page reloads; then press Enter VR again.";
+  try { sessionStorage.setItem("vr_reenter", sc.title || "your scene"); } catch (e){}
+  const go = () => { location.hash = "#scene=" + sc.sceneId; location.reload(); };
+  const se = renderer.xr.getSession(); if (se){ se.end().then(() => setTimeout(go, 150), () => go()); } else go();
+}
+async function scpAcademy(sc){
+  const act = sc.academy === "submitted" || sc.academy === "featured" ? "withdraw" : "submit";
+  SCP.status = act === "submit" ? "Submitting to Jump Academy…" : "Withdrawing from Jump Academy…"; SCP.dirty = true;
+  const d = await vrPost({ type: "vr_scene_academy", action: act, sceneId: sc.sceneId, note: sc.academyNote || "" });
+  if (!d.ok){ SCP.status = "Not done: " + (d.error || "no answer") + (/unknown|type/i.test(d.error || "") ? " (is VRScenes.gs deployed?)" : ""); SCP.dirty = true; return; }
+  sc.academy = d.academy || "";
+  SCP.status = act === "submit" ? "✓ Submitted. The reviewer chooses which are featured; you can follow it in Jump Academy → Scenes." : "✓ Withdrawn from Jump Academy.";
+  SCP.dirty = true;
+}
+async function scpForum(sc){
+  SCP.status = "Posting in the forum…"; SCP.dirty = true;
+  const d = await vrPost({ type: "forum_post", scope: "tools", kind: "finding", title: sc.title || "A VR scene", body: "🥽 VR scene: " + sceneLink(sc.sceneId), tool: "ujump" });
+  if (d.ok){ SCP.posted[sc.sceneId] = true; SCP.status = "✓ Posted in the discussion forum, with its picture and link."; }
+  else SCP.status = "Not posted: " + (d.error || "no answer");
+  SCP.dirty = true;
+}
+async function scpDelete(sc){
+  SCP.status = "Deleting…"; SCP.dirty = true;
+  const d = await vrPost({ type: "vr_scene_academy", action: "delete", sceneId: sc.sceneId });
+  if (!d.ok){ SCP.status = "Not deleted: " + (d.error || "no answer") + (/unknown/i.test(d.error || "") ? " (is the new VRScenes.gs deployed?)" : ""); SCP.dirty = true; return; }
+  SCP.list = SCP.list.filter(x => x !== sc);
+  if (SCENE.id === sc.sceneId){ SCENE.id = null; SCENE.mine = false; try { history.replaceState(null, "", location.pathname); sceneButtons(); } catch (e){} }
+  SCP.page = Math.min(SCP.page, Math.max(0, Math.ceil(SCP.list.length / 4) - 1));
+  SCP.status = "✓ Deleted “" + sc.title + "”. (Its file is in the bin on the server for 30 days.)"; SCP.dirty = true;
+}
+const SCP_STATE = { submitted: "waiting to be chosen for Jump Academy", featured: "★ featured in Jump Academy", declined: "not chosen this time" };
+function scpDraw(P, g){
+  g.fillStyle = "#f6ecff"; g.font = "700 52px system-ui, sans-serif"; g.fillText("🖼  My scenes", 40, 86);
+  const L = SCP.list || [], pages = Math.max(1, Math.ceil(L.length / 4));
+  vrpBtn(P, g, 900, 34, 90, 80, "◂", () => { SCP.page = Math.max(0, SCP.page - 1); }, { off: SCP.page === 0, size: 44 });
+  g.fillStyle = "#f6ecff"; g.font = "600 34px system-ui"; g.textAlign = "center"; g.fillText((SCP.page + 1) + " / " + pages, 1045, 86); g.textAlign = "left";
+  vrpBtn(P, g, 1100, 34, 90, 80, "▸", () => { SCP.page = Math.min(pages - 1, SCP.page + 1); }, { off: SCP.page >= pages - 1, size: 44 });
+  vrpBtn(P, g, 1206, 34, 120, 80, "⟳", () => scpLoad(), { size: 44 });
+  vrpBtn(P, g, 1340, 34, 130, 80, "Here", () => vrpPlace(P));
+  vrpBtn(P, g, 1484, 34, 80, 80, "✕", () => vrpShow(P, false), { size: 40 });
+  if (!credOk()){
+    g.fillStyle = "#f6ecff"; g.font = "36px system-ui"; g.fillText("Your scenes are kept with your Google sign-in.", 60, 260);
+    vrpBtn(P, g, 60, 300, 760, 100, "Sign in with Google (leaves VR for a moment)", () => vrLeaveToSignIn(), { size: 32 });
+  }
+  const cw = 752, ch = 500;
+  L.slice(SCP.page * 4, SCP.page * 4 + 4).forEach((sc, i) => {
+    const x = 32 + (i % 2) * (cw + 32), y = 140 + Math.floor(i / 2) * (ch + 24);
+    const cur = SCENE.id === sc.sceneId;
+    g.fillStyle = cur ? "rgba(255,255,255,0.16)" : "rgba(20,8,48,0.40)"; g.beginPath(); g.roundRect(x, y, cw, ch, 20); g.fill();
+    if (cur){ g.strokeStyle = "#7ee8c8"; g.lineWidth = 4; g.stroke(); }
+    /* the picture, fitted into 320 × 240 at the left */
+    const px = x + 16, py = y + 16, pw = 320, ph = 240, im = scpImg(sc.sceneId);
+    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(px, py, pw, ph);
+    if (im){ const k = Math.max(pw / im.width, ph / im.height), sw = pw / k, sh = ph / k;
+      g.save(); g.beginPath(); g.rect(px, py, pw, ph); g.clip(); g.drawImage(im, (im.width - sw) / 2, (im.height - sh) / 2, sw, sh, px, py, pw, ph); g.restore(); }
+    else { g.fillStyle = "rgba(246,236,255,0.6)"; g.font = "28px system-ui"; g.textAlign = "center"; g.fillText(SCP.imgs[sc.sceneId] && SCP.imgs[sc.sceneId].none ? "no picture" : "loading…", px + pw / 2, py + ph / 2 + 10); g.textAlign = "left"; }
+    /* the words beside it */
+    const tx = px + pw + 22, tw = cw - pw - 54;
+    g.fillStyle = "#ffffff"; g.font = "700 36px system-ui";
+    vrpWrap(g, sc.title || "Untitled scene", tw, 2).forEach((l, k) => g.fillText(l, tx, py + 40 + k * 44));
+    g.fillStyle = "#e9d5ff"; g.font = "28px system-ui";
+    const when = String(sc.updatedAt || sc.timestamp || "").slice(0, 10);
+    g.fillText(vrpFit(g, (sc.cells || 0) + " cell" + (sc.cells === 1 ? "" : "s") + (sc.story > 0 ? " · " + Math.round(sc.story) + " s story" : "") + (when ? " · " + when : ""), tw), tx, py + 150);
+    if (cur){ g.fillStyle = "#7ee8c8"; g.fillText("● the scene you are in", tx, py + 190); }
+    if (sc.academy && SCP_STATE[sc.academy]){ g.fillStyle = sc.academy === "featured" ? "#ffd866" : "#d8c2ff"; g.font = "600 26px system-ui";
+      vrpWrap(g, SCP_STATE[sc.academy], tw, 2).forEach((l, k) => g.fillText(l, tx, py + 230 + k * 32)); }
+    if (sc.academyReply){ g.fillStyle = "#e9d5ff"; g.font = "italic 26px system-ui"; g.fillText(vrpFit(g, "Reviewer: " + sc.academyReply, cw - 40), px, py + ph + 40); }
+    /* the buttons along the bottom */
+    const by = y + ch - 116, bw = (cw - 32 - 3 * 12) / 4, bh = 100; let bx = x + 16;
+    vrpBtn(P, g, bx, by, bw, bh, cur ? "Open ✓" : "▶ Open", () => scpOpen(sc), { off: cur, size: 32 }); bx += bw + 12;
+    const inAc = sc.academy === "submitted" || sc.academy === "featured";
+    vrpBtn(P, g, bx, by, bw, bh, scpArmed(sc.sceneId, "ac") ? (inAc ? "Again: withdraw" : "Again: submit") : inAc ? "Withdraw" : "🎓 Submit",
+      () => scpTwice(sc.sceneId, "ac", () => scpAcademy(sc)), { warn: scpArmed(sc.sceneId, "ac"), on: inAc && !scpArmed(sc.sceneId, "ac"), size: 27, key: "ac" + sc.sceneId }); bx += bw + 12;
+    vrpBtn(P, g, bx, by, bw, bh, SCP.posted[sc.sceneId] ? "Posted ✓" : scpArmed(sc.sceneId, "fo") ? "Again: post" : "💬 Forum",
+      () => { if (!SCP.posted[sc.sceneId]) scpTwice(sc.sceneId, "fo", () => scpForum(sc)); }, { warn: scpArmed(sc.sceneId, "fo"), off: !!SCP.posted[sc.sceneId], size: 30, key: "fo" + sc.sceneId }); bx += bw + 12;
+    if (sc.academy === "featured")
+      vrpBtn(P, g, bx, by, bw, bh, "🗑 Locked", () => { SCP.status = "A featured scene cannot be deleted — withdraw it from Jump Academy first."; }, { off: true, size: 26, key: "de" + sc.sceneId });
+    else vrpBtn(P, g, bx, by, bw, bh, scpArmed(sc.sceneId, "de") ? "Again: delete" : "🗑 Delete", () => scpTwice(sc.sceneId, "de", () => scpDelete(sc)),
+      { warn: scpArmed(sc.sceneId, "de"), size: 30, key: "de" + sc.sceneId });
+  });
+  g.fillStyle = "#f6ecff"; g.font = "30px system-ui";
+  const st = SCP.armed ? ({ ac: "Press it again within 4 s to go on.", fo: "Press again within 4 s to post it in the discussion forum (everybody can see it).", de: "Press again within 4 s to delete it for good." })[SCP.armed.what] : SCP.status;
+  vrpWrap(g, st, P.W - 80, 2).forEach((l, k) => g.fillText(l, 40, P.H - 66 + k * 36));
+}
+/* after "Open" the page reloads outside VR: a big button to go back in (entering VR needs a press) */
+function scpReenterOffer(){
+  let t = null; try { t = sessionStorage.getItem("vr_reenter"); sessionStorage.removeItem("vr_reenter"); } catch (e){}
+  if (!t) return;
+  const b = document.createElement("button");
+  b.textContent = "🥽 Back into VR with “" + t + "”";
+  Object.assign(b.style, { position: "fixed", left: "50%", top: "40%", transform: "translate(-50%,-50%)", zIndex: 99999, padding: "28px 40px", fontSize: "28px",
+    fontWeight: "700", borderRadius: "18px", border: "none", background: "#9b5cff", color: "#fff", boxShadow: "0 10px 40px rgba(0,0,0,.5)", cursor: "pointer" });
+  b.onclick = () => { b.remove(); try { vrBtn.click(); } catch (e){} };
+  document.body.appendChild(b);
+  setTimeout(() => { if (b.isConnected) b.textContent = "🥽 Back into VR"; }, 60000);
+}
+
+/* ── 💬 THE CHAT ── */
+const CHP = vrPanel("chat", 1400, 1360, 0.66, 1, chpDraw);
+Object.assign(CHP, { draft: "", rec: null, busy: false, status: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, idle: 0 });
+const chatApi = () => (window.UJ && UJ.chat && UJ.chat.vr) ? UJ.chat.vr : null;
+window.UJ_CHAT_ONCHANGE = () => {
+  if (CHP.on){ CHP.dirty = true; if (!CHP.marking){ CHP.marking = true; try { const c = chatApi(); if (c) c.markRead(); } catch (e){} CHP.marking = false; } }
+  try { MENU.dirty = true; } catch (e){}
+};
+CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} };
+CHP.onClose = () => { chpStopRec(true); if (!CHP.busy) mlRelease(); };
+CHP.tick = () => (CHP.rec || CHP.busy) && performance.now() - CHP.lastDraw > 250;
+function chatUnread(){ const c = chatApi(); if (!c) return 0; try { const u = c.unread(); return Object.keys(u).reduce((a, k) => a + (u[k] || 0), 0); } catch (e){ return 0; } }
+async function chpStartRec(){
+  if (CHP.busy || CHP.rec) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+    const rec = new MediaRecorder(stream, type ? { mimeType: type } : {}), chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    CHP.rec = { rec, stream, chunks, t0: performance.now(), released: false };
+    rec.start(250); CHP.status = "Listening… let go of the trigger when you have said it."; CHP.dirty = true;
+    if (CHP.rec.released) chpStopRec();                    // let go before the microphone was ready
+  } catch (e){ CHP.status = "The microphone is not available here (" + (e.message || e) + "). Allow it for this site, then try again."; CHP.rec = null; CHP.dirty = true; }
+}
+function chpStopRec(discard){
+  const R = CHP.rec; if (!R){ return; }
+  if (!R.rec){ R.released = true; return; }
+  CHP.rec = null;
+  R.rec.onstop = async () => {
+    try { R.stream.getTracks().forEach(t => t.stop()); } catch (e){}
+    if (discard) return;
+    const blob = new Blob(R.chunks, { type: R.rec.mimeType || "audio/webm" });
+    if (performance.now() - R.t0 < 500 || blob.size < 1500){ CHP.status = "Hold the trigger on 🎙 while you speak, then let go."; CHP.dirty = true; return; }
+    chpTranscribe(blob);
+  };
+  try { R.rec.stop(); } catch (e){}
+}
+async function chpTranscribe(blob){
+  CHP.busy = true; CHP.t0 = performance.now(); CHP.dirty = true;
+  const say = t => { CHP.status = t; CHP.dirty = true; };
+  say("Turning your words into text here in the browser" + (MLW.w ? "…" : " — the first time the speech model is downloaded (" + (CHP.lang === "da" ? "~250" : "~80") + " MB)…"));
+  try {
+    const buf = await blob.arrayBuffer();
+    const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0).slice();
+    const out = (await mlCall({ op: "asr", lang: CHP.lang, small: mlSmall(), pcm }, [pcm.buffer], t => say(/part 1 of 1/.test(t) ? "Listening to your words…" : t))).out;
+    const text = (out.chunks || []).map(c => String(c.text || "").trim()).filter(Boolean).join(" ").trim();
+    if (text){ CHP.draft = (CHP.draft ? CHP.draft + " " : "") + text; say("Check the text, then Send — or hold 🎙 again to add more."); }
+    else say("No words were heard. Hold the trigger on 🎙 and speak a little louder.");
+  } catch (e){ say("Could not turn it into text: " + (e && e.message || e)); mlRelease(); }
+  CHP.busy = false; CHP.dirty = true;
+}
+async function chpSend(){
+  const c = chatApi(), text = CHP.draft.trim(); if (!text || !c) return;
+  if (!c.on()){ CHP.status = c.status(); CHP.dirty = true; return; }
+  try { if (text[0] === "/") await UJ.chat.command(text); else await UJ.chat.post({ text }); CHP.draft = ""; CHP.status = "✓ Sent."; }
+  catch (e){ CHP.status = "Not sent: " + (e && e.message || e); }
+  CHP.dirty = true;
+}
+function chpDraw(P, g){
+  const c = chatApi(), W = P.W;
+  g.fillStyle = "#f6ecff"; g.font = "700 50px system-ui, sans-serif"; g.fillText("💬  Chat", 40, 84);
+  if (c){ const room = c.room();
+    vrpBtn(P, g, 330, 32, 250, 80, "All tools", () => { c.setRoom("all"); }, { on: room === "all" });
+    vrpBtn(P, g, 594, 32, 330, 80, "This tool", () => { c.setRoom(c.thisRoom); }, { on: room === c.thisRoom });
+    if (room !== "all" && room !== c.thisRoom) vrpBtn(P, g, 938, 32, 190, 80, c.roomName(room), () => {}, { on: true, size: 28 });
+  }
+  vrpBtn(P, g, 1150, 32, 130, 80, "Here", () => vrpPlace(P));
+  vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
+  /* the messages: the newest that fit, from the bottom up */
+  const top = 140, bottom = 900, mx = 44, mw = W - 88;
+  g.fillStyle = "rgba(20,8,48,0.42)"; g.beginPath(); g.roundRect(28, top - 14, W - 56, bottom - top + 28, 18); g.fill();
+  if (!c){ g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; g.fillText("The chat has not loaded on this page.", mx, top + 60); }
+  else if (!c.on()){
+    g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; vrpWrap(g, c.status(), mw, 3).forEach((l, k) => g.fillText(l, mx, top + 60 + k * 44));
+    if (!credOk()) vrpBtn(P, g, mx, top + 220, 760, 100, "Sign in with Google (leaves VR for a moment)", () => vrLeaveToSignIn(), { size: 32 });
+  } else {
+    const L = c.messages().slice(-40), blocks = [];
+    for (const m of L){
+      g.font = "600 30px system-ui"; const name = (m.flagEmoji ? m.flagEmoji + " " : "") + (m.name || "somebody");
+      g.font = "32px system-ui"; const lines = vrpWrap(g, m.text || (m.kind === "pic" ? "(a picture)" : m.kind === "vote" ? "(a vote — open it on the PC)" : ""), mw - 20, 6);
+      blocks.push({ name, tool: m.toolName, col: m.toolCol, lines, me: m.me, hl: m.hl, h: 40 + lines.length * 40 + 14 });
+    }
+    let y = bottom; const draw = [];
+    for (let i = blocks.length - 1; i >= 0 && y - blocks[i].h >= top; i--){ y -= blocks[i].h; draw.unshift([blocks[i], y]); }
+    if (!draw.length){ g.fillStyle = "#e9d5ff"; g.font = "32px system-ui"; g.fillText("No messages in the last 24 h here. Say hello!", mx, top + 60); }
+    for (const [b, by] of draw){
+      if (b.hl){ g.fillStyle = "rgba(255,216,102,0.18)"; g.fillRect(36, by, W - 72, b.h - 8); }
+      g.fillStyle = b.col || "#56d4c8"; g.font = "600 24px system-ui"; const tw = g.measureText(b.tool || "").width + 18;
+      g.beginPath(); g.roundRect(mx, by + 6, tw, 32, 8); g.fill(); g.fillStyle = "#0d1117"; g.fillText(b.tool || "", mx + 9, by + 30);
+      g.fillStyle = b.me ? "#7ee8c8" : "#ffffff"; g.font = "600 30px system-ui"; g.fillText(vrpFit(g, b.name, mw - tw - 20), mx + tw + 12, by + 32);
+      g.fillStyle = "#f6ecff"; g.font = "32px system-ui"; b.lines.forEach((l, k) => g.fillText(l, mx + 8, by + 76 + k * 40));
+    }
+  }
+  /* what you are about to send */
+  const dy = 930;
+  g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, 170, 16); g.fill();
+  g.font = "34px system-ui"; g.fillStyle = CHP.draft ? "#ffffff" : "rgba(246,236,255,0.55)";
+  vrpWrap(g, CHP.draft || "Hold the trigger on 🎙 and speak — your words appear here.", W - 100, 3).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
+  /* the buttons */
+  const by = 1120, rec = !!CHP.rec;
+  vrpBtn(P, g, 28, by, 470, 120, rec ? "● Listening… let go to stop" : CHP.busy ? "… turning into text" : "🎙 Hold to talk", () => {},
+    { size: 36, on: rec, off: CHP.busy, hold: { start: () => { if (!CHP.busy) chpStartRec(); }, end: () => chpStopRec() }, key: "talk" });
+  vrpBtn(P, g, 512, by, 190, 120, CHP.lang === "da" ? "Dansk" : "English", () => { CHP.lang = CHP.lang === "da" ? "en" : "da"; CHP.status = "Speech: " + (CHP.lang === "da" ? "Danish" : "English") + "."; }, { size: 32, key: "lang" });
+  vrpBtn(P, g, 716, by, 190, 120, "Clear", () => { CHP.draft = ""; CHP.status = ""; }, { off: !CHP.draft, size: 32 });
+  vrpBtn(P, g, 920, by, 452, 120, "Send ➤", () => chpSend(), { off: !CHP.draft.trim() || !(c && c.on()), on: !!CHP.draft.trim() && !!(c && c.on()), size: 40 });
+  if (CHP.status || CHP.busy){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui";
+    g.fillText(vrpFit(g, CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : ""), W - 80), 40, 1290); }
+}
 /* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
    Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
    View → Timeline → "Show the timeline panel" puts the timeline in the room, ~70 cm ahead and below your eyes,
@@ -10002,7 +10366,7 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "R" : "L", hand, tglove };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); tlvrRelease(h); });
+  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); tlvrRelease(h); vrpRelease(h); });
   ctl.addEventListener("select", () => spkWake());
   ctl.addEventListener("selectstart", () => {
     /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
@@ -10019,6 +10383,7 @@ function selectWith(h){
   const mh = menuHit(h);
   if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
   if (tlvrSelect(h)) return;                         // on the timeline panel (section 48)
+  if (vrpSelect(h)) return;                          // on "My scenes" or the chat (section 53)
   const tool = isToolHand(h);
   if (TRW.on && tool){ trwHandStart(h); return; }
   if (FLY.trigger && tool){ flyWithHand(h); return; }
@@ -10584,6 +10949,8 @@ function menuRows(){
       if (INPUT.mode === "hands") rows.push({ label: "Bring the palette here", act: floatMenu });
       if (!credOk()) rows.push({ label: "Not signed in — leave VR to sign in with Google", icon: "user", exit: true, act: vrLeaveToSignIn });
       rows.push({ label: "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : "") + (credOk() ? "" : " (needs sign-in)"), act: () => saveScene(true) });
+      rows.push({ label: "🖼 My scenes — open, share, delete", on: SCP.on, icon: "film", act: () => vrpShow(SCP, !SCP.on) });
+      { const n = chatUnread(); rows.push({ label: "💬 Chat" + (n ? " (" + n + " new)" : "") + " — talk to type", on: CHP.on, icon: "user", act: () => vrpShow(CHP, !CHP.on) }); }
       if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       S("Timeline");
@@ -10723,7 +11090,7 @@ function drawMenu(){
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
     let lab = r.label;
     if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
-      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰)\s*/u, "$1"); } }
+      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰|🖼|💬)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
     g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
@@ -10889,6 +11256,7 @@ if (navigator.xr){
 }
 const vrBtn = VRButton.createButton(renderer, { optionalFeatures: ["hand-tracking"] });
 document.getElementById("vrslot").appendChild(vrBtn);
+scpReenterOffer();                                   // back from "Open" in My scenes (section 53)
 vrBtn.addEventListener("click", () => { if (!renderer.xr.isPresenting) xrTraceStart("Enter VR pressed: waiting for the headset to grant a session"); }, true);
 /* "VR NOT SUPPORTED" means the browser HAS WebXR but no headset runtime answered. On a PC that is
    almost always the OpenXR runtime (Air Link / Link not set as active, or SteamVR holding it);
@@ -17980,6 +18348,7 @@ renderer.setAnimationLoop(() => {
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { gloveFrame(); } catch (e){ if (!window.__gloveWarned){ window.__gloveWarned = true; console.warn("[vr] gloves:", e); } }
   try { takeFrame(); } catch (e){ console.warn("[vr] take:", e); }
+  try { vrpFrame(); } catch (e){ if (!window.__vrpWarned){ window.__vrpWarned = true; console.warn("[vr] scenes / chat panel:", e); } }
   try { tlvrFrame(); } catch (e){ if (!window.__tlvrWarned){ window.__tlvrWarned = true; console.warn("[vr] timeline panel:", e); } }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
