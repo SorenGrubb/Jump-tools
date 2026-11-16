@@ -13208,6 +13208,12 @@ function tlSnapT(key, t, moving, tol){
   for (const l in TL.keys) for (const k of TL.keys[l]) if (k !== key && !(moving && moving.has(k))){ cands.push(k.t); if (k.dur) cands.push(k.t + k.dur); if (k.orb && k.orb.dur) cands.push(k.t + k.orb.dur); }
   let best = null, bd = tol;
   for (const c of cands){ const d = Math.abs(c - t); if (d <= bd){ bd = d; best = c; } }
+  /* A CAPTION'S END SNAPS TOO (2026-11-16, Søren: "Does one caption's end also snap to the beginning of the next one? so
+     they don't overlap unless you keep moving it past the snapping point?"): for a key that lasts (a caption, an effect)
+     its end is tried against the same times, and whichever of start and end is nearer a mark wins -- so a caption
+     dragged toward the next one stops with its end on that one's start, and only goes on past it when dragged on. */
+  const len = key && (key.lane === "cap" || key.lane === "fx") ? (key.dur || (key.lane === "cap" ? 3 : 0)) : 0;
+  if (len > 0) for (const c of cands){ const d = Math.abs(c - (t + len)); if (d < bd){ bd = d; best = c - len; } }
   if (best == null){ const h = Math.round(t * 2) / 2; best = Math.abs(h - t) < Math.min(0.15, tol) ? h : t; }
   return Math.max(0, Math.min(TL.dur, Math.round(best * 100) / 100));
 }
