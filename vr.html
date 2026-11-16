@@ -9997,11 +9997,32 @@ CHP.onClose = () => { chpStopRec(true); if (!CHP.busy && !(typeof CAPP !== "unde
 CHP.tick = () => (CHP.rec || CHP.busy) && performance.now() - CHP.lastDraw > 250;
 function chatUnread(){ const c = chatApi(); if (!c) return 0; try { const u = c.unread(); return Object.keys(u).reduce((a, k) => a + (u[k] || 0), 0); } catch (e){ return 0; } }
 /* spoken words go in place of the marked word, or at the end */
+/* WORDS PUT INTO A SENTENCE FIT IT (2026-11-16, Søren: "If you add a word in the middle of a sentence, it should not
+   write it with a capital letter.") Speech recognition writes every phrase as a sentence of its own -- "The." -- so
+   words that go in where a sentence is already running lose the capital (not a name like "AIS" or "I", which have
+   more capitals or are one letter) and the full stop at their end when more of the sentence follows. At the very
+   start they take the capital, and the word that was first gives its capital up. */
+const edCap = w => w.charAt(0).toUpperCase() + w.slice(1);
+const edLow = w => (w.length > 1 && /^\p{Lu}\p{Ll}/u.test(w)) ? w.charAt(0).toLowerCase() + w.slice(1) : w;
+function edFit(E, at, words, replacing){
+  const prev = at > 0 ? E.w[at - 1] : null, next = E.w[at + (replacing ? 1 : 0)];
+  const startsSentence = prev == null || /[.!?:]["')\]]*$/.test(prev);
+  const out = words.slice();
+  if (!startsSentence) out[0] = edLow(out[0]);
+  else if (prev == null && next != null) out[0] = edCap(out[0]);
+  if (next != null){
+    out[out.length - 1] = out[out.length - 1].replace(/[.!?]+$/, "") || out[out.length - 1];
+    if (prev == null && !replacing) return { words: out, lowerNext: true };
+  }
+  return { words: out, lowerNext: false };
+}
 function chpInsert(text, E = CHP){
-  const words = String(text || "").trim().split(/\s+/).filter(Boolean); if (!words.length) return;
-  if (E.sel != null && E.sel < E.w.length){ E.w.splice(E.sel, 1, ...words); E.sel = null; }
-  else if (E.ins != null && E.ins <= E.w.length){ E.w.splice(E.ins, 0, ...words); E.ins += words.length; }
-  else E.w.push(...words);
+  let words = String(text || "").trim().split(/\s+/).filter(Boolean); if (!words.length) return;
+  if (E.sel != null && E.sel < E.w.length){ const f = edFit(E, E.sel, words, true); E.w.splice(E.sel, 1, ...f.words); E.sel = null; }
+  else if (E.ins != null && E.ins <= E.w.length){ const at = E.ins, f = edFit(E, at, words, false);
+    if (f.lowerNext && E.w[at] != null) E.w[at] = edLow(E.w[at]);
+    E.w.splice(at, 0, ...f.words); E.ins += f.words.length; }
+  else { if (E.w.length){ const f = edFit(E, E.w.length, words, false); words = f.words; } E.w.push(...words); }
   E.w = E.w.filter(Boolean); if (E.ins != null) E.ins = Math.min(E.ins, E.w.length);
 }
 /* the keyboard edits the marked word, or the last one */
@@ -10525,10 +10546,10 @@ const TLVR_W = 2048, TLVR_H = 700, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 1
 /* read when drawn: TL_LANES is declared further down the page */
 const tlvrLanes = () => TL_LANES.concat([["paint", "Paint", "#f778ba"]]);
 const TLVR_BTNS = [["play", "▶", "Play / pause"], ["home", "⏮", "To the start"], ["cam", "+ Camera"], ["view", "+ View"], ["stim", "+ Stimulus"],
-                   ["capt", "+ Caption"], ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["close", "✕"]];
+                   ["capt", "+ Caption"], ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["snap", "🧲"], ["close", "✕"]];
 function tlvrEdRect(){ return TLVR.sel && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: TLVR_H - 104, w: 384, h: 84 } : null; }
 function tlvrBtnRects(){
-  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
+  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" || id === "snap" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
 }
 const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * (TL.dur ? t / TL.dur : 0);
 const tlvrT = x => Math.max(0, Math.min(TL.dur, (x - TLVR_X0) / (TLVR_X1 - TLVR_X0) * TL.dur));
@@ -10541,7 +10562,7 @@ function tlvrDraw(){
   g.shadowColor = "#c58bff"; g.shadowBlur = 24; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 28); g.stroke(); g.shadowBlur = 0;
   /* buttons */
   for (const b of tlvrBtnRects()){
-    const hv = TLVR.hover && TLVR.hover.btn === b.id, on = b.id === "play" && TL.playing;
+    const hv = TLVR.hover && TLVR.hover.btn === b.id, on = (b.id === "play" && TL.playing) || (b.id === "snap" && TL.snap);
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 16); g.fill();
     if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
     g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
@@ -10618,14 +10639,18 @@ function tlvrHit(h){
   for (const b of tlvrBtnRects()) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return { btn: b.id, x, y };
   { const e = tlvrEdRect(); if (e && x >= e.x && x <= e.x + e.w && y >= e.y && y <= e.y + e.h) return { btn: "edcap", x, y }; }
   const li = Math.floor((y - TLVR_LANE0) / TLVR_LH), lane = tlvrLanes()[li] && tlvrLanes()[li][0];
-  let key = null;
-  if (lane && lane !== "paint" && x >= TLVR_X0 - 30){ let best = 34; for (const k of TL.keys[lane] || []){ const d = Math.abs(tlvrX(k.t) - x); if (d < best){ best = d; key = k; } } }
-  return { x, y, key, track: x >= TLVR_X0 - 30 && x <= TLVR_X1 + 30 && y >= 120 };
+  let key = null, bar = null;
+  if (lane && lane !== "paint" && x >= TLVR_X0 - 30){ let best = 30; for (const k of TL.keys[lane] || []){ const d = Math.abs(tlvrX(k.t) - x); if (d < best){ best = d; key = k; } } }
+  /* THE BAR IS NOT THE HANDLE (2026-11-16, Søren: "it is too easy to accidentally move it when selecting it for edit"):
+     the circle moves a caption; its bar (how long it shows) picks it and opens its words, and does not move it */
+  if (!key && (lane === "cap" || lane === "fx")) for (const k of TL.keys[lane] || []){ const x0 = tlvrX(k.t), x1 = tlvrX(Math.min(TL.dur, k.t + (k.dur || 3))); if (x > x0 + 18 && x <= Math.max(x0 + 30, x1)){ bar = k; break; } }
+  return { x, y, key, bar, track: x >= TLVR_X0 - 30 && x <= TLVR_X1 + 30 && y >= 120 };
 }
 function tlvrButton(id){
   const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
   if (id === "play"){ if (TL.playing) tlStop(); else if (tlCount()) tlPlay(); }
   else if (id === "home") tlSeek(0);
+  else if (id === "snap"){ TL.snap = !TL.snap; const sb = document.getElementById("tlSnap"); if (sb) sb.classList.toggle("on", TL.snap); flashWarn("🧲 Snap " + (TL.snap ? "on: keys jump to other keys' times" : "off"), 2000, "#c98bff"); }
   /* + Caption: one at the playhead, opened for its words (section 54); ✎ Edit text: the picked caption */
   else if (id === "capt"){ tlAdd("cap", Object.assign({ text: "", dur: 3, pos: "bottom", size: "m" }, TL.capStyle || {})); TLVR.sel = TL.sel; capEdit(TL.sel); }
   else if (id === "edcap"){ if (TLVR.sel && TLVR.sel.lane === "cap") capEdit(TLVR.sel); }
@@ -10646,7 +10671,8 @@ function tlvrButton(id){
 function tlvrSelect(h){
   const x = tlvrHit(h); if (!x) return false;
   if (x.btn){ tlvrButton(x.btn); return true; }
-  if (x.key){ TLVR.sel = x.key; TLVR.drag = { h, key: x.key, t0: x.key.t, moved: false }; }
+  if (x.bar){ TLVR.sel = x.bar; TLVR.drag = null; if (x.bar.lane === "cap") capEdit(x.bar); TLVR.dirty = true; return true; }
+  if (x.key){ TLVR.sel = x.key; TLVR.drag = { h, key: x.key, t0: x.key.t, x0: x.x, moved: false }; }
   else if (x.track){ TLVR.sel = null; TLVR.drag = { h, scrub: true }; tlSeek(tlvrT(x.x)); }
   TLVR.dirty = true; return true;
 }
@@ -10665,7 +10691,10 @@ function tlvrFrame(){
   if (d){ const x = tlvrHit(d.h);
     if (x && !x.btn){
       if (d.scrub){ const t = tlvrT(x.x); if (Math.abs(t - TL.t) > 0.04){ tlSeek(t); TLVR.dirty = true; } }
-      else if (d.key){ const t = Math.round(tlvrT(x.x) * 10) / 10; if (t !== d.key.t){ d.key.t = t; d.moved = true; TLVR.dirty = true; } }
+      /* a key moves only once the hand has really moved it (a steady 14 px of the panel), and then snaps */
+      else if (d.key && (d.moved || Math.abs(x.x - d.x0) > 14)){
+        const t = tlSnapT(d.key, tlvrT(x.x), null, 26 * TL.dur / (TLVR_X1 - TLVR_X0));
+        if (t !== d.key.t){ d.key.t = t; d.moved = true; TLVR.dirty = true; } }
     } }
   /* while playing the playhead moves: ten redraws a second is smooth enough and cheap enough for a Quest */
   if (TLVR.dirty || (TL.playing && performance.now() - TLVR.lastDraw > 100)) tlvrDraw();
@@ -13166,13 +13195,21 @@ async function tlRecord(){
 
 /* ── the timeline's extras (2026-10-16, Søren: "Do all of them") ──
    SNAP while dragging: to other keys and the playhead when within 0.15 s, else to half seconds. */
-function tlSnapT(key, t, moving){
+/* 🧲 SNAP (2026-11-16, Søren: "for all the keyframes in both VR and PC there should be a snap option to snap it to the
+   timepoint of other keyframes in the timeline" -- "Symbol for that could be a magnet"). While a key is dragged it
+   jumps to the time of any other key in any lane (its start, and the end of a caption or effect), or to the playhead,
+   when it comes within `tol` seconds -- given by the caller as a distance on the screen (about 10 px on the PC, a
+   finger's width on the headset's panel), so it works the same on a 10 s and a 10 min timeline. Away from other keys
+   it still settles on whole half seconds close by. 🧲 on the PC bar and on the headset's timeline panel turns it off. */
+function tlSnapT(key, t, moving, tol){
   if (!TL.snap) return Math.round(t * 10) / 10;
-  let best = Math.round(t * 2) / 2, bd = Math.abs(best - t) < 0.15 ? Math.abs(best - t) : 1e9;
+  tol = tol || 0.15;
   const cands = [TL.t];
   for (const l in TL.keys) for (const k of TL.keys[l]) if (k !== key && !(moving && moving.has(k))){ cands.push(k.t); if (k.dur) cands.push(k.t + k.dur); if (k.orb && k.orb.dur) cands.push(k.t + k.orb.dur); }
-  for (const c of cands){ const d = Math.abs(c - t); if (d < 0.15 && d < bd){ bd = d; best = c; } }
-  return Math.max(0, Math.min(TL.dur, Math.round((bd < 1e9 ? best : t) * 100) / 100));
+  let best = null, bd = tol;
+  for (const c of cands){ const d = Math.abs(c - t); if (d <= bd){ bd = d; best = c; } }
+  if (best == null){ const h = Math.round(t * 2) / 2; best = Math.abs(h - t) < Math.min(0.15, tol) ? h : t; }
+  return Math.max(0, Math.min(TL.dur, Math.round(best * 100) / 100));
 }
 /* THUMBNAILS of what a camera key sees, kept by pose (they survive undo), shown on hover. */
 function tlThumbKey(k){ return (k.p || []).map(v => v.toFixed(3)).join(",") + "|" + (k.sq || []).map(v => v.toFixed(3)).join(","); }
@@ -13306,7 +13343,7 @@ function tlBuild(){
       <button id="tlAddFx" title="Add an effect here: highlight a cell, freeze the spikes, follow the spike, or set the recording electrodes">+ ✦ Effect</button>
       <span class="tlSep"></span>
       <button id="tlUndo" title="Undo (Ctrl+Z)">↶</button><button id="tlRedo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
-      <button id="tlSnap" class="on" title="Snap keys to half seconds, to other keys and to the playhead while dragging">Snap</button>
+      <button id="tlSnap" class="on" title="🧲 Snap: a dragged key jumps to the time of other keys (any lane) and to the playhead when it comes close">🧲 Snap</button>
       <button id="tlPath" class="on" title="Show the camera's path as a dotted line in the 3D view">Path</button>
       <button id="tlCards" title="The info cards in the 3D view — the collection's name, the stimulation and Ca²⁺ cards, warnings, the recording's clock card — in the film too. Off: the film shows none of them (captions and plots are not affected).">Cards</button>
       <span class="tlSep"></span>
@@ -13418,7 +13455,7 @@ function tlBuild(){
       tlDraw();
     } else {
       const d = TL.drag; d.moving = new Set(d.grp.map(g => g[0]));
-      const want = tlSnapT(d.key, Math.max(0, Math.min(TL.dur, tlTimeAt(e) - d.dx)), d.moving);
+      const want = tlSnapT(d.key, Math.max(0, Math.min(TL.dur, tlTimeAt(e) - d.dx)), d.moving, 10 * TL.dur / Math.max(200, cv.getBoundingClientRect().width));
       const delta = Math.max(d.lo, Math.min(d.hi, want - d.t0));
       for (const [k, t0] of d.grp) k.t = Math.round((t0 + delta) * 100) / 100;
       tlSort(); tlDraw(); tlEditor();
