@@ -9762,8 +9762,20 @@ function vrpWrap(g, s, maxW, maxLines){
   if (maxLines && lines.length > maxLines){ const k = lines.slice(0, maxLines); k[maxLines - 1] = vrpFit(g, k[maxLines - 1] + " …", maxW); return k; }
   return lines.map(l => vrpFit(g, l, maxW));
 }
-function vrpPlace(P){
-  const h = vrHeadPose(), f = h.f.clone(); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, -1); f.normalize();
+/* where a panel opens: ahead of you, the chat a little to the right so it does not cover My scenes. "Here" (2026-11-16,
+   Søren: "the here button on the chat window in VR seems to move the window always to the right and not to the place I
+   am looking") puts it straight where you are looking -- up or down too, within reason -- facing you. */
+function vrpPlace(P, here){
+  const h = vrHeadPose();
+  if (here){
+    /* while you press it you are looking at the panel, so for 2.5 s after the press it follows your gaze, softly:
+       turn to where you want it and it stays there */
+    const f = h.f.clone().normalize(); f.y = Math.max(-0.6, Math.min(0.5, f.y)); f.normalize();
+    const to = h.p.clone().addScaledVector(f, 0.8);
+    if (here === "soft") P.mesh.position.lerp(to, 0.15); else P.mesh.position.copy(to);
+    P.mesh.lookAt(h.p.x, h.p.y, h.p.z); return;
+  }
+  const f = h.f.clone(); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, -1); f.normalize();
   const right = new THREE.Vector3(-f.z, 0, f.x);
   P.mesh.position.copy(h.p).addScaledVector(f, 0.78).addScaledVector(right, P.side * 0.42).add(new THREE.Vector3(0, -0.08, 0));
   P.mesh.lookAt(h.p.x, h.p.y - 0.05, h.p.z);
@@ -9808,6 +9820,7 @@ function vrpFrame(){
     for (const h of hands){ const x = vrpHit(P, h); if (x && x.btn){ hv = x.btn.key; break; } }
     if (hv !== P.hover){ P.hover = hv; P.dirty = true; }
     if (P.tick && P.tick()) P.dirty = true;
+    if (P.follow){ if (performance.now() < P.follow) vrpPlace(P, "soft"); else { P.follow = 0; P.dirty = true; } }
     if (P.dirty && performance.now() - P.lastDraw > 90) vrpRender(P);
   }
 }
@@ -9889,7 +9902,7 @@ function scpDraw(P, g){
   g.fillStyle = "#f6ecff"; g.font = "600 34px system-ui"; g.textAlign = "center"; g.fillText((SCP.page + 1) + " / " + pages, 1045, 86); g.textAlign = "left";
   vrpBtn(P, g, 1100, 34, 90, 80, "▸", () => { SCP.page = Math.min(pages - 1, SCP.page + 1); }, { off: SCP.page >= pages - 1, size: 44 });
   vrpBtn(P, g, 1206, 34, 120, 80, "⟳", () => scpLoad(), { size: 44 });
-  vrpBtn(P, g, 1340, 34, 130, 80, "Here", () => vrpPlace(P));
+  vrpBtn(P, g, 1340, 34, 130, 80, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
   vrpBtn(P, g, 1484, 34, 80, 80, "✕", () => vrpShow(P, false), { size: 40 });
   if (!credOk()){
     g.fillStyle = "#f6ecff"; g.font = "36px system-ui"; g.fillText("Your scenes are kept with your Google sign-in.", 60, 260);
@@ -9962,107 +9975,114 @@ function scpReenterOffer(){
      English (~40 MB, about four times quicker than before), base for Danish (~150 MB, about three times quicker; a
      little less accurate than small). (3) The model is loaded while the panel opens, not when you first speak. */
 const CHP = vrPanel("chat", 1400, 1560, 0.66, 1, chpDraw);
-Object.assign(CHP, { imgs: {}, view: null, adding: {}, pic: null, w: [], sel: null, kb: false, who: false, cmds: false, scroll: 0, nMsg: null, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
+Object.assign(CHP, { imgs: {}, view: null, adding: {}, pic: null, w: [], sel: null, ins: null, kb: false, who: false, cmds: false, scroll: 0, nMsg: null, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
 const chatApi = () => (window.UJ && UJ.chat && UJ.chat.vr) ? UJ.chat.vr : null;
 window.UJ_CHAT_ONCHANGE = () => {
   if (CHP.on){ CHP.dirty = true; if (!CHP.marking){ CHP.marking = true; try { const c = chatApi(); if (c) c.markRead(); } catch (e){} CHP.marking = false; } }
   try { MENU.dirty = true; } catch (e){}
 };
 const chpSR = () => (window.SpeechRecognition || window.webkitSpeechRecognition || null);
-const chpEngine = () => chpSR() && CHP.srOk ? "browser" : "whisper";
-const chpText = () => CHP.w.filter(Boolean).join(" ").trim();
-function chpWarm(){
-  if (chpEngine() !== "whisper" || CHP.warm === CHP.lang) return;
-  CHP.warm = CHP.lang; const lang = CHP.lang;
-  mlCall({ op: "load", lang, small: mlSmall(), fast: mlSmall() }, [], t => { if (!CHP.busy){ CHP.status = t.replace(/^Downloading/, "Getting ready: downloading"); CHP.dirty = true; } })
-    .then(() => { if (!CHP.busy && CHP.lang === lang){ CHP.status = "Ready: hold the trigger on 🎙 and speak."; CHP.dirty = true; } })
-    .catch(e => { CHP.warm = null; if (!CHP.busy){ CHP.status = "The speech model could not load: " + (e.message || e); CHP.dirty = true; } });
+const chpEngine = (E = CHP) => chpSR() && E.srOk ? "browser" : "whisper";
+const chpText = (E = CHP) => E.w.filter(Boolean).join(" ").trim();
+function chpWarm(E = CHP){
+  if (chpEngine(E) !== "whisper" || E.warm === E.lang) return;
+  E.warm = E.lang; const lang = E.lang;
+  mlCall({ op: "load", lang, small: mlSmall(), fast: mlSmall() }, [], t => { if (!E.busy){ E.status = t.replace(/^Downloading/, "Getting ready: downloading"); E.dirty = true; } })
+    .then(() => { if (!E.busy && E.lang === lang){ E.status = "Ready: hold the trigger on 🎙 and speak."; E.dirty = true; } })
+    .catch(e => { E.warm = null; if (!E.busy){ E.status = "The speech model could not load: " + (e.message || e); E.dirty = true; } });
 }
 CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} chpWarm();
   try { document.fonts.load("30px 'Twemoji Country Flags'", "🇩🇰").then(() => { CHP.dirty = true; }); } catch (e){} };
-CHP.onClose = () => { chpStopRec(true); if (!CHP.busy){ mlRelease(); CHP.warm = null; } };
+CHP.onClose = () => { chpStopRec(true); if (!CHP.busy && !(typeof CAPP !== "undefined" && CAPP.on)){ mlRelease(); CHP.warm = null; if (typeof CAPP !== "undefined") CAPP.warm = null; } };
 CHP.tick = () => (CHP.rec || CHP.busy) && performance.now() - CHP.lastDraw > 250;
 function chatUnread(){ const c = chatApi(); if (!c) return 0; try { const u = c.unread(); return Object.keys(u).reduce((a, k) => a + (u[k] || 0), 0); } catch (e){ return 0; } }
 /* spoken words go in place of the marked word, or at the end */
-function chpInsert(text){
+function chpInsert(text, E = CHP){
   const words = String(text || "").trim().split(/\s+/).filter(Boolean); if (!words.length) return;
-  if (CHP.sel != null && CHP.sel < CHP.w.length){ CHP.w.splice(CHP.sel, 1, ...words); CHP.sel = null; }
-  else CHP.w.push(...words);
-  CHP.w = CHP.w.filter(Boolean);
+  if (E.sel != null && E.sel < E.w.length){ E.w.splice(E.sel, 1, ...words); E.sel = null; }
+  else if (E.ins != null && E.ins <= E.w.length){ E.w.splice(E.ins, 0, ...words); E.ins += words.length; }
+  else E.w.push(...words);
+  E.w = E.w.filter(Boolean); if (E.ins != null) E.ins = Math.min(E.ins, E.w.length);
 }
 /* the keyboard edits the marked word, or the last one */
-function chpKey(k){
-  if (k === "⇧"){ CHP.shift = !CHP.shift; return; }
-  if (k === "⌨"){ CHP.kb = false; return; }
-  let i = CHP.sel != null ? CHP.sel : CHP.w.length - 1;
-  if (k === "space"){ if (i < 0 || CHP.w[i] === "") return; CHP.w.splice(i + 1, 0, ""); CHP.sel = i + 1; return; }
+function chpKey(k, E = CHP){
+  if (k === "⇧"){ E.shift = !E.shift; return; }
+  if (k === "⌨"){ E.kb = false; return; }
+  /* at a gap: a letter starts a new word there; ⌫ takes from the word before it */
+  if (E.ins != null && E.sel == null){
+    if (k === "space") return;
+    if (k === "⌫"){ const j = E.ins - 1; if (j < 0) return; E.w[j] = E.w[j].slice(0, -1); if (!E.w[j]){ E.w.splice(j, 1); E.ins = j; } return; }
+    E.w.splice(E.ins, 0, ""); E.sel = E.ins; E.ins = null;
+  }
+  let i = E.sel != null ? E.sel : E.w.length - 1;
+  if (k === "space"){ if (i < 0 || E.w[i] === "") return; E.w.splice(i + 1, 0, ""); E.sel = i + 1; return; }
   if (k === "⌫"){
     if (i < 0) return;
-    if (CHP.w[i].length){ CHP.w[i] = CHP.w[i].slice(0, -1); if (CHP.sel == null && !CHP.w[i]) CHP.w.splice(i, 1); }
-    else { CHP.w.splice(i, 1); CHP.sel = i - 1 >= 0 ? i - 1 : (CHP.w.length ? 0 : null); }
+    if (E.w[i].length){ E.w[i] = E.w[i].slice(0, -1); if (E.sel == null && !E.w[i]) E.w.splice(i, 1); }
+    else { E.w.splice(i, 1); E.sel = i - 1 >= 0 ? i - 1 : (E.w.length ? 0 : null); }
     return;
   }
-  if (i < 0){ CHP.w.push(""); i = 0; }
-  CHP.w[i] += CHP.shift ? k.toUpperCase() : k; CHP.shift = false;
+  if (i < 0){ E.w.push(""); i = 0; }
+  E.w[i] += E.shift ? k.toUpperCase() : k; E.shift = false;
 }
-async function chpStartRec(){
-  if (CHP.busy || CHP.rec) return;
-  CHP.interim = "";
-  if (chpEngine() === "browser"){
+async function chpStartRec(E = CHP){
+  if (E.busy || E.rec) return;
+  E.interim = "";
+  if (chpEngine(E) === "browser"){
     try {
-      const SR = chpSR(), r = new SR(); r.lang = CHP.lang === "da" ? "da-DK" : "en-US"; r.interimResults = true; r.continuous = true;
-      const R = CHP.rec = { sr: r, fin: "", released: false, t0: performance.now() };
+      const SR = chpSR(), r = new SR(); r.lang = E.lang === "da" ? "da-DK" : "en-US"; r.interimResults = true; r.continuous = true;
+      const R = E.rec = { sr: r, fin: "", released: false, t0: performance.now() };
       r.onresult = ev => { let fin = "", tmp = ""; for (let i = 0; i < ev.results.length; i++){ const x = ev.results[i]; if (x.isFinal) fin += x[0].transcript + " "; else tmp += x[0].transcript + " "; }
-        R.fin = fin.trim(); CHP.interim = (R.fin + " " + tmp).trim(); CHP.dirty = true; };
+        R.fin = fin.trim(); E.interim = (R.fin + " " + tmp).trim(); E.dirty = true; };
       r.onerror = ev => { R.err = ev.error;
-        if (/not-allowed|service-not-allowed|network|language-not-supported|audio-capture/.test(ev.error || "")){ CHP.srOk = false; chpWarm();
-          CHP.status = "This browser's speech recognition is not available (" + ev.error + ") — using the speech model here instead: hold 🎙 again."; CHP.dirty = true; } };
-      r.onend = () => { if (CHP.rec === R) CHP.rec = null; const t = R.fin || CHP.interim; CHP.interim = "";
-        if (t && !R.discard){ chpInsert(t); CHP.status = "Check the words (trigger on one to change it), then Send."; }
-        else if (!R.err && !R.discard) CHP.status = "No words were heard. Hold the trigger on 🎙 and speak.";
-        CHP.dirty = true; };
-      r.start(); CHP.status = "Listening… let go of the trigger when you have said it."; CHP.dirty = true;
+        if (/not-allowed|service-not-allowed|network|language-not-supported|audio-capture/.test(ev.error || "")){ E.srOk = false; chpWarm(E);
+          E.status = "This browser's speech recognition is not available (" + ev.error + ") — using the speech model here instead: hold 🎙 again."; E.dirty = true; } };
+      r.onend = () => { if (E.rec === R) E.rec = null; const t = R.fin || E.interim; E.interim = "";
+        if (t && !R.discard){ chpInsert(t, E); E.status = "Check the words (trigger on one to change it, or on a gap to add there), then " + (E.verb || "Send") + "."; }
+        else if (!R.err && !R.discard) E.status = "No words were heard. Hold the trigger on 🎙 and speak.";
+        E.dirty = true; };
+      r.start(); E.status = "Listening… let go of the trigger when you have said it."; E.dirty = true;
       return;
-    } catch (e){ CHP.srOk = false; CHP.rec = null; chpWarm(); }
+    } catch (e){ E.srOk = false; E.rec = null; chpWarm(E); }
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
     const rec = new MediaRecorder(stream, type ? { mimeType: type } : {}), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    const R = CHP.rec = { rec, stream, chunks, t0: performance.now(), released: false };
-    rec.start(250); CHP.status = "Listening… let go of the trigger when you have said it."; CHP.dirty = true;
-    if (R.released) chpStopRec();                    // let go before the microphone was ready
-  } catch (e){ CHP.status = "The microphone is not available here (" + (e.message || e) + "). Allow it for this site, then try again."; CHP.rec = null; CHP.dirty = true; }
+    const R = E.rec = { rec, stream, chunks, t0: performance.now(), released: false };
+    rec.start(250); E.status = "Listening… let go of the trigger when you have said it."; E.dirty = true;
+    if (R.released) chpStopRec(false, E);                    // let go before the microphone was ready
+  } catch (e){ E.status = "The microphone is not available here (" + (e.message || e) + "). Allow it for this site, then try again."; E.rec = null; E.dirty = true; }
 }
-function chpStopRec(discard){
-  const R = CHP.rec; if (!R){ return; }
+function chpStopRec(discard, E = CHP){
+  const R = E.rec; if (!R){ return; }
   if (R.sr){ R.discard = !!discard; try { R.sr.stop(); } catch (e){} return; }
   if (!R.rec){ R.released = true; return; }
-  CHP.rec = null;
+  E.rec = null;
   R.rec.onstop = async () => {
     try { R.stream.getTracks().forEach(t => t.stop()); } catch (e){}
     if (discard) return;
     const blob = new Blob(R.chunks, { type: R.rec.mimeType || "audio/webm" });
-    if (performance.now() - R.t0 < 500 || blob.size < 1500){ CHP.status = "Hold the trigger on 🎙 while you speak, then let go."; CHP.dirty = true; return; }
-    chpTranscribe(blob);
+    if (performance.now() - R.t0 < 500 || blob.size < 1500){ E.status = "Hold the trigger on 🎙 while you speak, then let go."; E.dirty = true; return; }
+    chpTranscribe(blob, E);
   };
   try { R.rec.stop(); } catch (e){}
 }
-async function chpTranscribe(blob){
-  CHP.busy = true; CHP.t0 = performance.now(); CHP.dirty = true;
-  const say = t => { CHP.status = t; CHP.dirty = true; };
+async function chpTranscribe(blob, E = CHP){
+  E.busy = true; E.t0 = performance.now(); E.dirty = true;
+  const say = t => { E.status = t; E.dirty = true; };
   say("Turning your words into text…");
   try {
     const buf = await blob.arrayBuffer();
     const pcm = (await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(buf)).getChannelData(0).slice();
-    const out = (await mlCall({ op: "asr", lang: CHP.lang, small: mlSmall(), fast: mlSmall(), pcm }, [pcm.buffer], t => say(/part \d+ of/.test(t) ? "Turning your words into text…" : t))).out;
+    const out = (await mlCall({ op: "asr", lang: E.lang, small: mlSmall(), fast: mlSmall(), pcm }, [pcm.buffer], t => say(/part \d+ of/.test(t) ? "Turning your words into text…" : t))).out;
     const text = (out.chunks || []).map(c => String(c.text || "").trim()).filter(Boolean).join(" ").trim();
-    if (text){ chpInsert(text); say("Check the words (trigger on one to change it), then Send.  (" + ((performance.now() - CHP.t0) / 1000).toFixed(1) + " s)"); }
+    if (text){ chpInsert(text, E); say("Check the words (trigger on one to change it, or on a gap to add there), then " + (E.verb || "Send") + ".  (" + ((performance.now() - E.t0) / 1000).toFixed(1) + " s)"); }
     else say("No words were heard. Hold the trigger on 🎙 and speak a little louder.");
-    CHP.warm = CHP.lang;
-  } catch (e){ say("Could not turn it into text: " + (e && e.message || e)); mlRelease(); CHP.warm = null; }
-  CHP.busy = false; CHP.dirty = true;
+    E.warm = E.lang;
+  } catch (e){ say("Could not turn it into text: " + (e && e.message || e)); mlRelease(); E.warm = null; }
+  E.busy = false; E.dirty = true;
 }
 async function chpSend(){
   const c = chatApi(), text = chpText(), pic = CHP.pic; if ((!text && !pic) || !c) return;
@@ -10075,7 +10095,7 @@ async function chpSend(){
       if (isForum && pic && r !== false) CHP.pic = null;
       CHP.status = isForum ? (r === false ? "The forum post was refused — see the message above." : "✓ Posted in the forum" + (pic ? " with the picture." : ".")) : "✓ Done.";
     }
-    else { await UJ.chat.post(pic ? { text, kind: "pic", data: { img: pic.img, w: pic.w, h: pic.h } } : { text }); CHP.w = []; CHP.sel = null; CHP.pic = null; CHP.status = "✓ Sent."; }
+    else { await UJ.chat.post(pic ? { text, kind: "pic", data: { img: pic.img, w: pic.w, h: pic.h } } : { text }); CHP.w = []; CHP.sel = null; CHP.ins = null; CHP.pic = null; CHP.status = "✓ Sent."; }
   }
   catch (e){ CHP.status = "Not sent: " + (e && e.message || e); }
   CHP.dirty = true;
@@ -10252,6 +10272,103 @@ function chudFrame(){
   else { CHUD.mesh.position.lerp(target, 0.12); CHUD.mesh.quaternion.slerp(_hudQ, 0.12); }
   CHUD.mesh.visible = true;
 }
+/* ── EDITING WORDS, SHARED BY THE CHAT AND THE CAPTIONS (2026-11-16) ──
+   Søren: "I would like if you could also select the place between words in the chat, so you can insert new text there."
+   Between every two words, and before the first and after the last, is a gap: trigger on it and a yellow caret
+   stands there; what you then say or type goes in at that place (and the caret moves on after it). A word: trigger
+   marks it, as before. The same editor writes the timeline's captions (section 54). */
+function edWords(P, g, E, x0, y0, x1, rows, hint){
+  if (!E.w.length && !E.interim){
+    g.font = "32px system-ui"; g.fillStyle = "rgba(246,236,255,0.6)";
+    vrpWrap(g, hint, x1 - x0 - 20, rows + 1).forEach((l, k) => g.fillText(l, x0 + 6, y0 + 38 + k * 44)); return;
+  }
+  g.font = "600 34px system-ui";
+  const GAP = 30, lay = []; let x = x0 + GAP, row = 0;
+  E.w.forEach((wd, i) => { const ww = Math.min(x1 - x0 - 2 * GAP, Math.max(56, g.measureText(wd || " ").width + 28 + (E.sel === i ? 18 : 0)));
+    if (x + ww > x1 && x > x0 + GAP){ row++; x = x0 + GAP; } lay.push([i, x, row, ww]); x += ww + GAP; });
+  const endX = x, endRow = row;
+  const focus = E.sel != null && lay[E.sel] ? lay[E.sel][2] : E.ins != null && lay[E.ins] ? lay[E.ins][2] : endRow;
+  const first = Math.max(0, Math.min(focus, endRow) - (rows - 1));
+  const gap = (i, gx, r) => {
+    if (r < first || r > first + rows - 1) return;
+    const gy = y0 + (r - first) * 70, on = E.ins === i, key = P.id + ":gap" + i, hv = P.hover === key;
+    g.fillStyle = on ? "#ffd866" : hv ? "rgba(255,255,255,0.75)" : "rgba(246,236,255,0.22)";
+    const bw = on ? 7 : hv ? 5 : 3; g.fillRect(gx + GAP / 2 - bw / 2, gy + 4, bw, 52);
+    P.btns.push({ x: gx, y: gy, w: GAP, h: 60, key, act: () => { E.ins = E.ins === i ? null : i; E.sel = null; } });
+  };
+  for (const [i, wx, r, ww] of lay){
+    gap(i, wx - GAP, r);
+    if (r < first || r > first + rows - 1) continue;
+    vrpBtn(P, g, wx, y0 + (r - first) * 70, ww, 60, (E.w[i] || "") + (E.sel === i && E.kb ? "|" : ""), () => { E.sel = E.sel === i ? null : i; E.ins = null; }, { on: E.sel === i, size: 34, key: "w" + i });
+  }
+  gap(E.w.length, endX - GAP, endRow);
+  if (E.interim){ g.fillStyle = "rgba(246,236,255,0.65)"; g.font = "italic 32px system-ui"; g.fillText(vrpFit(g, "… " + E.interim, x1 - x0), x0 + 6, y0 + rows * 70 + 4); }
+}
+function edKeys(P, g, E, by){
+  const W = P.W, kw = (W - 56 - 10 * 8) / 11, kh = 84;
+  CHP_KEYS.forEach((rowKeys, r) => {
+    let x = 28;
+    for (const k of rowKeys){
+      const w = k === "space" ? kw * 3 + 16 : k === "⌫" || k === "⌨" ? kw * 1.5 + 4 : kw;
+      const lab = k === "space" ? "space" : k === "⇧" ? "⇧" : E.shift ? k.toUpperCase() : k;
+      vrpBtn(P, g, x, by + r * (kh + 8), w, kh, lab, () => chpKey(k, E), { size: 38, on: k === "⇧" && E.shift, key: "k" + k });
+      x += w + 8;
+    }
+  });
+  return by + CHP_KEYS.length * (kh + 8) + 12;
+}
+/* ── 54. CAPTIONS EDITED IN THE HEADSET (2026-11-16) ──
+   Søren: "I would like that you can edit the captions in the timeline in VR with all the same text editing possibilities
+   of the chat window and also with speak to text." On the timeline panel: "+ Caption" adds one at the playhead and
+   opens it; a picked caption key has "✎ Edit text". The caption opens in this panel as words, edited exactly as in the
+   chat -- 🎙 hold to talk (replacing a marked word, or at a gap), ⌨ keyboard, Delete word -- and Save writes it into
+   the timeline (Undo on the timeline brings the old text back). How long it shows can be changed here too. */
+const CAPP = vrPanel("caption", 1400, 1160, 0.62, 0, capDraw);
+Object.assign(CAPP, { key: null, w: [], sel: null, ins: null, kb: false, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true, verb: "Save" });
+CAPP.onOpen = () => chpWarm(CAPP);
+CAPP.onClose = () => { chpStopRec(true, CAPP); if (!CAPP.busy && !CHP.on){ mlRelease(); CAPP.warm = null; CHP.warm = null; } };
+CAPP.tick = () => (CAPP.rec || CAPP.busy) && performance.now() - CAPP.lastDraw > 250;
+function capEdit(k){
+  if (!k) return;
+  Object.assign(CAPP, { key: k, w: String(k.text || "").trim().split(/\s+/).filter(Boolean), sel: null, ins: null, status: "", interim: "" });
+  CAPP.ins = CAPP.w.length ? null : 0;
+  if (CAPP.on){ CAPP.dirty = true; vrpPlace(CAPP, true); } else vrpShow(CAPP, true);
+}
+function capSave(){
+  const k = CAPP.key; if (!k) return;
+  if (!TL.keys.cap.includes(k)){ CAPP.status = "That caption is no longer in the timeline."; CAPP.dirty = true; return; }
+  tlSave();                                           // the old text, for Undo
+  k.text = chpText(CAPP); delete k.voice;             // edited by hand now
+  tlSave(); tlSync(); try { TLVR.dirty = true; } catch (e){}
+  CAPP.status = "✓ Saved."; vrpShow(CAPP, false);
+  try { flashWarn("✓ Caption saved at " + k.t.toFixed(1) + " s", 2500, "#3fb950"); } catch (e){}
+}
+function capDraw(P, g){
+  const W = P.W, k = CAPP.key;
+  g.fillStyle = "#f6ecff"; g.font = "700 46px system-ui, sans-serif"; g.fillText("✎  Caption" + (k ? " at " + k.t.toFixed(1) + " s" : ""), 40, 82);
+  vrpBtn(P, g, 1150, 32, 130, 80, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
+  vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
+  /* how long it shows */
+  if (k){ g.fillStyle = "#e9d5ff"; g.font = "30px system-ui"; g.fillText("Shown for " + (k.dur || 3).toFixed(1) + " s", 40, 160);
+    vrpBtn(P, g, 330, 118, 90, 60, "−", () => { k.dur = Math.max(0.5, Math.round(((k.dur || 3) - 0.5) * 10) / 10); }, { size: 40, key: "dm" });
+    vrpBtn(P, g, 430, 118, 90, 60, "+", () => { k.dur = Math.min(60, Math.round(((k.dur || 3) + 0.5) * 10) / 10); }, { size: 40, key: "dp" }); }
+  /* the words */
+  const dy = 200, dh = CAPP.kb ? 230 : 370;
+  g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, dh, 16); g.fill();
+  edWords(P, g, CAPP, 44, dy + 12, W - 60, CAPP.kb ? 3 : 5, "Hold the trigger on 🎙 and say the caption, or ⌨ type it. Trigger on a word to change it, or on a gap to add there.");
+  let by = dy + dh + 20;
+  if (CAPP.kb) by = edKeys(P, g, CAPP, by);
+  const rec = !!CAPP.rec, selW = CAPP.sel != null ? CAPP.w[CAPP.sel] : null;
+  vrpBtn(P, g, 28, by, 380, 110, rec ? "● Listening… let go" : CAPP.busy ? "… turning into text" : selW != null ? "🎙 Hold: replace “" + selW + "”" : CAPP.ins != null ? "🎙 Hold: add here" : "🎙 Hold to talk", () => {},
+    { size: 30, on: rec, off: CAPP.busy, hold: { start: () => { if (!CAPP.busy) chpStartRec(CAPP); }, end: () => chpStopRec(false, CAPP) }, key: "talk" });
+  vrpBtn(P, g, 420, by, 140, 110, CAPP.lang === "da" ? "Dansk" : "English", () => { CAPP.lang = CAPP.lang === "da" ? "en" : "da"; CAPP.status = "Speech: " + (CAPP.lang === "da" ? "Danish" : "English") + "."; chpWarm(CAPP); }, { size: 28, key: "lang" });
+  vrpBtn(P, g, 572, by, 100, 110, "⌨", () => { CAPP.kb = !CAPP.kb; }, { on: CAPP.kb, size: 46, key: "kbd" });
+  if (selW != null) vrpBtn(P, g, 684, by, 230, 110, "Delete word", () => { CAPP.w.splice(CAPP.sel, 1); CAPP.sel = null; }, { size: 28, key: "delw" });
+  else vrpBtn(P, g, 684, by, 230, 110, "Clear", () => { CAPP.w = []; CAPP.sel = null; CAPP.ins = 0; }, { off: !CAPP.w.length, size: 30, key: "clr" });
+  vrpBtn(P, g, 926, by, 446, 110, "Save ✓", () => capSave(), { on: true, size: 40, key: "save" });
+  const st = CAPP.status + (CAPP.busy ? "  (" + mmss((performance.now() - CAPP.t0) / 1000) + ")" : "");
+  if (st.trim()){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui"; vrpWrap(g, st, W - 80, 2).forEach((l, kk) => g.fillText(l, 40, by + 150 + kk * 34)); }
+}
 function chpDraw(P, g){
   const c = chatApi(), W = P.W, kb = CHP.kb;
   g.fillStyle = "#f6ecff"; g.font = "700 50px system-ui, sans-serif"; g.fillText("💬  Chat", 40, 84);
@@ -10263,7 +10380,7 @@ function chpDraw(P, g){
   /* who is here: always counted in the header; the list opens over the messages */
   { let n = 0; try { n = c && c.on() ? c.online().length : 0; } catch (e){}
     vrpBtn(P, g, 1010, 32, 130, 80, "👥 " + n, () => { CHP.who = !(CHP.who || CHP.flags); CHP.flags = false; CHP.cmds = false; }, { on: CHP.who || CHP.flags, size: 32, key: "who" }); }
-  vrpBtn(P, g, 1150, 32, 130, 80, "Here", () => vrpPlace(P));
+  vrpBtn(P, g, 1150, 32, 130, 80, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
   vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
   /* the messages: the newest that fit, from the bottom up */
   const top = 140, bottom = kb ? 560 : 1050, mx = 44, mw = W - 88;
@@ -10364,21 +10481,7 @@ function chpDraw(P, g){
   /* what you are about to send: one button per word */
   const dy = bottom + 30, dh = 230;
   g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, dh, 16); g.fill();
-  if (!CHP.w.length && !CHP.interim){
-    g.font = "32px system-ui"; g.fillStyle = "rgba(246,236,255,0.6)";
-    vrpWrap(g, "Hold the trigger on 🎙 and speak, or ⌨ type. Your words appear here; trigger on a word to change it.", W - 420, 4).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
-  } else {
-    g.font = "600 34px system-ui";
-    const lay = []; let x = 44, row = 0;
-    CHP.w.forEach((wd, i) => { const ww = Math.min(W - 420, Math.max(56, g.measureText(wd || " ").width + 28 + (CHP.sel === i ? 18 : 0)));
-      if (x + ww > W - 360 && x > 44){ row++; x = 44; } lay.push([i, x, row, ww]); x += ww + 8; });
-    const last = lay.length ? lay[lay.length - 1][2] : 0, selRow = CHP.sel != null && lay[CHP.sel] ? lay[CHP.sel][2] : last;
-    const first = Math.max(0, Math.min(selRow, last) - 2);                              // three rows show, kept round the marked word
-    for (const [i, wx, r, ww] of lay){ if (r < first || r > first + 2) continue;
-      const wy = dy + 12 + (r - first) * 70;
-      vrpBtn(P, g, wx, wy, ww, 60, (CHP.w[i] || "") + (CHP.sel === i && kb ? "|" : ""), () => { CHP.sel = CHP.sel === i ? null : i; }, { on: CHP.sel === i, size: 34, key: "w" + i }); }
-    if (CHP.interim){ g.fillStyle = "rgba(246,236,255,0.65)"; g.font = "italic 32px system-ui"; g.fillText(vrpFit(g, "… " + CHP.interim, W - 420), 50, dy + dh - 18); }
-  }
+  edWords(P, g, CHP, 44, dy + 12, W - 360, 3, "Hold the trigger on 🎙 and speak, or ⌨ type. Your words appear here; trigger on a word to change it, or on the gap between two words to add there.");
   /* the right of it: 📸 a picture of what you see, 🧩 the picked cell -- and the picture, when there is one */
   { const rx = W - 340;
     vrpBtn(P, g, rx, dy + 10, 150, 70, "📸 Picture", () => shotStart(), { size: 26, off: SHOT.busy, key: "shot" });
@@ -10391,19 +10494,7 @@ function chpDraw(P, g){
     else { g.fillStyle = "rgba(246,236,255,0.5)"; g.font = "24px system-ui"; vrpWrap(g, "A picture or the picked cell goes with your message — or with /forum.", 300, 3).forEach((l, k) => g.fillText(l, rx + 4, dy + 120 + k * 30)); } }
   /* the keyboard */
   let by = dy + dh + 20;
-  if (kb){
-    const kw = (W - 56 - 10 * 8) / 11, kh = 84;
-    CHP_KEYS.forEach((rowKeys, r) => {
-      let x = 28;
-      for (const k of rowKeys){
-        const w = k === "space" ? kw * 3 + 16 : k === "⌫" || k === "⌨" ? kw * 1.5 + 4 : kw;
-        const lab = k === "space" ? "space" : k === "⇧" ? "⇧" : CHP.shift ? k.toUpperCase() : k;
-        vrpBtn(P, g, x, by + r * (kh + 8), w, kh, lab, () => chpKey(k), { size: 38, on: k === "⇧" && CHP.shift, key: "k" + k });
-        x += w + 8;
-      }
-    });
-    by += CHP_KEYS.length * (kh + 8) + 12;
-  }
+  if (kb) by = edKeys(P, g, CHP, by);
   /* the buttons */
   const rec = !!CHP.rec, selW = CHP.sel != null ? CHP.w[CHP.sel] : null;
   vrpBtn(P, g, 28, by, 380, 110, rec ? "● Listening… let go" : CHP.busy ? "… turning into text" : selW != null ? "🎙 Hold: replace “" + selW + "”" : "🎙 Hold to talk", () => {},
@@ -10412,7 +10503,7 @@ function chpDraw(P, g){
   vrpBtn(P, g, 572, by, 100, 110, "⌨", () => { CHP.kb = !CHP.kb; }, { on: kb, size: 46, key: "kbd" });
   vrpBtn(P, g, 684, by, 100, 110, "/", () => { CHP.cmds = !CHP.cmds; CHP.who = CHP.flags = false; }, { on: CHP.cmds, size: 48, key: "cmds" });
   if (selW != null) vrpBtn(P, g, 796, by, 220, 110, "Delete word", () => { CHP.w.splice(CHP.sel, 1); CHP.sel = null; }, { size: 28, key: "delw" });
-  else vrpBtn(P, g, 796, by, 220, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
+  else vrpBtn(P, g, 796, by, 220, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.ins = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
   const ok = !!(chpText() || CHP.pic) && !!(c && c.on());
   vrpBtn(P, g, 1028, by, 344, 110, "Send ➤", () => chpSend(), { off: !ok, on: ok, size: 40, key: "send" });
   const st = CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : "");
@@ -10434,9 +10525,10 @@ const TLVR_W = 2048, TLVR_H = 700, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 1
 /* read when drawn: TL_LANES is declared further down the page */
 const tlvrLanes = () => TL_LANES.concat([["paint", "Paint", "#f778ba"]]);
 const TLVR_BTNS = [["play", "▶", "Play / pause"], ["home", "⏮", "To the start"], ["cam", "+ Camera"], ["view", "+ View"], ["stim", "+ Stimulus"],
-                   ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["close", "✕"]];
+                   ["capt", "+ Caption"], ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["close", "✕"]];
+function tlvrEdRect(){ return TLVR.sel && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: TLVR_H - 104, w: 384, h: 84 } : null; }
 function tlvrBtnRects(){
-  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" ? 96 : 190; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
+  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
 }
 const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * (TL.dur ? t / TL.dur : 0);
 const tlvrT = x => Math.max(0, Math.min(TL.dur, (x - TLVR_X0) / (TLVR_X1 - TLVR_X0) * TL.dur));
@@ -10452,7 +10544,7 @@ function tlvrDraw(){
     const hv = TLVR.hover && TLVR.hover.btn === b.id, on = b.id === "play" && TL.playing;
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 16); g.fill();
     if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
-    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.w < 100 ? 46 : 36) + "px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
     g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.label, b.x + b.w / 2, b.y + (b.w < 100 ? 64 : 60)); g.textAlign = "left";
   }
   g.fillStyle = "#f6ecff"; g.font = "600 40px system-ui, sans-serif"; g.textAlign = "right";
@@ -10490,7 +10582,12 @@ function tlvrDraw(){
   const px = tlvrX(TL.t); g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.beginPath(); g.moveTo(px, ry + 30); g.lineTo(px, TLVR_LANE0 + tlvrLanes().length * TLVR_LH); g.stroke();
   g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(px - 14, ry + 22); g.lineTo(px + 14, ry + 22); g.lineTo(px, ry + 42); g.closePath(); g.fill();
   if (TLVR.sel){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
-    g.fillText("Picked: " + ({ cam: "camera", view: "view", stim: "stimulus", cap: "caption", fx: "effect" })[TLVR.sel.lane] + " key at " + TLVR.sel.t.toFixed(1) + " s — hold the trigger on it and move to slide it", TLVR_X0, H - 24); }
+    const isCap = TLVR.sel.lane === "cap";
+    g.fillText("Picked: " + ({ cam: "camera", view: "view", stim: "stimulus", cap: "caption", fx: "effect" })[TLVR.sel.lane] + " key at " + TLVR.sel.t.toFixed(1) + " s"
+      + (isCap ? ": “" + String(TLVR.sel.text || "").slice(0, 40) + (String(TLVR.sel.text || "").length > 40 ? "…" : "") + "”" : "") + " — hold the trigger on it and move to slide it", TLVR_X0, H - 24, isCap ? W - TLVR_X0 - 460 : undefined);
+    const e = tlvrEdRect();
+    if (e){ const hv = TLVR.hover && TLVR.hover.btn === "edcap"; g.fillStyle = hv ? "rgba(255,255,255,0.3)" : "rgba(214,160,255,0.5)"; g.beginPath(); g.roundRect(e.x, e.y, e.w, e.h, 16); g.fill();
+      g.fillStyle = "#ffffff"; g.font = "600 36px system-ui, sans-serif"; g.textAlign = "center"; g.fillText("✎ Edit text", e.x + e.w / 2, e.y + 56); g.textAlign = "left"; } }
   if (!TLVR.tex){ TLVR.tex = new THREE.CanvasTexture(TLVR.cv); TLVR.tex.colorSpace = THREE.SRGBColorSpace; }
   TLVR.tex.needsUpdate = true;
   if (!TLVR.mesh){
@@ -10519,6 +10616,7 @@ function tlvrHit(h){
   const hit = _tlvrRay.intersectObject(TLVR.mesh, false)[0]; if (!hit || !hit.uv) return null;
   const x = hit.uv.x * TLVR_W, y = (1 - hit.uv.y) * TLVR_H;
   for (const b of tlvrBtnRects()) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return { btn: b.id, x, y };
+  { const e = tlvrEdRect(); if (e && x >= e.x && x <= e.x + e.w && y >= e.y && y <= e.y + e.h) return { btn: "edcap", x, y }; }
   const li = Math.floor((y - TLVR_LANE0) / TLVR_LH), lane = tlvrLanes()[li] && tlvrLanes()[li][0];
   let key = null;
   if (lane && lane !== "paint" && x >= TLVR_X0 - 30){ let best = 34; for (const k of TL.keys[lane] || []){ const d = Math.abs(tlvrX(k.t) - x); if (d < best){ best = d; key = k; } } }
@@ -10528,6 +10626,9 @@ function tlvrButton(id){
   const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
   if (id === "play"){ if (TL.playing) tlStop(); else if (tlCount()) tlPlay(); }
   else if (id === "home") tlSeek(0);
+  /* + Caption: one at the playhead, opened for its words (section 54); ✎ Edit text: the picked caption */
+  else if (id === "capt"){ tlAdd("cap", Object.assign({ text: "", dur: 3, pos: "bottom", size: "m" }, TL.capStyle || {})); TLVR.sel = TL.sel; capEdit(TL.sel); }
+  else if (id === "edcap"){ if (TLVR.sel && TLVR.sel.lane === "cap") capEdit(TLVR.sel); }
   else if (id === "cam") tlAdd("cam", vrCamKeyNow());
   else if (id === "view") tlAdd("view", { v: tlCaptureView(), fade: 0.5 });
   else if (id === "stim"){ if (pick >= 0) tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 }); else ctxNote.textContent = "Pick a neuron first (trigger on it), then + Stimulus."; }
