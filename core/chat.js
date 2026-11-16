@@ -428,6 +428,11 @@ UJ.chat = (function(){
   /* ── THE CHAT IN THE HEADSET (2026-11-16) ── vr.html draws the chat on a panel in the room; it is told when something
      changes (window.UJ_CHAT_ONCHANGE) and reads the room through UJ.chat.vr below -- plain data, no HTML. */
   function vrNotify(room){ try { if (typeof window.UJ_CHAT_ONCHANGE === "function") window.UJ_CHAT_ONCHANGE(room); } catch (e){} }
+  /* a new message for the headset's floating line (vr.html shows it while its chat panel is closed) */
+  function vrNew(m, room){ try { if (typeof window.UJ_CHAT_NEWMSG === "function")
+    window.UJ_CHAT_NEWMSG({ name: m.name || nameOf(m.uid), flagEmoji: flag(m.flag), text: String(m.text || (m.kind === "pic" ? "(a picture)" : m.kind === "vote" ? "(a vote)" : "")),
+                            toolName: toolName(m.tool), toolCol: toolCol(m.tool), room: roomName(room), dm: room.indexOf("dm_") === 0,
+                            hl: !!ST.name && String(m.text || "").toLowerCase().indexOf("@" + ST.name.replace(/\s+/g, "").toLowerCase()) >= 0 }); } catch (e){} }
   function vrMessages(){
     var me = (ST.name || "").replace(/\s+/g, "").toLowerCase();
     var L = (ST.rooms[ST.room] || []).filter(function(m){ return !ST.mutedUsers[m.uid]; }).map(function(m){
@@ -494,7 +499,7 @@ UJ.chat = (function(){
     if (!hit) Object.keys(ST.profiles).forEach(function(u){ var p = ST.profiles[u]; if (!hit && p && p.name && p.name.toLowerCase().indexOf(n) === 0) hit = u; });
     return hit;
   }
-  async function command(text){
+  async function command(text, opts){
     var sp = text.indexOf(" "), cmd = (sp < 0 ? text.slice(1) : text.slice(1, sp)).toLowerCase(), rest = sp < 0 ? "" : text.slice(sp + 1).trim();
     if (cmd === "help"){ sys("Commands: " + CMDS.map(function(c){ return "/" + c[0] + (c[1] ? " " + c[1] : "") + " — " + c[2]; }).join(" · ") + " · #name message = direct message · @name = highlight (public)"); return; }
     if (cmd === "here"){ var on = online(); sys(on.length ? on.map(function(o){ return flagOf(o.uid) + " " + nameOf(o.uid) + " (" + Object.keys(o.tools).map(toolName).join(", ") + (o.away ? ", away" : "") + ")"; }).join(" · ") : "Nobody else is here right now."); return; }
@@ -541,10 +546,15 @@ UJ.chat = (function(){
       var ep = (window.UJ && UJ.cfg && UJ.cfg.backend && UJ.cfg.backend.endpoint) || window.UJ_CHAT_BACKEND || (typeof REPORT_ENDPOINT !== "undefined" ? REPORT_ENDPOINT : "");
       if (!ep){ sys("No forum on this page."); return; }
       try {
-        var r = await fetch(ep, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ type: "forum_post", scope: "tools", kind: kind, title: title.slice(0, 140), body: txt + "\n\n(posted from the chat)", credential: cred(), tool: TOOL }) });
+        /* a picture goes with it (2026-11-16): the VR chat's screenshot, or one waiting in this window */
+        var fImg = (opts && opts.img) || (PEND && PEND.img) || "";
+        var r = await fetch(ep, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ type: "forum_post", scope: "tools", kind: kind, title: title.slice(0, 140), body: txt + "\n\n(posted from the chat)", credential: cred(), tool: TOOL, image: fImg || undefined }) });
         var d = {}; try { d = JSON.parse(await r.text()); } catch (e){}
-        if (d.ok === false){ sys("Not posted: " + (d.error || "refused")); return; }
-        await post({ kind: "msg", text: "📝 posted to the Discussion forum (" + kind + "): " + title });
+        if (d.ok === false){ sys("Not posted: " + (d.error || "refused")); return false; }
+        if (fImg && PEND && PEND.img === fImg){ PEND = null; if (EL.pend){ EL.pend.style.display = "none"; EL.pend.innerHTML = ""; } }
+        if (d.note) sys("Posted, but " + d.note + ".");
+        await post({ kind: "msg", text: "📝 posted to the Discussion forum (" + kind + "): " + title + (fImg && d.imageId ? " — with a picture" : "") });
+        return true;
       } catch (e){ sys("The forum could not be reached."); }
       return;
     }
@@ -679,6 +689,7 @@ UJ.chat = (function(){
       if (room === ST.room) render();
       if (list.length > before && before && !(ST.open && ST.room === room)){ var nm = list[list.length - 1]; if (nm.uid !== ME) peek(room); }
       syncLaunch(); syncHead(); vrNotify(room);
+      if (list.length > before && before){ var nv = list[list.length - 1]; if (nv.uid !== ME && !ST.mutedUsers[nv.uid] && !ST.muted) vrNew(nv, room); }
     });
   }
   function ensure(){

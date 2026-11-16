@@ -1066,11 +1066,11 @@
      owner of the tools starts in advanced (his sign-in is recognised by a hash of the address, never the address).
      Basic only hides: a scene or a timeline that uses an advanced feature still shows and plays it, and on the
      headset's palette a switch that is ON stays listed, so it can always be turned off. */
-  const ADV_IDS = ["skelBtn", "rboxBtn", "menRow", "v1Sel", "vpartRow", "mapRbcRow", "mapWbcRow", "pvsSel", "pvsWRow", "mapCsfRow",
+  const ADV_IDS = ["aisBtn", "skelBtn", "rboxBtn", "menRow", "v1Sel", "vpartRow", "mapRbcRow", "mapWbcRow", "pvsSel", "pvsWRow", "mapCsfRow",
     "vcolSel", "vcolKey", "skelSel", "capSel", "skelGroups",
     "trcBtn", "trcType", "trcKind", "trcAdd", "orgBtn", "orgKind", "ctRow", "cnBox", "ptsRow", "cvecBtn", "lvecBtn", "vecType", "vecCol",
-    "stimMode", "stimGain", "stimHid", "plotBtn", "elecBtn", "elecClr", "plShow", "synClr", "traceCsv", "caBtn", "caReset", "caBox",
-    "raBtn", "raPlay", "raBox", "nvBtn", "nvBox", "slBtn", "slBox", "lfpBtn", "lfpPlace", "lfpBox", "csdBtn", "csdDir", "csdBox",
+    "stimMode", "stimGain", "stimHid", "plotBtn", "elecBtn", "elecClr", "plShow", "synClr", "traceCsv",
+    "raBtn", "raPlay", "raBox", "nvBtn", "nvBox", "slBtn", "slBox", "csdBtn", "csdDir", "csdBox",
     "stkBtn", "stkPlace", "stkBox", "physBox", "imgBox", "sndBodyRow", "drugRow", "caveRow",
     "fixBox", "trwBox", "blockBox", "recRow", "recOut", "tlBtn", "grpBtn"];
   ADV_IDS.forEach(id => { const el = $(id); if (el) (el._wrap || el).classList.add("adv"); });
@@ -4823,7 +4823,8 @@ function captureScene(){
    canvas, which the browser may already have cleared. Not in a headset: the headset's picture is
    not the page's to read, so a scene saved in VR has no preview until it is saved again on a PC. */
 function previewJpeg(){
-  if (renderer.xr.isPresenting) return "";
+  /* in the headset: the same picture as the chat's 📸, from your eye (2026-11-16; it was blank before) */
+  if (renderer.xr.isPresenting){ try { return vrShotCapture(640, 360).img; } catch (e){ console.warn("[vr] scene picture", e); return ""; } }
   try {
     renderer.render(scene, camera); renderLogo();
     const src = renderer.domElement, w = 480, h = Math.round(w * src.height / src.width);
@@ -9775,7 +9776,7 @@ function vrpShow(P, on){
 }
 const _vrpRay = new THREE.Raycaster();
 function vrpHit(P, h){
-  if (!P.on || !P.mesh || !P.mesh.parent) return null;
+  if (!P.on || !P.mesh || !P.mesh.parent || !P.mesh.visible) return null;
   tmpM.identity().extractRotation(h.ctl.matrixWorld);
   _vrpRay.ray.origin.setFromMatrixPosition(h.ctl.matrixWorld); _vrpRay.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
   const hit = _vrpRay.intersectObject(P.mesh, false)[0]; if (!hit || !hit.uv) return null;
@@ -9961,7 +9962,7 @@ function scpReenterOffer(){
      English (~40 MB, about four times quicker than before), base for Danish (~150 MB, about three times quicker; a
      little less accurate than small). (3) The model is loaded while the panel opens, not when you first speak. */
 const CHP = vrPanel("chat", 1400, 1560, 0.66, 1, chpDraw);
-Object.assign(CHP, { w: [], sel: null, kb: false, who: false, cmds: false, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
+Object.assign(CHP, { pic: null, w: [], sel: null, kb: false, who: false, cmds: false, scroll: 0, nMsg: null, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
 const chatApi = () => (window.UJ && UJ.chat && UJ.chat.vr) ? UJ.chat.vr : null;
 window.UJ_CHAT_ONCHANGE = () => {
   if (CHP.on){ CHP.dirty = true; if (!CHP.marking){ CHP.marking = true; try { const c = chatApi(); if (c) c.markRead(); } catch (e){} CHP.marking = false; } }
@@ -10064,10 +10065,100 @@ async function chpTranscribe(blob){
   CHP.busy = false; CHP.dirty = true;
 }
 async function chpSend(){
-  const c = chatApi(), text = chpText(); if (!text || !c) return;
+  const c = chatApi(), text = chpText(), pic = CHP.pic; if ((!text && !pic) || !c) return;
   if (!c.on()){ CHP.status = c.status(); CHP.dirty = true; return; }
-  try { if (text[0] === "/") await UJ.chat.command(text); else await UJ.chat.post({ text }); CHP.w = []; CHP.sel = null; CHP.status = "✓ Sent."; }
+  try {
+    if (text[0] === "/"){
+      const isForum = /^\/forum\b/i.test(text);
+      const r = await UJ.chat.command(text, isForum && pic ? { img: pic.img } : undefined);
+      CHP.w = []; CHP.sel = null;
+      if (isForum && pic && r !== false) CHP.pic = null;
+      CHP.status = isForum ? (r === false ? "The forum post was refused — see the message above." : "✓ Posted in the forum" + (pic ? " with the picture." : ".")) : "✓ Done.";
+    }
+    else { await UJ.chat.post(pic ? { text, kind: "pic", data: { img: pic.img, w: pic.w, h: pic.h } } : { text }); CHP.w = []; CHP.sel = null; CHP.pic = null; CHP.status = "✓ Sent."; }
+  }
   catch (e){ CHP.status = "Not sent: " + (e && e.message || e); }
+  CHP.dirty = true;
+}
+/* 🧩 the picked cell into the message: its name and its id, which the chat shows as a cell to open and the forum as a link */
+function chpAddCell(){
+  const cc = SELECTED >= 0 ? CELLS[SELECTED] : null;
+  if (!cc || !cc.root){ CHP.status = "Pick a cell first: trigger on it, then 🧩 Cell."; CHP.dirty = true; return; }
+  const nm = String(cc.label || shortName(cc)).replace(/\s*…\d+$/, "");
+  chpInsert(nm + " " + String(cc.root)); CHP.status = "Added " + nm + " — anyone can open it from the message."; CHP.dirty = true;
+}
+/* ── 📸 A PICTURE OF WHAT YOU SEE (2026-11-16) ──
+   Søren: "there should also be a possibility to include a screenshot in the chat or in the forum via the chat. You
+   press the screenshot button and the menu and chat clears and then there is a countdown from 3 and it takes the
+   screenshot and adds it to the chat." The palette closes, the panels and floating messages go, 3 · 2 · 1 counts
+   down in front of you, and the picture is taken from your left eye (16:9, with your gloves but without the pointer
+   rays, the palette or any panel). The chat then comes back with the picture under your words: Send puts it in the
+   chat; /forum … posts it with the forum post. The same picture is now also a scene's card picture when you save in
+   the headset (it was blank there before). */
+const SHOT = { busy: false, t0: 0, mesh: null, cv: null, g: null, tex: null, last: -1, hidden: [] };
+function vrShotCapture(w, h){
+  const hide = [], H = o => { if (o && o.visible){ o.visible = false; hide.push(o); } };
+  H(MENU.mesh); for (const P of VRP) H(P.mesh); H(TLVR.mesh); H(CHUD.mesh); H(SHOT.mesh); try { H(STIM.warn); } catch (e){}
+  for (const hd of hands){ H(hd.ray); hd.ctl.children.forEach(ch => { if (ch.isMesh && ch.geometry && ch.geometry.type === "SphereGeometry") H(ch); }); }
+  const xrOn = renderer.xr.enabled, prev = renderer.getRenderTarget();
+  let rt = null;
+  try {
+    const cam = new THREE.PerspectiveCamera(70, w / h, 0.01, 400);
+    if (renderer.xr.isPresenting){ const xc = renderer.xr.getCamera(); const eye = (xc.cameras && xc.cameras[0]) || xc;
+      eye.matrixWorld.decompose(cam.position, cam.quaternion, cam.scale); cam.scale.set(1, 1, 1); }
+    else { camera.updateMatrixWorld(); cam.position.copy(camera.position); cam.quaternion.copy(camera.quaternion); cam.fov = camera.fov; cam.updateProjectionMatrix(); }
+    cam.updateMatrixWorld(true);
+    rt = new THREE.WebGLRenderTarget(w, h); rt.texture.colorSpace = THREE.SRGBColorSpace;
+    renderer.xr.enabled = false; renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
+    const px = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const g = cv.getContext("2d"), im = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) im.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    g.putImageData(im, 0, 0);
+    let q = 0.86, out = cv.toDataURL("image/jpeg", q); while (out.length > 270000 && q > 0.35){ q -= 0.1; out = cv.toDataURL("image/jpeg", q); }
+    return { img: out, w, h };
+  } finally {
+    renderer.setRenderTarget(prev); renderer.xr.enabled = xrOn; if (rt) rt.dispose();
+    hide.forEach(o => { o.visible = true; });
+  }
+}
+function shotStart(){
+  if (SHOT.busy || !renderer.xr.isPresenting) return;
+  SHOT.busy = true; SHOT.t0 = performance.now(); SHOT.last = -1;
+  if (MENU.open) toggleMenu();
+  SHOT.hidden = VRP.filter(P => P.on && P.mesh).map(P => P.mesh); SHOT.hidden.forEach(m => { m.visible = false; });
+  if (TLVR.mesh && TLVR.mesh.visible){ TLVR.mesh.visible = false; SHOT.hidden.push(TLVR.mesh); }
+  CHUD.items = [];
+}
+function shotDigit(t){
+  if (!SHOT.cv){ SHOT.cv = document.createElement("canvas"); SHOT.cv.width = SHOT.cv.height = 256; SHOT.g = SHOT.cv.getContext("2d"); }
+  const g = SHOT.g; g.clearRect(0, 0, 256, 256);
+  g.fillStyle = "rgba(30,12,70,0.65)"; g.beginPath(); g.arc(128, 128, 110, 0, 7); g.fill();
+  g.strokeStyle = "#d9b8ff"; g.lineWidth = 8; g.stroke();
+  g.fillStyle = "#ffffff"; g.font = "700 140px system-ui"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, 128, 136);
+  if (!SHOT.tex){ SHOT.tex = new THREE.CanvasTexture(SHOT.cv); SHOT.tex.colorSpace = THREE.SRGBColorSpace; }
+  SHOT.tex.needsUpdate = true;
+  if (!SHOT.mesh){ SHOT.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ map: SHOT.tex, transparent: true, depthTest: false, depthWrite: false }));
+    SHOT.mesh.renderOrder = 41; scene.add(SHOT.mesh); }
+}
+function shotFrame(){
+  if (!SHOT.busy) return;
+  if (!renderer.xr.isPresenting){ shotEnd(null); return; }
+  const el = performance.now() - SHOT.t0, n = 3 - Math.floor(el / 1000);
+  if (n > 0){
+    if (n !== SHOT.last){ SHOT.last = n; shotDigit(String(n)); }
+    const xc = renderer.xr.getCamera(); xc.updateMatrixWorld(); xc.getWorldPosition(_hudP); xc.getWorldQuaternion(_hudQ);
+    SHOT.mesh.position.copy(new THREE.Vector3(0, 0.12, -0.9).applyQuaternion(_hudQ).add(_hudP)); SHOT.mesh.quaternion.copy(_hudQ); SHOT.mesh.visible = true;
+    return;
+  }
+  let pic = null; try { pic = vrShotCapture(1280, 720); } catch (e){ console.warn("[vr] screenshot", e); }
+  shotEnd(pic);
+}
+function shotEnd(pic){
+  SHOT.busy = false; if (SHOT.mesh) SHOT.mesh.visible = false;
+  SHOT.hidden.forEach(m => { m.visible = true; }); SHOT.hidden = [];
+  if (!CHP.on && renderer.xr.isPresenting) vrpShow(CHP, true);
+  if (pic){ CHP.pic = pic; CHP.status = "📸 Picture added. Send puts it in the chat; / → /forum posts it with a forum post. ✕ removes it."; }
+  else CHP.status = "The picture could not be taken.";
   CHP.dirty = true;
 }
 const CHP_KEYS = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "@"], ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
@@ -10078,6 +10169,58 @@ const CHP_FLAGS = ["DK", "SE", "NO", "FI", "IS", "DE", "NL", "BE", "FR", "GB", "
 function chpPickCmd(cmd){
   CHP.cmds = false; CHP.w = ["/" + cmd[0]]; CHP.sel = null;
   CHP.status = cmd[1] ? "Now say or type the rest: " + cmd[1] + "  — then Send." : "Ready — press Send.";
+}
+
+/* ── NEW MESSAGES WHILE THE CHAT IS CLOSED (2026-11-16, Søren: "if the chat window is closed, you should still be able to
+   see chat messages when they arrive as some free floating text somewhere in the view, that disappears with time, but
+   importantly does not become a part of any video recorded") ──
+   Up to three lines float low in your view, ~1.3 m ahead, and follow your head softly; each stays 8 s and fades. A
+   direct message or one that @mentions you is marked. Only in the headset: it is drawn for the headset's own eyes
+   and never while a film is being made -- and the films, the scene's picture and the dome view are all rendered
+   outside VR from the timeline, where this does not exist. Muted chat (/mute) shows nothing. */
+const CHUD = { items: [], mesh: null, cv: null, g: null, tex: null, dirty: false };
+window.UJ_CHAT_NEWMSG = m => {
+  if (CHP.on || !renderer.xr.isPresenting) return;
+  CHUD.items.push(Object.assign({ t: performance.now() }, m)); if (CHUD.items.length > 3) CHUD.items.shift(); CHUD.dirty = true;
+};
+function chudDraw(){
+  if (!CHUD.cv){ CHUD.cv = document.createElement("canvas"); CHUD.cv.width = 1400; CHUD.cv.height = 420; CHUD.g = CHUD.cv.getContext("2d"); }
+  const g = CHUD.g; g.clearRect(0, 0, 1400, 420);
+  let y = 420;
+  for (let i = CHUD.items.length - 1; i >= 0; i--){
+    const m = CHUD.items[i]; g.font = "34px system-ui"; const lines = vrpWrap(g, m.text, 1180, 2), h = 54 + lines.length * 42;
+    y -= h + 10; if (y < 0) break;
+    g.fillStyle = m.dm || m.hl ? "rgba(90,40,10,0.82)" : "rgba(30,12,70,0.80)"; g.beginPath(); g.roundRect(0, y, 1400, h, 22); g.fill();
+    g.strokeStyle = m.dm || m.hl ? "#ffd866" : "rgba(205,150,255,0.9)"; g.lineWidth = 3; g.stroke();
+    g.fillStyle = m.toolCol || "#56d4c8"; g.font = "600 26px system-ui"; const tw = g.measureText(m.toolName || "").width + 18;
+    g.beginPath(); g.roundRect(24, y + 12, tw, 34, 8); g.fill(); g.fillStyle = "#0d1117"; g.fillText(m.toolName || "", 33, y + 38);
+    g.fillStyle = "#ffffff"; g.font = "600 30px 'Twemoji Country Flags', system-ui";
+    g.fillText(vrpFit(g, "💬 " + (m.flagEmoji ? m.flagEmoji + " " : "") + m.name + (m.dm ? " · to you" : m.hl ? " · mentions you" : " · " + m.room), 1300 - tw), 36 + tw, y + 40);
+    g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; lines.forEach((l, k) => g.fillText(l, 36, y + 86 + k * 42));
+  }
+  if (!CHUD.tex){ CHUD.tex = new THREE.CanvasTexture(CHUD.cv); CHUD.tex.colorSpace = THREE.SRGBColorSpace; }
+  CHUD.tex.needsUpdate = true;
+  if (!CHUD.mesh){
+    CHUD.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62 * 420 / 1400), new THREE.MeshBasicMaterial({ map: CHUD.tex, transparent: true, depthTest: false, depthWrite: false }));
+    CHUD.mesh.renderOrder = 40; CHUD.mesh.visible = false; scene.add(CHUD.mesh);
+  }
+  CHUD.dirty = false;
+}
+const _hudP = new THREE.Vector3(), _hudQ = new THREE.Quaternion();
+function chudFrame(){
+  const now = performance.now();
+  const n0 = CHUD.items.length; CHUD.items = CHUD.items.filter(m => now - m.t < 8000); if (CHUD.items.length !== n0) CHUD.dirty = true;
+  const show = CHUD.items.length > 0 && renderer.xr.isPresenting && !CHP.on && !SHOT.busy && !(typeof REC !== "undefined" && REC.on);
+  if (!show){ if (CHUD.mesh) CHUD.mesh.visible = false; if (!renderer.xr.isPresenting) CHUD.items = []; return; }
+  if (CHUD.dirty || !CHUD.mesh) chudDraw();
+  const newest = Math.max(...CHUD.items.map(m => m.t)), age = now - newest;
+  CHUD.mesh.material.opacity = Math.min(1, Math.max(0.15, (8000 - age) / 1500));
+  /* low in the view and a little to the left, following the head softly */
+  const cam = renderer.xr.getCamera(); cam.updateMatrixWorld(); cam.getWorldPosition(_hudP); cam.getWorldQuaternion(_hudQ);
+  const target = new THREE.Vector3(-0.12, -0.32, -1.3).applyQuaternion(_hudQ).add(_hudP);
+  if (!CHUD.mesh.visible){ CHUD.mesh.position.copy(target); CHUD.mesh.quaternion.copy(_hudQ); }
+  else { CHUD.mesh.position.lerp(target, 0.12); CHUD.mesh.quaternion.slerp(_hudQ, 0.12); }
+  CHUD.mesh.visible = true;
 }
 function chpDraw(P, g){
   const c = chatApi(), W = P.W, kb = CHP.kb;
@@ -10128,20 +10271,30 @@ function chpDraw(P, g){
       if (y + rowH > bottom + 6) return;
       vrpBtn(P, g, mx + col * (cw + 12), y, cw, rowH - 8, "/" + cmd[0] + (kb ? "" : "  — " + cmd[2]), () => chpPickCmd(cmd), { size: kb ? 26 : 28, key: "cmd" + cmd[0] }); });
   } else {
-    const L = c.messages().slice(-40), blocks = [];
+    /* SCROLLING BACK (2026-11-16, Søren: "there should be a way to scroll up so you can see previous messages"): ▲ and
+       ▼ at the right move three messages at a time through everything kept (the last 24 h); ⤓ back to the newest.
+       A message that arrives while you read further up does not move what you are reading. */
+    const L = c.messages(), blocks = [], tw0 = mw - 120;
+    if (L.length !== CHP.nMsg){ if (CHP.scroll && CHP.nMsg != null && L.length > CHP.nMsg) CHP.scroll += L.length - CHP.nMsg; CHP.nMsg = L.length; }
+    CHP.scroll = Math.max(0, Math.min(CHP.scroll || 0, Math.max(0, L.length - 1)));
     for (const m of L){
       const name = (m.flagEmoji ? m.flagEmoji + " " : "") + (m.name || "somebody");
-      g.font = "32px system-ui"; const lines = vrpWrap(g, m.text || (m.kind === "pic" ? "(a picture)" : m.kind === "vote" ? "(a vote — open it on the PC)" : ""), mw - 20, 6);
+      g.font = "32px system-ui"; const lines = vrpWrap(g, m.text || (m.kind === "pic" ? "(a picture)" : m.kind === "vote" ? "(a vote — open it on the PC)" : ""), tw0 - 20, 6);
       blocks.push({ name, tool: m.toolName, col: m.toolCol, lines, me: m.me, hl: m.hl, h: 40 + lines.length * 40 + 14 });
     }
     let y = bottom; const draw = [];
-    for (let i = blocks.length - 1; i >= 0 && y - blocks[i].h >= top; i--){ y -= blocks[i].h; draw.unshift([blocks[i], y]); }
+    for (let i = blocks.length - 1 - CHP.scroll; i >= 0 && y - blocks[i].h >= top; i--){ y -= blocks[i].h; draw.unshift([blocks[i], y]); }
+    const older = draw.length && blocks.indexOf(draw[0][0]) > 0;
+    vrpBtn(P, g, W - 136, top, 96, 110, "▲", () => { CHP.scroll = Math.min(L.length - 1, (CHP.scroll || 0) + 3); }, { off: !older, size: 46, key: "up" });
+    vrpBtn(P, g, W - 136, bottom - 230, 96, 110, "▼", () => { CHP.scroll = Math.max(0, (CHP.scroll || 0) - 3); }, { off: !CHP.scroll, size: 46, key: "down" });
+    vrpBtn(P, g, W - 136, bottom - 110, 96, 110, "⤓", () => { CHP.scroll = 0; }, { off: !CHP.scroll, size: 46, key: "newest" });
+    if (CHP.scroll){ g.fillStyle = "#ffd866"; g.font = "600 26px system-ui"; g.textAlign = "right"; g.fillText(CHP.scroll + " newer below", W - 150, bottom - 6); g.textAlign = "left"; }
     if (!draw.length){ g.fillStyle = "#e9d5ff"; g.font = "32px system-ui"; g.fillText("No messages in the last 24 h here. Say hello!", mx, top + 60); }
     for (const [b, by] of draw){
-      if (b.hl){ g.fillStyle = "rgba(255,216,102,0.18)"; g.fillRect(36, by, W - 72, b.h - 8); }
+      if (b.hl){ g.fillStyle = "rgba(255,216,102,0.18)"; g.fillRect(36, by, W - 190, b.h - 8); }
       g.fillStyle = b.col || "#56d4c8"; g.font = "600 24px system-ui"; const tw = g.measureText(b.tool || "").width + 18;
       g.beginPath(); g.roundRect(mx, by + 6, tw, 32, 8); g.fill(); g.fillStyle = "#0d1117"; g.fillText(b.tool || "", mx + 9, by + 30);
-      g.fillStyle = b.me ? "#7ee8c8" : "#ffffff"; g.font = "600 30px 'Twemoji Country Flags', system-ui"; g.fillText(vrpFit(g, b.name, mw - tw - 20), mx + tw + 12, by + 32);
+      g.fillStyle = b.me ? "#7ee8c8" : "#ffffff"; g.font = "600 30px 'Twemoji Country Flags', system-ui"; g.fillText(vrpFit(g, b.name, tw0 - tw - 20), mx + tw + 12, by + 32);
       g.fillStyle = "#f6ecff"; g.font = "32px system-ui"; b.lines.forEach((l, k) => g.fillText(l, mx + 8, by + 76 + k * 40));
     }
   }
@@ -10150,19 +10303,29 @@ function chpDraw(P, g){
   g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, dh, 16); g.fill();
   if (!CHP.w.length && !CHP.interim){
     g.font = "32px system-ui"; g.fillStyle = "rgba(246,236,255,0.6)";
-    vrpWrap(g, "Hold the trigger on 🎙 and speak, or ⌨ type. Your words appear here; trigger on a word to change it.", W - 100, 3).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
+    vrpWrap(g, "Hold the trigger on 🎙 and speak, or ⌨ type. Your words appear here; trigger on a word to change it.", W - 420, 4).forEach((l, k) => g.fillText(l, 50, dy + 50 + k * 44));
   } else {
     g.font = "600 34px system-ui";
     const lay = []; let x = 44, row = 0;
-    CHP.w.forEach((wd, i) => { const ww = Math.min(W - 100, Math.max(56, g.measureText(wd || " ").width + 28 + (CHP.sel === i ? 18 : 0)));
-      if (x + ww > W - 44 && x > 44){ row++; x = 44; } lay.push([i, x, row, ww]); x += ww + 8; });
+    CHP.w.forEach((wd, i) => { const ww = Math.min(W - 420, Math.max(56, g.measureText(wd || " ").width + 28 + (CHP.sel === i ? 18 : 0)));
+      if (x + ww > W - 360 && x > 44){ row++; x = 44; } lay.push([i, x, row, ww]); x += ww + 8; });
     const last = lay.length ? lay[lay.length - 1][2] : 0, selRow = CHP.sel != null && lay[CHP.sel] ? lay[CHP.sel][2] : last;
     const first = Math.max(0, Math.min(selRow, last) - 2);                              // three rows show, kept round the marked word
     for (const [i, wx, r, ww] of lay){ if (r < first || r > first + 2) continue;
       const wy = dy + 12 + (r - first) * 70;
       vrpBtn(P, g, wx, wy, ww, 60, (CHP.w[i] || "") + (CHP.sel === i && kb ? "|" : ""), () => { CHP.sel = CHP.sel === i ? null : i; }, { on: CHP.sel === i, size: 34, key: "w" + i }); }
-    if (CHP.interim){ g.fillStyle = "rgba(246,236,255,0.65)"; g.font = "italic 32px system-ui"; g.fillText(vrpFit(g, "… " + CHP.interim, W - 100), 50, dy + dh - 18); }
+    if (CHP.interim){ g.fillStyle = "rgba(246,236,255,0.65)"; g.font = "italic 32px system-ui"; g.fillText(vrpFit(g, "… " + CHP.interim, W - 420), 50, dy + dh - 18); }
   }
+  /* the right of it: 📸 a picture of what you see, 🧩 the picked cell -- and the picture, when there is one */
+  { const rx = W - 340;
+    vrpBtn(P, g, rx, dy + 10, 150, 70, "📸 Picture", () => shotStart(), { size: 26, off: SHOT.busy, key: "shot" });
+    vrpBtn(P, g, rx + 160, dy + 10, 150, 70, "🧩 Cell", () => chpAddCell(), { size: 26, key: "cellbtn" });
+    if (CHP.pic){ const im = CHP.pic.im || (CHP.pic.im = Object.assign(new Image(), { src: CHP.pic.img, onload: () => { CHP.dirty = true; } }));
+      g.fillStyle = "rgba(0,0,0,0.5)"; g.fillRect(rx, dy + 88, 310, 132);
+      if (im.complete && im.naturalWidth){ const k = Math.min(310 / im.naturalWidth, 132 / im.naturalHeight), w2 = im.naturalWidth * k, h2 = im.naturalHeight * k;
+        g.drawImage(im, rx + (310 - w2) / 2, dy + 88 + (132 - h2) / 2, w2, h2); }
+      vrpBtn(P, g, rx + 250, dy + 92, 56, 50, "✕", () => { CHP.pic = null; CHP.status = "Picture removed."; }, { size: 28, key: "picx" }); }
+    else { g.fillStyle = "rgba(246,236,255,0.5)"; g.font = "24px system-ui"; vrpWrap(g, "A picture or the picked cell goes with your message — or with /forum.", 300, 3).forEach((l, k) => g.fillText(l, rx + 4, dy + 120 + k * 30)); } }
   /* the keyboard */
   let by = dy + dh + 20;
   if (kb){
@@ -10187,7 +10350,7 @@ function chpDraw(P, g){
   vrpBtn(P, g, 684, by, 100, 110, "/", () => { CHP.cmds = !CHP.cmds; CHP.who = CHP.flags = false; }, { on: CHP.cmds, size: 48, key: "cmds" });
   if (selW != null) vrpBtn(P, g, 796, by, 220, 110, "Delete word", () => { CHP.w.splice(CHP.sel, 1); CHP.sel = null; }, { size: 28, key: "delw" });
   else vrpBtn(P, g, 796, by, 220, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
-  const ok = !!chpText() && !!(c && c.on());
+  const ok = !!(chpText() || CHP.pic) && !!(c && c.on());
   vrpBtn(P, g, 1028, by, 344, 110, "Send ➤", () => chpSend(), { off: !ok, on: ok, size: 40, key: "send" });
   const st = CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : "");
   if (st.trim()){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui"; vrpWrap(g, st, W - 80, 2).forEach((l, k) => g.fillText(l, 40, by + 150 + k * 34)); }
@@ -10715,19 +10878,20 @@ function menuSections(rows, tab){
 function vrAdvanced(){ return window.VR_ADV !== false && !!window.VR_ADV; }
 window.onAdvChange = () => { try { MENU.dirty = true; } catch (e){} };
 const VR_BASIC = {
-  Show: /^(✓ Signed in|Not signed in|Cell models|Colour by excitatory|Nuclei|Axon initial segment|Scale bar|Floor grid|Background)/,
+  Show: /^(✓ Signed in|Not signed in|Cell models|Colour by excitatory|Nuclei|Scale bar|Floor grid|Background)/,
   Map: /^(Cortical layers|Layers:|Visual areas|Vessels:)/,
-  Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours)/
+  /* 2026-11-16, Søren: "Here are things that should be in basic: Cut feature, Ca2+ stimulation, LFP probe. But no AIS." */
+  Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|Cut at the EM section|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population)/
 };
-const VR_BASIC_TOP = /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Cut in my right hand|Cortical layers|Layers:|Visual areas|Vessels:|Scale bar|Floor grid|Background)/;
+const VR_BASIC_TOP = /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Cut in my right hand|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population|Cortical layers|Layers:|Visual areas|Vessels:|Scale bar|Floor grid|Background)/;
 /* settings that are on by default are not "left on": they stay with the advanced tools */
 const VR_BASIC_NEVER = /^(Synapses fire the next cell|Input strength|Hidden cells take part|📈 Voltage plots|   Plot: |Show all synapse markers|Hide synapse markers)/;
 function vrBasicRows(t, rows){
   let keep;
   if (t === "Spray" || t === "Cells" || (t === "EM" && TRW.on)) keep = rows.slice();
-  else if (t === "EM") keep = rows.filter(r => r.on === true || !/^(Trace organelles|Cut at the EM section)/.test(r.label));
+  else if (t === "EM") keep = rows.filter(r => r.on === true || !/^(Trace organelles)/.test(r.label));
   else if (t === "View") keep = rows.filter(r => r.sec !== "Timeline");
-  else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && r.sec === "Identify a cell (game)")) : rows.slice(); }
+  else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && (r.sec === "Identify a cell (game)" || r.sec === "Ca²⁺ wave"))) : rows.slice(); }
   /* the everyday rows of a section go to the top, where they are seen without opening it */
   keep = keep.map(r => r.sec && VR_BASIC_TOP.test(r.label) ? Object.assign({}, r, { sec: undefined }) : r);
   if (t === "Tools" || t === "Map" || t === "Show") keep.push({ label: "🧰 More: turn on Advanced tools", icon: "wrench", act: () => window.setAdvanced(true, true) });
@@ -10746,7 +10910,9 @@ function menuRows(){
                 act: () => { if (!credOk()) vrLeaveToSignIn(); } });
     const allShown = CELLS.every(c => !c.hidden);
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
-    rows.push({ label: "Colour by excitatory / inhibitory", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei") });
+    /* the words in the colours they give (2026-11-16, Søren: "Colour by Excitatory / inhibitory should have text with colors of what they become") */
+    rows.push({ label: "Colour by excitatory / inhibitory / glia", on: COLOUR_MODE === "ei", act: () => setColourMode(COLOUR_MODE === "ei" ? "type" : "ei"),
+                spans: [["Colour by "], ["excitatory", EI_COL.exc], [" / "], ["inhibitory", EI_COL.inh], [" / "], ["glia", EI_COL.glia]] });
     rows.push({ label: "Nuclei", on: SHOW_NUC, act: () => setNuclei(!SHOW_NUC) });
     if (VR_DS === "microns") rows.push({ label: "Axon initial segment (orange)", on: AIS_COL.on, act: () => setAisColour(!AIS_COL.on) });
     S("Organelles & tracings");
@@ -11245,7 +11411,11 @@ function drawMenu(){
     if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
       if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰|🖼|💬)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
-    g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
+    /* a coloured word sits on a dark chip, so lilac reads on the purple glass */
+    if (r.spans){ const base = g.fillStyle; for (const [t, col] of r.spans){ const tw = g.measureText(t).width;
+        if (col){ g.fillStyle = "rgba(14,6,34,0.78)"; g.beginPath(); g.roundRect(x - 6, y + 12, tw + 12, 52, 12); g.fill(); x += 2; }
+        g.fillStyle = col || base; g.fillText(t, x, y + 50); x += tw + (col ? 8 : 0); } }
+    else g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
   if (!MENU.rows.length){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
@@ -18501,6 +18671,8 @@ renderer.setAnimationLoop(() => {
   try { spkFrame(); } catch (e){ console.warn("[vr] spike sound:", e); }
   try { gloveFrame(); } catch (e){ if (!window.__gloveWarned){ window.__gloveWarned = true; console.warn("[vr] gloves:", e); } }
   try { takeFrame(); } catch (e){ console.warn("[vr] take:", e); }
+  try { shotFrame(); } catch (e){ console.warn("[vr] screenshot:", e); try { shotEnd(null); } catch (x){} }
+  try { chudFrame(); } catch (e){ if (!window.__chudWarned){ window.__chudWarned = true; console.warn("[vr] chat line:", e); } }
   try { vrpFrame(); } catch (e){ if (!window.__vrpWarned){ window.__vrpWarned = true; console.warn("[vr] scenes / chat panel:", e); } }
   try { tlvrFrame(); } catch (e){ if (!window.__tlvrWarned){ window.__tlvrWarned = true; console.warn("[vr] timeline panel:", e); } }
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }

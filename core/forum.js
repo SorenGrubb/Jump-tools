@@ -426,8 +426,24 @@ function sceneCardsHtml(body){
          + "<a class='hist-chip' target='_blank' rel='noopener' href='vr.html#scene=" + esc(id) + "'>🥽 Open in VR</a></div></div>";
   }).join("");
 }
+var FORUM_PICS = {};
+function fillForumPics(host){
+  [].slice.call(host.querySelectorAll(".forumpic")).forEach(function(box){
+    if (box.dataset.done) return; box.dataset.done = "1";
+    var id = box.dataset.img;
+    FORUM_PICS[id] = FORUM_PICS[id] || fetch(REPORT_ENDPOINT + "?forumImg=" + encodeURIComponent(id)).then(function(r){ return r.json(); }).catch(function(){ return null; });
+    FORUM_PICS[id].then(function(m){
+      if (!m || !m.ok || !/^data:image\//.test(m.img || "")){ box.textContent = "the picture could not be read"; return; }
+      box.textContent = "";
+      var img = document.createElement("img"); img.src = m.img; img.alt = "picture"; img.style.cssText = "display:block;width:100%;cursor:zoom-in";
+      img.onclick = function(){ var w = window.open(""); if (w){ w.document.write("<title>Picture</title><body style='margin:0;background:#000'><img src='" + m.img + "' style='max-width:100%'>"); } };
+      box.appendChild(img);
+    });
+  });
+}
 function fillSceneCards(host){
   if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  try { fillForumPics(host); } catch (e){}
   [].slice.call(host.querySelectorAll(".vrscenecard")).forEach(function(card){
     var id = card.dataset.scene;
     var paint = function(m){
@@ -480,6 +496,9 @@ function postHtml(p, isRoot){
          + esc(p.tool || "") + "' style='margin:4px 0'>"
          + bodyHtml(p.body || "", p.tool) + "</div>"
        + sceneCardsHtml(p.body || "")
+       /* the post's picture (2026-11-16: a screenshot from the VR chat's /forum), read when shown */
+       + (p.imageId ? "<div class='forumpic' data-img='" + esc(p.imageId) + "' style='margin:6px 0;max-width:480px;min-height:60px;"
+                      + "border-radius:8px;overflow:hidden;background:var(--inset,#161b22);color:var(--mut,#8b949e);font-size:12px;padding:0'>loading the picture…</div>" : "")
        + "<div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>"
        + (n > 1 ? "<button type='button' class='hist-chip forumopenall' data-pid='" + esc(p.postId)
                   + "' title=\"Opens every place this post mentions in ONE viewer, as a single "
