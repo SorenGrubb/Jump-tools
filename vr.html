@@ -482,6 +482,7 @@
   <div class="ctl" id="ptsRow" style="display:none">
     <button id="ptsBtn" class="on" title="Synapses and touch points added from µJump's Connectivity, Astrocyte–synapse proximity and Cell contacts panels">Synapses &amp; contact points</button>
     <select id="ptsDir" title="Which synapses to show"><option value="both">Inputs and outputs</option><option value="in">Inputs only</option><option value="out">Outputs only</option></select>
+    <button id="ptsAll" title="Every synapse of the cell, not only those with the cells loaded here. Thousands of points: it may lag, in a headset above all.">Every synapse (may lag)</button>
   </div>
   <div class="ctl">
     <button id="cvecBtn" title="3D arrows from each nucleus to its centriole — Søren's verified dataset and the community reports, as Filter-and-show's &quot;Nucleus-to-centriole vector&quot; layer">Nucleus → centriole vectors</button>
@@ -8595,7 +8596,7 @@ document.getElementById("pvsW").addEventListener("input", e => setPvsW(e.target.
    point #3fb950 (the panel's "touching" dot), an astrocyte touch point #c77dff. They hide with their
    cell and with "only the picked cell", and can be limited to inputs or outputs. They are too many
    for the headset link, so a saved scene carries them (captureScene keeps syn/marks per cell). */
-const PTS = { on: true, dir: "both", group: null };
+const PTS = { on: true, dir: "both", group: null, all: false };
 const PTS_COL = { in: "#00b7ff", out: "#ff4fa3", contact: "#3fb950", astro: "#c77dff" };
 function hasPoints(){ return CELLS.some(c => (c.syn && c.syn.length) || (c.marks && c.marks.length)); }
 function buildPoints(){
@@ -8607,10 +8608,23 @@ function buildPoints(){
   if (!any || !PTS.on) return;
   const grp = new THREE.Group(), M4 = new THREE.Matrix4(), col = new THREE.Color(), geo = new THREE.IcosahedronGeometry(0.3, 1);
   const tally = { in: 0, out: 0, contact: 0, astro: 0 };
+  /* ONLY WHERE THE CELLS HERE MEET (2026-11-16, Søren: "I loaded the top 5 input partners and I found that it loaded them
+     and all of their input annotations besides the target cells output annotations ... my right eye was blinking
+     constantly and everything was lagging on the headset. Perhaps we could only load the annotations of where they
+     make contact ... There could be an option to switch it on, but a warning that it may lag.") A cell whose
+     connectivity was read has every one of its synapses (often thousands), and picking a partner while connectivity
+     is on reads that partner's too. Now a synapse is drawn only when its partner is one of the cells loaded here --
+     the contacts between them; "Every synapse (may lag)" draws them all. The cell whose connectivity is open shows all
+     its synapses until a partner of it is loaded (that is what Connectivity was asked for); after that, its contacts. */
+  const here = new Set(CELLS.flatMap(c => cnSelf(c).map(String)));
   for (const c of CELLS){
     const res = (VR_DATASETS[c.ds] || VR_DATASETS.microns).res || [4, 4, 40];
-    const rows = [];
-    (c.syn || []).forEach(r => { const k = r[3] ? "out" : "in"; if (PTS.dir === "both" || PTS.dir === k) rows.push([r[0], r[1], r[2], k]); });
+    const rows = [], all = c.syn || [];
+    const anyHere = all.some(r => r[4] != null && here.has(String(r[4])));
+    const keep = r => PTS.all || r[4] == null || here.has(String(r[4])) || (!anyHere && c === CN.c);
+    let hid = 0;
+    all.forEach(r => { const k = r[3] ? "out" : "in"; if (!keep(r)){ hid++; return; } if (PTS.dir === "both" || PTS.dir === k) rows.push([r[0], r[1], r[2], k]); });
+    if (hid) tally.hidden = (tally.hidden || 0) + hid;
     (c.marks || []).forEach(r => rows.push([r[0], r[1], r[2], r[3] === "astro" ? "astro" : "contact"]));
     if (!rows.length) continue;
     const inst = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.4, emissive: 0x222222 }), rows.length);
@@ -8626,6 +8640,7 @@ function buildPoints(){
   if (tally.out){ lines.push("● output synapses ×" + tally.out); cols.push(PTS_COL.out); }
   if (tally.contact){ lines.push("● cell-contact touch points ×" + tally.contact); cols.push(PTS_COL.contact); }
   if (tally.astro){ lines.push("● astrocyte touch points ×" + tally.astro); cols.push(PTS_COL.astro); }
+  if (tally.hidden){ lines.push("(" + tally.hidden + " synapses with cells not loaded: hidden)"); cols.push("#8b949e"); }
   if (lines.length && CELL_BOX){
     const b = regionBox(), leg = textSprite(["From µJump"].concat(lines), { width: 1, colors: [null].concat(cols) });
     leg.scale.multiplyScalar(b.getSize(new THREE.Vector3()).length() * 0.18);
@@ -8642,6 +8657,14 @@ function applyPointsLook(){
   });
 }
 function setPoints(v){ PTS.on = v; buildPoints(); }
+function setPointsAll(v){
+  PTS.all = !!v; const b = document.getElementById("ptsAll"); if (b) b.classList.toggle("on", PTS.all);
+  if (PTS.all){ const n = CELLS.reduce((a, c) => a + (c.syn || []).length, 0);
+    const w = "Every synapse of the cells: " + n + " points. This may lag" + (renderer.xr.isPresenting ? " — in the headset it can stutter and flicker" : "") + "; turn it off again if it does.";
+    ctxNote.textContent = w; try { if (renderer.xr.isPresenting) flashWarn(w, 7000, "#f0a742"); } catch (e){} }
+  buildPoints();
+}
+document.getElementById("ptsAll").addEventListener("click", () => setPointsAll(!PTS.all));
 document.getElementById("ptsBtn").addEventListener("click", () => setPoints(!PTS.on));
 document.getElementById("ptsDir").addEventListener("change", e => { PTS.dir = e.target.value; buildPoints(); });
 
@@ -11146,6 +11169,7 @@ function menuRows(){
       rows.push({ label: "Synapses & contact points", on: PTS.on, act: () => setPoints(!PTS.on) });
       if (PTS.on) rows.push({ label: "   Synapses: " + ({ both: "inputs and outputs", in: "inputs only", out: "outputs only" })[PTS.dir] + "  ▸",
                               act: () => { PTS.dir = ({ both: "in", in: "out", out: "both" })[PTS.dir]; document.getElementById("ptsDir").value = PTS.dir; buildPoints(); } });
+      if (PTS.on) rows.push({ label: "   Every synapse, not only between the cells here (may lag)", on: PTS.all, act: () => setPointsAll(!PTS.all) });
     }
     S("Organelles & tracings");
     if (DS_HAS.vec){
