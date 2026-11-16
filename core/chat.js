@@ -437,8 +437,18 @@ UJ.chat = (function(){
     var me = (ST.name || "").replace(/\s+/g, "").toLowerCase();
     var L = (ST.rooms[ST.room] || []).filter(function(m){ return !ST.mutedUsers[m.uid]; }).map(function(m){
       var t = String(m.text || "");
+      /* what the headset needs to show more than words (2026-11-16, Søren: "in the VR chat it just said (a picture) and
+         the cell was just the cell name and rootID, no possibility of adding it to your own VR instance"): the picture,
+         the cells (a /cell message's cell, and any MICrONS root id in the text) and any VR scenes linked */
+      var d = m.data || {}, cells = [], seen = {};
+      var addCell = function(root, label, at){ var k = root || at; if (!k || seen[k]) return; seen[k] = 1; cells.push({ root: root || "", label: label || "", at: at || "" }); };
+      if (m.kind === "cell") addCell(d.root ? String(d.root) : "", d.label, d.at);
+      (t.match(/8646\d{14}/g) || []).forEach(function(r){ addCell(r, ""); });
+      if (m.kind === "cell" && cells.length && !t) t = "🧩 " + (d.label || "a cell") + (d.at ? " at " + d.at : "");
       return { name: m.name || nameOf(m.uid), flagEmoji: flag(m.flag), text: t, kind: m.kind || "msg", toolName: toolName(m.tool), toolCol: toolCol(m.tool), ts: m.ts,
-               me: m.uid === ME, hl: !!me && t.toLowerCase().indexOf("@" + me) >= 0 };
+               key: (m.uid || "") + ":" + (m.ts || ""), me: m.uid === ME, hl: !!me && t.toLowerCase().indexOf("@" + me) >= 0,
+               img: m.kind === "pic" && d.img && /^data:image\//.test(d.img) ? d.img : "", cells: cells,
+               scenes: sceneIdsIn(t + " " + (d.url || "")) };
     });
     return L.concat((LOCAL[ST.room] || []).map(function(t){ return { name: "Chat", flagEmoji: "", text: t, kind: "sys", toolName: "ℹ", toolCol: "#8b949e" }; }));
   }
