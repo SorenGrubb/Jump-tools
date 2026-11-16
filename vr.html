@@ -82,6 +82,8 @@
   button.ui .live{font-weight:600}
   .lbl{font-size:12px}
   body.nolbl .lbl{display:none}
+  body.basic .adv{display:none!important}
+  #advBtn.on{background:var(--acc,#2bd9b0);color:#06231d;border-color:transparent}
   body.nolbl button.ui{padding:5px 7px}
   .segwrap{display:inline-flex}
   .seg{display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:6px;overflow:hidden}
@@ -1052,6 +1054,48 @@
   const setLabels = on => { document.body.classList.toggle("nolbl", !on); lb.classList.toggle("on", on); ls("vr_labels", on ? "1" : "0"); };
   lb.addEventListener("click", () => setLabels(document.body.classList.contains("nolbl")));
   $("hide").before(lb); setLabels(ls("vr_labels") !== "0");
+
+  /* ── BASIC AND ADVANCED (2026-11-16) ─────────────────────────────────────────────────────────────────────────
+     Søren: "I think there are too many functions in the VR now, both on the headset and on the PC. Perhaps we could
+     make a basic version and an advanced version and you can then click to turn on the advanced version." Decided
+     with him: basic has the cells, nuclei, E/I colour, the AIS, see-through, the scale bar and background; the
+     cortical layers, the visual areas and the vessels; ⚡ stimulate, hearing (and, where it works, feeling) spikes and
+     reset; the cut, measuring and the EM section; +3 neighbours; the identify-a-cell game; the spray; scenes. All the
+     rest -- organelles, tracings, synapses, connectivity, every model, the timeline and films -- is advanced.
+     Everybody starts in basic; "🧰 Advanced" turns the rest on, and that choice is remembered in this browser. The
+     owner of the tools starts in advanced (his sign-in is recognised by a hash of the address, never the address).
+     Basic only hides: a scene or a timeline that uses an advanced feature still shows and plays it, and on the
+     headset's palette a switch that is ON stays listed, so it can always be turned off. */
+  const ADV_IDS = ["skelBtn", "rboxBtn", "menRow", "v1Sel", "vpartRow", "mapRbcRow", "mapWbcRow", "pvsSel", "pvsWRow", "mapCsfRow",
+    "vcolSel", "vcolKey", "skelSel", "capSel", "skelGroups",
+    "trcBtn", "trcType", "trcKind", "trcAdd", "orgBtn", "orgKind", "ctRow", "cnBox", "ptsRow", "cvecBtn", "lvecBtn", "vecType", "vecCol",
+    "stimMode", "stimGain", "stimHid", "plotBtn", "elecBtn", "elecClr", "plShow", "synClr", "traceCsv", "caBtn", "caReset", "caBox",
+    "raBtn", "raPlay", "raBox", "nvBtn", "nvBox", "slBtn", "slBox", "lfpBtn", "lfpPlace", "lfpBox", "csdBtn", "csdDir", "csdBox",
+    "stkBtn", "stkPlace", "stkBox", "physBox", "imgBox", "sndBodyRow", "drugRow", "caveRow",
+    "fixBox", "trwBox", "blockBox", "recRow", "recOut", "tlBtn", "grpBtn"];
+  ADV_IDS.forEach(id => { const el = $(id); if (el) (el._wrap || el).classList.add("adv"); });
+  panes.querySelectorAll(".ctl").forEach(r => { if (r.children.length && [...r.children].every(c => c.classList.contains("adv"))) r.classList.add("adv"); });
+  const ab = document.createElement("button"); ab.id = "advBtn"; ab.type = "button";
+  ab.innerHTML = "🧰 Advanced"; ab.title = "Basic shows the everyday tools; Advanced adds every model, tracing, connectivity, the timeline and films. Remembered in this browser.";
+  const advStored = () => ls("vr_advanced");
+  window.VR_ADV = advStored() === "1";
+  window.setAdvanced = (on, remember) => {
+    window.VR_ADV = !!on; document.body.classList.toggle("basic", !on); ab.classList.toggle("on", !!on);
+    ab.innerHTML = on ? "🧰 Advanced: on" : "🧰 Advanced";
+    if (remember) ls("vr_advanced", on ? "1" : "0");
+    try { if (window.onAdvChange) window.onAdvChange(!!on); } catch (e){}
+  };
+  /* the owner's default, once he is signed in, unless this browser already has a choice */
+  window.advOwnerCheck = email => {
+    if (advStored() != null || window.VR_ADV || !email || !(window.crypto && crypto.subtle)) return;
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(email).trim().toLowerCase())).then(b => {
+      const h = [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+      if (h === "5482f1f86f73bc2f56536ba74d06bc3d0346f23aa0b4c04df5bc3d335ed603ec" && advStored() == null) window.setAdvanced(true, false);
+    }).catch(() => {});
+  };
+  ab.addEventListener("click", () => window.setAdvanced(!window.VR_ADV, true));
+  { const g = $("grpBtn"); if (g) g.after(ab); else $("hide").before(ab); }
+  window.setAdvanced(window.VR_ADV, false);
 
   function openTab(key){
     bar.querySelectorAll("button").forEach(b => b.classList.toggle("cur", b.dataset.tab === key));
@@ -4678,6 +4722,7 @@ function onCred(resp){
     const pl = JSON.parse(decodeURIComponent(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
       .split("").map(ch => "%" + ("00" + ch.charCodeAt(0).toString(16)).slice(-2)).join("")));
     CRED = resp.credential; CRED_EXP = pl.exp || 0; CRED_NAME = pl.name || pl.email || "";
+    try { if (window.advOwnerCheck) window.advOwnerCheck(pl.email); } catch (e){}
     for (const id of ["vrSignin", "sceneSignin", "gameSignin", "fixSignin", "trwSignin", "tpSignin"]){ const el = document.getElementById(id); if (el) el.innerHTML = "<span class='help'>✓ Signed in as " + esc(CRED_NAME) + "</span>"; }
     if (typeof GAME !== "undefined" && GAME.pendingBad){ GAME.pendingBad = false; gameBadSend(); }
     if (typeof FIX !== "undefined" && FIX.pending){ FIX.pending = false; fixSave(); }
@@ -10148,6 +10193,29 @@ function menuSections(rows, tab){
   }
   return out;
 }
+/* BASIC ON THE PALETTE (2026-11-16, section "Basic and advanced" in the panel's script): which rows a basic palette
+   keeps, per tab. A row that is switched on is always kept, so nothing can be left on with no way to turn it off. */
+function vrAdvanced(){ return window.VR_ADV !== false && !!window.VR_ADV; }
+window.onAdvChange = () => { try { MENU.dirty = true; } catch (e){} };
+const VR_BASIC = {
+  Show: /^(✓ Signed in|Not signed in|Cell models|Colour by excitatory|Nuclei|Axon initial segment|Scale bar|Floor grid|Background)/,
+  Map: /^(Cortical layers|Layers:|Visual areas|Vessels:)/,
+  Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours)/
+};
+const VR_BASIC_TOP = /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Cut in my right hand|Cortical layers|Layers:|Visual areas|Vessels:|Scale bar|Floor grid|Background)/;
+/* settings that are on by default are not "left on": they stay with the advanced tools */
+const VR_BASIC_NEVER = /^(Synapses fire the next cell|Input strength|Hidden cells take part|📈 Voltage plots|   Plot: |Show all synapse markers|Hide synapse markers)/;
+function vrBasicRows(t, rows){
+  let keep;
+  if (t === "Spray" || t === "Cells" || (t === "EM" && TRW.on)) keep = rows.slice();
+  else if (t === "EM") keep = rows.filter(r => r.on === true || !/^(Trace organelles|Cut at the EM section)/.test(r.label));
+  else if (t === "View") keep = rows.filter(r => r.sec !== "Timeline");
+  else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && r.sec === "Identify a cell (game)")) : rows.slice(); }
+  /* the everyday rows of a section go to the top, where they are seen without opening it */
+  keep = keep.map(r => r.sec && VR_BASIC_TOP.test(r.label) ? Object.assign({}, r, { sec: undefined }) : r);
+  if (t === "Tools" || t === "Map" || t === "Show") keep.push({ label: "🧰 More: turn on Advanced tools", icon: "wrench", act: () => window.setAdvanced(true, true) });
+  return keep;
+}
 function menuRows(){
   const rows = [];
   const t = TABS[MENU.tab];
@@ -10504,6 +10572,7 @@ function menuRows(){
         .forEach(l => rows.push({ label: l, note: true }));
       rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
     } else {
+      rows.push({ label: "🧰 Advanced tools" + (vrAdvanced() ? "" : " (models, tracing, timeline…)"), on: vrAdvanced(), icon: "wrench", act: () => window.setAdvanced(!vrAdvanced(), true) });
       rows.push({ label: "Tabletop size", act: () => setSize(1) });
       rows.push({ label: "Room-sized", act: () => setSize(6) });
       rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
@@ -10523,7 +10592,7 @@ function menuRows(){
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
   }
-  const out = menuSections(rows, t);
+  const out = menuSections(vrAdvanced() ? rows : vrBasicRows(t, rows), t);
   /* SIGN-IN ON EVERY TAB (2026-11-16, Søren: "I still don't see a way to log in to google in the VR with headset"): the
      way in was a row in View and the first row of Show; signed out, it now heads every tab, where it cannot be missed */
   if (!credOk() && !MENU.help) out.unshift({ label: "Sign in with Google — leaves VR for a moment", icon: "user", exit: true, act: vrLeaveToSignIn });
@@ -10654,7 +10723,7 @@ function drawMenu(){
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
     let lab = r.label;
     if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
-      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊)\s*/u, "$1"); } }
+      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
     g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
