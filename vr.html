@@ -9749,7 +9749,7 @@ function vrpBtn(P, g, x, y, w, h, label, act, opt){
   g.fillStyle = held ? "rgba(255,120,120,0.55)" : opt.warn ? "rgba(255,150,60,0.55)" : opt.on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.24)" : opt.off ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.10)";
   g.beginPath(); g.roundRect(x, y, w, h, 14); g.fill();
   if (hv && !opt.off){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
-  g.fillStyle = opt.off ? "rgba(246,236,255,0.45)" : "#f6ecff"; g.font = "600 " + (opt.size || 30) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillStyle = opt.off ? "rgba(246,236,255,0.45)" : "#f6ecff"; g.font = "600 " + (opt.size || 30) + "px 'Twemoji Country Flags', system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
   g.fillText(vrpFit(g, label, w - 16), x + w / 2, y + h / 2 + 1); g.textAlign = "left"; g.textBaseline = "alphabetic";
   P.btns.push({ x, y, w, h, key, act, hold: opt.hold || null });
 }
@@ -9961,7 +9961,7 @@ function scpReenterOffer(){
      English (~40 MB, about four times quicker than before), base for Danish (~150 MB, about three times quicker; a
      little less accurate than small). (3) The model is loaded while the panel opens, not when you first speak. */
 const CHP = vrPanel("chat", 1400, 1560, 0.66, 1, chpDraw);
-Object.assign(CHP, { w: [], sel: null, kb: false, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
+Object.assign(CHP, { w: [], sel: null, kb: false, who: false, cmds: false, shift: false, rec: null, busy: false, status: "", interim: "", lang: (VOICE && VOICE.lang) || "en", t0: 0, srOk: true });
 const chatApi = () => (window.UJ && UJ.chat && UJ.chat.vr) ? UJ.chat.vr : null;
 window.UJ_CHAT_ONCHANGE = () => {
   if (CHP.on){ CHP.dirty = true; if (!CHP.marking){ CHP.marking = true; try { const c = chatApi(); if (c) c.markRead(); } catch (e){} CHP.marking = false; } }
@@ -9977,7 +9977,8 @@ function chpWarm(){
     .then(() => { if (!CHP.busy && CHP.lang === lang){ CHP.status = "Ready: hold the trigger on 🎙 and speak."; CHP.dirty = true; } })
     .catch(e => { CHP.warm = null; if (!CHP.busy){ CHP.status = "The speech model could not load: " + (e.message || e); CHP.dirty = true; } });
 }
-CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} chpWarm(); };
+CHP.onOpen = () => { const c = chatApi(); if (c) try { c.ensure(); c.markRead(); } catch (e){} chpWarm();
+  try { document.fonts.load("30px 'Twemoji Country Flags'", "🇩🇰").then(() => { CHP.dirty = true; }); } catch (e){} };
 CHP.onClose = () => { chpStopRec(true); if (!CHP.busy){ mlRelease(); CHP.warm = null; } };
 CHP.tick = () => (CHP.rec || CHP.busy) && performance.now() - CHP.lastDraw > 250;
 function chatUnread(){ const c = chatApi(); if (!c) return 0; try { const u = c.unread(); return Object.keys(u).reduce((a, k) => a + (u[k] || 0), 0); } catch (e){ return 0; } }
@@ -10070,15 +10071,25 @@ async function chpSend(){
   CHP.dirty = true;
 }
 const CHP_KEYS = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "@"], ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
-                  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"], ["⇧", "z", "x", "c", "v", "b", "n", "m", ",", ".", "?"], ["/", "-", "!", "space", "'", "⌫", "⌨"]];
+                  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"], ["⇧", "z", "x", "c", "v", "b", "n", "m", ",", ".", "?"], ["/", "-", "space", "\"", "'", "⌫", "⌨"]];
+/* a / command from the menu: one with nothing to add is ready to send; otherwise the rest is said or typed after it */
+const CHP_FLAGS = ["DK", "SE", "NO", "FI", "IS", "DE", "NL", "BE", "FR", "GB", "IE", "ES", "PT", "IT", "CH", "AT", "PL", "CZ", "UA", "GR", "TR", "US", "CA", "MX",
+                   "BR", "AR", "IN", "CN", "JP", "KR", "AU", "NZ", "ZA"];
+function chpPickCmd(cmd){
+  CHP.cmds = false; CHP.w = ["/" + cmd[0]]; CHP.sel = null;
+  CHP.status = cmd[1] ? "Now say or type the rest: " + cmd[1] + "  — then Send." : "Ready — press Send.";
+}
 function chpDraw(P, g){
   const c = chatApi(), W = P.W, kb = CHP.kb;
   g.fillStyle = "#f6ecff"; g.font = "700 50px system-ui, sans-serif"; g.fillText("💬  Chat", 40, 84);
   if (c){ const room = c.room();
-    vrpBtn(P, g, 330, 32, 250, 80, "All tools", () => { c.setRoom("all"); }, { on: room === "all" });
-    vrpBtn(P, g, 594, 32, 330, 80, "This tool", () => { c.setRoom(c.thisRoom); }, { on: room === c.thisRoom });
-    if (room !== "all" && room !== c.thisRoom) vrpBtn(P, g, 938, 32, 190, 80, c.roomName(room), () => {}, { on: true, size: 28 });
+    vrpBtn(P, g, 330, 32, 230, 80, "All tools", () => { c.setRoom("all"); CHP.who = CHP.cmds = false; }, { on: room === "all" });
+    vrpBtn(P, g, 572, 32, 250, 80, "This tool", () => { c.setRoom(c.thisRoom); CHP.who = CHP.cmds = false; }, { on: room === c.thisRoom });
+    if (room !== "all" && room !== c.thisRoom) vrpBtn(P, g, 834, 32, 166, 80, c.roomName(room), () => {}, { on: true, size: 26 });
   }
+  /* who is here: always counted in the header; the list opens over the messages */
+  { let n = 0; try { n = c && c.on() ? c.online().length : 0; } catch (e){}
+    vrpBtn(P, g, 1010, 32, 130, 80, "👥 " + n, () => { CHP.who = !(CHP.who || CHP.flags); CHP.flags = false; CHP.cmds = false; }, { on: CHP.who || CHP.flags, size: 32, key: "who" }); }
   vrpBtn(P, g, 1150, 32, 130, 80, "Here", () => vrpPlace(P));
   vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
   /* the messages: the newest that fit, from the bottom up */
@@ -10088,6 +10099,34 @@ function chpDraw(P, g){
   else if (!c.on()){
     g.fillStyle = "#f6ecff"; g.font = "34px system-ui"; vrpWrap(g, c.status(), mw, 3).forEach((l, k) => g.fillText(l, mx, top + 60 + k * 44));
     if (!credOk()) vrpBtn(P, g, mx, top + 200, 760, 100, "Sign in with Google (leaves VR for a moment)", () => vrLeaveToSignIn(), { size: 32 });
+  } else if (CHP.flags){
+    /* choose your flag: the nearest countries first; any other by its name with the / menu → /flag */
+    g.fillStyle = "#ffffff"; g.font = "700 36px 'Twemoji Country Flags', system-ui"; g.fillText("Your flag" + (c.myFlag() ? ": " + c.flagOf(c.myFlag()) + " " + c.countryName(c.myFlag()) : " — none yet"), mx, top + 46);
+    const L = CHP_FLAGS, cols = 3, cw = (W - 88 - 2 * 12) / cols, rh = kb ? 44 : 64;
+    L.forEach((cc, k) => { const col = k % cols, row = Math.floor(k / cols), y = top + 70 + row * (rh + 6); if (y + rh > bottom - 50) return;
+      vrpBtn(P, g, mx + col * (cw + 12), y, cw, rh, c.flagOf(cc) + "  " + c.countryName(cc), () => { c.setFlag(cc).then(x => { CHP.status = "✓ Your flag: " + c.flagOf(x) + " " + c.countryName(x); CHP.flags = false; CHP.dirty = true; }); },
+        { on: c.myFlag() === cc, size: kb ? 22 : 28, key: "fl" + cc }); });
+    vrpBtn(P, g, mx, bottom - 50, 300, 46, "No flag", () => { c.setFlag("").then(() => { CHP.flags = false; CHP.status = "Your flag is removed."; CHP.dirty = true; }); }, { size: 24, key: "flnone" });
+    g.fillStyle = "#e9d5ff"; g.font = "26px system-ui"; g.fillText(vrpFit(g, "Another country: / → /flag, then say or type its name.", W - 500), mx + 320, bottom - 18);
+  } else if (CHP.who){
+    /* who is online, in which tool; # opens a private conversation */
+    const ppl = c.online();
+    g.fillStyle = "#ffffff"; g.font = "700 36px system-ui"; g.fillText("Here now (" + ppl.length + ")", mx, top + 46);
+    vrpBtn(P, g, W - 400, top + 4, 350, 60, (c.myFlag() ? c.flagOf(c.myFlag()) + "  Change my flag" : "🏳  Choose my flag"), () => { CHP.flags = true; CHP.who = false; }, { size: 28, key: "myflag" });
+    const rowH = 76, fit = Math.floor((bottom - top - 70) / rowH);
+    ppl.slice(0, fit).forEach((o, k) => { const y = top + 70 + k * rowH;
+      g.fillStyle = o.me ? "#7ee8c8" : "#ffffff"; g.font = "600 34px 'Twemoji Country Flags', system-ui"; g.fillText(vrpFit(g, (o.flag ? o.flag + " " : "") + o.name + (o.me ? " (you)" : ""), 560), mx, y + 46);
+      g.fillStyle = "#e9d5ff"; g.font = "28px system-ui"; g.fillText(vrpFit(g, o.tools.join(", ") + (o.away ? " · away" : ""), 420), mx + 580, y + 46);
+      if (!o.me) vrpBtn(P, g, W - 260, y + 6, 210, 62, "# Message", () => { c.dm(o.uid); CHP.who = false; }, { size: 28, key: "dm" + o.uid }); });
+    if (ppl.length > fit){ g.fillStyle = "#e9d5ff"; g.font = "28px system-ui"; g.fillText("… and " + (ppl.length - fit) + " more", mx, bottom - 10); }
+    if (ppl.length <= 1){ g.fillStyle = "#e9d5ff"; g.font = "30px system-ui"; g.fillText("Nobody else is in the Jump tools right now.", mx, top + 70 + Math.max(1, ppl.length) * rowH + 40); }
+  } else if (CHP.cmds){
+    /* the / commands as a menu: voice cannot type a slash */
+    g.fillStyle = "#ffffff"; g.font = "700 36px system-ui"; g.fillText("Chat commands", mx, top + 46);
+    const list = c.cmds || [], rowH = kb ? 48 : 60, cols = kb ? 2 : 1, cw = (W - 88 - (cols - 1) * 12) / cols;
+    list.forEach((cmd, k) => { const col = k % cols, row = Math.floor(k / cols), y = top + 66 + row * rowH;
+      if (y + rowH > bottom + 6) return;
+      vrpBtn(P, g, mx + col * (cw + 12), y, cw, rowH - 8, "/" + cmd[0] + (kb ? "" : "  — " + cmd[2]), () => chpPickCmd(cmd), { size: kb ? 26 : 28, key: "cmd" + cmd[0] }); });
   } else {
     const L = c.messages().slice(-40), blocks = [];
     for (const m of L){
@@ -10102,7 +10141,7 @@ function chpDraw(P, g){
       if (b.hl){ g.fillStyle = "rgba(255,216,102,0.18)"; g.fillRect(36, by, W - 72, b.h - 8); }
       g.fillStyle = b.col || "#56d4c8"; g.font = "600 24px system-ui"; const tw = g.measureText(b.tool || "").width + 18;
       g.beginPath(); g.roundRect(mx, by + 6, tw, 32, 8); g.fill(); g.fillStyle = "#0d1117"; g.fillText(b.tool || "", mx + 9, by + 30);
-      g.fillStyle = b.me ? "#7ee8c8" : "#ffffff"; g.font = "600 30px system-ui"; g.fillText(vrpFit(g, b.name, mw - tw - 20), mx + tw + 12, by + 32);
+      g.fillStyle = b.me ? "#7ee8c8" : "#ffffff"; g.font = "600 30px 'Twemoji Country Flags', system-ui"; g.fillText(vrpFit(g, b.name, mw - tw - 20), mx + tw + 12, by + 32);
       g.fillStyle = "#f6ecff"; g.font = "32px system-ui"; b.lines.forEach((l, k) => g.fillText(l, mx + 8, by + 76 + k * 40));
     }
   }
@@ -10131,7 +10170,7 @@ function chpDraw(P, g){
     CHP_KEYS.forEach((rowKeys, r) => {
       let x = 28;
       for (const k of rowKeys){
-        const w = k === "space" ? kw * 4 + 24 : k === "⌫" || k === "⌨" ? kw * 1.5 + 4 : kw;
+        const w = k === "space" ? kw * 3 + 16 : k === "⌫" || k === "⌨" ? kw * 1.5 + 4 : kw;
         const lab = k === "space" ? "space" : k === "⇧" ? "⇧" : CHP.shift ? k.toUpperCase() : k;
         vrpBtn(P, g, x, by + r * (kh + 8), w, kh, lab, () => chpKey(k), { size: 38, on: k === "⇧" && CHP.shift, key: "k" + k });
         x += w + 8;
@@ -10141,14 +10180,15 @@ function chpDraw(P, g){
   }
   /* the buttons */
   const rec = !!CHP.rec, selW = CHP.sel != null ? CHP.w[CHP.sel] : null;
-  vrpBtn(P, g, 28, by, 420, 110, rec ? "● Listening… let go" : CHP.busy ? "… turning into text" : selW != null ? "🎙 Hold: replace “" + selW + "”" : "🎙 Hold to talk", () => {},
-    { size: 32, on: rec, off: CHP.busy, hold: { start: () => { if (!CHP.busy) chpStartRec(); }, end: () => chpStopRec() }, key: "talk" });
-  vrpBtn(P, g, 460, by, 150, 110, CHP.lang === "da" ? "Dansk" : "English", () => { CHP.lang = CHP.lang === "da" ? "en" : "da"; CHP.status = "Speech: " + (CHP.lang === "da" ? "Danish" : "English") + "."; chpWarm(); }, { size: 30, key: "lang" });
-  vrpBtn(P, g, 622, by, 110, 110, "⌨", () => { CHP.kb = !CHP.kb; }, { on: kb, size: 46, key: "kbd" });
-  if (selW != null) vrpBtn(P, g, 744, by, 250, 110, "Delete word", () => { CHP.w.splice(CHP.sel, 1); CHP.sel = null; }, { size: 30, key: "delw" });
-  else vrpBtn(P, g, 744, by, 250, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
+  vrpBtn(P, g, 28, by, 380, 110, rec ? "● Listening… let go" : CHP.busy ? "… turning into text" : selW != null ? "🎙 Hold: replace “" + selW + "”" : "🎙 Hold to talk", () => {},
+    { size: 30, on: rec, off: CHP.busy, hold: { start: () => { if (!CHP.busy) chpStartRec(); }, end: () => chpStopRec() }, key: "talk" });
+  vrpBtn(P, g, 420, by, 140, 110, CHP.lang === "da" ? "Dansk" : "English", () => { CHP.lang = CHP.lang === "da" ? "en" : "da"; CHP.status = "Speech: " + (CHP.lang === "da" ? "Danish" : "English") + "."; chpWarm(); }, { size: 28, key: "lang" });
+  vrpBtn(P, g, 572, by, 100, 110, "⌨", () => { CHP.kb = !CHP.kb; }, { on: kb, size: 46, key: "kbd" });
+  vrpBtn(P, g, 684, by, 100, 110, "/", () => { CHP.cmds = !CHP.cmds; CHP.who = CHP.flags = false; }, { on: CHP.cmds, size: 48, key: "cmds" });
+  if (selW != null) vrpBtn(P, g, 796, by, 220, 110, "Delete word", () => { CHP.w.splice(CHP.sel, 1); CHP.sel = null; }, { size: 28, key: "delw" });
+  else vrpBtn(P, g, 796, by, 220, 110, "Clear", () => { CHP.w = []; CHP.sel = null; CHP.status = ""; }, { off: !CHP.w.length, size: 30, key: "clr" });
   const ok = !!chpText() && !!(c && c.on());
-  vrpBtn(P, g, 1006, by, 366, 110, "Send ➤", () => chpSend(), { off: !ok, on: ok, size: 40, key: "send" });
+  vrpBtn(P, g, 1028, by, 344, 110, "Send ➤", () => chpSend(), { off: !ok, on: ok, size: 40, key: "send" });
   const st = CHP.status + (CHP.busy ? "  (" + mmss((performance.now() - CHP.t0) / 1000) + ")" : "");
   if (st.trim()){ g.fillStyle = "#f6ecff"; g.font = "28px system-ui"; vrpWrap(g, st, W - 80, 2).forEach((l, k) => g.fillText(l, 40, by + 150 + k * 34)); }
 }

@@ -696,7 +696,7 @@ UJ.chat = (function(){
         ls("name", ST.name);
         await A.setProfile({ name: ST.name, flag: ST.flag });
         A.onProfiles(function(p){ ST.profiles = p; syncHead(); render(); });
-        A.onPresence(function(list){ ST.presence = list; syncLaunch(); syncHead(); });
+        A.onPresence(function(list){ ST.presence = list; syncLaunch(); syncHead(); vrNotify(ST.room); });
         A.onDmIndex(function(ix){ ST.dms = ix; Object.keys(ix).forEach(function(o){ listen("dm_" + pairKey(ME, o)); }); syncHead(); });
         A.onAnnounce(onAnnounce);
         ON = true; presence();
@@ -774,6 +774,15 @@ UJ.chat = (function(){
   return { open: function(){ setOpen(true); }, close: function(){ setOpen(false); }, askVote: askVote, post: post, command: command,
            vr: { on: function(){ return ON; }, status: function(){ return STATUS; }, ensure: ensure, room: function(){ return ST.room; }, thisRoom: THIS_ROOM,
                  roomName: roomName, setRoom: function(r){ setRoom(r); vrNotify(r); }, markRead: function(){ markRead(); vrNotify(ST.room); },
-                 unread: function(){ return ST.unread; }, messages: vrMessages },
+                 unread: function(){ return ST.unread; }, messages: vrMessages,
+                 /* who is here (2026-11-16, Søren: "I can't see who else is online in the chat window in VR") and the
+                    / commands for a menu (voice cannot type a slash command) */
+                 online: function(){ return online().map(function(o){ return { uid: o.uid, name: nameOf(o.uid), flag: flagOf(o.uid), me: o.uid === ME, away: !!o.away,
+                                                                               tools: Object.keys(o.tools).map(toolName) }; }); },
+                 dm: function(uid){ if (!uid || uid === ME) return; ST.dms[uid] = Date.now(); setRoom("dm_" + pairKey(ME, uid)); vrNotify(ST.room); },
+                 cmds: CMDS,
+                 /* the flag, chosen in the headset (2026-11-16, Søren: "I have no flag in VR chat and no option to select it") */
+                 myFlag: function(){ return ST.flag || ""; }, flagOf: flag, countryName: countryName,
+                 setFlag: async function(cc){ cc = toCC(cc); ST.flag = cc; ls("flag", cc); if (ON){ await A.setProfile({ name: ST.name, flag: ST.flag }); presence(); } render(); vrNotify(ST.room); return cc; } },
            _st: ST, _flag: flag, _toCC: toCC, _body: body, _configured: function(){ return CONFIGURED; }, _note: noteContribution };
 })();
