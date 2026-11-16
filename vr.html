@@ -9289,7 +9289,10 @@ function voiceStop(dur){
   });
 }
 /* the voice follows the timeline's playhead */
-function voicePlay(){ const a = VOICE.audio; if (!a || TL.rec) return; try { a.currentTime = Math.max(0, TL.t - VOICE.offset); if (TL.t >= VOICE.offset - 0.05) a.play().catch(() => {}); else { VOICE.waitT = VOICE.offset; } } catch (e){} }
+function voicePlay(){ const a = VOICE.audio; if (!a || TL.rec) return;
+  /* under a title slide the voice waits; its place in the recording leaves the titles out (section 55) */
+  try { if (typeof tlTitleAt === "function" && tlTitleAt(TL.t)){ a.pause(); return; }
+    a.currentTime = Math.max(0, (typeof tlCt === "function" ? tlCt(TL.t) - tlCt(VOICE.offset) : TL.t - VOICE.offset)); if (TL.t >= VOICE.offset - 0.05) a.play().catch(() => {}); else { VOICE.waitT = VOICE.offset; } } catch (e){} }
 function voicePause(){ const a = VOICE.audio; if (a) try { a.pause(); } catch (e){} VOICE.waitT = null; }
 function voiceFrame(){ if (VOICE.waitT != null && TL.playing && TL.t >= VOICE.waitT && narrMode() === "rec"){ VOICE.waitT = null; voicePlay(); } }
 /* for the film: the voice as 48 kHz samples, mixed into the sound track at the timeline's moment */
@@ -10366,13 +10369,17 @@ function capSave(){
 }
 function capDraw(P, g){
   const W = P.W, k = CAPP.key;
-  g.fillStyle = "#f6ecff"; g.font = "700 46px system-ui, sans-serif"; g.fillText("✎  Caption" + (k ? " at " + k.t.toFixed(1) + " s" : ""), 40, 82);
+  g.fillStyle = "#f6ecff"; g.font = "700 46px system-ui, sans-serif"; g.fillText("✎  " + (k && k.title ? "Title slide" : "Caption") + (k ? " at " + k.t.toFixed(1) + " s" : ""), 40, 82);
   vrpBtn(P, g, 1150, 32, 130, 80, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
   vrpBtn(P, g, 1294, 32, 76, 80, "✕", () => vrpShow(P, false), { size: 40 });
   /* how long it shows */
-  if (k){ g.fillStyle = "#e9d5ff"; g.font = "30px system-ui"; g.fillText("Shown for " + (k.dur || 3).toFixed(1) + " s", 40, 160);
-    vrpBtn(P, g, 330, 118, 90, 60, "−", () => { k.dur = Math.max(0.5, Math.round(((k.dur || 3) - 0.5) * 10) / 10); }, { size: 40, key: "dm" });
-    vrpBtn(P, g, 430, 118, 90, 60, "+", () => { k.dur = Math.min(60, Math.round(((k.dur || 3) + 0.5) * 10) / 10); }, { size: 40, key: "dp" }); }
+  if (k){ g.fillStyle = "#e9d5ff"; g.font = "30px system-ui"; g.fillText((k.title ? "🎬 Title, " : "Shown for ") + (k.dur || 3).toFixed(1) + " s", 40, 160);
+    const step = (d) => { if (k.title) tlTitleResize(k, (k.dur || 4) + d); else k.dur = Math.max(0.5, Math.min(60, Math.round(((k.dur || 3) + d) * 10) / 10)); };
+    vrpBtn(P, g, 330, 118, 90, 60, "−", () => step(-0.5), { size: 40, key: "dm" });
+    vrpBtn(P, g, 430, 118, 90, 60, "+", () => step(0.5), { size: 40, key: "dp" });
+    if (k.title){
+      vrpBtn(P, g, 560, 118, 250, 60, (k.fin !== false ? "✓ " : "") + "Fade in", () => { k.fin = k.fin === false; tlSave(); }, { on: k.fin !== false, size: 28, key: "fin" });
+      vrpBtn(P, g, 822, 118, 250, 60, (k.fout !== false ? "✓ " : "") + "Fade out", () => { k.fout = k.fout === false; tlSave(); }, { on: k.fout !== false, size: 28, key: "fout" }); } }
   /* the words */
   const dy = 200, dh = CAPP.kb ? 230 : 370;
   g.fillStyle = "rgba(255,255,255,0.10)"; g.beginPath(); g.roundRect(28, dy, W - 56, dh, 16); g.fill();
@@ -10542,17 +10549,22 @@ function chpDraw(P, g){
        neuron), delete (the picked key, or the keys at the playhead), undo, bring the panel back in front of you,
        close. Everything goes through the same timeline the PC edits, so undo, save and the PC editor see it. */
 const TLVR = { mesh: null, cv: null, g: null, tex: null, on: false, dirty: true, hover: null, drag: null, sel: null, lastDraw: 0 };
-const TLVR_W = 2048, TLVR_H = 700, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 196, TLVR_LH = 76;
+const TLVR_W = 2048, TLVR_H = 800, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 196, TLVR_LH = 76;
 /* read when drawn: TL_LANES is declared further down the page */
 const tlvrLanes = () => TL_LANES.concat([["paint", "Paint", "#f778ba"]]);
 const TLVR_BTNS = [["play", "▶", "Play / pause"], ["home", "⏮", "To the start"], ["cam", "+ Camera"], ["view", "+ View"], ["stim", "+ Stimulus"],
                    ["capt", "+ Caption"], ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["snap", "🧲"], ["close", "✕"]];
-function tlvrEdRect(){ return TLVR.sel && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: TLVR_H - 104, w: 384, h: 84 } : null; }
+function tlvrEdRect(){ return TLVR.sel && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: 668, w: 384, h: 84 } : null; }
+/* the second row, under the lanes: the window on the film (zoom and move) */
+const TLVR_BTNS2 = [["zout", "🔍−"], ["zin", "🔍+"], ["pl", "◀"], ["pr", "▶"], ["fit", "Fit"], ["title", "+ 🎬 Title"]];
 function tlvrBtnRects(){
-  let x = 24; return TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" || id === "snap" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
+  let x = 24; const top = TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" || id === "snap" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
+  x = 24; const low = TLVR_BTNS2.map(([id, label]) => { const w = id === "title" ? 230 : 120; const r = { id, label, x, y: 700, w, h: 84, low: true }; x += w + 12; return r; });
+  return top.concat(low);
 }
-const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * (TL.dur ? t / TL.dur : 0);
-const tlvrT = x => Math.max(0, Math.min(TL.dur, (x - TLVR_X0) / (TLVR_X1 - TLVR_X0) * TL.dur));
+const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * ((t - tlVa()) / ((tlVb() - tlVa()) || 1));
+const tlvrT = x => Math.max(0, Math.min(TL.dur, tlVa() + (x - TLVR_X0) / (TLVR_X1 - TLVR_X0) * (tlVb() - tlVa())));
+const tlvrIn = x => x >= TLVR_X0 - 30 && x <= TLVR_X1 + 30;
 function tlvrDraw(){
   if (!TLVR.cv){ TLVR.cv = document.createElement("canvas"); TLVR.cv.width = TLVR_W; TLVR.cv.height = TLVR_H; TLVR.g = TLVR.cv.getContext("2d"); }
   const g = TLVR.g, W = TLVR_W, H = TLVR_H;
@@ -10565,17 +10577,22 @@ function tlvrDraw(){
     const hv = TLVR.hover && TLVR.hover.btn === b.id, on = (b.id === "play" && TL.playing) || (b.id === "snap" && TL.snap);
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 16); g.fill();
     if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
-    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
-    g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.label, b.x + b.w / 2, b.y + (b.w < 100 ? 64 : 60)); g.textAlign = "left";
+    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.low ? 36 : b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.label, b.x + b.w / 2, b.y + (b.low ? 56 : b.w < 100 ? 64 : 60)); g.textAlign = "left";
   }
   g.fillStyle = "#f6ecff"; g.font = "600 40px system-ui, sans-serif"; g.textAlign = "right";
   g.fillText(TL.t.toFixed(1) + " / " + TL.dur + " s", W - 40, 84); g.textAlign = "left";
   /* ruler */
   const ry = 140; g.strokeStyle = "rgba(240,220,255,0.6)"; g.lineWidth = 2; g.beginPath(); g.moveTo(TLVR_X0, ry + 40); g.lineTo(TLVR_X1, ry + 40); g.stroke();
-  const step = TL.dur > 120 ? 20 : TL.dur > 60 ? 10 : TL.dur > 20 ? 5 : TL.dur > 8 ? 2 : 1;
+  tlViewFollow();
+  const va = tlVa(), vb = tlVb(), step = tlStep(vb - va, (TLVR_X1 - TLVR_X0) * 0.5);
   g.fillStyle = "#e9d5ff"; g.font = "28px system-ui, sans-serif"; g.textAlign = "center";
-  for (let t = 0; t <= TL.dur + 1e-6; t += step){ const x = tlvrX(t); g.beginPath(); g.moveTo(x, ry + 28); g.lineTo(x, ry + 40); g.stroke(); g.fillText(t + " s", x, ry + 20); }
+  for (let t = Math.ceil(va / step - 1e-6) * step; t <= vb + 1e-6; t += step){ const x = tlvrX(t); g.beginPath(); g.moveTo(x, ry + 28); g.lineTo(x, ry + 40); g.stroke(); g.fillText((+t.toFixed(1)) + " s", x, ry + 20); }
   g.textAlign = "left";
+  /* where the window is in the whole film, and how much of it is shown */
+  if (TL.vb != null){ g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(TLVR_X0, ry + 46, TLVR_X1 - TLVR_X0, 6);
+    g.fillStyle = "#ffd866"; g.fillRect(TLVR_X0 + va / TL.dur * (TLVR_X1 - TLVR_X0), ry + 46, Math.max(8, (vb - va) / TL.dur * (TLVR_X1 - TLVR_X0)), 6); }
+  g.fillStyle = "#e9d5ff"; g.font = "28px system-ui, sans-serif"; g.fillText(TL.vb == null ? "whole film shown" : (vb - va).toFixed(vb - va < 10 ? 1 : 0) + " s shown (" + va.toFixed(1) + "–" + vb.toFixed(1) + " s)", 24 + 5 * 132 + 242 + 10, 752);
   /* lanes and keys */
   tlvrLanes().forEach(([lane, name, col], i) => {
     const y = TLVR_LANE0 + i * TLVR_LH;
@@ -10584,12 +10601,15 @@ function tlvrDraw(){
     g.fillStyle = col; g.beginPath(); g.arc(44, y + 34, 12, 0, 7); g.fill();
     g.fillStyle = "#f6ecff"; g.font = "600 32px system-ui, sans-serif"; g.fillText(name, 66, y + 46);
     const cy = y + (TLVR_LH - 8) / 2;
-    if (lane === "paint"){ (TL.paint || []).forEach(x => { const px = tlvrX(x[0]); g.fillStyle = x[1][5] || col; g.fillRect(px - 1.5, cy - 14, 3, 28); }); return; }
+    g.save(); g.beginPath(); g.rect(TLVR_X0 - 30, y - 4, TLVR_X1 - TLVR_X0 + 52, TLVR_LH); g.clip();
+    if (lane === "paint"){ (TL.paint || []).forEach(x => { const px = tlvrX(x[0]); if (!tlvrIn(px)) return; g.fillStyle = x[1][5] || col; g.fillRect(px - 1.5, cy - 14, 3, 28); }); g.restore(); return; }
     for (const k of TL.keys[lane] || []){
       const x = tlvrX(k.t), sel = TLVR.sel === k, hv = TLVR.hover && TLVR.hover.key === k;
+      if ((lane === "cap" || lane === "fx") ? (tlvrX(k.t + (k.dur || 3)) < TLVR_X0 - 30 || x > TLVR_X1 + 30) : !tlvrIn(x)) continue;
       if (lane === "cap" || lane === "fx"){
         const x2 = tlvrX(Math.min(TL.dur, k.t + (k.dur || 3)));
-        g.fillStyle = lane === "cap" ? "rgba(230,237,243,0.30)" : "rgba(210,168,255,0.35)"; g.beginPath(); g.roundRect(x, cy - 20, Math.max(14, x2 - x), 40, 8); g.fill();
+        g.fillStyle = k.title ? "rgba(0,0,0,0.7)" : lane === "cap" ? "rgba(230,237,243,0.30)" : "rgba(210,168,255,0.35)"; g.beginPath(); g.roundRect(x, cy - 20, Math.max(14, x2 - x), 40, 8); g.fill();
+        if (k.title){ g.strokeStyle = "#e3b341"; g.lineWidth = 3; g.stroke(); g.save(); g.clip(); g.fillStyle = "#e3b341"; g.font = "600 26px system-ui, sans-serif"; g.fillText("🎬 " + capPlain(k.text || "").slice(0, 30), x + 26, cy + 9); g.restore(); }
       }
       g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : hv ? "#f3e2ff" : "#1b0f33"; g.lineWidth = sel ? 6 : 3;
       g.beginPath();
@@ -10598,14 +10618,15 @@ function tlvrDraw(){
       else g.arc(x, cy, 18, 0, 7);
       g.fill(); g.stroke();
     }
+    g.restore();
   });
   /* the playhead */
-  const px = tlvrX(TL.t); g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.beginPath(); g.moveTo(px, ry + 30); g.lineTo(px, TLVR_LANE0 + tlvrLanes().length * TLVR_LH); g.stroke();
-  g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(px - 14, ry + 22); g.lineTo(px + 14, ry + 22); g.lineTo(px, ry + 42); g.closePath(); g.fill();
+  const px = tlvrX(TL.t); if (tlvrIn(px)){ g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.beginPath(); g.moveTo(px, ry + 30); g.lineTo(px, TLVR_LANE0 + tlvrLanes().length * TLVR_LH); g.stroke();
+  g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(px - 14, ry + 22); g.lineTo(px + 14, ry + 22); g.lineTo(px, ry + 42); g.closePath(); g.fill(); }
   if (TLVR.sel){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
     const isCap = TLVR.sel.lane === "cap";
     g.fillText("Picked: " + ({ cam: "camera", view: "view", stim: "stimulus", cap: "caption", fx: "effect" })[TLVR.sel.lane] + " key at " + TLVR.sel.t.toFixed(1) + " s"
-      + (isCap ? ": “" + String(TLVR.sel.text || "").slice(0, 40) + (String(TLVR.sel.text || "").length > 40 ? "…" : "") + "”" : "") + " — hold the trigger on it and move to slide it", TLVR_X0, H - 24, isCap ? W - TLVR_X0 - 460 : undefined);
+      + (isCap ? ": “" + String(TLVR.sel.text || "").slice(0, 40) + (String(TLVR.sel.text || "").length > 40 ? "…" : "") + "”" : "") + " — hold the trigger on it and move to slide it", TLVR_X0, 688, W - TLVR_X0 - 460);
     const e = tlvrEdRect();
     if (e){ const hv = TLVR.hover && TLVR.hover.btn === "edcap"; g.fillStyle = hv ? "rgba(255,255,255,0.3)" : "rgba(214,160,255,0.5)"; g.beginPath(); g.roundRect(e.x, e.y, e.w, e.h, 16); g.fill();
       g.fillStyle = "#ffffff"; g.font = "600 36px system-ui, sans-serif"; g.textAlign = "center"; g.fillText("✎ Edit text", e.x + e.w / 2, e.y + 56); g.textAlign = "left"; } }
@@ -10650,6 +10671,8 @@ function tlvrButton(id){
   const pick = SELECTED >= 0 && CELLS[SELECTED] && cellClass(CELLS[SELECTED]) !== "glia" ? SELECTED : -1;
   if (id === "play"){ if (TL.playing) tlStop(); else if (tlCount()) tlPlay(); }
   else if (id === "home") tlSeek(0);
+  else if (id === "title"){ const k = tlAddTitle(TL.t); capEdit(k); }
+  else if (id === "zin") tlZoom(2); else if (id === "zout") tlZoom(0.5); else if (id === "pl") tlPan(-0.5); else if (id === "pr") tlPan(0.5); else if (id === "fit") tlFit();
   else if (id === "snap"){ TL.snap = !TL.snap; const sb = document.getElementById("tlSnap"); if (sb) sb.classList.toggle("on", TL.snap); flashWarn("🧲 Snap " + (TL.snap ? "on: keys jump to other keys' times" : "off"), 2000, "#c98bff"); }
   /* + Caption: one at the playhead, opened for its words (section 54); ✎ Edit text: the picked caption */
   else if (id === "capt"){ tlAdd("cap", Object.assign({ text: "", dur: 3, pos: "bottom", size: "m" }, TL.capStyle || {})); TLVR.sel = TL.sel; capEdit(TL.sel); }
@@ -12604,16 +12627,18 @@ function capIsMark(x){ if (x === "/" || x[0] === "#") return true; try { return 
 function capPlain(text){ return String(text || "").replace(CAP_MARK, (all, x) => capIsMark(x) ? "" : all); }
 function capCard(k, H){
   const st = capStyleOf(k), F = CAP_FONTS[st.font];
-  const px = Math.round(H * CAP_SIZES[st.size]), key = [k.text, px, st.bg, st.col, st.font].join("|");
+  const px = Math.round(H * (k.title ? 0.085 : CAP_SIZES[st.size])), key = [k.text, px, st.bg, st.col, st.font, !!k.title].join("|");
   let c = CAPS.get(k.id);
   if (c && c.key === key) return c;
-  const lines = String(k.text || "").split("\n"), font = F[0] + " " + px + "px " + F[1];
+  let lines = String(k.text || "").split("\n"); const font = F[0] + " " + px + "px " + F[1];
+  /* a title wraps itself at about 26 letters a line (no Enter key in the headset) */
+  if (k.title) lines = lines.flatMap(l => { const out = []; let cur = ""; for (const w of l.split(/\s+/).filter(Boolean)){ if (cur && (cur + " " + w).length > 26){ out.push(cur); cur = w; } else cur = cur ? cur + " " + w : w; } if (cur) out.push(cur); return out.length ? out : [""]; });
   const m = document.createElement("canvas").getContext("2d"); m.font = font;
   const pad = Math.round(px * 0.6), lh = Math.round(px * 1.3);
   const W = Math.ceil(Math.max(...lines.map(l => m.measureText(capPlain(l)).width)) + pad * 2), Hc = Math.ceil(lines.length * lh + pad * 1.4);
   const cv = document.createElement("canvas"); cv.width = Math.max(4, W); cv.height = Math.max(4, Hc);
   const g = cv.getContext("2d");
-  if (st.bg === "dark" || st.bg === "light"){
+  if (!k.title && (st.bg === "dark" || st.bg === "light")){
     g.fillStyle = st.bg === "dark" ? "rgba(13,17,23,0.72)" : "rgba(246,248,250,0.82)";
     g.beginPath(); g.roundRect(0, 0, cv.width, cv.height, Math.round(px * 0.4)); g.fill();
   }
@@ -12638,13 +12663,23 @@ function capCard(k, H){
   Object.assign(c, { key, tex, w: cv.width, h: cv.height }); CAPS.set(k.id, c);
   return c;
 }
+const TLTITLE = { black: null, sphere: null };
 function capFrame(W, H){
   const live = new Set();
   if (domeActive()){ CAPS.forEach(c => { c.mesh.visible = false; }); return; }   // on the dome they are drawn ON the dome (domeHud)
   if (typeof TL !== "undefined" && TL.open && TL.keys.cap.length){
     const bot = !REC.on ? (TL.height || 0) * (H / Math.max(1, innerHeight)) : 0;
     const pos = { top: 0, middle: 0, bottom: 0 };
-    for (const k of TL.keys.cap){
+    /* a title slide: black over the picture, its words large in the middle, and no other caption (section 55) */
+    const ttl = tlTitleAt(TL.t);
+    if (!TLTITLE.black){ TLTITLE.black = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthTest: false, depthWrite: false }));
+      TLTITLE.black.renderOrder = 19; TLTITLE.black.frustumCulled = false; LOGO.scene.add(TLTITLE.black); }
+    TLTITLE.black.visible = !!ttl;
+    if (ttl){
+      const f = tlTitleFade(ttl, TL.t); TLTITLE.black.material.opacity = f; TLTITLE.black.scale.set(W, H, 1); TLTITLE.black.position.set(W / 2, H / 2, 0);
+      if (String(ttl.text || "").trim()){ const c = capCard(ttl, H); live.add(ttl.id); c.mesh.visible = true; c.mesh.material.opacity = f; c.mesh.scale.set(c.w, c.h, 1); c.mesh.position.set(W / 2, H / 2, 0); }
+    }
+    if (!ttl) for (const k of TL.keys.cap){
       const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
       const f = Math.min(1, a / 0.4, (k.dur - a) / 0.4);
       const c = capCard(k, H); live.add(k.id);
@@ -12656,6 +12691,7 @@ function capFrame(W, H){
       c.mesh.scale.set(c.w, c.h, 1); c.mesh.position.set(W / 2, y, 0);
     }
   }
+  else if (TLTITLE.black) TLTITLE.black.visible = false;
   CAPS.forEach((c, id) => { if (!live.has(id)) c.mesh.visible = false; });
 }
 /* ── CAPTIONS IN THE HEADSET (2026-11-15, Søren: "I haven't seen the text captions subtitles play while running the
@@ -12674,7 +12710,22 @@ function capVrFrame(dt){
     if (!VR_CAPS.fwd) VR_CAPS.fwd = f.clone(); else VR_CAPS.fwd.lerp(f, Math.min(1, (dt || 0.016) * 2)).normalize();
     const fw = VR_CAPS.fwd, PXM = 0.0011;                                   // 1080 px of card height ≈ 1.2 m at 1.4 m away
     let stack = 0;
-    for (const k of TL.keys.cap.slice().sort((a, b) => a.t - b.t)){
+    /* a title slide: the room goes dark around you, the words ahead at eye height, nothing else (section 55) */
+    const ttl = tlTitleAt(TL.t);
+    if (!TLTITLE.sphere){ TLTITLE.sphere = new THREE.Mesh(new THREE.SphereGeometry(2.5, 24, 16), new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, transparent: true, depthTest: false, depthWrite: false }));
+      TLTITLE.sphere.renderOrder = 30; TLTITLE.sphere.frustumCulled = false; scene.add(TLTITLE.sphere); }
+    TLTITLE.sphere.visible = !!ttl;
+    if (ttl){
+      const fd = tlTitleFade(ttl, TL.t); TLTITLE.sphere.position.copy(h.p); TLTITLE.sphere.material.opacity = TL.playing ? fd : fd * 0.6;
+      if (String(ttl.text || "").trim()){
+        const c = capCard(ttl, 1080); let m = VR_CAPS.get(ttl.id);
+        if (!m){ m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false })); m.renderOrder = 40; m.frustumCulled = false; scene.add(m); VR_CAPS.set(ttl.id, m); }
+        if (m.material.map !== c.tex){ m.material.map = c.tex; m.material.needsUpdate = true; }
+        _vcP.copy(h.p).addScaledVector(fw, 1.6); m.position.copy(_vcP); m.scale.set(c.w * PXM * 1.2, c.h * PXM * 1.2, 1); m.lookAt(h.p.x, m.position.y, h.p.z);
+        m.material.opacity = fd; m.visible = true; live.add(ttl.id);
+      }
+    }
+    if (!ttl) for (const k of TL.keys.cap.slice().sort((a, b) => a.t - b.t)){
       const a = TL.t - k.t; if (a < 0 || a >= k.dur || !String(k.text || "").trim()) continue;
       const fade = Math.min(1, a / 0.4, (k.dur - a) / 0.4), c = capCard(k, 1080);
       let m = VR_CAPS.get(k.id);
@@ -12689,6 +12740,7 @@ function capVrFrame(dt){
       stack += hh + 0.015;
     }
   }
+  if (!(VR_CAPS_ON && renderer.xr.isPresenting) && TLTITLE.sphere) TLTITLE.sphere.visible = false;
   VR_CAPS.forEach((m, id) => { if (id !== "fwd" && !live.has(id)) m.visible = false; });
 }
 const _ls = new THREE.Vector2();
@@ -12906,11 +12958,15 @@ function tlPose(e, extraRot){
   return { p: _tpv.toArray(), tg: k.tg, sp: k.sp, sq: k.sq, ss: k.ss };
 }
 function tlCamAt(t){
-  const E = tlCamList(); if (!E.length) return null;
+  /* the camera's own time leaves the title slides out, so a move that spans one pauses under it (section 55) */
+  const anyTitle = TL.keys.cap.some(k => k.title), ct = x => anyTitle ? tlCt(x) : x;
+  const E = tlCamList().map(e => anyTitle ? Object.assign({}, e, { t: ct(e.t) }) : e); if (!E.length) return null;
+  t = ct(t);
   /* Inside an orbit: the circle itself. */
   for (const k of TL.keys.cam){
-    if (!k.orb || !k.orb.deg || t <= k.t || t >= k.t + k.orb.dur) continue;
-    const u = (t - k.t) / k.orb.dur, ue = (1 - Math.cos(Math.PI * u)) / 2;
+    const kt = ct(k.t);
+    if (!k.orb || !k.orb.deg || t <= kt || t >= kt + k.orb.dur) continue;
+    const u = (t - kt) / k.orb.dur, ue = (1 - Math.cos(Math.PI * u)) / 2;
     return { pose: tlPose({ k }, k.orb.deg * (k.orb.dir || 1) * ue) };
   }
   if (E.length === 1 || t <= E[0].t) return { pose: tlPose(E[0]) };
@@ -13147,6 +13203,10 @@ function tlFrame(dt){
     });
   }
   try { tlPaintStep(t0, t1); } catch (e){}
+  /* a title slide: the voice stops, nothing else is applied; the camera and the rest stand still (section 55) */
+  { const ttl = tlTitleAt(TL.t);
+    if (ttl !== TL.inTitle){ if (ttl){ try { voicePause(); } catch (e){} } else if (TL.inTitle){ try { if (narrMode() === "rec") voicePlay(); } catch (e){} } TL.inTitle = ttl; }
+    if (ttl){ if (TL.t >= TL.dur) tlStop(true); tlDraw(); return; } }
   try { voiceFrame(); } catch (e){}
   for (const f of [() => tlApplyViewAt(TL.t, true), () => { if (!RIDE.on) tlApplyCam(TL.t); }, () => tlApplyElectrodesAt(TL.t), () => tlApplySynAt(TL.t), () => tlFollow(dt)])
     try { f(); } catch (e){ if (!TL.errWarned){ TL.errWarned = true; console.warn("[vr] timeline:", e); } }
@@ -13195,6 +13255,56 @@ async function tlRecord(){
 
 /* ── the timeline's extras (2026-10-16, Søren: "Do all of them") ──
    SNAP while dragging: to other keys and the playhead when within 0.15 s, else to half seconds. */
+/* ── 55. TITLE SLIDES (2026-11-16) ──
+   Søren: "Would be nice also to be able to add a 'Title slide' to the captions, which will make the whole scene dark and
+   have the text centered in front of the camera in large letters. This should be inserted so that it moves all other
+   keyframes to the left or right of it and acts as a 'pause' meaning that any animation or whatever is not running in
+   the background. It should by default fade in and/or out of the scene, unless it is deselected."
+   · A title slide is a caption key with title:true (and fin / fout, the fades, on unless switched off), 4 s by default.
+   · INSERTED, NOT LAID ON TOP: everything from the playhead on moves later by its length -- every key in every lane, the
+     take's paint and hands and knife, the voice recording's start -- and the film grows by it. Lengthening or shortening
+     a title moves what follows by the difference; deleting one pulls what follows back.
+   · A PAUSE: while it shows, nothing else of the film runs -- the simulation is frozen, no key is applied, the camera
+     holds where it was, the recorded voice stops and takes up exactly where it left off. A camera move that spans the
+     title continues afterwards from where it stood (the camera's timing leaves the titles out: tlCt).
+   · On the screen and in films: the picture fades to black, the words large in the middle; in the headset the room
+     goes dark around you and the words float ahead at eye height. */
+function tlTitleAt(t){ for (const k of TL.keys.cap) if (k.title && t >= k.t && t < k.t + k.dur) return k; return null; }
+/* the film's time with the titles left out: what runs on under them (the camera's motion, the voice) */
+function tlCt(t){ let c = t; for (const k of TL.keys.cap) if (k.title){ const o = Math.min(t, k.t + k.dur) - k.t; if (o > 0) c -= o; } return c; }
+/* everything from time t on moves by d seconds (d < 0 pulls it back); what spans t gets longer or shorter */
+function tlRipple(t, d, except){
+  const r2 = x => Math.round(x * 100) / 100, after = x => x >= t - 1e-6;
+  for (const l in TL.keys) for (const k of TL.keys[l]){
+    if (k === except) continue;
+    if (after(k.t)) k.t = Math.max(0, r2(k.t + d));
+    else {
+      if ((l === "cap" || l === "fx") && !k.title && k.dur && k.t + k.dur > t) k.dur = Math.max(0.5, r2(k.dur + d));
+      if (l === "cam" && k.orb && k.orb.dur && k.t + k.orb.dur > t) k.orb.dur = Math.max(0.5, r2(k.orb.dur + d));
+    }
+  }
+  (TL.paint || []).forEach(x => { if (after(x[0])) x[0] = r2(x[0] + d); });
+  if (TL.hands) TL.hands.forEach(x => { if (after(x.t)) x.t = r2(x.t + d); });
+  if (TL.cut) TL.cut.forEach(x => { if (after(x.t)) x.t = r2(x.t + d); });
+  try { if (VOICE.data && VOICE.offset >= t - 1e-6){ VOICE.offset = Math.max(0, VOICE.offset + d); voiceStore(); } } catch (e){}
+  TL.dur = Math.max(2, Math.min(600, r2(TL.dur + d)));
+}
+function tlAddTitle(at){
+  let t = Math.round((at == null ? TL.t : at) * 10) / 10; const inside = tlTitleAt(t); if (inside) t = inside.t + inside.dur;
+  const d = 4;
+  tlSave();
+  tlRipple(t, d);
+  const k = tlKey("cap", { t, dur: d, text: "Title", title: true, fin: true, fout: true, pos: "middle", size: "xl" });
+  TL.keys.cap.push(k); tlSort(); TL.sel = k; TL.multi.clear(); TL.multi.add(k); TL.t = t;
+  tlSave(); tlSync(); try { TLVR.dirty = true; TLVR.sel = k; } catch (e){}
+  return k;
+}
+function tlTitleResize(k, dur){
+  dur = Math.max(1, Math.min(60, Math.round(dur * 10) / 10)); const old = k.dur || 4; if (Math.abs(dur - old) < 1e-6) return;
+  tlRipple(k.t + old, dur - old, k); k.dur = dur; tlSave(); tlSync(); try { TLVR.dirty = true; } catch (e){}
+}
+/* how dark, and how strong the words, at time t of a title (its fades are 0.8 s) */
+function tlTitleFade(k, t){ const a = t - k.t; let f = 1; if (k.fin !== false) f = Math.min(f, a / 0.8); if (k.fout !== false) f = Math.min(f, (k.dur - a) / 0.8); return Math.max(0, Math.min(1, f)); }
 /* 🧲 SNAP (2026-11-16, Søren: "for all the keyframes in both VR and PC there should be a snap option to snap it to the
    timepoint of other keyframes in the timeline" -- "Symbol for that could be a magnet"). While a key is dragged it
    jumps to the time of any other key in any lane (its start, and the end of a caption or effect), or to the playhead,
@@ -13269,7 +13379,7 @@ function tlEffects(){
   raTlAt(TL.t);
   /* A block still being read holds the clock, so the movie does not run on without it -- and so
      do the recordings while they are read. */
-  TL.frozen = frz || !!(TL.playing && BLOCK.loading) || !!(TL.playing && RA.tlKey && (!RA.meta || RA.loading));
+  TL.frozen = frz || !!(TL.playing && tlTitleAt(TL.t)) || !!(TL.playing && BLOCK.loading) || !!(TL.playing && RA.tlKey && (!RA.meta || RA.loading));
   if (hl){
     CELLS.forEach((c, i) => {
       if (!c.mesh) return;
@@ -13345,10 +13455,11 @@ function tlBuild(){
       <button id="tlAddCam" title="Add a camera key here: the current view">+ ◆ Camera</button>
       <button id="tlAddView" title="Add a view key here: what is shown now (layers, nuclei, vessels, …)">+ ■ View</button>
       <button id="tlAddStim" title="Add a stimulus here: fire a cell at its soma">+ ⚡ Stimulus</button>
-      <button id="tlAddCap" title="Add a caption here: a text card that fades in and out, drawn into the movie">+ T Caption</button>
+      <button id="tlAddCap" title="Add a caption here: a text card that fades in and out, drawn into the movie">+ T Caption</button><button id="tlAddTitle" title="Insert a title slide at the playhead: the picture goes dark and the words show large in the middle; everything after it moves later, and the film pauses under it">+ 🎬 Title slide</button>
       <button id="tlAddFx" title="Add an effect here: highlight a cell, freeze the spikes, follow the spike, or set the recording electrodes">+ ✦ Effect</button>
       <span class="tlSep"></span>
       <button id="tlUndo" title="Undo (Ctrl+Z)">↶</button><button id="tlRedo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
+      <button id="tlZout" title="Draw the time in (see more of the film)">🔍−</button><button id="tlZin" title="Spread the time out around the playhead (also: mouse wheel on the lanes)">🔍+</button><button id="tlPl" title="Move the window left (also: Shift + wheel)">◀</button><button id="tlPr" title="Move the window right (also: Shift + wheel)">▶</button><button id="tlFitB" title="Show the whole film">Fit</button><span id="tlZoomLbl" class="help" style="margin:0 6px">whole film</span>
       <button id="tlSnap" class="on" title="🧲 Snap: a dragged key jumps to the time of other keys (any lane) and to the playhead when it comes close">🧲 Snap</button>
       <button id="tlPath" class="on" title="Show the camera's path as a dotted line in the 3D view">Path</button>
       <button id="tlCards" title="The info cards in the 3D view — the collection's name, the stimulation and Ca²⁺ cards, warnings, the recording's clock card — in the film too. Off: the film shows none of them (captions and plots are not affected).">Cards</button>
@@ -13391,6 +13502,7 @@ function tlBuild(){
     if (pick < 0){ ctxNote.textContent = "No neuron is loaded to stimulate."; return; }
     tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 });
   };
+  bar.querySelector("#tlAddTitle").onclick = () => { tlAddTitle(TL.t); setTimeout(() => { const ta = TLD.edit.querySelector("#tlKtext"); if (ta){ ta.focus(); ta.select(); } }, 0); };
   bar.querySelector("#tlAddCap").onclick = () => { tlAdd("cap", Object.assign({ text: "Caption", dur: 3, pos: "bottom", size: "m" }, TL.capStyle || {})); setTimeout(() => { const ta = TLD.edit.querySelector("#tlKtext"); if (ta){ ta.focus(); ta.select(); } }, 0); };
   bar.querySelector("#tlAddFx").onclick = () => {
     const pick = SELECTED >= 0 ? SELECTED : CELLS.findIndex(c => c.mesh);
@@ -13398,6 +13510,14 @@ function tlBuild(){
   };
   bar.querySelector("#tlUndo").onclick = () => tlUndo(-1);
   bar.querySelector("#tlRedo").onclick = () => tlUndo(1);
+  bar.querySelector("#tlZin").onclick = () => tlZoom(2); bar.querySelector("#tlZout").onclick = () => tlZoom(0.5);
+  bar.querySelector("#tlPl").onclick = () => tlPan(-0.5); bar.querySelector("#tlPr").onclick = () => tlPan(0.5); bar.querySelector("#tlFitB").onclick = () => tlFit();
+  /* the wheel on the lanes: zoom around the pointer; Shift+wheel or a sideways swipe: move the window */
+  TLD.cv.addEventListener("wheel", e => {
+    e.preventDefault();
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)){ tlPan((e.shiftKey ? e.deltaY : e.deltaX) > 0 ? 0.15 : -0.15); return; }
+    tlZoom(e.deltaY < 0 ? 1.25 : 0.8, tlTimeAt(e));
+  }, { passive: false });
   bar.querySelector("#tlSnap").onclick = e => { TL.snap = !TL.snap; e.currentTarget.classList.toggle("on", TL.snap); };
   bar.querySelector("#tlCards").onclick = e => { TL.cards = !TL.cards; e.currentTarget.classList.toggle("on", !!TL.cards); tlSave(); };
   bar.querySelector("#tlPath").onclick = e => { TL.showPath = !TL.showPath; e.currentTarget.classList.toggle("on", TL.showPath); tlPathBuild(); };
@@ -13489,10 +13609,43 @@ function tlBuild(){
 }
 function confirmClear(){ return !(tlCount()) || window.confirm("Remove every key on the timeline?"); }
 const TL_X0 = 86;
-function tlTimeAt(e){ const r = TLD.cv.getBoundingClientRect(); return Math.max(0, Math.min(TL.dur, (e.clientX - r.left - TL_X0) / (r.width - TL_X0 - 12) * TL.dur)); }
-function tlX(t, W){ return TL_X0 + t / TL.dur * (W - TL_X0 - 12); }
+/* ── ZOOM AND PAN ON THE TIMELINE (2026-11-16) ──
+   Søren: "I also need some way of spreading the time of the timeline out, so that I can more easily edit things that are
+   close together. Then we should also have a possibility of moving the window we look at right or left."
+   Both timelines -- the PC bar and the headset's panel -- show a window of the film, TL.va..TL.vb seconds (the whole
+   film when not zoomed). 🔍+ / 🔍− spread it out or draw it in around the playhead (on the PC also the mouse wheel,
+   around the pointer), ◀ ▶ move the window by half its width (on the PC also Shift+wheel, or a sideways swipe), Fit
+   shows the whole film again. While the film plays, the window follows the playhead. Keys outside the window are not
+   drawn and cannot be hit; snapping works in seconds, so it does not change. The window is not part of the film. */
+function tlVa(){ return TL.vb != null ? TL.va : 0; }
+function tlVb(){ return TL.vb != null ? TL.vb : TL.dur; }
+function tlZoom(f, center){
+  const a = tlVa(), b = tlVb(), span = b - a, ns = Math.max(Math.min(1, TL.dur), Math.min(TL.dur, span / f));
+  if (ns >= TL.dur - 1e-6){ TL.va = 0; TL.vb = null; tlViewChanged(); return; }
+  const c = center == null ? Math.max(a, Math.min(b, TL.t)) : center;
+  let na = c - (c - a) * ns / span; na = Math.max(0, Math.min(TL.dur - ns, na));
+  TL.va = na; TL.vb = na + ns; tlViewChanged();
+}
+function tlPan(frac){
+  if (TL.vb == null) return;
+  const span = TL.vb - TL.va; let na = Math.max(0, Math.min(TL.dur - span, TL.va + span * frac));
+  TL.va = na; TL.vb = na + span; tlViewChanged();
+}
+function tlFit(){ TL.va = 0; TL.vb = null; tlViewChanged(); }
+function tlViewFollow(){
+  if (TL.vb == null || !TL.playing) return;
+  if (TL.vb > TL.dur){ tlFit(); return; }
+  const span = TL.vb - TL.va;
+  if (TL.t > TL.vb - span * 0.05 || TL.t < TL.va){ const na = Math.max(0, Math.min(TL.dur - span, TL.t - span * 0.1)); TL.va = na; TL.vb = na + span; tlViewChanged(); }
+}
+function tlViewChanged(){ try { tlDraw(); } catch (e){} try { TLVR.dirty = true; } catch (e){} try { const z = document.getElementById("tlZoomLbl"); if (z) z.textContent = TL.vb == null ? "whole film" : (TL.vb - TL.va).toFixed(TL.vb - TL.va < 10 ? 1 : 0) + " s shown"; } catch (e){} }
+/* a ruler step that keeps the labels apart for the time shown */
+function tlStep(span, px){ for (const s of [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 60, 120]) if (px * s / span >= 60) return s; return 300; }
+function tlTimeAt(e){ const r = TLD.cv.getBoundingClientRect(), a = tlVa(), b = tlVb(); return Math.max(0, Math.min(TL.dur, a + (e.clientX - r.left - TL_X0) / (r.width - TL_X0 - 12) * (b - a))); }
+function tlX(t, W){ const a = tlVa(), b = tlVb(); return TL_X0 + (t - a) / ((b - a) || 1) * (W - TL_X0 - 12); }
 function tlHit(e){
   const r = TLD.cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (x < TL_X0 - 8) return null;                    // the lane names (keys outside a zoomed window are drawn nowhere)
   const lane = Math.floor((y - 20) / 28); if (lane < 0 || lane > 4) return null;
   const L = TL.keys[TL_LANES[lane][0]];
   /* A caption is a bar: anywhere on it picks it. */
@@ -13616,12 +13769,14 @@ function tlEditor(){
     if (k.kind === "electrodes") h += ` <button id="tlKelset">Set to the electrodes placed now (${(k.el || []).length})</button> <span class="tlHint">place them with 📍 in the Activity tab</span>`;
   }
   if (k.lane === "cap"){
+    if (k.title) h += ` <b>🎬 Title slide</b> <label title="The picture fades to black, and the words in"><input type="checkbox" id="tlKfin"${k.fin !== false ? " checked" : ""}> fade in</label>
+           <label title="The words and the black fade out into the film"><input type="checkbox" id="tlKfout"${k.fout !== false ? " checked" : ""}> fade out</label> ·`;
     h += ` for <input id="tlKd" type="number" min="0.5" step="0.5" value="${k.dur}"> s
-           <select id="tlKpos">${[["top", "top"], ["middle", "middle"], ["bottom", "bottom"]].map(([v, l]) => `<option value="${v}"${k.pos === v ? " selected" : ""}>${l}</option>`).join("")}</select>
-           <select id="tlKsize" title="Text size">${[["xs", "tiny"], ["s", "small"], ["m", "medium"], ["l", "large"], ["xl", "huge"]].map(([v, l]) => `<option value="${v}"${capStyleOf(k).size === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKpos"${k.title ? " style='display:none'" : ""}>${[["top", "top"], ["middle", "middle"], ["bottom", "bottom"]].map(([v, l]) => `<option value="${v}"${k.pos === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKsize" title="Text size"${k.title ? " style='display:none'" : ""}>${[["xs", "tiny"], ["s", "small"], ["m", "medium"], ["l", "large"], ["xl", "huge"]].map(([v, l]) => `<option value="${v}"${capStyleOf(k).size === v ? " selected" : ""}>${l}</option>`).join("")}</select>
            <select id="tlKfont" title="Font">${Object.entries(CAP_FONTS).map(([v, f]) => `<option value="${v}"${capStyleOf(k).font === v ? " selected" : ""}>${f[2]}</option>`).join("")}</select>
            <input id="tlKcol" type="color" value="${capStyleOf(k).col}" title="Text colour" style="width:34px;height:24px;padding:0;border:1px solid var(--line);border-radius:4px;background:none">
-           <select id="tlKbg" title="Background behind the text">${Object.entries(CAP_BGS).map(([v, l]) => `<option value="${v}"${capStyleOf(k).bg === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+           <select id="tlKbg" title="Background behind the text"${k.title ? " style='display:none'" : ""}>${Object.entries(CAP_BGS).map(([v, l]) => `<option value="${v}"${capStyleOf(k).bg === v ? " selected" : ""}>${l}</option>`).join("")}</select>
            <button id="tlKall" title="Give every caption in this film this caption's size, font, colour and background">Style all</button>
            <label title="Select words in the text below, then pick a colour: they get it in the movie (written as [colour]words[/])" style="display:inline-flex;align-items:center;gap:4px;font-size:12px">colour the selected words <input id="tlKwcol" type="color" value="#ff6b6b" style="width:34px;height:24px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></label>
            <br><textarea id="tlKtext" rows="2" placeholder="Caption text — a new line starts a new line in the movie">${esc(k.text || "")}</textarea>`;
@@ -13685,7 +13840,8 @@ function tlEditor(){
     if ($e("tlKelset")) $e("tlKelset").onclick = () => { k.el = tlCaptureElectrodes(); TL.elApplied = null; tlSave(); tlSync(); };
   }
   if (k.lane === "cap"){
-    $e("tlKd").onchange = e => { k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
+    $e("tlKd").onchange = e => { if (k.title){ tlTitleResize(k, +e.target.value || 4); return; } k.dur = Math.max(0.5, +e.target.value || 3); tlSave(); tlDraw(); };
+    if (k.title){ $e("tlKfin").onchange = e => { k.fin = e.target.checked; tlSave(); }; $e("tlKfout").onchange = e => { k.fout = e.target.checked; tlSave(); }; }
     $e("tlKpos").onchange = e => { k.pos = e.target.value; tlSave(); };
     const capStyled = () => { TL.capStyle = { size: k.size, font: k.font, col: k.col, bg: k.bg }; tlSave(); };
     $e("tlKsize").onchange = e => { k.size = e.target.value; capStyled(); };
@@ -13709,6 +13865,8 @@ function tlEditor(){
 }
 function tlDelete(k){
   const del = TL.multi.size > 1 && TL.multi.has(k) ? new Set(TL.multi) : new Set([k]);
+  tlSave();
+  [...del].filter(x => x.title).sort((a, b) => b.t - a.t).forEach(x => tlRipple(x.t + x.dur, -x.dur, x));   // a title slide leaves no gap
   for (const l in TL.keys) TL.keys[l] = TL.keys[l].filter(x => !del.has(x));
   TL.sel = null; TL.multi.clear(); tlSave(); tlSync(); }
 function tlDraw(){
@@ -13718,12 +13876,16 @@ function tlDraw(){
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   /* ruler */
   g.font = "11px system-ui, sans-serif"; g.fillStyle = "#8b949e"; g.strokeStyle = "#30363d";
-  const step = TL.dur <= 20 ? 1 : TL.dur <= 60 ? 5 : 10;
-  for (let s = 0; s <= TL.dur + 1e-6; s += step){ const x = tlX(s, W); g.beginPath(); g.moveTo(x, 12); g.lineTo(x, 20); g.stroke(); if (s % (step * (TL.dur <= 20 ? 2 : 1)) === 0) g.fillText(s + " s", x + 2, 10); }
+  tlViewFollow();
+  { const a = tlVa(), b = tlVb(), step = tlStep(b - a, W - TL_X0 - 12);
+    for (let s = Math.ceil(a / step - 1e-6) * step; s <= b + 1e-6; s += step){ const x = tlX(s, W); g.beginPath(); g.moveTo(x, 12); g.lineTo(x, 20); g.stroke(); g.fillText((+s.toFixed(1)) + " s", x + 2, 10); }
+    /* where the window is in the whole film: a thin bar along the top */
+    if (TL.vb != null){ g.fillStyle = "rgba(88,166,255,0.25)"; g.fillRect(TL_X0, 0, W - TL_X0 - 12, 3); g.fillStyle = "#58a6ff"; g.fillRect(TL_X0 + a / TL.dur * (W - TL_X0 - 12), 0, Math.max(4, (b - a) / TL.dur * (W - TL_X0 - 12)), 3); g.fillStyle = "#8b949e"; } }
   TL_LANES.forEach(([lane, name, col], i) => {
     const y = 20 + i * 28;
     g.fillStyle = i % 2 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)"; g.fillRect(TL_X0, y, W - TL_X0 - 12, 26);
     g.fillStyle = col; g.font = "600 12px system-ui, sans-serif"; g.fillText(name, 8, y + 17);
+    g.save(); g.beginPath(); g.rect(TL_X0 - 9, y, W - TL_X0 - 1, 26); g.clip();
     for (const k of TL.keys[lane]){
       const x = tlX(k.t, W), sel = TL.sel === k || TL.multi.has(k), cy = y + 13;
       g.fillStyle = col; g.strokeStyle = sel ? "#ffffff" : "#0d1117"; g.lineWidth = sel ? 2.5 : 1.5;
@@ -13752,10 +13914,10 @@ function tlDraw(){
       if (lane === "cap"){
         /* A bar as long as the caption shows, with its first words on it. */
         const x2 = tlX(Math.min(TL.dur, k.t + k.dur), W);
-        g.fillStyle = "rgba(230,237,243,0.22)"; g.beginPath(); g.roundRect(x, cy - 9, Math.max(6, x2 - x), 18, 4); g.fill();
-        g.strokeStyle = sel ? "#ffffff" : "rgba(230,237,243,0.6)"; g.lineWidth = sel ? 2 : 1; g.stroke();
+        g.fillStyle = k.title ? "rgba(0,0,0,0.75)" : "rgba(230,237,243,0.22)"; g.beginPath(); g.roundRect(x, cy - 9, Math.max(6, x2 - x), 18, 4); g.fill();
+        g.strokeStyle = sel ? "#ffffff" : k.title ? "#e3b341" : "rgba(230,237,243,0.6)"; g.lineWidth = sel ? 2 : 1; g.stroke();
         g.save(); g.beginPath(); g.rect(x, cy - 9, Math.max(6, x2 - x), 18); g.clip();
-        g.fillStyle = "#e6edf3"; g.font = "11px system-ui, sans-serif"; g.fillText(capPlain(k.text).split("\n")[0], x + 5, cy + 4); g.restore();
+        g.fillStyle = k.title ? "#e3b341" : "#e6edf3"; g.font = (k.title ? "600 " : "") + "11px system-ui, sans-serif"; g.fillText((k.title ? "🎬 " : "") + capPlain(k.text).split("\n")[0], x + 5, cy + 4); g.restore();
         continue;
       }
       if (lane === "cam" && k.orb && k.orb.deg){
@@ -13776,6 +13938,7 @@ function tlDraw(){
         const c = CELLS[cs[0]]; if (c){ g.fillStyle = "#c9d1d9"; g.font = "10px system-ui, sans-serif"; g.fillText(shortName(c) + (cs.length > 1 ? " +" + (cs.length - 1) : "") + " ×" + k.gain, x + 9, cy + 4); }
       }
     }
+    g.restore();
   });
   /* camera path: a thin line joining the camera keys */
   const K = tlCamList(); if (K.length > 1){ g.strokeStyle = "rgba(88,166,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(tlX(K[0].t, W), 33); g.lineTo(tlX(K[K.length - 1].t, W), 33); g.stroke(); }
