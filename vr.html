@@ -4684,6 +4684,7 @@ function onCred(resp){
     if (typeof TRW !== "undefined" && TRW.pending){ TRW.pending = false; trwSave(); }
     if (typeof CN !== "undefined" && CN.tpPending){ CN.tpPending = false; tpSave(); }
     if (SCENE.waiting){ const w = SCENE.waiting; SCENE.waiting = null; saveScene(w.vr, w.asNew); }
+    if (VR_SIGNIN_LEFT){ VR_SIGNIN_LEFT = false; setTimeout(() => { ctxNote.textContent = "✓ Signed in as " + CRED_NAME + ". Press Enter VR to go back in."; }, 600); }
   } catch (e){}
 }
 function signInUI(boxId){
@@ -4717,7 +4718,9 @@ function vrSignInAgain(){
     const m2 = "Could not sign in from inside the headset. Palette → View → “Leave VR to sign in”: Google's button is then on the page; your save finishes as soon as you are signed in.";
     ctxNote.textContent = m2; try { flashWarn(m2, 9000, "#f0a742"); } catch (e){} MENU.dirty = true; } }, 7000);
 }
+let VR_SIGNIN_LEFT = false;
 function vrLeaveToSignIn(){
+  VR_SIGNIN_LEFT = true;
   const se = renderer.xr.getSession(); if (se) se.end();
   setTimeout(() => { signInUI("sceneSignin"); const b = document.getElementById("sceneBox"); if (b) b.scrollIntoView({ behavior: "smooth", block: "center" });
     ctxNote.textContent = "Sign in with Google here (the button under the scene title)" + (SCENE.waiting ? " — the scene is then saved" : "") + ", and enter VR again."; }, 400);
@@ -9084,6 +9087,27 @@ function tlClearAll(){
   ctxNote.textContent = "The timeline is empty — record a new take or add keys. (Undo brings the old one back.)";
   MENU.dirty = true;
 }
+/* ── A FILM FROM THE HEADSET (2026-11-16, Søren: "I don't see an option to generate a video for download in the headset,
+   like we have on the PC version of VR. Can we make that?") A film is drawn frame by frame on the page's own canvas,
+   which a headset does not draw to while you are inside VR. So "Film the timeline" leaves VR, films on the page --
+   the same ⏺ Film it as on the PC, at its size and frame rate, with the voice-over and the sounds -- and the video
+   goes to the headset's Downloads (on a Quest: Files → Downloads). Enter VR again when it is done. */
+let FILM_AFTER_VR = false;
+function filmFromHeadset(){
+  if (!tlCount()){ ctxNote.textContent = "There is no timeline to film yet."; try { flashWarn(ctxNote.textContent, 3000); } catch (e){} return; }
+  FILM_AFTER_VR = true;
+  const msg = "Leaving VR to film the timeline (" + Math.round(TL.dur) + " s) — the video goes to your Downloads. Keep the headset on; enter VR again when it says done.";
+  ctxNote.textContent = msg; try { flashWarn(msg, 2500, "#c98bff"); } catch (e){}
+  setTimeout(() => { const se = renderer.xr.getSession(); if (se) se.end(); }, 1200);
+}
+renderer.xr.addEventListener("sessionend", () => {
+  if (!FILM_AFTER_VR) return; FILM_AFTER_VR = false;
+  setTimeout(async () => {
+    try { if (!TL.open) setTimeline(true); } catch (e){}
+    ctxNote.textContent = "🎬 Filming the timeline… the page shows the film as it is made; the video downloads when it is done.";
+    try { await tlRecord(); } catch (e){ ctxNote.textContent = "The film could not be made: " + (e && e.message || e); }
+  }, 900);
+});
 function tlHeadsetRows(rows){
   const n = tlCount();
   rows.push({ label: TLVR.on ? "Hide the timeline panel" : "Show the timeline panel (edit it with the ray)", on: TLVR.on, icon: "timeline", act: () => setTlvr(!TLVR.on) });
@@ -9095,6 +9119,7 @@ function tlHeadsetRows(rows){
   rows.push({ label: (TL.playing ? "⏸ Pause" : "▶ Play") + " the timeline" + (n ? "" : " (no keys yet)"), icon: "play", act: () => { if (!n) return; TL.playing ? tlStop() : tlPlay(); } });
   rows.push({ label: "◂ −1 s   |   playhead " + TL.t.toFixed(1) + " / " + TL.dur + " s   |   +1 s ▸", icon: "timeline", act: () => tlSeek(TL.t - 1), act2: () => tlSeek(TL.t + 1) });
   rows.push({ label: "Back to the start", icon: "reset", act: () => tlSeek(0) });
+  if (n) rows.push({ label: "🎬 Film the timeline as a video to download (leaves VR)", icon: "film", act: filmFromHeadset });
   rows.push({ label: TL.vrRide === false ? "Camera: I stay where I am  ▸" : "Camera: the room follows the recording  ▸", icon: "camera",
               act: () => { const was = TL.playing; if (was) tlVrEnd(); TL.vrRide = TL.vrRide === false; if (was) tlVrStart(); } });
   rows.push({ label: "+ Camera key here (where I stand and look)", icon: "camera", act: () => tlAdd("cam", vrCamKeyNow()) });
@@ -9268,7 +9293,7 @@ function mlHeadsetRefuse(what){ return false; }
    the compact 8-bit versions on the CPU (~80-90 MB rather than the 330 MB GPU version), one at a time, and the worker
    holding them is closed as soon as the job is done, so the memory goes back to the scene. It is slower there than
    on the PC (the first time also the download), and the page goes on responding while it works. */
-function mlSmall(){ return !!(renderer.xr && renderer.xr.isPresenting); }
+function mlSmall(){ return !!(renderer.xr && renderer.xr.isPresenting) || /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent); }   // a headset's browser, in VR or not
 function mlRelease(){ if (mlSmall() && MLW.w){ try { MLW.w.terminate(); } catch (e){} MLW.w = null; MLW.cb.clear(); } }
 const WHISPER = { lib: null, pipes: {} };
 async function whisperPipe(lang, say){
@@ -10352,7 +10377,11 @@ function menuRows(){
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
   }
-  return menuSections(rows, t);
+  const out = menuSections(rows, t);
+  /* SIGN-IN ON EVERY TAB (2026-11-16, Søren: "I still don't see a way to log in to google in the VR with headset"): the
+     way in was a row in View and the first row of Show; signed out, it now heads every tab, where it cannot be missed */
+  if (!credOk() && !MENU.help) out.unshift({ label: "Sign in with Google — leaves VR for a moment", icon: "user", exit: true, act: vrLeaveToSignIn });
+  return out;
 }
 /* ── SYMBOLS ON THE PALETTE (2026-11-14, Søren: "We could use symbols also in the VR headset controller menu") ──
    The panel's own icons (UI_ICON, the same line drawings as the PC buttons) drawn on the palette's canvas: one on
@@ -10479,7 +10508,7 @@ function drawMenu(){
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
     let lab = r.label;
     if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
-      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍)\s*/u, "$1"); } }
+      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
     g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
