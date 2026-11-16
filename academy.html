@@ -809,7 +809,8 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
     var host = $("#s-mine");
     if (!GOOGLE_VERIFIED){ host.innerHTML = '<div class="card">Sign in (top right) to see the VR scenes you have saved and submit one.</div>'; return; }
     host.innerHTML = '<p class="mut small" style="margin-top:0">The scenes you saved in the VR viewer. Submit one with a line on what it shows; '
-      + 'a submitted scene can be withdrawn at any time, and a featured scene is your scene &mdash; when you update it in VR, the Academy shows the update.</p><div id="scMineList" class="mut">Loading…</div>';
+      + 'a submitted scene can be withdrawn at any time, and a featured scene is your scene &mdash; when you update it in VR, the Academy shows the update. '
+      + 'A scene you no longer want can be deleted (a featured one is withdrawn first).</p><div id="scMineList" class="mut">Loading…</div>';
     scPost({ action: "mine" }).then(function(d){
       var el = $("#scMineList");
       if (!d.ok){ el.textContent = "Your scenes could not be read: " + (d.error || "no answer") + (/unknown|type/i.test(d.error || "") ? " (the server has not been updated yet)" : "") + "."; return; }
@@ -823,8 +824,11 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
           + (sc.academyReply ? '<div class="small"><i>From the reviewer:</i> ' + esc(sc.academyReply) + '</div>' : '')
           + (a === "submitted" || a === "featured"
               ? '<div class="row"><button class="btn" data-wd="' + esc(sc.sceneId) + '">Withdraw from the Academy</button></div>'
+                + (a === "featured" ? '<div class="small mut">A featured scene cannot be deleted &mdash; withdraw it from the Academy first.</div>'
+                                    : '<div class="row" style="margin-top:0"><button class="btn" data-del="' + esc(sc.sceneId) + '">🗑 Delete this scene</button></div>')
               : '<textarea rows="2" maxlength="600" placeholder="What should people look at? (shown on its card)" data-note="' + esc(sc.sceneId) + '">' + esc(sc.academyNote || "") + '</textarea>'
-                + '<div class="row" style="margin-top:0"><button class="btn go" data-sub="' + esc(sc.sceneId) + '">🎓 Submit to the Academy</button></div>');
+                + '<div class="row" style="margin-top:0"><button class="btn go" data-sub="' + esc(sc.sceneId) + '">🎓 Submit to the Academy</button>'
+                + '<button class="btn" data-del="' + esc(sc.sceneId) + '">🗑 Delete</button></div>');
         return scCard(sc, extra);
       }).join("");
       el.querySelectorAll(".scard").forEach(function(c){ scPreview(c, c.dataset.id); });
@@ -832,6 +836,17 @@ function escHtml(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, funct
         b.disabled = true; b.textContent = "Submitting…";
         var note = (el.querySelector('[data-note="' + b.dataset.sub + '"]') || {}).value || "";
         scPost({ action: "submit", sceneId: b.dataset.sub, note: note }).then(function(r){ if (!r.ok){ b.disabled = false; b.textContent = "Not submitted: " + (r.error || "no answer"); return; } scMine(); });
+      }; });
+      /* DELETE (2026-11-16): asks twice -- the first press arms it for 5 s -- and never for a featured scene */
+      el.querySelectorAll("[data-del]").forEach(function(b){ var armed = 0; b.onclick = function(){
+        if (Date.now() - armed > 5000){ armed = Date.now(); b.textContent = "Press again to delete it for good"; b.style.borderColor = "#e5534b"; b.style.color = "#ff8d85";
+          setTimeout(function(){ if (Date.now() - armed >= 5000 && !b.disabled){ b.textContent = "🗑 Delete"; b.style.borderColor = ""; b.style.color = ""; } }, 5100); return; }
+        b.disabled = true; b.textContent = "Deleting…";
+        scPost({ action: "delete", sceneId: b.dataset.del }).then(function(r){
+          if (!r.ok){ b.disabled = false; b.textContent = "Not deleted: " + (r.error || "no answer") + (/unknown/i.test(r.error || "") ? " (the server has not been updated yet)" : ""); return; }
+          var card = b.closest(".scard"); if (card) card.remove();
+          if (!el.querySelector(".scard")) scMine();
+        });
       }; });
       el.querySelectorAll("[data-wd]").forEach(function(b){ b.onclick = function(){
         b.disabled = true; scPost({ action: "withdraw", sceneId: b.dataset.wd }).then(function(){ scMine(); });
