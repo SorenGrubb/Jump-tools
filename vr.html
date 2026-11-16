@@ -3489,7 +3489,9 @@ async function loadSynapses(){
   const SY = DSX.syn;
   if (!SY){ STIM.syn = []; STIM.noSynTable = true; ctxNote.textContent = "No public synapse table for " + DSX.label + " — activity stays in the cell you touch."; return STIM.syn; }
   const tok = caveToken();
-  if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one " + (VR_DS === "v1dd" ? "δJump" : "µJump") + "'s connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it."; return null; }
+  if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one " + (VR_DS === "v1dd" ? "δJump" : "µJump") + "'s connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it.";
+    try { if (renderer.xr.isPresenting) flashWarn("Spikes stay in the cell you touch: synapses need a CAVE token, which this headset's browser has not been given. Pick a cell → Tools → Connections → “🔑 Give this headset the CAVE token”.", 7000, "#f0a742"); } catch (e){}
+    return null; }
   /* Every root this collection draws, including proposed fragments, mapped back to its cell. */
   const rootToCell = new Map();
   for (const c of CELLS){ if (!c.mesh) continue; [c.root].concat(c.extraUsed || c.extra || []).filter(Boolean).forEach(r => rootToCell.set(String(r), c.i)); }
@@ -11223,7 +11225,8 @@ function menuRows(){
     S("Connections");
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
     if (DS_HAS.syn && SELECTED >= 0){
-      rows.push({ label: "Connectivity of the picked cell", on: !!CN.on, act: () => setConnectivity(!CN.on) });
+      rows.push({ label: "Connectivity of the picked cell" + (CN.busy ? " (reading…)" : ""), on: !!CN.on, act: () => setConnectivity(!CN.on) });
+      if (!caveToken()) rows.push({ label: "🔑 Give this headset the CAVE token (leaves VR for a moment)", icon: "user", act: vrLeaveForToken });
       if (CN.partners){
         rows.push({ label: "   + top 5 input partners", act: () => cnAddTop(0, 5) });
         rows.push({ label: "   + top 5 output partners", act: () => cnAddTop(1, 5) });
@@ -11625,7 +11628,7 @@ function drawMenu(){
     if (r.swatch){ g.fillStyle = r.swatch; g.fillRect(x, y + 22, 28, 28); if (r.picked){ g.strokeStyle = "#e6edf3"; g.lineWidth = 4; g.strokeRect(x - 3, y + 19, 34, 34); } x += 44; }
     let lab = r.label;
     if (!r.swatch){ const ri = menuIcon(menuIconName(r), r.exit ? "#ffb070" : r.note ? "#cdb6ef" : "#e9d5ff");
-      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰|🖼|💬)\s*/u, "$1"); } }
+      if (ri){ g.drawImage(ri, x, y + 16, 40, 40); x += 54; lab = lab.replace(/^(\s*)(⚡|📈|📍|🎬|🗑|🔊|🧰|🖼|💬|🔑)\s*/u, "$1"); } }
     g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
     /* a coloured word sits on a dark chip, so lilac reads on the purple glass */
     if (r.spans){ const base = g.fillStyle; for (const [t, col] of r.spans){ const tw = g.measureText(t).width;
@@ -18094,7 +18097,25 @@ trwInfo();
      within the Cell contacts distance of this cell's; the rest are hidden again, and the contact sites
      are shown. Like µJump's Cell contacts: touching in the mesh, not a seen junction. */
 const CN = { busy: false, c: null, syn: null, partners: null, types: new Map(), lines: null, top: 20, tp: null, tpGroup: null, tpDist: 0.5, tpK: 6, tcK: 12 };
-function cnSay(t){ ctxNote.textContent = t; const el = document.getElementById("cnNote"); if (el) el.textContent = t; }
+/* SAID IN THE HEADSET TOO (2026-11-16, Søren: "In VR in the headset, when I select a cell and click connectivity, it does
+   not react"): what connectivity says -- reading, the result, or that it needs a CAVE token -- went only to the PC panel,
+   so in the headset nothing seemed to happen. It now shows in front of you as well. */
+function cnSay(t){ ctxNote.textContent = t; const el = document.getElementById("cnNote"); if (el) el.textContent = t;
+  try { if (renderer.xr.isPresenting) flashWarn(t, 7000, /could not|needs|pick a cell/i.test(t) ? "#f0a742" : "#c98bff"); } catch (e){} }
+/* THE CAVE TOKEN FROM THE HEADSET: it is kept in each browser, and the headset's browser has not been given it. There is
+   no keyboard for a long token inside VR, so this leaves VR for a moment with the token field open and in view; the
+   headset's own keyboard (or paste) fills it, Save, and Enter VR again. */
+let VR_TOKEN_LEFT = false;
+function vrLeaveForToken(){
+  VR_TOKEN_LEFT = true;
+  const se = renderer.xr.getSession(); if (se) se.end();
+  setTimeout(() => {
+    try { if (typeof window.uiOpenTab === "function") window.uiOpenTab("struct"); } catch (e){}
+    const row = document.getElementById("cnTokRow"); row.style.display = "flex"; row.scrollIntoView({ behavior: "smooth", block: "center" });
+    const inp = document.getElementById("cnTok"); try { inp.focus(); } catch (e){}
+    ctxNote.textContent = "Paste or type your CAVE token in the field (the one µJump's Connectivity panel uses), press Save, then Enter VR again and press Connectivity.";
+  }, 400);
+}
 /* One CAVE materialize query, root ids kept as strings (they pass 2^53). */
 async function caveRows(table, rawFilter){
   const SY = DSX.syn, tok = caveToken();
@@ -18203,8 +18224,9 @@ function cnLines(){
 async function setConnectivity(v){
   CN.on = !!v; document.getElementById("cnBtn").classList.toggle("on", CN.on); MENU.dirty = true;
   if (!CN.on){ disposeGroup(CN.lines); CN.lines = null; return; }
-  const c = CELLS[SELECTED]; if (!c){ CN.on = false; document.getElementById("cnBtn").classList.remove("on"); cnSay("Connectivity: pick a cell first."); return; }
-  if (CN.busy) return; CN.busy = true;
+  const c = CELLS[SELECTED]; if (!c){ CN.on = false; document.getElementById("cnBtn").classList.remove("on"); cnSay("Connectivity: pick a cell first (trigger on it), then press Connectivity again."); return; }
+  if (CN.busy) return; CN.busy = true; MENU.dirty = true;
+  cnSay("Reading the connectivity of " + shortName(c) + " from CAVE…");
   try {
     if (await cnLoad(c)){
       cnRender(); cnLines();
@@ -18213,10 +18235,11 @@ async function setConnectivity(v){
     }
   } catch (e){
     CN.on = false; document.getElementById("cnBtn").classList.remove("on");
-    if (e.noToken){ document.getElementById("cnTokRow").style.display = "flex"; cnSay("Connectivity needs a CAVE token (the one µJump's Connectivity panel uses) — paste it below."); }
+    if (e.noToken){ document.getElementById("cnTokRow").style.display = "flex";
+      cnSay(renderer.xr.isPresenting ? "Connectivity needs a CAVE token, and this headset's browser has not been given one. Palette → Tools → Connections → “🔑 Give this headset the CAVE token” (leaves VR for a moment)." : "Connectivity needs a CAVE token (the one µJump's Connectivity panel uses) — paste it below."); MENU.dirty = true; }
     else cnSay("Connectivity could not be read from CAVE: " + (e.message || e));
   }
-  CN.busy = false;
+  CN.busy = false; MENU.dirty = true;
 }
 /* Bring partners in as cells (their mesh and nucleus), labelled as µJump labels a prediction. */
 async function cnAdd(roots){
