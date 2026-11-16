@@ -9017,7 +9017,7 @@ function vrCamKeyFrom(p, f, sp, sq, ss){
 }
 function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
 function takeStart(){
-  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], base: STROKES.slice(), lastS: 0, lastV: 0, lastVJ: "" });
+  Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], base: STROKES.slice(), el: [], lastEJ: null, hands: [], cut: [], lastS: 0, lastV: 0, lastVJ: "" });
   voiceStart();
   if (TL.playing) tlStop();
   takeFrame(true);
@@ -9031,8 +9031,14 @@ function takeFrame(force){
   if (force || now - TAKE.lastS >= 100){
     TAKE.lastS = now; const h = vrHeadPose();
     TAKE.samples.push({ t, p: h.p, f: h.f, sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.x });
+    try { const hs = handsSnap(); if (hs) TAKE.hands.push(Object.assign({ t: +t.toFixed(2) }, hs)); } catch (e){}
+    try { TAKE.cut.push(cutSnap(+t.toFixed(2))); } catch (e){}
   }
   if (force || now - TAKE.lastV >= 500){
+    /* the recording electrodes placed and removed during the take (2026-11-16, Søren: "The record with the right hand
+       tool is really cool. It would be nice if that could also be recorded in the timeline") -- an electrodes key at
+       each change, which the timeline already knows how to play */
+    try { const el = tlCaptureElectrodes(), ej = JSON.stringify(el); if (ej !== TAKE.lastEJ){ TAKE.lastEJ = ej; TAKE.el.push({ t: TAKE.el.length ? t : 0, el }); } } catch (e){}
     TAKE.lastV = now;
     try { const v = tlCaptureView(), j = JSON.stringify(v); if (j !== TAKE.lastVJ){ TAKE.lastVJ = j; TAKE.views.push({ t: TAKE.views.length ? t : 0, v }); } } catch (e){}
   }
@@ -9062,6 +9068,13 @@ function takeStop(){
   TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
   TL.paint = TAKE.paint.filter(x => x[0] <= dur);
   TL.paintBase = TAKE.base;                          // the paint that was there when the take began; later paint is not in the film
+  /* electrode keys replace the effect lane's earlier electrode keys; the hands become the timeline's own track */
+  if (TAKE.el.length > 1 || (TAKE.el[0] && TAKE.el[0].el.length)){
+    TL.keys.fx = TL.keys.fx.filter(k => k.kind !== "electrodes").concat(TAKE.el.filter(x => x.t <= dur).map(x => tlKey("fx", { t: Math.round(x.t * 10) / 10, kind: "electrodes", el: x.el })));
+  }
+  TL.hands = TAKE.hands.length ? TAKE.hands.filter(x => x.t <= dur) : undefined;
+  TL.cut = TAKE.cut.some(x => x.m) ? TAKE.cut.filter(x => x.t <= dur) : undefined;
+  if (TL.hands && TL.showHands == null) TL.showHands = true;
   voiceStop(dur).then(got => { if (got){ ctxNote.textContent += " Your voice was recorded with it" + (VOICE.lang === "da" ? "" : "") + " — “Make subtitles from my voice” turns it into captions."; MENU.dirty = true; } });
   TL.dur = dur; TL.t = 0;
   tlSort(); tlSave(); tlSync();
@@ -9080,7 +9093,7 @@ function tlClearAll(){
   const mine = new Set((TL.paint || []).map(x => JSON.stringify(x[1])));
   if (mine.size){ for (let i = STROKES.length - 1; i >= 0; i--) if (mine.has(JSON.stringify(STROKES[i]))) STROKES.splice(i, 1);
     try { paintZero(); replayStrokes(STROKES); } catch (e){} }
-  TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintBase = undefined; TL.paintAt = null; TL.t = 0; TL.sel = null;
+  TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintBase = undefined; TL.hands = undefined; TL.cut = undefined; TL.paintAt = null; TL.t = 0; TL.sel = null;
   try { voiceSet(null); } catch (e){}
   try { TLVR.sel = null; TLVR.dirty = true; } catch (e){}
   tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
@@ -9132,6 +9145,7 @@ function tlHeadsetRows(rows){
               act: () => { if (!here) return; for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25); tlSave(); tlSync(); } });
   rows.push({ label: "Undo", icon: "reset", act: () => tlUndo(-1) });
   rows.push({ label: "Captions in the headset", on: VR_CAPS_ON, icon: "pen", act: () => setVrCaps(!VR_CAPS_ON) });
+  if (TL.hands) rows.push({ label: "Hands in the film", on: TL.showHands !== false, icon: "hand", act: () => { TL.showHands = TL.showHands === false; tlSave(); } });
   rows.push({ label: "Record my voice with takes", on: VOICE.on, icon: "speaker", act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
   if (VOICE.data) rows.push({ label: VOICE.busy ? "… making subtitles (" + mmss((performance.now() - VOICE.t0) / 1000) + ") — press to stop" : "Make subtitles from my voice (" + (VOICE.lang === "da" ? "Danish" : "English") + (renderer.xr.isPresenting ? "; faster on the PC" : "") + ")",
                               icon: "pen", act: () => VOICE.busy ? voiceStopWork() : voiceTranscribe() });
@@ -9484,6 +9498,138 @@ function narrUi(){
     + NARR_VOICES.map(([v, l]) => '<option value="' + v + '">Voice-over: ' + l.replace("AI voice: ", "AI — ") + '</option>').join("");
   s2.value = narrMode();
   const d = document.getElementById("tlVoiceDel"); if (d) d.style.display = VOICE.data ? "" : "none";
+}
+/* ── 51. THE HANDS IN THE FILM ─────────────────────────────────────────────────  2026-11-16
+   Søren: "it would be nice if we could choose to include the hands in the scene or video also."
+   A take keeps the gloves ten times a second: where each glove is relative to your head, how its fingers are curled,
+   and where its pointer points. Played back -- on the screen, in the film, on the dome -- two gloves are drawn where
+   yours were, seen from the film's camera as you saw them, with the pointer when you were pointing. In the headset
+   (where your own gloves are already there) they are drawn where they were in the recorded room, carried with it.
+   "Hands in the film" (timeline bar ✋; in the headset View → Timeline) turns them on and off; on by default for a
+   take that has them. */
+const _hp = new THREE.Vector3(), _hq = new THREE.Quaternion(), _hs = new THREE.Vector3(), _hm = new THREE.Matrix4(), _hm2 = new THREE.Matrix4(), _hm3 = new THREE.Matrix4();
+const r3 = v => v.toArray().map(x => +x.toFixed(4));
+function handsSnap(){
+  if (!renderer.xr.isPresenting) return null;
+  const cam = renderer.xr.getCamera(); cam.updateMatrixWorld();
+  const headInv = _hm.copy(cam.matrixWorld).invert(), out = {};
+  for (const h of hands){
+    if (!h.source || !h.gripGlove || !h.gripGlove.visible) continue;
+    const g = h.gripGlove.userData.glove; h.gripGlove.updateMatrixWorld(true);
+    _hm2.multiplyMatrices(headInv, g.matrixWorld).decompose(_hp, _hq, _hs);
+    h.ctl.updateMatrixWorld(true); _hm3.multiplyMatrices(headInv, h.ctl.matrixWorld);
+    const rp = new THREE.Vector3(), rq = new THREE.Quaternion(); _hm3.decompose(rp, rq, _hs);
+    const key = h.source.handedness === "left" ? "L" : "R";
+    out.h = out.h || (() => { const P = new THREE.Vector3(), Q = new THREE.Quaternion(); cam.matrixWorld.decompose(P, Q, _hs); return P.toArray().concat(Q.toArray()).map(x => +x.toFixed(4)); })();
+    out[key] = { m: h.gripSide, p: r3(_hp), q: _hq.toArray().map(x => +x.toFixed(4)),
+                 c: [+(g.userData.i || 0).toFixed(2), +(g.userData.g || 0).toFixed(2), +(g.userData.t || 0).toFixed(2)],
+                 rp: r3(rp), rq: rq.toArray().map(x => +x.toFixed(4)), ray: isToolHand(h) };
+  }
+  return out.L || out.R ? out : null;
+}
+const GHOST = { L: null, R: null };
+function ghostHand(key, model){
+  let gh = GHOST[key];
+  if (!gh || gh.model !== model){
+    if (gh) scene.remove(gh.g, gh.ray);
+    /* only the start of the coat sleeve: drawn from the film's eye, a whole sleeve runs back past the camera and fills the frame */
+    const g = buildGlove(model); g.traverse(o => { if (o.isMesh) o.renderOrder = 3; if (o.isMesh && o.geometry === COAT_GEO) o.parent.scale.y = 0.25; });
+    const rg = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+    const ray = new THREE.Line(rg, new THREE.LineBasicMaterial({ color: 0xd9b8ff, transparent: true, opacity: 0.75 })); ray.scale.z = 0.6;
+    scene.add(g, ray); gh = GHOST[key] = { g, ray, model };
+  }
+  return gh;
+}
+function handsAt(t){
+  const H = TL.hands; if (!H || !H.length) return null;
+  let lo = 0, hi = H.length - 1; if (t <= H[0].t) return [H[0], H[0], 0]; if (t >= H[hi].t) return [H[hi], H[hi], 0];
+  while (hi - lo > 1){ const m = (lo + hi) >> 1; if (H[m].t <= t) lo = m; else hi = m; }
+  return [H[lo], H[hi], (t - H[lo].t) / Math.max(1e-6, H[hi].t - H[lo].t)];
+}
+const _ga1 = new THREE.Vector3(), _ga2 = new THREE.Vector3(), _gq1 = new THREE.Quaternion(), _gq2 = new THREE.Quaternion(), _gv = new THREE.Matrix4();
+function handsFrame(){
+  const show = TL.hands && TL.showHands !== false && TL.playing && !(renderer.xr.isPresenting && TL.vrRide === false);
+  if (!show){ for (const k in GHOST) if (GHOST[k]){ GHOST[k].g.visible = false; GHOST[k].ray.visible = false; } return; }
+  const at = handsAt(TL.t); if (!at) return;
+  /* the frame they are placed in: the film camera (screen, film, dome) -- or, in the headset, the recorded head carried
+     like the room (the ride's mapping applied to the head as it was then) */
+  let view;
+  if (renderer.xr.isPresenting){
+    if (!TL.vrM) return;
+    const smp = TAKE_HEAD_AT(TL.t); if (!smp) return;
+    view = _gv.multiplyMatrices(TL.vrM, smp);
+  } else { camera.updateMatrixWorld(); view = _gv.copy(camera.matrixWorld); }
+  /* ON THE SCREEN THE FRAME IS NARROWER THAN THE HEADSET'S (about 55° against 95°): hands held at the waist would be
+     below the film's edge. Their direction from the eye is drawn in toward the middle by the ratio of the two, so
+     they stay at the bottom corners of the film and move as they did. */
+  const squeeze = renderer.xr.isPresenting ? 1 : Math.min(1, Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.tan(THREE.MathUtils.degToRad(47)));
+  const far = renderer.xr.isPresenting ? 1 : 1.5;        // and a little further off, so they do not crowd the film
+  for (const key of ["L", "R"]){
+    const a = at[0][key], b = at[1][key] || a;
+    if (!a){ if (GHOST[key]){ GHOST[key].g.visible = false; GHOST[key].ray.visible = false; } continue; }
+    const gh = ghostHand(key, a.m || (key === "L" ? "R" : "L")), u = at[2];
+    _ga1.fromArray(a.p).lerp(_ga2.fromArray(b.p), u); _gq1.fromArray(a.q).slerp(_gq2.fromArray(b.q), u);
+    _ga1.x *= squeeze; _ga1.y *= squeeze; _ga1.multiplyScalar(far);
+    _hm.compose(_ga1, _gq1, new THREE.Vector3(1, 1, 1)).premultiply(view); _hm.decompose(gh.g.position, gh.g.quaternion, gh.g.scale);
+    gh.g.visible = true;
+    const c = a.c.map((x, i) => x + ((b.c || a.c)[i] - x) * u);
+    gloveCurl(gh.g, "index", c[0]); gloveCurl(gh.g, "middle", c[1]); gloveCurl(gh.g, "ring", c[1]); gloveCurl(gh.g, "pinky", c[1] * 1.05); gloveCurl(gh.g, "thumb", c[2]);
+    gh.ray.visible = !!a.ray;
+    if (a.ray){ _ga1.fromArray(a.rp).lerp(_ga2.fromArray(b.rp || a.rp), u); _gq1.fromArray(a.rq).slerp(_gq2.fromArray(b.rq || a.rq), u); _ga1.x *= squeeze; _ga1.y *= squeeze; _ga1.multiplyScalar(far);
+      _hm.compose(_ga1, _gq1, new THREE.Vector3(1, 1, 1)).premultiply(view); _hm.decompose(gh.ray.position, gh.ray.quaternion, _hs); gh.ray.scale.set(1, 1, 0.6); }
+  }
+}
+/* the recorded head at time t, as a matrix: from the take's camera keys we do not have it, so a take also keeps it
+   with each hands sample (h: [x,y,z, qx,qy,qz,qw]) */
+function TAKE_HEAD_AT(t){
+  const at = handsAt(t); if (!at || !at[0].h) return null;
+  const a = at[0].h, b = (at[1].h || a), u = at[2];
+  _ga1.set(a[0], a[1], a[2]).lerp(_ga2.set(b[0], b[1], b[2]), u); _gq1.set(a[3], a[4], a[5], a[6]).slerp(_gq2.set(b[3], b[4], b[5], b[6]), u);
+  return new THREE.Matrix4().compose(_ga1, _gq1, new THREE.Vector3(1, 1, 1));
+}
+/* ── 52. THE KNIFE IN THE FILM ─────────────────────────────────────────────────  2026-11-16
+   Søren: "The record with the right hand tool is really cool. It would be nice if that could also be recorded in the
+   timeline so we can demonstrate it in the scene or video" -- "I meant the tool where you can slice through
+   segmentations using the right hand." A take keeps the knife ("Cut in my right hand") ten times a second: whether
+   it is out, and where it stands relative to the cells (so it cuts the same place however the room is moved while it
+   plays). Played back -- on the screen, in the film, in the headset -- the knife is put there and sweeps through the
+   cells as yours did; the trigger's freeze is just a knife that stops moving. When the film stops, the cut goes back
+   to what it was before ▶. */
+function cutSnap(t){
+  if (CUT.mode !== "hand" && CUT.mode !== "frozen") return { t, m: 0 };
+  const k = knife(); k.updateWorldMatrix(true, false); content.updateWorldMatrix(true, false);
+  _hm.copy(content.matrixWorld).invert().multiply(k.matrixWorld).decompose(_hp, _hq, _hs);
+  return { t, m: CUT.mode === "hand" ? 1 : 2, p: _hp.toArray().map(x => +x.toFixed(4)), q: _hq.toArray().map(x => +x.toFixed(5)), s: +_hs.x.toFixed(5) };
+}
+function cutAt(t){
+  const C = TL.cut; if (!C || !C.length) return null;
+  let lo = 0, hi = C.length - 1; if (t <= C[0].t) return [C[0], C[0], 0]; if (t >= C[hi].t) return [C[hi], C[hi], 0];
+  while (hi - lo > 1){ const m = (lo + hi) >> 1; if (C[m].t <= t) lo = m; else hi = m; }
+  return [C[lo], C[hi], (t - C[lo].t) / Math.max(1e-6, C[hi].t - C[lo].t)];
+}
+const _kp = new THREE.Vector3(), _kq = new THREE.Quaternion(), _ks = new THREE.Vector3();
+function cutPlayFrame(){
+  if (!TL.cut || !TL.playing){ return; }
+  const at = cutAt(TL.t); if (!at) return;
+  if (!TL.cutPre){ const k0 = CUT.knife; if (k0) k0.updateMatrixWorld(true);
+    TL.cutPre = { mode: CUT.mode, set: false, km: k0 && CUT.mode === "frozen" ? k0.matrixWorld.clone() : null }; }
+  const a = at[0], b = at[1].m ? at[1] : a, u = at[2];
+  if (!a.m){ if (CUT.mode === "hand" || CUT.mode === "frozen"){ setCut("off"); TL.cutPre.set = true; } return; }
+  if (CUT.mode !== "frozen"){ setCut("frozen"); }
+  TL.cutPre.set = true;
+  const k = knife(); if (k.parent !== scene) scene.attach(k);
+  _kp.fromArray(a.p).lerp(_ga2.fromArray(b.p), u); _kq.fromArray(a.q).slerp(_gq2.fromArray(b.q), u); const sc = a.s + (b.s - a.s) * u;
+  content.updateWorldMatrix(true, false);
+  _hm.compose(_kp, _kq, _ks.set(sc, sc, sc)).premultiply(content.matrixWorld);
+  _hm.decompose(k.position, k.quaternion, k.scale);
+  k.updateMatrixWorld(true);
+}
+function cutPlayEnd(){
+  const pre = TL.cutPre; TL.cutPre = null; if (!pre || !pre.set) return;
+  const k = knife(); k.scale.set(1, 1, 1);
+  if (pre.mode === "hand" && renderer.xr.isPresenting) setCut("hand");
+  else if (pre.mode === "frozen" && pre.km){ setCut("frozen"); pre.km.decompose(k.position, k.quaternion, k.scale); k.updateMatrixWorld(true); }
+  else setCut(pre.mode === "frozen" || pre.mode === "hand" ? "off" : pre.mode);
 }
 /* ── 48. THE TIMELINE AS A PANEL IN THE HEADSET ──────────────────────────────────  2026-11-15
    Søren: "Could also be nice if the timeline is shown in VR and we can edit it there."
@@ -11680,7 +11826,7 @@ function tlApplyView(v){
         if (!same){ document.getElementById("emSize").value = v.em.size || "wide"; showEM(v.em.c); } }
       else if (EM.mesh || EM.loading) hideEM();
     }
-    if (v.cut !== undefined && v.cut !== CUT.mode && CUT.mode !== "hand") setCut(v.cut);
+    if (v.cut !== undefined && v.cut !== CUT.mode && CUT.mode !== "hand" && !(TL.cut && TL.playing)) setCut(v.cut);
     if (Array.isArray(v.meas)){
       const now = JSON.stringify(MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]));
       if (now !== JSON.stringify(v.meas)){ clearMeasure(); v.meas.forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); }); }
@@ -11855,7 +12001,7 @@ function tlApplyCam(t){
   if (cf.lengthSq() < 1e-12) cf.set(0, 0, -1); cf.normalize();
   _cm3.compose(stage.position, stage.quaternion, stage.scale);
   _cm1.compose(cp, yawQ(cf), new THREE.Vector3(1, 1, 1));
-  _cm2.copy(TL.vrH0).multiply(_cm1.invert()).multiply(_cm3);
+  _cm2.copy(TL.vrH0).multiply(_cm1.invert()); (TL.vrM = TL.vrM || new THREE.Matrix4()).copy(_cm2); _cm2.multiply(_cm3);
   _cm2.decompose(stage.position, stage.quaternion, stage.scale);
   camera.position.copy(keepP); camera.quaternion.copy(keepQ); camera.up.copy(keepU); controls.target.copy(keepT);
 }
@@ -12071,7 +12217,7 @@ function tlPlay(){
   tlApplyViewAt(TL.t); tlApplyCam(TL.t); tlSync();
 }
 function tlStop(ended){
-  tlVrEnd(); narrStopAll();
+  tlVrEnd(); narrStopAll(); try { cutPlayEnd(); } catch (e){}
   /* the paint of now again, once the film stops (the film showed only what its take had) */
   if (Array.isArray(TL.paintBase) && TL.paintAt != null && !TL.rec){ TL.paintAt = null; try { paintZero(); replayStrokes(STROKES); } catch (e){} }
   if (TL.preMeas){ const pm = TL.preMeas; TL.preMeas = null;
@@ -12247,6 +12393,7 @@ function tlBuild(){
       <select id="tlSubsLang" title="The language you spoke in: English uses whisper-base.en (~80 MB, fast); Danish whisper-small (~250 MB, slower)"><option value="en">English</option><option value="da">Danish</option></select>
       <select id="tlNarr" title="Who speaks the captions in the film and when the timeline plays: nobody, your own recording, or an AI voice made from the captions (Kokoro, free, runs in this browser; English)"></select>
       <button id="tlVoiceDel" style="display:none" title="Delete your recorded voice (from this browser, and from the scene the next time you save it); the captions stay">🗑 My recording</button>
+      <button id="tlHands" style="display:none" title="Show the recorded hands (gloves and pointer) in the film and when the timeline plays">✋ Hands</button>
       <button id="tlSrt" title="Save the captions as a subtitle file (.srt) for a video editor or YouTube">⬇ .srt</button>
       <button id="tlLib" title="Timelines saved on your profile: save this one (named after its scene -- also from somebody else's scene), or use one you saved here, on these cells">📚 My timelines</button>
       <button id="tlClear" title="Remove every key">Clear</button>
@@ -12295,6 +12442,8 @@ function tlBuild(){
   bar.querySelector("#tlSubs").disabled = !VOICE.data;
   { const ls = bar.querySelector("#tlSubsLang"); ls.value = VOICE.lang; ls.onchange = () => { VOICE.lang = ls.value; voiceOpts(); }; }
   bar.querySelector("#tlSrt").onclick = () => voiceSrt();
+  { const hb = bar.querySelector("#tlHands"); const sync = () => { hb.style.display = TL.hands ? "" : "none"; hb.classList.toggle("on", TL.showHands !== false); };
+    hb.onclick = () => { TL.showHands = TL.showHands === false; tlSave(); sync(); }; sync(); TL.syncHands = sync; }
   narrUi();
   bar.querySelector("#tlNarr").onchange = e => { TL.narr = e.target.value; tlSave(); if (TL.narr !== "none" && TL.narr !== "rec") narrPrep(); };
   bar.querySelector("#tlVoiceDel").onclick = () => { if (confirm("Delete your recorded voice? The captions stay.")) narrDeleteRecording(); };
@@ -12699,7 +12848,7 @@ function setTimeline(v){
   tlSync(); STIM._edgeKey = null;
 }
 /* Kept in this browser between visits, and in saved scenes. */
-function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}), ...(TL.narr ? { narr: TL.narr } : {}), ...(Array.isArray(TL.paintBase) ? { paintBase: TL.paintBase } : {}) }; }
+function tlData(){ const strip = L => L.map(k => { const o = Object.assign({}, k); delete o.id; delete o.lane; return o; }); return { cards: !!TL.cards, dur: TL.dur, fadeIn: TL.fadeIn || 0, fadeOut: TL.fadeOut || 0, keys: { cam: strip(TL.keys.cam), view: strip(TL.keys.view), stim: strip(TL.keys.stim), cap: strip(TL.keys.cap), fx: strip(TL.keys.fx) }, ...(TL.paint && TL.paint.length ? { paint: TL.paint } : {}), ...(TL.narr ? { narr: TL.narr } : {}), ...(Array.isArray(TL.paintBase) ? { paintBase: TL.paintBase } : {}), ...(TL.hands ? { hands: TL.hands, showHands: !!TL.showHands } : {}), ...(TL.cut ? { cut: TL.cut } : {}) }; }
 /* UNDO / REDO: every saved state is a step; up to 200. */
 /* ONE TIMELINE PER SCENE (2026-10-29, Søren: "when I open a new VR instance and go to timeline, it has remembered the
    timeline I did for another scene ... the timeline should be individual for the scenes and saved with the scene").
@@ -12806,6 +12955,8 @@ function tlLoad(o, fromHistory){
   TL.dur = o.dur || 20; TL.fadeIn = o.fadeIn || 0; TL.fadeOut = o.fadeOut || 0; TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] };
   TL.paint = Array.isArray(o.paint) ? o.paint : [];
   TL.narr = o.narr || null; try { narrUi(); } catch (e){}
+  TL.hands = Array.isArray(o.hands) ? o.hands : undefined; TL.cut = Array.isArray(o.cut) ? o.cut : undefined; TL.showHands = o.showHands == null ? !!TL.hands : !!o.showHands;
+  try { if (TL.syncHands) TL.syncHands(); } catch (e){}
   TL.paintBase = Array.isArray(o.paintBase) ? o.paintBase : undefined;
   for (const l of ["cam", "view", "stim", "cap", "fx"]) (o.keys[l] || []).forEach(k => TL.keys[l].push(Object.assign({}, k, { id: TL.uid++, lane: l })));
   { const lc = TL.keys.cap[TL.keys.cap.length - 1]; if (lc) TL.capStyle = capStyleOf(lc); }
@@ -17738,6 +17889,8 @@ renderer.setAnimationLoop(() => {
   if (renderer.xr.isPresenting){ xrMark("frame: controllers"); inputFrame(); sticks(dt); grabUpdate(); xrMark("frame: palette"); menuFrame(); try { tlFrame(dt); } catch (e){ console.warn("[vr] timeline in the headset:", e); } }
   else { if (!TL.playing){ keysFrame(dt); orbitFrame(dt); } controls.update(); tlFrame(dt); }
   try { capVrFrame(dt); } catch (e){ if (!window.__capVrWarned){ window.__capVrWarned = true; console.warn("[vr] captions in the headset:", e); } }
+  try { cutPlayFrame(); } catch (e){ if (!window.__cutPlayWarned){ window.__cutPlayWarned = true; console.warn("[vr] the knife in the film:", e); } }
+  try { handsFrame(); } catch (e){ if (!window.__handsWarned){ window.__handsWarned = true; console.warn("[vr] hands in the film:", e); } }
   placeLabel();
   try { recGuide(); } catch (e){}
   cutFrame();
