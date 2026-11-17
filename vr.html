@@ -532,6 +532,19 @@
       <label id="pcManL" title="Suction while you hold the button (no microphone)"><input type="range" id="pcMan" min="0" max="250" step="5" value="60" style="width:80px;vertical-align:middle"> <span id="pcManV">60 mbar</span></label>
       <button id="pcNewPip" title="Start again with a fresh pipette on the same cell">New pipette</button>
     </div>
+    <div id="scBox" style="display:none;border-top:1px solid var(--line);margin:6px 0;padding-top:6px">
+      <div style="font-size:12px;color:#f85149;margin-bottom:4px">Single channels — an excised patch is a slice / culture technique, not an in vivo measurement</div>
+      <div class="ctl" style="margin:0 0 6px">
+        <label id="scOnL" title="Show the channels in the patch under the tip (cell-attached): their driving force rides on the cell's own fluctuating Vm"><input type="checkbox" id="scOn"> channels in the patch</label>
+        <button id="scPull" title="Pull the pipette away: an inside-out patch from cell-attached, an outside-out patch from whole-cell">Pull away</button>
+        <select id="scCh"></select>
+      </div>
+      <div class="ctl" style="margin:0 0 6px;font-size:12px">
+        <label id="scVL" title="Potential across the excised patch (inside minus outside)">V <input type="range" id="scV" min="-150" max="150" step="10" value="-80" style="width:90px;vertical-align:middle"> <span id="scVV">−80 mV</span></label>
+        <label title="Channels in the patch">n <input type="number" id="scN" min="1" max="20" value="1" style="width:44px"></label>
+        <label title="Open probability">Po <input type="range" id="scPo" min="0.05" max="0.95" step="0.05" value="0.2" style="width:80px;vertical-align:middle"> <span id="scPoV">0.20</span></label>
+      </div>
+    </div>
     <div class="ctl" style="margin:0 0 6px" id="pcProt"></div>
     <div id="isoBox" style="display:none;border-top:1px solid var(--line);margin:6px 0;padding-top:6px">
       <div style="font-size:12px;color:var(--mut);margin-bottom:4px" title="NAD's channel lab (Goldman–Hodgkin–Katz currents) run through this pipette">⚗ Solutions &amp; channel lab (model, 22 °C)</div>
@@ -11405,6 +11418,7 @@ function menuRows(){
       rows.push({ label: "   " + (PATCH.mode === "cc" ? "Current clamp" : "Voltage clamp") + "  ▸", act: () => setPatchMode(PATCH.mode === "cc" ? "vc" : "cc") });
       rows.push({ label: "   Patch another cell (then trigger)", on: PATCH.arm, act: () => setPatchArm(!PATCH.arm) });
       rows.push({ label: "   ⚗ Solutions & channels", on: SOLP.on, act: () => vrpShow(SOLP, !SOLP.on) });
+      if (PATCH.stage === "attached" || PATCH.stage === "whole" || PATCH.stage === "torn") rows.push({ label: "   Pull away → " + (PATCH.stage === "attached" ? "inside-out" : "outside-out") + " patch (not in vivo)", act: () => patchPullAway() });
       rows.push({ label: "   Withdraw the pipette", act: () => patchWithdraw() });
       if (DYE.cells.size || DYE.sr.size) rows.push({ label: "   🔬 Dye only (hide the cells)", on: DYE_ONLY, act: () => setDyeOnly(!DYE_ONLY) });
     }
@@ -17288,7 +17302,7 @@ function patchStep(h){
   }
   /* what the amplifier records */
   let rec;
-  if (pre){ rec = patchSealCurrent(x); P.iin = rec; }
+  if (pre){ rec = scActive() ? scCurrent(h) + (P.stage === "attached" ? patchSealCurrent(x, true) : 0) : patchSealCurrent(x); P.iin = rec; }
   else if (cc){
     let v = P.V;
     if (inSpk){ const q = since / m.width, gk = Math.exp(-Math.pow((q - 0.3) / 0.16, 2)); v = P.V + (30 - P.V) * gk - 6 * Math.max(0, q - 0.5); }
@@ -17300,7 +17314,7 @@ function patchStep(h){
   }
   P.t += h;
   const s = P.sw, k = Math.round((P.t - s.t0) / 0.05);
-  const cmdRec = pre ? (x >= 2 && x < 12 ? 5 : 0) + P.hold.vc : cmd;
+  const cmdRec = pre ? (scActive() ? scV() : (x >= 2 && x < 12 ? 5 : 0) + P.hold.vc) : cmd;
   if (k > s.i && k < s.n){ for (let j = s.i + 1; j <= k; j++){ s.y[j] = rec; s.cmd[j] = cmdRec; } s.i = k; }
   if (P.t - s.t0 >= s.len) patchEndSweep();
 }
@@ -17768,7 +17782,7 @@ function patchScope(g, X, Y, W, H, big){
     lo = 1e9; hi = -1e9; const all = P.sweeps.concat([s]);
     for (const q of all) for (let i = 0; i <= q.i; i += 3){ const v = q.y[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
     if (!(hi > lo)){ lo = -100; hi = 100; }
-    const pad = Math.max(20, (hi - lo) * 0.1); lo -= pad; hi += pad;
+    const pad = Math.max(scActive() ? 0.5 : 20, (hi - lo) * 0.1); lo -= pad; hi += pad;
   }
   const yOf = v => top + mainH * (1 - (v - lo) / (hi - lo));
   /* grid */
@@ -17806,6 +17820,8 @@ function patchScope(g, X, Y, W, H, big){
   g.fillStyle = "#e6edf3"; g.font = "600 " + Math.round(13 * fs) + "px system-ui, sans-serif";
   const head = "🧪 " + shortName(P.cell) + " · " + (P.stage !== "whole" && P.stage !== "torn" ? SEAL_NAME[P.stage] : PATCH_MODE_NAME[P.mode] + (isoOn() ? " · " + GHKM.CHANNELS[ISO.key].short + (ISO.sub ? " (leak-subtracted)" : "") : "") + " · Rs " + Math.round(P.rs) + " MΩ") + (!cc && P.comp ? " (−" + Math.round(P.comp * 100) + " %)" : "") + (cc && !P.bridge ? " · bridge OFF" : "");
   g.fillText(vrpFit(g, head, W - 120 * fs), X + 10 * fs, Y + 18 * fs);
+  if (SC_EXCISED[P.stage]){ g.fillStyle = "#f85149"; g.font = "700 " + Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillText("⚠ excised patch — slice / culture technique, not an in vivo measurement", X + 80 * fs, Y + 40 * fs); }
+  else if (P.stage === "attached" && SC.on){ g.fillStyle = "#f0a742"; g.font = "600 " + Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillText("in vivo cell-attached: the patch potential rides on the cell's fluctuating Vm", X + 80 * fs, Y + 40 * fs); }
   g.font = Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
   g.textAlign = "right";
   const live = cc ? "Vm " + P.vrec.toFixed(1) + " mV" : "I " + Math.round(P.iin) + " pA";
@@ -17816,6 +17832,7 @@ function patchReadout(){
   const m = P.mdl, out = [], cc = P.mode === "cc";
   if (P.stage !== "whole" && P.stage !== "torn"){
     const R = P.stage === "approach" ? 5 : P.stage === "attached" ? patchRseal(P.seal) : 5 + patchRseal(P.seal);
+    if (scActive()) out.push(scReadout());
     out.push(SEAL_NAME[P.stage] + " · resistance " + (R >= 1000 ? (R / 1000).toFixed(2) + " GΩ" : R.toFixed(1) + " MΩ") + " · suction " + Math.round(SUCK.p) + " mbar");
     if (SUCK.err) out.push(SUCK.err);
     if (P.note) out.push(P.note);
@@ -17880,7 +17897,12 @@ function patchUiSync(){
     $("pcSealRow").style.display = P.on ? "" : "none"; $("pcStage").textContent = P.on ? SEAL_NAME[P.stage] + ":" : "";
     $("pcTouch").style.display = pre && P.stage === "approach" ? "" : "none";
     $("pcSrc").value = SUCK.src === "trigger" ? "manual" : SUCK.src; $("pcManL").style.display = SUCK.src !== "mic" ? "" : "none";
-    $("pcProt").style.display = pre ? "none" : ""; $("pcMode").disabled = pre; }
+    $("pcProt").style.display = pre ? "none" : ""; $("pcMode").disabled = pre;
+    const ex = !!SC_EXCISED[P.stage], canPull = P.stage === "attached" || P.stage === "whole" || P.stage === "torn";
+    $("scBox").style.display = P.on && (canPull || ex) ? "" : "none";
+    $("scOnL").style.display = P.stage === "attached" ? "" : "none"; $("scOn").checked = SC.on;
+    $("scPull").style.display = canPull ? "" : "none"; $("scPull").textContent = P.stage === "attached" ? "Pull away → inside-out" : "Pull away → outside-out";
+    $("scVL").style.display = ex ? "" : "none"; $("scCh").value = SC.ch; }
   const pr = $("pcProt"), key = P.mode + ":" + P.prot + ":" + P.on;
   if (pr._k !== key){
     pr._k = key;
@@ -17921,6 +17943,13 @@ function patchUiInit(){
   $("pcProt").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; patchProtBtn(b.dataset.pp); });
   $("pcTouch").addEventListener("click", patchTouch);
   $("pcNewPip").addEventListener("click", patchNewPipette);
+  $("scCh").innerHTML = Object.entries(SC_CH).map(([k, c]) => '<option value="' + k + '">' + c.name + '</option>').join("");
+  $("scOn").addEventListener("change", e => setSc(e.target.checked));
+  $("scPull").addEventListener("click", patchPullAway);
+  $("scCh").addEventListener("change", e => { SC.ch = e.target.value; });
+  $("scV").addEventListener("input", e => { SC.v = +e.target.value; $("scVV").textContent = SC.v + " mV"; });
+  $("scN").addEventListener("change", e => { SC.n = Math.max(1, Math.min(20, Math.round(+e.target.value) || 1)); SC.acc = SC.accT = 0; });
+  $("scPo").addEventListener("input", e => { SC.po = +e.target.value; $("scPoV").textContent = SC.po.toFixed(2); SC.acc = SC.accT = 0; });
   const sb = $("pcSuck");
   sb.addEventListener("pointerdown", e => { e.preventDefault(); try { sb.setPointerCapture(e.pointerId); } catch (x){} suckStart(); sb.classList.add("on"); });
   ["pointerup", "pointercancel"].forEach(ev => sb.addEventListener(ev, () => { if (SUCK.held){ suckEnd(); sb.classList.remove("on"); } }));
@@ -17978,7 +18007,8 @@ function setPatchNet(v){
      the seal.
    The tip is drawn at its real size: ~1.6 µm across outside, ~1 µm inside, tapering over ~400 µm. */
 const SUCK = { held: false, src: "mic", p: 0, man: 60, an: null, ctx: null, stream: null, buf: null, floor: -70, db: -90, err: "", last: 0, peak: 0, over: 0, overT: 0, imp: 0, starting: false };
-const SEAL_NAME = { approach: "In the bath, positive pressure", touch: "Touching the cell", seal: "Sealing…", attached: "Cell-attached (gigaseal)", whole: "Whole-cell", torn: "Whole-cell, leaky (torn early)" };
+const SEAL_NAME = { approach: "In the bath, positive pressure", touch: "Touching the cell", seal: "Sealing…", attached: "Cell-attached (gigaseal)", whole: "Whole-cell", torn: "Whole-cell, leaky (torn early)",
+  insideout: "Inside-out patch (excised · not in vivo)", outsideout: "Outside-out patch (excised · not in vivo)" };
 function patchRseal(s){ return 5 * Math.exp(s * Math.log(800)); }                // MΩ: 5 MΩ touching … 4 GΩ
 async function suckMic(){
   if (SUCK.an || SUCK.starting) return !!SUCK.an;
@@ -18075,15 +18105,15 @@ function patchNewPipette(){
   const node = PATCH.node; patchWithdraw(true); patchAttach(c, nodePos(c, node));
 }
 /* pre-whole-cell: the test pulse current through the tip, the seal, and (cell-attached) the cell's action currents */
-function patchSealCurrent(x){
+function patchSealCurrent(x, noPulse){
   const P = PATCH, st = P.stage;
-  const on = x >= 2 && x < 12, d = on ? 5 : 0;
+  const on = !noPulse && x >= 2 && x < 12, d = on ? 5 : 0;
   let R = st === "approach" ? 5 : st === "attached" ? patchRseal(P.seal) : 5 + patchRseal(P.seal);
   if (P.anim && st === "approach") R = 5;
   let I = d / R * 1000;
-  if (st === "attached"){ const e1 = x >= 2 ? Math.exp(-(x - 2) / 0.08) : 0, e2 = x >= 12 ? Math.exp(-(x - 12) / 0.08) : 0; I += 40 * (e1 - e2);
+  if (st === "attached"){ const e1 = !noPulse && x >= 2 ? Math.exp(-(x - 2) / 0.08) : 0, e2 = !noPulse && x >= 12 ? Math.exp(-(x - 12) / 0.08) : 0; I += 40 * (e1 - e2);
     const since = P.t - P.spk; if (since >= 0 && since < 3) I += -30 * Math.exp(-Math.pow((since - 0.4) / 0.2, 2)) + 12 * Math.exp(-Math.pow((since - 1.1) / 0.4, 2)); }
-  I += gauss() * (st === "attached" ? 0.6 : 8);
+  if (!noPulse) I += gauss() * (st === "attached" ? 0.6 : 8);
   return I;
 }
 
@@ -18099,6 +18129,14 @@ function patchBlebDraw(){
   if (st === "approach"){ if (bl) bl.visible = false; return; }
   const key = st + ":" + P.seal.toFixed(3) + ":" + p.toFixed(1) + ":" + (P.breakT ? Math.min(1, (performance.now() - P.breakT) / 350).toFixed(2) : "");
   if (bl && bl.userData.key === key) return;
+  if (SC_EXCISED[st]){
+    /* the excised patch over the opening: a dome into the tip (inside-out) or resealed and bulging out (outside-out) */
+    const io = st === "insideout", pts = [];
+    for (let k = 0; k <= 10; k++){ const th = k / 10 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.001, 0.5 * Math.cos(th)), (io ? 0.7 : -0.45) * Math.sin(th))); }
+    const geo = new THREE.LatheGeometry(pts, 28);
+    if (bl){ bl.geometry.dispose(); bl.geometry = geo; bl.visible = true; bl.userData.key = key; }
+    return;
+  }
   /* depth of the Ω into the tip (µm), the dimple, and -- after the break -- the hole */
   const D = st === "touch" ? 0.05 + 0.002 * p : st === "seal" ? 0.25 + 1.4 * P.seal + 0.006 * p : st === "attached" ? 1.7 + 0.006 * p : 1.9 + 0.004 * p;
   const dz = st === "touch" ? 0.35 : st === "seal" ? 0.35 * (1 - P.seal) : 0;
@@ -18119,6 +18157,7 @@ function patchBlebDraw(){
 /* ── the close-up beside the scope: the tip, the membrane, the pressure ── */
 function patchTipFig(g, X, Y, W, H, fs){
   const P = PATCH, st = P.on ? P.stage : null, p = SUCK.p;
+  if (SC_EXCISED[st]) return scTipFig(g, X, Y, W, H, fs);
   g.fillStyle = "rgba(6,10,14,0.92)"; g.fillRect(X, Y, W, H);
   g.strokeStyle = "rgba(120,220,255,0.6)"; g.lineWidth = 1.5 * fs; g.strokeRect(X + 0.5, Y + 0.5, W - 1, H - 1);
   g.font = "600 " + Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#9be7ff";
@@ -18742,6 +18781,102 @@ function solPanelDraw(P, g){
   if (ch) isoIVFig(g, 30, y, W - 60, P.H - y - 20, 1.7);
 }
 
+/* ── 56d. SINGLE CHANNELS -- CLEARLY A SLICE / CULTURE TECHNIQUE (2026-11-17) ──
+   Søren: "Does single channel measurements make any sense for in vivo patch clamping?" -- mostly not (blind access,
+   pulsation noise, a patch potential that rides on the cell's fluctuating Vm, and an excised patch is no longer in
+   vivo) -- "OK, let's keep it honest but do the single channel also and clearly label it."
+   · CELL-ATTACHED, IN VIVO: the channels in the patch under the tip can be shown. The potential across the patch is the
+     cell's own, fluctuating Vm minus the pipette's (held at 0 here), so the size of each opening jitters with the
+     cell's synaptic activity -- the honest in vivo picture, and why single-channel work is not done this way.
+   · EXCISED PATCHES: pull away from cell-attached → inside-out (the inside face of the membrane to the bath); pull away
+     from whole-cell → outside-out (the outside face to the bath), as in Hamill et al. 1981. Labelled in red on the
+     scope and the close-up: "slice / culture technique -- not an in vivo measurement".
+   The channel model is NAD's single-channel chapter (learn/patch.js): two-state channels, mean open time 2 ms, the
+   opening rate set by the open probability you choose, n channels in the patch, i = γ·(V − E). E comes from the
+   solutions (section 56c), with each face of the patch in the solution it faces. */
+const SC = { on: false, n: 1, po: 0.2, v: -80, ch: "k", st: [], seen: 0, open: 0 };
+const SC_CH = {
+  k:  { name: "K⁺ channel, 20 pS", g: 20, ion: "K" },
+  bk: { name: "BK (big K⁺), 200 pS", g: 200, ion: "K" },
+  na: { name: "Na⁺ channel, 15 pS", g: 15, ion: "Na" },
+  cl: { name: "Cl⁻ channel, 30 pS", g: 30, ion: "Cl" }
+};
+const SC_EXCISED = { insideout: true, outsideout: true };
+function scActive(){ const P = PATCH; return P.on && (SC_EXCISED[P.stage] || (P.stage === "attached" && SC.on)); }
+/* E of the channel's ion across the patch: which solution touches which face */
+function scE(){
+  const s = isoSol(), ion = SC_CH[SC.ch].ion, P = PATCH;
+  /* cell-attached and outside-out: pipette = inside... no: cell-attached: pipette faces the OUTSIDE of the patch,
+     the cell's cytoplasm (≈ the pipette's standard solution) the inside. Outside-out: pipette = inside, bath = outside.
+     Inside-out: pipette = outside, bath = inside. */
+  let ins, out;
+  if (P.stage === "outsideout"){ ins = s.i; out = s.o; }
+  else if (P.stage === "insideout"){ ins = { cation: "K", K: s.o.K, Na: s.o.Na, Cl: s.o.Cl }; out = { K: s.i.cation === "K" ? s.i.K : 0, Na: s.i.Na, Cl: s.i.Cl }; }
+  else { ins = { cation: "K", K: 135, Na: 8, Cl: 8 }; out = { K: s.i.cation === "K" ? s.i.K : 0, Na: s.i.Na, Cl: s.i.Cl }; }   // cell-attached: the pipette solution is outside the patch
+  const z = ion === "Cl" ? -1 : 1, ci = ion === "K" ? (ins.cation === "K" || ins.cation == null ? ins.K : 0) : ins[ion], co = out[ion];
+  const e = GHKM.nernst(z, co, ci); return isFinite(e) ? e : (z > 0 ? (co > ci ? 150 : -150) : 0);
+}
+function scV(){ return PATCH.stage === "attached" ? PATCH.V : SC.v; }     // cell-attached: the cell's own Vm (pipette at 0 mV)
+function scCurrent(h){
+  const ch = SC_CH[SC.ch];
+  if (SC.st.length !== SC.n){ SC.st = []; for (let j = 0; j < SC.n; j++) SC.st.push(Math.random() < SC.po ? 1 : 0); }
+  const kc = 0.5, ko = kc * SC.po / (1 - SC.po); let open = 0;
+  for (let j = 0; j < SC.n; j++){ const r = Math.random(); if (SC.st[j]){ if (r < kc * h) SC.st[j] = 0; } else if (r < ko * h) SC.st[j] = 1; open += SC.st[j]; }
+  SC.open = open; SC.i = ch.g * (scV() - scE()) / 1000;
+  SC.acc = (SC.acc || 0) + open * h; SC.accT = (SC.accT || 0) + h;
+  return open * SC.i + gauss() * 0.15;
+}
+function setSc(v){
+  const P = PATCH; SC.on = !!v; SC.acc = SC.accT = 0;
+  if (scActive()){ P.prot = "hold"; P.holdLen = 200; P.sweeps = []; patchNewSweep();
+    if (P.stage === "attached") P.note = "Channels in the patch, cell-attached in vivo: the driving force is the cell's own fluctuating Vm minus the pipette's — watch the opening size jitter. That is why single-channel work is done in slices and cultured cells."; }
+  else if (P.on && P.stage === "attached"){ P.prot = "seal"; P.holdLen = 0; P.sweeps = []; patchNewSweep(); }
+  patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
+}
+/* pull the pipette away: the patch comes with it */
+function patchPullAway(){
+  const P = PATCH;
+  if (!P.on) return;
+  const to = P.stage === "attached" ? "insideout" : (P.stage === "whole" || P.stage === "torn") ? "outsideout" : null;
+  if (!to){ P.note = "Pulling away makes an excised patch from cell-attached (inside-out) or from whole-cell (outside-out)."; return; }
+  P.anim = { from: P.tipOff || 0, to: 15, t0: performance.now(), dur: 1200, done: () => {
+    P.stage = to; SC.acc = SC.accT = 0; P.prot = "hold"; P.holdLen = 200; P.sweeps = []; patchNewSweep(); P.exT = performance.now();
+    P.note = (to === "insideout" ? "Inside-out patch: the inner face of the membrane now faces the bath — change the bath to change the inside." : "Outside-out patch: the membrane resealed over the tip with its outer face to the bath — the pipette solution is the inside.")
+      + " ⚠ An excised patch is a slice / culture technique: this is not an in vivo measurement.";
+    try { flashWarn("⚠ " + SEAL_NAME[to] + " — slice / culture technique, not in vivo", 3500, "#f85149"); } catch (e){}
+    patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
+    if (typeof MENU !== "undefined") MENU.dirty = true;
+  } };
+  P.note = "Pulling away…";
+}
+/* the close-up for an excised patch: the tip alone, the membrane over it, and the label */
+function scTipFig(g, X, Y, W, H, fs){
+  const P = PATCH, io = P.stage === "insideout";
+  g.fillStyle = "rgba(6,10,14,0.92)"; g.fillRect(X, Y, W, H);
+  g.strokeStyle = "rgba(248,81,73,0.8)"; g.lineWidth = 2 * fs; g.strokeRect(X + 1, Y + 1, W - 2, H - 2);
+  g.font = "600 " + Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#9be7ff"; g.fillText(io ? "Inside-out patch" : "Outside-out patch", X + 8 * fs, Y + 17 * fs);
+  const cx = X + W / 2, tY = Y + H * 0.5, half = 26 * fs, inner = 16 * fs, topY = Y + 30 * fs;
+  g.fillStyle = "rgba(200,230,255,0.28)"; g.strokeStyle = "rgba(220,240,255,0.8)"; g.lineWidth = 1.2 * fs;
+  [-1, 1].forEach(sd => { g.beginPath(); g.moveTo(cx + sd * inner, tY); g.lineTo(cx + sd * half, tY); g.lineTo(cx + sd * (half + 48 * fs), topY); g.lineTo(cx + sd * (inner + 34 * fs), topY); g.closePath(); g.fill(); g.stroke(); });
+  const col = P.cell && P.cell.mesh ? "#" + P.cell.mesh.material.color.getHexString() : "#c9a0ff";
+  g.strokeStyle = col; g.lineWidth = 3 * fs; g.beginPath();
+  if (io){ g.moveTo(cx - inner, tY); g.quadraticCurveTo(cx, tY - 22 * fs, cx + inner, tY); }      // a dome drawn into the tip
+  else { g.moveTo(cx - inner, tY); g.quadraticCurveTo(cx, tY + 22 * fs, cx + inner, tY); }        // resealed, bulging out
+  g.stroke();
+  /* a channel in the membrane, open or shut */
+  const chx = cx, chy = tY + (io ? -11 : 11) * fs;
+  g.fillStyle = SC.open > 0 ? "#7ef9a8" : "#8b949e"; g.fillRect(chx - 4 * fs, chy - 6 * fs, 3 * fs, 12 * fs); g.fillRect(chx + 1 * fs, chy - 6 * fs, 3 * fs, 12 * fs);
+  g.font = Math.round(10 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
+  g.fillText(io ? "inside face → bath" : "outside face → bath", cx - 50 * fs, tY + 40 * fs);
+  g.fillText(io ? "pipette = outside" : "pipette = inside", cx - 45 * fs, topY + 16 * fs);
+  g.fillStyle = "#f85149"; g.font = "700 " + Math.round(11 * fs) + "px system-ui, sans-serif";
+  g.fillText("SLICE / CULTURE TECHNIQUE", X + 8 * fs, Y + H - 30 * fs); g.fillText("— not an in vivo measurement", X + 8 * fs, Y + H - 14 * fs);
+}
+function scReadout(){
+  const ch = SC_CH[SC.ch], Po = SC.accT > 0 ? SC.acc / SC.accT / SC.n : 0;
+  return ch.name + " × " + SC.n + " · patch V " + Math.round(scV()) + " mV · E " + Math.round(scE()) + " mV · i = γ(V − E) = " + (SC.i || 0).toFixed(2) + " pA · measured Po " + Po.toFixed(2) + " (set " + SC.po.toFixed(2) + ")";
+}
+
 /* ── THE PANEL IN THE HEADSET ── */
 const PATCHP = vrPanel("patch", 1600, 1300, 0.8, 1, patchPanelDraw);
 PATCHP.tick = () => PATCH.on && performance.now() - PATCHP.lastDraw > 120;
@@ -18756,17 +18891,31 @@ function patchPanelDraw(P, g){
   const suckBtn = (x, w) => B(x, w, SUCK.held ? "● Sucking… " + Math.round(SUCK.p) + " mbar" : (SUCK.src === "mic" ? "🎙 Hold & suck (sound)" : SUCK.src === "trigger" ? "Hold & pull trigger" : "Hold to suck"), () => {},
     { on: SUCK.held, hold: { start: suckStart, end: suckEnd }, key: "suck" });
   if (S.on && S.stage !== "whole" && S.stage !== "torn"){
-    B(30, 420, S.stage === "approach" ? (S.anim ? "… moving in" : "Touch the cell") : "✓ " + (S.stage === "attached" ? "Gigaseal" : "Touching"), () => patchTouch(), { on: S.stage === "approach" && !S.anim, off: S.stage !== "approach", key: "touch" });
+    B(30, 420, S.stage === "approach" ? (S.anim ? "… moving in" : "Touch the cell") : "✓ " + (S.stage === "attached" ? "Gigaseal" : SC_EXCISED[S.stage] ? "Excised patch" : "Touching"), () => patchTouch(), { on: S.stage === "approach" && !S.anim, off: S.stage !== "approach", key: "touch" });
     suckBtn(470, 560);
     B(1050, 270, ({ mic: "Microphone", trigger: "Trigger", manual: "Fixed 60 mbar" })[SUCK.src] + "  ▸", () => { const o = ["mic", "trigger", "manual"]; SUCK.src = o[(o.indexOf(SUCK.src) + 1) % 3]; if (SUCK.src === "mic") suckMic(); }, { key: "src" });
     B(1330, 240, "New pipette", () => patchNewPipette(), { key: "np" });
     y += 100;
+    if (S.stage === "attached" || SC_EXCISED[S.stage]){
+      const ex = !!SC_EXCISED[S.stage];
+      if (!ex) B(30, 250, "Channels", () => setSc(!SC.on), { on: SC.on, key: "sc", size: 28 });
+      if (!ex) B(290, 260, "Pull → inside-out", () => patchPullAway(), { key: "pull", size: 24 });
+      if (ex){ B(30, 80, "V−", () => { SC.v = Math.max(-150, SC.v - 10); }, { key: "vm", size: 30 }); g.fillStyle = "#f6ecff"; g.font = "600 28px system-ui"; g.textAlign = "center"; g.fillText(SC.v + " mV", 200, y + 52); g.textAlign = "left"; B(290, 80, "V+", () => { SC.v = Math.min(150, SC.v + 10); }, { key: "vp", size: 30 }); B(380, 170, "n " + SC.n + " ▸", () => { SC.n = SC.n >= 10 ? 1 : SC.n + 1; }, { key: "n", size: 28 }); }
+      if (SC.on || ex){
+        B(560, 200, "Po " + SC.po.toFixed(1) + " ▸", () => { SC.po = SC.po >= 0.85 ? 0.1 : Math.round((SC.po + 0.1) * 10) / 10; SC.acc = SC.accT = 0; }, { key: "po", size: 28 });
+        B(770, 470, SC_CH[SC.ch].name + " ▸", () => { const o = Object.keys(SC_CH); SC.ch = o[(o.indexOf(SC.ch) + 1) % o.length]; }, { key: "sch", size: 26 });
+        if (!ex) B(1250, 290, "n " + SC.n + " ▸", () => { SC.n = SC.n >= 10 ? 1 : SC.n + 1; }, { key: "n2", size: 28 });
+        else B(1250, 290, "⚗ Solutions", () => vrpShow(SOLP, !SOLP.on), { key: "sol2", size: 28 });
+      }
+      y += 100;
+    } else {
     g.fillStyle = "#f6ecff"; g.font = "28px system-ui";
     const hint = S.stage === "approach" ? "1 · Touch the cell.  2 · Suck gently (a soft, steady sound) until the seal passes 1 GΩ.  3 · Then one short, sharp, loud suck to break in."
       : S.stage === "attached" ? "Cell-attached: the patch is intact — spikes show as small currents. Break in: one short, sharp, loud suck (~120–170 mbar, a quarter of a second)."
       : "Gentle and steady: the green window. Too soft does nothing; too loud tears the patch before it seals.";
     vrpWrap(g, hint, W - 80, 3).forEach((l, k) => g.fillText(l, 40, y + 30 + k * 34));
     y += 100;
+    }
   } else if (!S.on){
     B(30, 520, S.arm ? "… trigger on a cell" : "🧪 Patch a cell", () => setPatchArm(!S.arm), { on: S.arm, key: "arm" });
     B(570, 500, PUFF.arm ? "… trigger on a cell or vessel" : "💨 Place the puff pipette", () => setPuffArm(!PUFF.arm), { on: PUFF.arm, key: "parm" });
@@ -18808,8 +18957,9 @@ function patchPanelDraw(P, g){
   B(870, 300, "💨 Puff", () => puffNow(), { on: !!PUFF.pos, off: !PUFF.pos, key: "go", size: 36 });
   B(1180, 390, PUFF.pos ? "Move the puff pipette" : (PUFF.arm ? "… trigger to place" : "Place puff pipette"), () => setPuffArm(!PUFF.arm), { on: PUFF.arm, key: "mv" });
   y += 100;
-  if (S.on) B(30, 360, "Withdraw pipette", () => patchWithdraw(), { key: "wd" });
-  if (S.on) suckBtn(410, 380);
+  if (S.on) B(30, 220, "Withdraw", () => patchWithdraw(), { key: "wd" });
+  if (S.on && (S.stage === "whole" || S.stage === "torn")) suckBtn(260, 300);
+  if (S.on && (S.stage === "whole" || S.stage === "torn")) B(570, 220, "→ Outside-out", () => patchPullAway(), { key: "oo", size: 26 });
   if (DYE.cells.size || DYE.sr.size){ B(800, 160, "Wash", () => dyeClear(), { key: "dc" }); B(970, 150, "🔬 Dye", () => setDyeOnly(!DYE_ONLY), { on: DYE_ONLY, key: "do" }); }
   if (PUFF.pos) B(1130, 440, "Remove puff pipette", () => puffRemove(), { key: "pr" });
   y += 104;
@@ -22119,7 +22269,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
