@@ -547,6 +547,9 @@
       <button id="dyeOnly" title="Hide the segmentation (cells, nuclei, vessels) and see only the dye, like a fluorescence image">🔬 Dye only</button>
       <button id="dyeClr" title="Remove the dye from all cells">Wash out dye</button>
     </div>
+    <div id="patchNote" style="font-size:11.5px;color:var(--mut)">MODEL. Click 🧪 Patch clamp, then a cell.</div>
+  </div>
+  <div id="puffBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:6px 0">
       <select id="pfAg" title="What is in the puff pipette"><option value="glu">Puff: glutamate</option><option value="gaba">Puff: GABA</option><option value="k">Puff: K⁺ (KCl)</option><option value="atp">Puff: ATP</option><option value="ttx">Puff: TTX</option><option value="sr101">Puff: sulforhodamine 101</option><option value="alexa">Puff: Alexa 594</option></select>
       <label title="Concentration in the pipette">C <input type="number" id="pfC" value="1" step="any" min="0" style="width:64px"> <span id="pfU">mM</span></label>
@@ -554,7 +557,7 @@
       <button id="pfGo" title="Eject one puff">💨 Puff</button>
       <button id="pfOut" title="Remove the puff pipette">Remove</button>
     </div>
-    <div id="patchNote" style="font-size:11.5px;color:var(--mut)">MODEL. Click 🧪 Patch clamp, then a cell.</div>
+    <div id="puffNote" style="font-size:11.5px;color:var(--mut)">MODEL. Click 💨 Puff pipette, then a cell or a vessel.</div>
   </div>
   <div class="ctl">
     <button id="caBtn" title="Click (or in VR: right trigger) on ANY cell to start a Ca²⁺ wave there — much slower than an action potential, and it crosses to coupled cells (astrocytes, endothelium, mural cells) at their contacts">Ca²⁺ wave</button>
@@ -1067,7 +1070,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["patchBtn", "puffBtn"], ["#patchBox"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["patchBtn", "puffBtn"], ["#patchBox"], ["#puffBox"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -4036,6 +4039,10 @@ function stimulateAt(c, node){
   if (cellClass(c) === "glia"){ ctxNote.textContent = c.label + " is not a neuron — glial cells do not fire action potentials. Touch a neuron."; return; }
   if (!inPlay(c)){ ctxNote.textContent = c.label + " is hidden, so it takes no part — show it, or turn on “Hidden cells too” (Activity)."; flashWarn(ctxNote.textContent); return; }
   if (!STIM.running) resetActivity();
+  /* a spike crosses a cell in a few ms: at the patch clamp's or a dye's clock (×0.2, ×20) it is over within a frame,
+     so stimulating by hand brings the action-potential clock back (2026-11-17, Søren: "I can't seem to test the
+     stimulation after having puffed?") */
+  if (SIM.speed > 1 / 200) simRecommend("ap");
   const G = cellGraph(c), near = { node };
   window.__lastStim = c.i; MENU.dirty = true;
   /* TOO SOON (2026-10-15, Søren: "if you stimulate them again too soon, there will be a warning that
@@ -17596,6 +17603,7 @@ function puffNow(){
   const Ds = ag.D / (ECS_L * ECS_L) / 1000;                            // µm² per ms, in the extracellular space
   const M = c0 * vol * 1000 / ECS_A;                                   // mM · µm³, spread in the extracellular fraction
   const r0 = Math.cbrt(3 * vol * 1000 / (4 * Math.PI * ECS_A));        // the bolus as it leaves the tip
+  if (SIM.speed < 0.02 && PUFF.ag !== "k" && PUFF.ag !== "atp") simRecommend("puff");
   PUFF.events.push({ ag: PUFF.ag, t0: SIM.t * 1000, M, Ds, tf: r0 * r0 / (6 * Ds), k: ag.k, c0, fired: new Set() });
   if (PUFF.near.size === 0) puffNear();
   if (PUFF.ag === "k" || PUFF.ag === "atp") puffVessels();
@@ -17663,7 +17671,8 @@ function puffFrame(sdt){
       if (kx > 0.01) pg.dEL = (caKind(P.cell) === "astro" ? 0.9 : 0.6) * 61.5 * Math.log10((3 + kx) / 3);
       pg.ttx = tt > 10 * PUFF_AG.ttx.ec;
     }
-    /* on the other cells */
+    /* on the other cells (TTX: only while an event still carries enough of it) */
+    for (const [c] of ntr) c._ttxP = false;
     for (const e of PUFF.events){
       const t = tms - e.t0;
       for (const [c, nr] of ntr){
@@ -17676,13 +17685,14 @@ function puffFrame(sdt){
             try { fireCell(c, nr.node, STIM.now); STIM.running = true; } catch (x){}
           }
         }
-        if (e.ag === "ttx") c._ttxP = C > 10 * PUFF_AG.ttx.ec;
+        if (e.ag === "ttx" && C > 10 * PUFF_AG.ttx.ec) c._ttxP = true;
         if (e.ag === "sr101" && caKind(c) === "astro" && C > 0.0005){
           const v = DYE.sr.get(c) || 0; DYE.sr.set(c, Math.min(1, v + (1 - v) * (C / (C + 0.01)) * Math.min(30, sdt) / 60));
         }
       }
     }
   }
+  if (!PUFF.events.length) for (const c of CELLS) c._ttxP = false;
   P.puffG = pg;
   /* the vessels: K⁺ and ATP */
   if (PUFF.vas.length && NV.glob && NV.texData){
@@ -17832,7 +17842,11 @@ function patchDrawAll(){
 function patchUiSync(){
   const $ = id => document.getElementById(id), P = PATCH;
   const box = $("patchBox"); if (!box) return;
-  box.style.display = P.on || P.arm || PUFF.arm || PUFF.pos ? "" : "none";
+  /* the patch controls and the puff controls are separate (2026-11-17, Søren: "It is a bit confusing that the patch
+     clamp part stays there while I am doing puffing") -- each shows only while its pipette is in use */
+  box.style.display = P.on || P.arm ? "" : "none";
+  $("puffBox").style.display = PUFF.arm || PUFF.pos ? "" : "none";
+  $("puffNote").textContent = PUFF.arm ? "Click (or trigger) on a cell or a vessel to put the tip there." : PUFF.pos ? "Placed. " + PUFF_AG[PUFF.ag].name + ": " + PUFF_AG[PUFF.ag].what + ". MODEL." : "";
   $("patchBtn").classList.toggle("on", P.arm || P.on); $("puffBtn").classList.toggle("on", PUFF.arm || !!PUFF.pos);
   $("pcMode").value = P.mode; $("pcRs").value = Math.round(P.rs); $("pcRsV").textContent = Math.round(P.rs) + " MΩ";
   $("pcComp").value = Math.round(P.comp * 100); $("pcCompV").textContent = Math.round(P.comp * 100) + " %"; $("pcCompL").style.display = P.mode === "vc" ? "" : "none";
@@ -18458,6 +18472,7 @@ const SIM_REC = [
   { k: "csd",  name: "Spreading depolarization",     v: 5,        why: "3 mm/min; recovery over minutes" },
   { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" },
   { k: "csf",  name: "CSF tracer",                   v: 10,       why: "~19 µm/s along arteries, minutes into tissue" },
+  { k: "puff", name: "Puffing",                      v: 0.5,      why: "a puff spreads and clears over ~0.1–2 s" },
   { k: "dye",  name: "Dye filling",                  v: 20,       why: "a dye fills a cell and its coupled neighbours over minutes" }
 ];
 const simFmt = v => v >= 1 ? "×" + (v >= 10 ? Math.round(v) : +v.toFixed(v < 3 ? 2 : 1)) : "×1/" + Math.round(1 / v).toLocaleString("en-US");
