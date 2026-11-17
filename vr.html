@@ -9298,7 +9298,11 @@ function vrCamKeyFrom(p, f, sp, sq, ss){
   return { p: p.toArray(), tg: p.clone().addScaledVector(f.clone().normalize(), d).toArray(), sp, sq, ss };
 }
 function vrCamKeyNow(){ const h = vrHeadPose(); return vrCamKeyFrom(h.p, h.f, stage.position.toArray(), stage.quaternion.toArray(), stage.scale.x); }
-function takeStart(){
+function takeStart(append){
+  /* APPEND (2026-11-17, Søren: "We should also have a posibility to append recording, if you want to do several small
+     films"): the new take goes on the end of the timeline as it is -- after its last moment, as a cut -- instead of
+     replacing it. Captions, titles and everything else already there stay. */
+  TAKE.append = !!append && tlCount() > 0;
   Object.assign(TAKE, { on: true, t0: performance.now(), samples: [], views: [], stims: [], paint: [], base: STROKES.slice(), el: [], lastEJ: null, hands: [], cut: [], lastS: 0, lastV: 0, lastVJ: "" });
   voiceStart();
   if (TL.playing) tlStop();
@@ -9345,23 +9349,34 @@ function takeStop(){
   for (let t = 0; t <= dur + 1e-6; t += step){ const m = smooth(Math.min(t, T)); cam.push({ t: Math.round(Math.min(t, dur) * 10) / 10, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
   if (cam[cam.length - 1].t < dur - 0.5){ const m = smooth(T); cam.push({ t: dur, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
   tlSave();                                         // what was there, for Ctrl+Z
-  TL.keys.cam = cam.map(k => tlKey("cam", k));
-  TL.keys.view = TAKE.views.map(x => tlKey("view", { t: Math.round(x.t * 10) / 10, v: x.v, fade: 0.5 }));
-  TL.keys.stim = TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: Math.round(x.t * 10) / 10 })));
-  TL.paint = TAKE.paint.filter(x => x[0] <= dur);
-  TL.paintBase = TAKE.base;                          // the paint that was there when the take began; later paint is not in the film
+  const APP = !!TAKE.append, A = APP ? Math.round((TL.dur + 0.1) * 10) / 10 : 0, sh = t => Math.round((t + A) * 10) / 10;
+  const oldVoice = APP && VOICE.data ? { data: VOICE.data, offset: VOICE.offset } : null;
+  const was = APP ? { cam: TL.keys.cam, view: TL.keys.view, stim: TL.keys.stim, fx: TL.keys.fx, paint: TL.paint || [], hands: TL.hands, cut: TL.cut } : null;
+  TL.keys.cam = (APP ? was.cam : []).concat(cam.map(k => tlKey("cam", Object.assign({}, k, { t: sh(k.t) }))));
+  TL.keys.view = (APP ? was.view : []).concat(TAKE.views.map(x => tlKey("view", { t: sh(x.t), v: x.v, fade: 0.5 })));
+  TL.keys.stim = (APP ? was.stim : []).concat(TAKE.stims.filter(x => x.t <= dur).map(x => tlKey("stim", Object.assign({ n: 1, every: 0.5 }, x, { t: sh(x.t) }))));
+  TL.paint = (APP ? was.paint : []).concat(TAKE.paint.filter(x => x[0] <= dur).map(x => [x[0] + A].concat(x.slice(1))));
+  if (!APP) TL.paintBase = TAKE.base;                // the paint that was there when the (first) take began; later paint is not in the film
   /* electrode keys replace the effect lane's earlier electrode keys; the hands become the timeline's own track */
   if (TAKE.el.length > 1 || (TAKE.el[0] && TAKE.el[0].el.length)){
-    TL.keys.fx = TL.keys.fx.filter(k => k.kind !== "electrodes").concat(TAKE.el.filter(x => x.t <= dur).map(x => tlKey("fx", { t: Math.round(x.t * 10) / 10, kind: "electrodes", el: x.el })));
+    TL.keys.fx = (APP ? TL.keys.fx : TL.keys.fx.filter(k => k.kind !== "electrodes")).concat(TAKE.el.filter(x => x.t <= dur).map(x => tlKey("fx", { t: sh(x.t), kind: "electrodes", el: x.el })));
   }
-  TL.hands = TAKE.hands.length ? TAKE.hands.filter(x => x.t <= dur) : undefined;
-  TL.cut = TAKE.cut.some(x => x.m) ? TAKE.cut.filter(x => x.t <= dur) : undefined;
+  const nh = TAKE.hands.length ? TAKE.hands.filter(x => x.t <= dur).map(x => Object.assign({}, x, { t: +(x.t + A).toFixed(2) })) : [];
+  TL.hands = APP ? ((was.hands || []).concat(nh).length ? (was.hands || []).concat(nh) : undefined) : (nh.length ? nh : undefined);
+  const nc = TAKE.cut.some(x => x.m) ? TAKE.cut.filter(x => x.t <= dur).map(x => Object.assign({}, x, { t: x.t + A })) : [];
+  if (APP){ const oc = (was.cut || []).slice();
+    if (nc.length && !oc.length) oc.push({ t: 0, m: "" }, { t: Math.max(0, A - 0.05), m: "" });   // no cut in the earlier part
+    if (oc.length && !nc.length) nc.push({ t: A, m: "" }, { t: A + dur, m: "" });                  // nor in the new one
+    TL.cut = oc.concat(nc).length ? oc.concat(nc) : undefined;
+  } else TL.cut = nc.length ? nc : undefined;
   if (TL.hands && TL.showHands == null) TL.showHands = true;
-  voiceStop(dur).then(got => { if (got){ ctxNote.textContent += " Your voice was recorded with it" + (VOICE.lang === "da" ? "" : "") + " — “Make subtitles from my voice” turns it into captions."; MENU.dirty = true; } });
-  TL.dur = dur; TL.t = 0;
+  voiceStop(A + dur).then(async got => {
+    /* appended: the new voice sits at its place on the end; with an earlier voice, the two become one recording */
+    if (got && APP){ try { if (oldVoice) await voiceMerge(oldVoice, VOICE.data, VOICE.offset + A, A + dur); else voiceSet(VOICE.data, VOICE.offset + A, A + dur, true); } catch (e){ console.warn("[vr] voice append:", e); } } if (got){ ctxNote.textContent += " Your voice was recorded with it" + (VOICE.lang === "da" ? "" : "") + " — “Make subtitles from my voice” turns it into captions."; MENU.dirty = true; } });
+  TL.dur = Math.round((A + dur) * 10) / 10; TL.t = APP ? A : 0;
   tlSort(); tlSave(); tlSync();
   try { TL.keys.cam.forEach(k => tlThumb(k)); } catch (e){}
-  ctxNote.textContent = "⏹ The take is the timeline: " + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys" + (TL.paint.length ? ", " + TL.paint.length + " paint dabs" : "") + ". ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
+  ctxNote.textContent = (APP ? "⏹ Added to the end at " + A.toFixed(1) + " s — the timeline is now " + (A + dur).toFixed(1) + " s. This take: " : "⏹ The take is the timeline: ") + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys" + (TL.paint.length ? ", " + TL.paint.length + " paint dabs" : "") + ". ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
   try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
   /* straight to editing and saving (2026-11-17, Søren: "After a recording is done, I think the timeline should open
      automatically and the menu should be open so you can save the recording right away or edit it") */
@@ -9415,7 +9430,8 @@ renderer.xr.addEventListener("sessionend", () => {
 function tlHeadsetRows(rows){
   const n = tlCount();
   rows.push({ label: TLVR.on ? "Hide the timeline panel" : "Show the timeline panel (edit it with the ray)", on: TLVR.on, icon: "timeline", act: () => setTlvr(!TLVR.on) });
-  rows.push({ label: TAKE.on ? "⏹ Stop the take (" + Math.floor((performance.now() - TAKE.t0) / 1000) + " s) — it becomes the timeline" : "⏺ Record a take: what you do, smoothed into a timeline",
+  if (!TAKE.on && tlCount()) rows.push({ label: "⏺ Add a take at the end (" + TL.dur.toFixed(0) + " s so far)", icon: "rec", act: () => takeStart(true) });
+  rows.push({ label: TAKE.on ? "⏹ Stop the take (" + Math.floor((performance.now() - TAKE.t0) / 1000) + " s) — " + (TAKE.append ? "it goes on the end" : "it becomes the timeline") : "⏺ Record a take: what you do, smoothed into a timeline",
               icon: TAKE.on ? "stop" : "rec", act: () => TAKE.on ? takeStop() : takeStart(),
               /* while a take runs, its stop button stays at the top of the tab, whatever is folded */
               ...(TAKE.on ? { sec: null } : {}) });
@@ -9476,6 +9492,23 @@ async function voiceStore(){ try { const db = await voiceDb(), tx = db.transacti
 async function voiceLoadStored(){
   try { const db = await voiceDb(); const v = await new Promise(ok => { const r = db.transaction("v").objectStore("v").get(tlStoreKey()); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); });
     if (v && v.data) voiceSet(v.data, v.offset, v.dur, false); } catch (e){}
+}
+/* two voice recordings made into one, each at its place on the timeline (an appended take): 16 kHz mono WAV, the
+   earlier one where it was, the new one where its take now sits; 8-bit if 16-bit would not fit with a scene */
+async function voiceMerge(oldV, newData, newOff, total){
+  const ac = new OfflineAudioContext(1, 16000, 16000), dec = async d => ac.decodeAudioData(await (await fetch(d)).arrayBuffer());
+  const [a, b] = await Promise.all([dec(oldV.data), dec(newData)]);
+  const ct = t => (typeof tlCt === "function" ? tlCt(t) : t), at = Math.max(0, Math.round((ct(newOff) - ct(oldV.offset)) * 16000));
+  const n = Math.max(a.length, at + b.length), pcm = new Float32Array(n);
+  pcm.set(a.getChannelData(0), 0); pcm.set(b.getChannelData(0), at);
+  const bits = n * 2 + 44 <= 1.75e6 ? 16 : 8, by = bits / 8, buf = new ArrayBuffer(44 + n * by), v = new DataView(buf);
+  const str = (o, x) => { for (let i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n * by, true); str(8, "WAVE"); str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 16000 * by, true); v.setUint16(32, by, true); v.setUint16(34, bits, true); str(36, "data"); v.setUint32(40, n * by, true);
+  for (let i = 0; i < n; i++){ const x = Math.max(-1, Math.min(1, pcm[i])); if (bits === 16) v.setInt16(44 + i * 2, x * 32767, true); else v.setUint8(44 + i, Math.round(x * 127 + 128)); }
+  if (44 + n * by > 2.4e6){ voiceSet(oldV.data, oldV.offset, total, true); ctxNote.textContent += " The new take's voice was not added: the two together are too long to save with a scene."; return; }
+  const data = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(new Blob([buf], { type: "audio/wav" })); });
+  voiceSet(data, oldV.offset, total, true);
 }
 function voiceSet(data, offset, dur, store){
   VOICE.data = data || null; VOICE.offset = offset || 0; VOICE.dur = dur || 0; VOICE.pcm48 = null;
@@ -12012,7 +12045,8 @@ function footPopItems(k){
       I.push({ label: "⏹ Stop and keep it", act: () => takeStop() });
       I.push({ label: "🗑 Stop and throw it away", act: () => takeDiscard() });
     } else {
-      I.push({ label: "⏺ Record after 3 · 2 · 1", act: () => takeCountdown() });
+      I.push({ label: "⏺ Record after 3 · 2 · 1" + (tlCount() ? " (replaces the timeline)" : ""), act: () => takeCountdown(false) });
+      if (tlCount()) I.push({ label: "⏺ Add to the end after 3 · 2 · 1", act: () => takeCountdown(true) });
       I.push({ label: "Record my voice too", on: VOICE.on, act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
       I.push({ label: "Hands in the film", on: TL.showHands !== false, act: () => { TL.showHands = TL.showHands === false; tlSave(); } });
       I.push({ label: TLVR.on ? "Hide the timeline" : "Open the timeline", on: TLVR.on, act: () => setTlvr(!TLVR.on) });
@@ -12040,10 +12074,10 @@ function takeDiscard(){
   try { flashWarn("🗑 Take thrown away", 2000, "#f0a742"); } catch (e){}
   MENU.dirty = true;
 }
-function takeCountdown(){
+function takeCountdown(append){
   if (TAKE.on || MENU.countT) return;
   let n = 3; MENU.countT = 1;
-  const tick = () => { if (n > 0){ try { flashWarn("⏺ Recording in " + n + "…", 900, "#f85149"); } catch (e){} n--; MENU.countT = setTimeout(tick, 1000); } else { MENU.countT = 0; takeStart(); } };
+  const tick = () => { if (n > 0){ try { flashWarn("⏺ Recording in " + n + "…", 900, "#f85149"); } catch (e){} n--; MENU.countT = setTimeout(tick, 1000); } else { MENU.countT = 0; takeStart(append); } };
   tick();
 }
 function footPopAct(j, sub){
@@ -22542,7 +22576,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { voiceMerge, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
