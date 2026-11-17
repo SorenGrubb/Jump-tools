@@ -1145,7 +1145,8 @@
     "stimMode", "stimGain", "stimHid", "plotBtn", "elecBtn", "elecClr", "plShow", "synClr", "traceCsv",
     "raBtn", "raPlay", "raBox", "nvBtn", "nvBox", "slBtn", "slBox", "csdBtn", "csdDir", "csdBox",
     "stkBtn", "stkPlace", "stkBox", "physBox", "imgBox", "sndBodyRow", "drugRow", "caveRow",
-    "fixBox", "trwBox", "blockBox", "recRow", "recOut", "tlBtn", "grpBtn"];
+    "fixBox", "trwBox", "blockBox", "recRow", "recOut", "tlBtn", "grpBtn",
+    "patchBtn", "puffBtn", "patchBox", "puffBox"];
   ADV_IDS.forEach(id => { const el = $(id); if (el) (el._wrap || el).classList.add("adv"); });
   panes.querySelectorAll(".ctl").forEach(r => { if (r.children.length && [...r.children].every(c => c.classList.contains("adv"))) r.classList.add("adv"); });
   const ab = document.createElement("button"); ab.id = "advBtn"; ab.type = "button";
