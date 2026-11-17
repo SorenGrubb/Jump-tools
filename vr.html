@@ -17774,7 +17774,7 @@ function patchScope(g, X, Y, W, H, big){
   /* the head line */
   g.fillStyle = "#e6edf3"; g.font = "600 " + Math.round(13 * fs) + "px system-ui, sans-serif";
   const head = "🧪 " + shortName(P.cell) + " · " + (P.stage !== "whole" && P.stage !== "torn" ? SEAL_NAME[P.stage] : PATCH_MODE_NAME[P.mode] + " · Rs " + Math.round(P.rs) + " MΩ") + (!cc && P.comp ? " (−" + Math.round(P.comp * 100) + " %)" : "") + (cc && !P.bridge ? " · bridge OFF" : "");
-  g.fillText(vrpFit(g, head, W - 20 * fs), X + 10 * fs, Y + 18 * fs);
+  g.fillText(vrpFit(g, head, W - 120 * fs), X + 10 * fs, Y + 18 * fs);
   g.font = Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
   g.textAlign = "right";
   const live = cc ? "Vm " + P.vrec.toFixed(1) + " mV" : "I " + Math.round(P.iin) + " pA";
@@ -17808,7 +17808,7 @@ function patchCardShow(on){
     if (!on) return;
     const d = PATCH.card = document.createElement("div");
     d.style.cssText = "position:fixed;right:12px;bottom:64px;z-index:8;width:560px;max-width:calc(100vw - 24px);background:rgba(13,17,23,0.96);border:1px solid #30363d;border-radius:10px;padding:6px;color:#e6edf3;font:12px system-ui,sans-serif";
-    d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 4px"><b>🧪 Patch clamp (model)</b><span><button data-pc="min" title="Smaller / larger" style="font:inherit;padding:1px 7px">▭</button> <button data-pc="x" title="Hide the oscilloscope (the pipette stays)" style="font:inherit;padding:1px 7px">✕</button></span></div><canvas width="1096" height="560" style="width:100%;display:block;border-radius:6px"></canvas><div class="pcRead" style="margin-top:4px;color:#c9d1d9;line-height:1.35"></div>';
+    d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 4px"><b>🧪 Patch clamp (model)</b><span><button data-pc="min" title="Smaller / larger" style="font:inherit;padding:1px 7px">▭</button> <button data-pc="x" title="Hide the oscilloscope (the pipette stays)" style="font:inherit;padding:1px 7px">✕</button></span></div><canvas width="1096" height="560" style="width:100%;display:block;border-radius:6px"></canvas><div class="pcRead" style="margin-top:4px;color:#c9d1d9;line-height:1.35;height:8.2em;overflow-y:auto"></div>';
     document.body.appendChild(d);
     d.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
       if (b.dataset.pc === "x"){ PATCH.scope = false; const el = document.getElementById("pcScope"); if (el) el.checked = false; patchCardShow(false); }
@@ -18123,7 +18123,7 @@ function patchTipFig(g, X, Y, W, H, fs){
   g.font = Math.round(11 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
   const R = st === "approach" ? 5 : st === "whole" || st === "torn" ? null : st === "attached" ? patchRseal(P.seal) : 5 + patchRseal(P.seal);
   const rtxt = R != null ? "R " + (R >= 1000 ? (R / 1000).toFixed(1) + " GΩ" : R.toFixed(0) + " MΩ") : "Rs " + Math.round(P.rs) + " MΩ · seal " + (patchRseal(P.seal) >= 1000 ? (patchRseal(P.seal) / 1000).toFixed(1) + " GΩ" : Math.round(patchRseal(P.seal)) + " MΩ");
-  g.fillText(rtxt, X + 8 * fs, Y + H - 34 * fs);
+  g.fillText(vrpFit(g, rtxt, W - 16 * fs), X + 8 * fs, Y + H - 50 * fs);
   g.fillText("tip ~1 µm across", X + W - 100 * fs, Y + 17 * fs);
   /* the suction meter, with the window for this step */
   const mx = X + 8 * fs, mw = W - 16 * fs, my = Y + H - 24 * fs, mh = 12 * fs, sc = v => mx + mw * Math.min(1, v / 250);
@@ -18134,7 +18134,7 @@ function patchTipFig(g, X, Y, W, H, fs){
   for (const [a, b, c] of zones){ g.fillStyle = c; g.fillRect(sc(a), my, sc(b) - sc(a), mh); }
   g.fillStyle = "#ffd166"; g.fillRect(mx, my + mh * 0.3, sc(p) - mx, mh * 0.4);
   g.strokeStyle = "#fff"; g.lineWidth = 2 * fs; g.beginPath(); g.moveTo(sc(SUCK.peak || 0), my - 2 * fs); g.lineTo(sc(SUCK.peak || 0), my + mh + 2 * fs); g.stroke();
-  g.fillStyle = "#c9d1d9"; g.fillText("suction " + Math.round(p) + " mbar" + (SUCK.src === "mic" ? (SUCK.an ? " 🎙" : "") : SUCK.src === "trigger" ? " (trigger)" : " (slider)"), X + W - 150 * fs, Y + H - 34 * fs);
+  g.fillStyle = "#c9d1d9"; g.textAlign = "left"; g.fillText("suction " + Math.round(p) + " mbar" + (SUCK.src === "mic" ? (SUCK.an ? " 🎙" : "") : SUCK.src === "trigger" ? " (trigger)" : " (slider)"), X + 8 * fs, Y + H - 32 * fs);
 }
 
 /* ── THE PANEL IN THE HEADSET ── */
