@@ -515,6 +515,37 @@
     <button id="traceCsv" title="Download every voltage trace of this run — soma, synapse sites and electrodes, every 0.1 ms — as a CSV for figures">⬇ Traces CSV</button>
   </div>
   <div class="ctl">
+    <button id="patchBtn" title="A patch pipette (MODEL): click (or trigger) on a cell to go whole-cell on it -- current clamp or voltage clamp, the access resistance you set, a dye in the pipette that can spread to coupled cells, and an oscilloscope">🧪 Patch clamp</button>
+    <button id="puffBtn" title="A second pipette for puffing (pressure ejection) into the extracellular space: click (or trigger) on a cell or a vessel to put its tip there">💨 Puff pipette</button>
+  </div>
+  <div id="patchBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+    <div class="ctl" style="margin:0 0 6px">
+      <select id="pcMode" title="Current clamp: inject current, record the voltage. Voltage clamp: hold the voltage, record the current"><option value="cc">Current clamp</option><option value="vc">Voltage clamp</option></select>
+      <label title="Access (series) resistance between pipette and cell: low is good (5–15 MΩ); high slows the clamp, adds an I×Rs error and blunts recorded spikes, and slows dye filling">Rs <input type="range" id="pcRs" min="2" max="100" step="1" value="15" style="width:90px;vertical-align:middle"> <span id="pcRsV">15 MΩ</span></label>
+      <label id="pcCompL" title="Series-resistance compensation (voltage clamp): the amplifier corrects this fraction of Rs">comp <input type="range" id="pcComp" min="0" max="80" step="5" value="0" style="width:70px;vertical-align:middle"> <span id="pcCompV">0 %</span></label>
+    </div>
+    <div class="ctl" style="margin:0 0 6px" id="pcProt"></div>
+    <div class="catick">
+      <label id="pcBridgeL" title="Current clamp: subtract the I×Rs drop across the pipette from the recorded voltage"><input type="checkbox" id="pcBridge" checked> bridge balance</label>
+      <label title="In vivo the cell is bombarded by synaptic input: fluctuating excitatory and inhibitory conductances (Destexhe et al. 2001) -- Vm fluctuates, the input resistance falls"><input type="checkbox" id="pcBg" checked> in vivo synaptic background</label>
+      <label title="Its spikes go out through its synapses in the stimulation model, and synaptic potentials arriving there come in as current"><input type="checkbox" id="pcNet"> linked to stimulation</label>
+      <label><input type="checkbox" id="pcScope" checked> oscilloscope</label>
+    </div>
+    <div class="ctl" style="margin:6px 0">
+      <select id="pcDye" title="A dye in the pipette fills the cell, and crosses into touching cells that are coupled by gap junctions -- if it is small enough"><option value="none">Pipette: no dye</option><option value="nb">Neurobiotin (crosses gap junctions)</option><option value="bc">Biocytin</option><option value="ly">Lucifer yellow</option><option value="alexa">Alexa Fluor 594 (stays in the cell)</option></select>
+      <label title="Interneurons of the same class are coupled by electrical synapses (Cx36): dye and current can pass"><input type="checkbox" id="pcII" checked> interneuron gap junctions</label>
+      <button id="dyeClr" title="Remove the dye from all cells">Wash out dye</button>
+    </div>
+    <div class="ctl" style="margin:6px 0">
+      <select id="pfAg" title="What is in the puff pipette"><option value="glu">Puff: glutamate</option><option value="gaba">Puff: GABA</option><option value="k">Puff: K⁺ (KCl)</option><option value="atp">Puff: ATP</option><option value="ttx">Puff: TTX</option><option value="sr101">Puff: sulforhodamine 101</option><option value="alexa">Puff: Alexa 594</option></select>
+      <label title="Concentration in the pipette">C <input type="number" id="pfC" value="1" step="any" min="0" style="width:64px"> <span id="pfU">mM</span></label>
+      <label title="Volume ejected by one pressure pulse">V <input type="number" id="pfV" value="5" min="0.1" max="500" step="any" style="width:52px"> pL</label>
+      <button id="pfGo" title="Eject one puff">💨 Puff</button>
+      <button id="pfOut" title="Remove the puff pipette">Remove</button>
+    </div>
+    <div id="patchNote" style="font-size:11.5px;color:var(--mut)">MODEL. Click 🧪 Patch clamp, then a cell.</div>
+  </div>
+  <div class="ctl">
     <button id="caBtn" title="Click (or in VR: right trigger) on ANY cell to start a Ca²⁺ wave there — much slower than an action potential, and it crosses to coupled cells (astrocytes, endothelium, mural cells) at their contacts">Ca²⁺ wave</button>
     <button id="caReset" title="Stop and clear the Ca²⁺ wave">Reset Ca²⁺</button>
   </div>
@@ -643,7 +674,7 @@
   </div>
   <div id="lfpBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="catick">
-      <label title="The loaded cells are a tiny sample of the tissue. With this on, a background population at realistic density (90,000 neurons per mm³, 80 % pyramidal, oriented pia–white matter) fires with the same rates as the loaded cells and adds its synaptic currents as dipoles -- what makes a real LFP hundreds of µV rather than a few"><input type="checkbox" id="lfpBg" checked> background population (realistic density)</label>
+      <label title="The loaded cells are a tiny sample of the tissue. With this on, a background population at realistic density (90,000 neurons per mm³, 80 % pyramidal, oriented pia–white matter) fires with the same rates as the loaded cells and adds its synaptic currents as dipoles. Each activity remembers its own setting: on for sleep and the recorded activity, OFF for stimulation (a few stimulated cells standing in for 100,000 is misleading) -- what makes a real LFP hundreds of µV rather than a few"><input type="checkbox" id="lfpBg" checked> background population (realistic density)</label>
       <label><input type="checkbox" id="lfpPlot" checked> plot (traces + CSD)</label>
       <label title="The LFP's power spectrum (8 s, Welch) on log–log axes with the δ θ α/σ β γ bands, the 1/f exponent and the main peak — for teaching which rhythms each state has"><input type="checkbox" id="lfpPsd"> power spectrum</label>
     </div>
@@ -886,6 +917,8 @@
   const S = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
   const ICON = window.UI_ICON = {
     eye: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    pipette: S('<path d="M14 3l7 7"/><path d="M17.5 6.5L8 16l-3 1 1-3 9.5-9.5"/><path d="M5 17l-2 4"/>'),
+    puff: S('<path d="M3 21l6-6"/><circle cx="14" cy="10" r="3"/><circle cx="19" cy="5" r="1.6"/><circle cx="19.5" cy="13" r="1.4"/><circle cx="11" cy="4" r="1.2"/>'),
     wave: S('<path d="M2 13c2-5 4.5-5 6.5 0s4.5 5 6.5 0 4.5-5 7-1"/><circle cx="8.5" cy="13" r="1.3"/>'),
     contact: S('<circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/><path d="M12 9.2v5.6" stroke-width="2.4"/>'),
     eyeoff: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>'),
@@ -958,7 +991,7 @@
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
     cvecBtn: ["cvec", "nucleus → centriole", "C"], lvecBtn: ["lvec", "cilium base → tip", "Ci"],
-    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], nvBtn: ["vessel", "Vascular regulation & blood flow"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
+    stimBtn: ["bolt", "Stimulate"], stimReset: ["reset", "Reset"], caBtn: ["wave", "Ca²⁺ wave"], raBtn: ["trace", "Recorded activity"], raPlay: ["play", "Play"], raScreen: ["screen", "Movie screen"], raPlot: ["plot", "Recorded plot"], raDim: ["eyeoff", "Dim not imaged"], raSpk: ["bolt", "Inferred spikes"], raCellPl: ["plot", "Per-cell plots"], nvBtn: ["vessel", "Vascular regulation & blood flow"], raNb: ["neighbours", "Recorded neighbours", "+3"], raCsv: ["down", "Recorded CSV"], caReset: ["reset", "Reset Ca²⁺"], caPlotBtn: ["plot", "Ca²⁺ plot"], caCsv: ["down", "Ca²⁺ CSV"], ctBtn: ["contact", "Contacts"], ctCsv: ["down", "Contacts CSV"], stimHid: ["eyeoff", "Hidden cells too"], plotBtn: ["plot", "Plots"], elecBtn: ["pin", "Electrode"], patchBtn: ["pipette", "Patch clamp"], puffBtn: ["puff", "Puff pipette"], elecClr: ["x", "Clear"], synClr: ["synapse", "Hide synapses"], traceCsv: ["down", "Traces CSV"],
     sprayBtn: ["spray", "Spray"], sprayGlow: ["sparkle", "Glow"], sprayErase: ["eraser", "Eraser"], sprayWipe: ["trash", "Wipe"],
     recBtn: ["rec", "Record"], tlBtn: ["timeline", "Timeline"], copyBtn: ["headset", "Headset link"]
   };
@@ -1023,7 +1056,7 @@
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
     ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
-    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
+    ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["patchBtn", "puffBtn"], ["#patchBox"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
     ["spray", "spray", "Spray", [["#sprayRow"]]],
     ["share", "film", "Share", [["#sceneBox"], ["#recRow"], ["#recOut"], ["tlBtn", "copyBtn"]]]
@@ -1827,18 +1860,20 @@ function cellMaterial(colour){
   m.userData.raU = { value: 0 };        // recorded activity (section 21): this cell's glow now, 0–1
   m.userData.raS = { value: new THREE.Vector4(-1, -1, -1, -1) };   // movie-seconds since its last 4 inferred spikes (v67)
   m.userData.mcU = { value: 0 };        // modelled Ca²⁺ of a mural, endothelial or astrocyte cell (section 23), 0–1
+  m.userData.dyA = { value: 0 }; m.userData.dyL = { value: 1 }; m.userData.dyC = { value: new THREE.Color() };   // a dye fill (section 56)
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, AP_UNI);
     sh.uniforms.raA = m.userData.raU;
     sh.uniforms.raS = m.userData.raS;
     sh.uniforms.mcA = m.userData.mcU;
-    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nattribute float raD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
-      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA; vRaD = raD;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
+    sh.uniforms.dyA = m.userData.dyA; sh.uniforms.dyL = m.userData.dyL; sh.uniforms.dyC = m.userData.dyC;
+    sh.vertexShader = "attribute float apT;\nattribute float vm;\nattribute vec4 paint;\nattribute float paintGlow;\nattribute float caT;\nattribute float caA;\nattribute float raD;\nattribute float dyD;\nvarying float vDyD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+      + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvCaT = caT; vCaA = caA; vRaD = raD; vDyD = dyD;\nvApT = apT; vVm = vm; vPaint = paint; vGlow = paintGlow;");
     /* SPRAY PAINT (section 9): `paint` rgb = the colour, a = covered (0/1); `paintGlow` 0/1 whether
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform float mcA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform float mcA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nuniform float dyA;\nuniform float dyL;\nuniform vec3 dyC;\nvarying float vDyD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
@@ -1860,6 +1895,12 @@ function cellMaterial(colour){
           /* Recorded activity (section 21): the whole cell, as bright as its measured response now. */
           totalEmissiveRadiance += raCol * 1.5 * raA;
           diffuseColor.rgb = mix(diffuseColor.rgb, raCol, 0.45 * raA);
+        }
+        if (dyA > 0.003 && vDyD < 1e8){
+          /* A dye fill (section 56): as far along the membrane as it has diffused, fading at its front. */
+          float q = vDyD / max(dyL, 0.5), f = dyA * exp(-q * q);
+          totalEmissiveRadiance += dyC * 1.3 * f;
+          diffuseColor.rgb = mix(diffuseColor.rgb, dyC, 0.6 * clamp(f * 1.5, 0.0, 1.0));
         }
         if (mcA > 0.003){
           /* Modelled Ca²⁺ of a mural, endothelial or astrocyte cell (section 23): the whole cell. */
@@ -1929,6 +1970,7 @@ function addActivityAttributes(g){
   g.setAttribute("caT", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));
   g.setAttribute("caA", new THREE.BufferAttribute(new Float32Array(n), 1));
   g.setAttribute("raD", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));   // µm from the soma (section 21, v67)
+  g.setAttribute("dyD", new THREE.BufferAttribute(new Float32Array(n).fill(1e9), 1));   // µm the dye has to go (section 56)
 }
 
 /* One cell: its mesh (with proposed root IDs), then its nucleus. Shared by the first load and by
@@ -2767,6 +2809,10 @@ renderer.domElement.addEventListener("pointerup", e => {
   if (STK.arm && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
     const ndc = canvasNdc(e); _mr.setFromCamera(ndc, camera);
     stkWithRay({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() }); return;
+  }
+  if ((PATCH.arm || PUFF.arm) && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
+    const ndc = canvasNdc(e); _mr.setFromCamera(ndc, camera);
+    patchRayPick({ origin: _mr.ray.origin.clone(), dir: _mr.ray.direction.clone() }); return;
   }
   if (LFP.arm && _down && Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) <= 4){
     const ndc = canvasNdc(e); _mr.setFromCamera(ndc, camera);
@@ -3829,7 +3875,7 @@ function spikeNode(c, soma){
   return c.aisNode >= 0 ? c.aisNode : soma;
 }
 function fireCell(c, node, t0){
-  if (DRUG.ttx){ c.pendingFire = false; if (!fireCell._said || performance.now() - fireCell._said > 4000){ fireCell._said = performance.now(); ctxNote.textContent = "TTX: " + c.label + " cannot fire — its sodium channels are blocked (the synaptic and dendritic potentials remain)."; } return; }
+  if (DRUG.ttx || c._ttxP){ c.pendingFire = false; if (!fireCell._said || performance.now() - fireCell._said > 4000){ fireCell._said = performance.now(); ctxNote.textContent = "TTX: " + c.label + " cannot fire — its sodium channels are blocked (the synaptic and dendritic potentials remain)."; } return; }
   const G = cellGraph(c);
   const { T } = arrival(G, [{ node, t0 }], c.apNodeT, REF_MS);
   /* Keep the earlier spike where this one did not reach, so its refractory trail is not wiped. */
@@ -7323,6 +7369,7 @@ function nvTick(){
   if (!NV.actR || NV.actR.length < NV.glob.length) NV.actR = new Float32Array(NV.glob.length + 1024);
   for (let li = 0; li < NV.glob.length; li++) NV.actR[li] = D[li*4];
   if (NV.ext && NV.ext.length === NV.glob.length) for (let li = 1; li < NV.glob.length; li++) D[li*4] += NV.ext[li];
+  if (NV.puff && NV.puff.length === NV.glob.length) for (let li = 1; li < NV.glob.length; li++) D[li*4] += NV.puff[li];   // a puff (section 56)
   NV.tex.needsUpdate = true;
   /* The chain of the picked cell (or the most active), for the plot. */
   if (NV.plot) nvPlotSample();
@@ -7986,8 +8033,15 @@ document.getElementById("slPlot").addEventListener("change", e => slSetting("plo
    Rates: the loaded excitatory and inhibitory cells' firing, per ms; with no inhibitory cell loaded
    their rate is taken as 2.5 × the excitatory (an assumption, said in the note).
    Time: the clock of whatever is running -- sleep's spike clock, the recorded movie, or the
-   stimulator's milliseconds (then a 200 ms window at 0.25 ms instead of 2 s at 1 ms). */
-const LFP = { on: false, arm: false, top: null, n: 16, pitch: 50, bg: true, plot: true, sig: "", Wc: null, bgW: null, eap: new Map(),
+   stimulator's milliseconds (then a 200 ms window at 0.25 ms instead of 2 s at 1 ms).
+
+   2026-11-17 (Søren: one basket cell stimulated 3–4 times gave "just a slow change in potential" -- "Yes, do those
+   fixes"): the background population is OFF by default while stimulating (it is on for sleep and the recorded
+   activity -- each source remembers its own setting), because it makes the ~10⁵ neurons around fire exactly like
+   the few loaded cells; when it is on with few cells, the plot says so. And every loaded neuron's spike now also
+   makes its OWN OUTPUT FIELD (lfpOutW): the synaptic currents it opens in the pyramidal cells around it -- the small,
+   fast "unitary field potential" one interneuron's spike gives. */
+const LFP = { on: false, arm: false, top: null, n: 16, pitch: 50, bg: true, bgSrc: { sleep: true, recorded: true, stimulation: false }, out: new Map(), plot: true, sig: "", Wc: null, bgW: null, eap: new Map(),
               group: null, cv: null, spr: null, last: null, _at: 0 };
 const LFP_K = 1000 / (4 * Math.PI * 0.3);        // µV · µm / nA
 /* CALIBRATION. The background's point-dipole currents are a simplification; one factor scales them so
@@ -8039,16 +8093,49 @@ function lfpBackground(C){
   }
   return { e, i, real: Math.round(real) };
 }
+/* THE CELL'S OWN OUTPUT (2026-11-17). Each spike of a loaded neuron opens synapses on the pyramidal cells around it --
+   an IPSC at their somata for an interneuron, an EPSC on their proximal dendrites for a pyramidal cell -- and those
+   currents make a small field of their own: the "unitary field potential" of one presynaptic spike (measured for single
+   interneurons in the hippocampus: Glickfeld et al. 2009 Nat Neurosci 12:21; Bazelot et al. 2010 J Physiol 588:2077).
+   Targets: pyramidal cells at 72,000 per mm³, within 200 µm with a connection probability of 0.6 falling with distance
+   for an interneuron (dense and unspecific, as for parvalbumin basket cells: Packer & Yuste 2011 J Neurosci 31:13260),
+   within 150 µm with 0.1 for a pyramidal cell. Unitary current 30 pA (IPSC, decaying over 8 ms) or 15 pA (EPSC, 3 ms),
+   1 ms after the spike -- of the usual order, ASSUMED. Each target is the same pair of point currents as the
+   background population; drawn once per cell. */
+function lfpOutW(c, C){
+  const at = nvSoma(c); if (!at) return null;
+  const inh = cellClass(c) === "inh", R = inh ? 200 : 150, N = 400, pmax = inh ? 0.6 : 0.1, lam = inh ? 150 : 100;
+  const w = 72000 * (4 / 3) * Math.PI * R * R * R * 1e-9 / N;
+  let seed = ((c.i + 1) * 2654435761) >>> 0; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const out = new Float64Array(C.length); let nT = 0;
+  for (let n = 0; n < N; n++){
+    let x, y, z, d; do { x = (2 * rnd() - 1) * R; y = (2 * rnd() - 1) * R; z = (2 * rnd() - 1) * R; d = Math.hypot(x, y, z); } while (d > R || d < 10);
+    const pr = pmax * Math.exp(-d / lam), px = at.x + x, py = at.y + y, pz = at.z + z; nT += w * pr;
+    C.forEach((q, k) => {
+      const f = yy => LFP_K / Math.max(15, Math.hypot(px - q.x, yy - q.y, pz - q.z));
+      out[k] += w * pr * (inh ? f(py) - f(py - 40) : -f(py - 50) + f(py));     // µV per nA of unitary current
+    });
+  }
+  return { w: out, inh, n: Math.round(nT), I: inh ? 0.03 : 0.015, tau: inh ? 8 : 3 };
+}
+function lfpBgOn(src){ return src && LFP.bgSrc[src] != null ? !!LFP.bgSrc[src] : LFP.bg; }
+function lfpSetBg(v){
+  LFP.bg = !!v; const src = LFP.last && LFP.last.src;
+  if (src && src in LFP.bgSrc) LFP.bgSrc[src] = LFP.bg; else for (const k in LFP.bgSrc) LFP.bgSrc[k] = LFP.bg;
+  const el = document.getElementById("lfpBg"); if (el) el.checked = LFP.bg;
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
 function lfpWeights(){
   const cells = CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron");
   const sig = LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z].map(v => v.toFixed(1)).join(",") + "|" + cells.map(c => c.i + ":" + cellGraph(c).m).join(",") : "";
   if (sig === LFP.sig) return;
-  LFP.sig = sig; LFP.eap.clear();
+  LFP.sig = sig; LFP.eap.clear(); LFP.out.clear();
   const C = lfpContacts(), We = new Float64Array(LFP.n), Wi = new Float64Array(LFP.n);
   for (const c of cells){
     const w = lfpCellW(c, C); if (!w) continue;
     for (let k = 0; k < LFP.n; k++){ We[k] += w.e[k]; Wi[k] += w.i[k]; }
     LFP.eap.set(c, w.a);
+    const o = lfpOutW(c, C); if (o) LFP.out.set(c, o);
   }
   LFP.Wc = { e: We, i: Wi, n: cells.length };
   LFP.bgW = lfpBackground(C);
@@ -8079,11 +8166,16 @@ function lfpCompute(o){
   const loaded = CELLS.filter(c => c.mesh && inPlay(c) && caKind(c) === "neuron");
   for (const c of loaded) (cellClass(c) === "inh" ? nI++ : nE++);
   const eapAmp = new Float64Array(n);
-  const phiE = Array.from({ length: K }, () => new Float64Array(n));
+  const phiE = Array.from({ length: K }, () => new Float64Array(n)), phiO = Array.from({ length: K }, () => new Float64Array(n));
+  const bgOn = lfpBgOn(sp.src);
   for (const [c, S] of sp.list){
-    const inh = cellClass(c) === "inh", w = LFP.eap.get(c);
+    const inh = cellClass(c) === "inh", w = LFP.eap.get(c), ow = LFP.out.get(c);
     for (const ts of S){
       if (ts < t0 - 0.05 || ts > sp.t1) continue;
+      /* its own output: the unitary synaptic currents in its targets, 1 ms later */
+      if (ow){ const b0 = Math.floor((ts - t0) / sp.dt), len = Math.ceil((1 + 6 * ow.tau) / 1000 / sp.dt);
+        for (let j = 0; j < len; j++){ const bb = b0 + j; if (bb < 0 || bb >= n) continue; const sh = psShape(j * sp.dt * 1000 - 1, 0.5, ow.tau) * ow.I; if (sh <= 0) continue;
+          for (let k = 0; k < K; k++) phiO[k][bb] += ow.w[k] * sh; } }
       const b = Math.floor((ts - t0) / sp.dt);
       if (b >= 0 && b < n) (inh ? ri : re)[b] += 1;
       if (w) for (let j = 0; j * sp.dt < 0.0025; j++){
@@ -8113,17 +8205,17 @@ function lfpCompute(o){
   /* A recording amplifier high-passes: the steady part of the currents is not seen. Here each part
      has its mean over the window removed (the window is 3 s in sleep, so the 0.8 Hz slow waves stay). */
   const mI = a => a.reduce((x, y) => x + y, 0) / a.length, Ie0 = mI(Ie), Ii0 = mI(Ii);
-  const phi = [], parts = { cells: 0, bg: 0, spk: 0 }, bs = LFP_BG_SCALE;
+  const phi = [], parts = { cells: 0, bg: 0, spk: 0, out: 0 }, bs = LFP_BG_SCALE;
   for (let k = 0; k < K; k++){
-    const a = new Float64Array(n), s0 = mI(phiE[k]);
+    const a = new Float64Array(n), s0 = mI(phiE[k]), o0 = mI(phiO[k]);
     for (let b = 0; b < n; b++){
       const ie = Ie[b] - Ie0, ii = Ii[b] - Ii0;
-      const vc = LFP.Wc.e[k] * ie + LFP.Wc.i[k] * ii, vb = LFP.bg ? bs * (LFP.bgW.e[k] * ie + LFP.bgW.i[k] * ii) : 0, vs = phiE[k][b] - s0;
-      a[b] = vc + vb + vs; parts.cells += vc * vc; parts.bg += vb * vb; parts.spk += vs * vs;
+      const vc = LFP.Wc.e[k] * ie + LFP.Wc.i[k] * ii, vb = bgOn ? bs * (LFP.bgW.e[k] * ie + LFP.bgW.i[k] * ii) : 0, vs = phiE[k][b] - s0, vo = phiO[k][b] - o0;
+      a[b] = vc + vb + vs + vo; parts.cells += vc * vc; parts.bg += vb * vb; parts.spk += vs * vs; parts.out += vo * vo;
     }
     phi.push(a);
   }
-  return { phi, n, dt: sp.dt, W: sp.W, src: sp.src, parts, noInh: sp.src !== "sleep" && !nI, nCells: loaded.length };
+  return { phi, n, dt: sp.dt, W: sp.W, src: sp.src, parts, noInh: sp.src !== "sleep" && !nI, nCells: loaded.length, nE, nI, bg: bgOn };
 }
 function lfpPlotDraw(R){
   const W = 760, H = 560;
@@ -8133,7 +8225,7 @@ function lfpPlotDraw(R){
   g.strokeStyle = "#ffd43b"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
   g.fillStyle = "#e6edf3"; g.font = "600 22px system-ui, sans-serif"; g.fillText("LFP, 16 contacts · " + (R ? R.src : "no activity"), 16, 30);
   g.font = "600 15px system-ui, sans-serif"; g.fillStyle = "#f0883e";
-  g.fillText("MODEL, not measured · synaptic currents on the real morphologies" + (LFP.bg ? " + background population" : ""), 16, 52);
+  g.fillText("MODEL, not measured · synaptic currents on the real morphologies" + ((R ? R.bg : LFP.bg) ? " + background population" : " · no background population"), 16, 52);
   /* v95: the slow DC shift of a spreading depolarization (DC-coupled), at each contact -- the AC traces
      beside it are high-passed like a normal LFP amplifier and do not show it */
   const dcOn = CSD.on && CSD.o && LFP.top;
@@ -8175,8 +8267,11 @@ function lfpPlotDraw(R){
       g.fillRect(X0 + (X1 - X0) * q / cols, T + rowH * (kk + 1), (X1 - X0) / cols + 1, rowH + 1);
     }));
     g.fillStyle = "#c9d1d9"; g.fillText("CSD", X0, T - 4); g.fillStyle = "#ff6b5a"; g.fillText("sink", X0, B + 22); g.fillStyle = "#6fa0ff"; g.fillText("source", X0 + 44, B + 22);
-    const tot = R.parts.cells + R.parts.bg + R.parts.spk || 1, pc = v => Math.round(100 * v / tot);
-    g.fillStyle = "#8b949e"; g.fillText("power: loaded cells' synapses " + pc(R.parts.cells) + " % · background " + pc(R.parts.bg) + " % · spikes " + pc(R.parts.spk) + " %" + (R.noInh ? " · no inhibitory cell loaded: their rate = 2.5 × excitatory" : ""), 16, H - 10);
+    const tot = R.parts.cells + R.parts.bg + R.parts.spk + R.parts.out || 1, pc = v => Math.round(100 * v / tot);
+    g.fillStyle = "#8b949e"; g.fillText("power: input to loaded cells " + pc(R.parts.cells) + " % · their output " + pc(R.parts.out) + " % · spikes " + pc(R.parts.spk) + " % · background " + pc(R.parts.bg) + " %" + (R.bg && R.noInh ? " · no inhibitory cell: their rate = 2.5 × exc." : ""), 16, H - 10);
+    /* few cells standing in for ~10⁵: say so (2026-11-17) */
+    const warn = lfpBgWarn(R);
+    if (warn){ g.fillStyle = "#f0a742"; g.font = "600 13px system-ui, sans-serif"; g.fillText(vrpFit(g, warn, W - 32), 16, H - 30); }
   }
   if (!LFP.spr){
     const tex = new THREE.CanvasTexture(LFP.cv); tex.colorSpace = THREE.SRGBColorSpace;
@@ -8185,6 +8280,13 @@ function lfpPlotDraw(R){
   LFP.spr.material.map.needsUpdate = true; LFP.spr.visible = true;
   const hh = 0.13; LFP.spr.scale.set(hh * W / H, hh, 1);
   lfpPlace();
+}
+function lfpBgWarn(R){
+  if (!R || !R.bg || R.src === "sleep") return "";
+  const n = (R.nE || 0) + (R.nI || 0);
+  if (!R.nE && R.nI) return "⚠ Background on with only interneurons loaded: it makes every interneuron around fire like " + (R.nI === 1 ? "this one" : "these") + ", and no excitatory cell fire — a slow, large wave. Untick “background population” to see " + (R.nI === 1 ? "this cell's" : "their") + " own field.";
+  if (n <= 3) return "⚠ Background on: it assumes all ~" + (LFP.bgW ? LFP.bgW.real.toLocaleString("en-US") : "100,000") + " neurons around fire like these " + n + " loaded cell" + (n === 1 ? "" : "s") + ".";
+  return "";
 }
 function lfpPlace(){
   if (!LFP.spr || !LFP.spr.visible) return;
@@ -8228,15 +8330,19 @@ function lfpFrame(){
   const now = performance.now(); if (now - LFP._at < 150) return; LFP._at = now;
   try { lfpWeights(); } catch (e){ console.warn("[vr] LFP weights", e); return; }
   const R = lfpCompute(); LFP.last = R;
+  if (R && R.bg !== LFP.bg){ LFP.bg = R.bg; const cb = document.getElementById("lfpBg"); if (cb) cb.checked = LFP.bg; if (typeof MENU !== "undefined") MENU.dirty = true; }
   if (LFP.plot) lfpPlotDraw(R); else if (LFP.spr) LFP.spr.visible = false;
   const el = document.getElementById("lfpNote");
   if (el && LFP.Wc) el.textContent = "MODEL, not measured · " + LFP.Wc.n + " loaded neuron" + (LFP.Wc.n === 1 ? "" : "s") + " on their own morphology"
-    + (LFP.bg ? " + a background of ~" + LFP.bgW.real.toLocaleString("en-US") + " pyramidal neurons around the probe" : "") + (R ? " · source: " + R.src : " · start sleep, recorded activity or stimulation") + ".";
+    + (LFP.bg ? " + a background of ~" + LFP.bgW.real.toLocaleString("en-US") + " pyramidal neurons around the probe" : "") + (R ? " · source: " + R.src : " · start sleep, recorded activity or stimulation") + "."
+    + (R && LFP.out.size ? " Each spike also adds the cell's own output field (its synapses on ~" + Math.round([...LFP.out.values()].reduce((a, o) => a + o.n, 0) / LFP.out.size).toLocaleString("en-US") + " target cells each)." : "")
+    + (lfpBgWarn(R) ? " " + lfpBgWarn(R) : "");
 }
-function lfpUi(){ return { on: LFP.on, bg: LFP.bg, plot: LFP.plot, psd: !!LFP.psd, top: LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z] : null }; }
+function lfpUi(){ return { on: LFP.on, bg: LFP.bg, bgSrc: Object.assign({}, LFP.bgSrc), plot: LFP.plot, psd: !!LFP.psd, top: LFP.top ? [LFP.top.x, LFP.top.y, LFP.top.z] : null }; }
 function lfpApplyUi(u){
   if (!u) return;
   if (u.bg != null){ LFP.bg = !!u.bg; document.getElementById("lfpBg").checked = LFP.bg; }
+  if (u.bgSrc) Object.assign(LFP.bgSrc, u.bgSrc); else if (u.bg != null){ LFP.bgSrc.sleep = LFP.bgSrc.recorded = !!u.bg; }
   if (u.plot != null){ LFP.plot = !!u.plot; document.getElementById("lfpPlot").checked = LFP.plot; }
   if (u.psd != null){ LFP.psd = !!u.psd; document.getElementById("lfpPsd").checked = LFP.psd; }
   if (u.top){ LFP.top = new THREE.Vector3(u.top[0], u.top[1], u.top[2]); LFP.sig = ""; }
@@ -8244,7 +8350,7 @@ function lfpApplyUi(u){
 }
 document.getElementById("lfpBtn").addEventListener("click", () => setLfp(!LFP.on));
 document.getElementById("lfpPlace").addEventListener("click", () => { LFP.arm = !LFP.arm; document.getElementById("lfpPlace").classList.toggle("on", LFP.arm); ctxNote.textContent = LFP.arm ? "LFP probe: click (or trigger) on a cell or vessel to put the probe there." : ""; });
-document.getElementById("lfpBg").addEventListener("change", e => { LFP.bg = e.target.checked; });
+document.getElementById("lfpBg").addEventListener("change", e => lfpSetBg(e.target.checked));
 document.getElementById("lfpPlot").addEventListener("change", e => { LFP.plot = e.target.checked; if (!LFP.plot && LFP.spr) LFP.spr.visible = false; });
 /* ── 40. POWER SPECTRUM OF THE LFP (teaching) ────────────────────────────────────  2026-10-23
    Søren: "Consider a powerspectrum for neuronal activity. For teaching purposes."
@@ -10946,6 +11052,7 @@ function selectWith(h){
   if (FLY.trigger && tool){ flyWithHand(h); return; }
   if (SPRAY.on && tool){ h.spraying = true; return; }
   if (STK.arm && tool){ stkWithRay(rayOf(h)); return; }
+  if ((PATCH.arm || PUFF.arm) && tool){ patchRayPick(rayOf(h)); return; }
   if (LFP.arm && tool){ lfpWithRay(rayOf(h)); return; }
   if (CA.on && tool){ caWithRay(rayOf(h)); return; }
   if (STIM.on && tool){ SPK.stimHand = h; stimulateWithRay(rayOf(h)); return; }
@@ -11247,6 +11354,20 @@ function menuRows(){
       rows.push({ label: "   Ca²⁺ plot", on: CA.plot, act: () => { CA.plot = !CA.plot; document.getElementById("caPlotBtn").classList.toggle("on", CA.plot); caPlotDraw(!CA.plot); } });
       rows.push({ label: "   Reset Ca²⁺", act: caReset });
     }
+    S("Patch clamp & puff (model)");
+    rows.push({ label: "🧪 Patch clamp" + (PATCH.on ? ": " + shortName(PATCH.cell) : " (trigger on a cell)"), on: PATCH.arm || PATCH.on, act: () => { if (PATCH.on && !PATCH.arm) vrpShow(PATCHP, !PATCHP.on); else setPatchArm(!PATCH.arm); } });
+    if (PATCH.on){
+      rows.push({ label: "   Patch panel (scope and controls)", on: PATCHP.on, act: () => vrpShow(PATCHP, !PATCHP.on) });
+      rows.push({ label: "   " + (PATCH.mode === "cc" ? "Current clamp" : "Voltage clamp") + "  ▸", act: () => setPatchMode(PATCH.mode === "cc" ? "vc" : "cc") });
+      rows.push({ label: "   Patch another cell (then trigger)", on: PATCH.arm, act: () => setPatchArm(!PATCH.arm) });
+      rows.push({ label: "   Withdraw the pipette", act: () => patchWithdraw() });
+    }
+    rows.push({ label: "💨 Puff pipette" + (PUFF.pos ? " (placed)" : "") + (PUFF.arm ? " — trigger on a cell or vessel" : ""), on: PUFF.arm || !!PUFF.pos, act: () => setPuffArm(!PUFF.arm) });
+    if (PUFF.pos){
+      rows.push({ label: "   Agent: " + PUFF_AG[PUFF.ag].name.replace(/ \(.*$/, "") + "  ▸", act: () => { const o = Object.keys(PUFF_AG); PUFF.ag = o[(o.indexOf(PUFF.ag) + 1) % o.length]; PUFF.c0 = null; puffDrawPipette(); patchUiSync(); } });
+      rows.push({ label: "   💨 Puff now", act: () => puffNow() });
+      rows.push({ label: "   Remove the puff pipette", act: () => puffRemove() });
+    }
     S("Connections");
     rows.push({ label: "Cell contacts", on: CT.on, act: () => setContacts(!CT.on) });
     if (DS_HAS.syn && SELECTED >= 0){
@@ -11357,7 +11478,7 @@ function menuRows(){
     S("Clock & brain states (models)");
     if (LFP.on){
       rows.push({ label: "   Place the probe (then trigger)", on: LFP.arm, act: () => { LFP.arm = !LFP.arm; } });
-      rows.push({ label: "   Background population", on: LFP.bg, act: () => { LFP.bg = !LFP.bg; document.getElementById("lfpBg").checked = LFP.bg; } });
+      rows.push({ label: "   Background population", on: LFP.bg, act: () => lfpSetBg(!LFP.bg) });
     }
     if (SL.on){
       rows.push({ label: "   " + ({ cycle: "Cycle: awake → NREM → REM", nrem: "NREM", rem: "REM", awake: "Awake" })[SL.mode] + "  ▸", act: () => slSetting("mode", ({ cycle: "nrem", nrem: "rem", rem: "awake", awake: "cycle" })[SL.mode]) });
@@ -16919,6 +17040,812 @@ function setDrug(k, v){
 }
 document.querySelectorAll("[data-drug]").forEach(el => el.addEventListener("change", e => setDrug(el.dataset.drug, e.target.checked)));
 
+/* ── 56. A PATCH PIPETTE: CURRENT AND VOLTAGE CLAMP, ACCESS RESISTANCE, DYE FILLS AND PUFFS (MODEL) ── 2026-11-17
+   Søren: "I also want to build a patch clamp electrode to do in vivo current or voltage clamping. There should also be
+   the possibility to add a dye that can spread between cells that are coupled by gap junctions. The electrode should
+   also have the possibility of changing the access resistance and puffing drugs or dye into the extracellular space,
+   like Changsi Cai is doing in her experiments."
+
+   WHAT IS REAL AND WHAT IS A MODEL
+   · REAL (from the data): the patched cell's membrane area, read off its mesh (so its capacitance at 1 µF/cm²), its type
+     (which model it gets), where the pipette sits, which loaded cells touch it and where (section 20's contacts -- the
+     only places a dye can cross), and the positions of every cell and vessel a puff reaches.
+   · ONE COMPARTMENT: the whole membrane is charged at once. A real somatic recording charges far dendrites late and only
+     in part (space clamp), so a real measured Cm is smaller and dendritic events are clamped poorly.
+     Neurons: leaky integrate-and-fire with spike-frequency adaptation and Na⁺ inactivation (so a large step can drive a
+     cell into depolarisation block), regular spiking for pyramidal cells, fast spiking for interneurons; specific
+     membrane resistance 20 / 10 kΩ·cm². Glia and vascular cells: passive, with input resistances and resting
+     potentials of the usual order (ASSUMED, not measured here).
+   · WHAT THE PIPETTE "SEES": membrane far out along the dendrites is charged late and little from the soma, so the
+     area used is the mesh's membrane weighted by exp(−d/300 µm) along the membrane path from the pipette (a length
+     constant of the usual order, ASSUMED). The whole mesh area is reported beside it.
+   · IN VIVO: the background of synaptic input as fluctuating excitatory and inhibitory conductances -- the
+     point-conductance model of Destexhe et al. 2001 (Neuroscience 107:13), scaled to that area and to a third of their
+     values (they modelled the high-conductance state of anaesthetised cat cortex; ASSUMED for an awake mouse). It
+     lowers the input resistance 2–3-fold and makes Vm fluctuate around ~−65 mV, as in vivo (Destexhe & Paré 1999,
+     J Neurophysiol 81:1531).
+   · THE AMPLIFIER: the access (series) resistance Rs between pipette and cell. Voltage clamp: the cell is charged through
+     Rs (τ = Rs·Cm), and a current I leaves Vm short of the command by I·Rs; compensation removes a fraction of Rs.
+     Current clamp: the injected current drops I·Rs across the pipette (bridge balance removes it), and the pipette's
+     capacitance (~4 pF) with Rs low-passes the recorded voltage, blunting spikes when access is poor.
+   · DYE: the soma fills with the time constant found by Pusch & Neher 1988 (Pflügers Arch 411:204) for chromaffin-sized
+     cells, τ ≈ 0.6·Rs·M^⅓ s (Rs in MΩ, M the dye's mass in Da), then spreads along the cell's own membrane path by
+     diffusion; it crosses into a touching cell only where the pair is coupled by the gap-junction rules (the Ca²⁺ tab's
+     ticks, plus electrical synapses between interneurons: Galarreta & Hestrin 1999 Nature 402:72; Gibson et al. 1999
+     Nature 402:75) and only as far as the dye passes junctions. How fast it crosses per µm² of contact is ASSUMED.
+   · PUFF: pressure ejection of a volume V at concentration C₀ from a second pipette, spreading as from a point through
+     the extracellular space: free diffusion slowed by the tortuosity λ = 1.6, into a volume fraction α = 0.2 (Syková &
+     Nicholson 2008, Physiol Rev 88:1277), minus uptake. Effects are of the right sign and rough size only: glutamate
+     and GABA open conductances on the cells they reach; K⁺ depolarises cells and, raised modestly, dilates vessels
+     through Kir channels (Knot et al. 1996 J Physiol 492:419; Longden et al. 2017 Nat Neurosci 20:717); ATP onto
+     capillaries dilates and then constricts them, conducted along the vessel at ~5–20 µm/s (Cai et al. 2018, PNAS
+     115:E5796 -- the response sizes here are schematic); TTX silences the cells it reaches; sulforhodamine 101 is taken
+     up by astrocytes (Nimmerjahn et al. 2004, Nat Methods 1:31); Alexa 594 only shows where the puff went.
+   Units inside: mV, ms, pA, nS, pF, MΩ, µm, mM. Time: brain time, the master clock (section 29). */
+const PATCH = { on: false, arm: false, cell: null, node: -1, tip: null, mode: "cc", rs: 15, comp: 0, bridge: true, bg: true, net: false, scope: true,
+                cp: 4, V: -70, w: 0, h: 1, ge: 0, gi: 0, refr: 0, spk: -1e9, vrec: -70, iin: 0, t: 0, prot: "hold", fam: 0, famN: 0,
+                hold: { cc: 0, vc: -70 }, amp: { cc: 200, vc: 20 }, sw: null, sweeps: [], spikes: 0, mdl: null, group: null, cv: null, card: null,
+                test: null, stats: null, syn: 0, spkSeen: 0, own: 0, ii: true, dye: "none", force: false, note: "", _at: 0 };
+const PUFF = { arm: false, pos: null, ag: "glu", c0: null, vol: 5, events: [], group: null, near: new Map(), vas: [], said: 0 };
+const DYE = { cells: new Map(), sr: new Map(), t: 0 };
+const DYES = {
+  nb:    { name: "Neurobiotin", M: 323, gj: 1.0, col: "#38d996", D: 200, note: "crosses gap junctions readily; in the tissue it is seen only after fixation (streptavidin)" },
+  bc:    { name: "Biocytin", M: 372, gj: 0.7, col: "#ffa94d", note: "crosses gap junctions; seen only after fixation", D: 190 },
+  ly:    { name: "Lucifer yellow", M: 457, gj: 0.3, col: "#e8ff3a", note: "fluorescent; crosses astrocyte junctions, neuronal ones barely", D: 170 },
+  alexa: { name: "Alexa Fluor 594", M: 759, gj: 0.005, col: "#ff4d6d", note: "fluorescent; too large for most gap junctions -- it stays in the patched cell (a control)", D: 140 }
+};
+/* free diffusion coefficients in µm²/s (of the right order); k = removal per second (uptake, breakdown) */
+const PUFF_AG = {
+  glu:   { name: "Glutamate", c0: 1, D: 760, k: 3, col: "#ffb000", ec: 0.02, E: 0, g: 15, what: "opens glutamate receptors: neurons depolarise and fire" },
+  gaba:  { name: "GABA", c0: 1, D: 800, k: 2, col: "#a78bfa", ec: 0.01, E: -70, g: 20, what: "opens GABA-A receptors: inhibition and shunting" },
+  k:     { name: "K⁺ (KCl, above the bath's 3 mM)", c0: 30, D: 1960, k: 0.5, col: "#4dabf7", what: "depolarises cells; modest rises dilate vessels (Kir), large ones constrict" },
+  atp:   { name: "ATP", c0: 1, D: 500, k: 1, col: "#ff6b6b", what: "on capillaries: dilation, then constriction, conducted along the vessel (Cai et al. 2018)" },
+  ttx:   { name: "TTX", c0: 0.001, D: 500, k: 0.02, col: "#94d82d", ec: 0.00001, what: "blocks Na⁺ channels: cells it reaches cannot fire" },
+  sr101: { name: "Sulforhodamine 101", c0: 0.1, D: 400, k: 0.01, col: "#ff2e63", what: "a red dye taken up by astrocytes only" },
+  alexa: { name: "Alexa 594 (marks the cloud)", c0: 0.05, D: 400, k: 0, col: "#ff5c8a", what: "stays outside the cells: shows where the puff went" }
+};
+const ECS_A = 0.2, ECS_L = 1.6, PT_DT = 0.025;
+let _gs = null;
+function gauss(){ if (_gs != null){ const v = _gs; _gs = null; return v; } let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random();
+  const r = Math.sqrt(-2 * Math.log(u)); _gs = r * Math.sin(6.2831853 * v); return r * Math.cos(6.2831853 * v); }
+
+/* ── the cell's model, from its mesh and its type ── */
+function cellArea(c){
+  const G = cellGraph(c);
+  if (c._areaT && c._areaM === G.m) return c._areaT;
+  c._areaM = G.m; return (c._areaT = Math.max(300, nodeArea(c) * G.m));
+}
+function patchEffArea(c, node){
+  const G = cellGraph(c), { D } = arrival(G, [{ node, t0: 0 }], null, 0, 1), a = nodeArea(c);
+  let s = 0; for (let i = 0; i < G.m; i++) if (D[i] < 1e8) s += Math.exp(-D[i] / 300);
+  return Math.max(300, s * a);
+}
+const PATCH_BG = 0.35;
+function patchModel(c, node){
+  const Aall = cellArea(c), A = node != null && node >= 0 ? Math.min(Aall, patchEffArea(c, node)) : Aall, k = caKind(c), inh = cellClass(c) === "inh", Cm = A * 0.01;
+  let m;
+  if (k === "neuron") m = inh
+    ? { kind: "fast-spiking interneuron", spiking: true, rm: 10, EL: -65, VT: -48, Vr: -58, a: 0, b: 30, tw: 40, ref: 2.5, width: 0.45 }
+    : { kind: "regular-spiking pyramidal cell", spiking: true, rm: 20, EL: -70, VT: -50, Vr: -58, a: 2, b: 60, tw: 150, ref: 2.0, width: 1.0 };
+  else m = Object.assign({ spiking: false, a: 0, b: 0, tw: 100 }, ({
+    astro: { kind: "astrocyte (passive)", rin: 10, EL: -85 }, oligo: { kind: "oligodendrocyte (passive)", rin: 150, EL: -75 },
+    opc: { kind: "OPC (passive here)", rin: 800, EL: -85 }, micro: { kind: "microglia (passive)", rin: 2000, EL: -45 },
+    endo: { kind: "endothelial cell (passive)", rin: 300, EL: -40 }, mural: { kind: "mural cell (passive)", rin: 1000, EL: -45 },
+    other: { kind: "cell of unknown type (passive)", rin: 300, EL: -60 } })[k] || { kind: "cell (passive)", rin: 300, EL: -60 });
+  m.A = A; m.Aall = Aall; m.C = Cm;
+  if (m.rm){ m.gL = A / (m.rm * 100); m.a = m.a * m.gL / 10; m.b = m.b * Cm / 200; }      // nS = µm² / (kΩ·cm² · 100)
+  else m.gL = 1000 / (m.rin * (k === "astro" && CA.gapBlock ? 3 : 1));     // astrocytes: most of their low Rin is their coupling
+  /* Destexhe et al. 2001: ge0 0.012 µS ± 0.003, τ 2.7 ms; gi0 0.057 µS ± 0.0066, τ 10.5 ms, for 34,636 µm² */
+  const f = PATCH_BG * A / 34636;
+  m.bgOn = k === "neuron";
+  Object.assign(m, { ge0: 12 * f, se: 3 * f, gi0: 57 * f, si: 6.6 * f });
+  m.Ina = Math.min(8000, Math.max(500, 2000 * A / 20000));                // pA, the Na⁺ current of an escape in voltage clamp
+  return m;
+}
+const PATCH_MODE_NAME = { cc: "current clamp", vc: "voltage clamp" };
+/* ── the protocols: what the amplifier commands at time x (ms into the sweep) ── */
+function patchSweepLen(){
+  const P = PATCH;
+  return P.prot === "seal" ? 20 : P.prot === "fam" ? (P.mode === "cc" ? 900 : 300) : P.prot === "step" ? 800 : (P.holdLen || (P.mode === "cc" ? 1000 : 500));
+}
+function patchCmd(x){
+  const P = PATCH, cc = P.mode === "cc", base = cc ? P.hold.cc : P.hold.vc;
+  if (P.prot === "seal") return x >= 2 && x < 12 ? base + 5 : base;
+  if (P.prot === "step") return x >= 100 && x < 600 ? base + P.amp[P.mode] : base;
+  if (P.prot === "fam"){
+    const a = cc ? -100 + 100 * P.fam : -20 + 20 * P.fam - (base + 70);    // cc: −100…+400 pA; vc: steps to −90…+10 mV
+    return cc ? (x >= 100 && x < 700 ? base + a : base) : (x >= 50 && x < 250 ? base + a : base);
+  }
+  return base;
+}
+function patchFamN(){ return PATCH.mode === "cc" ? 6 : 6; }
+function patchProt(p){
+  const P = PATCH; P.prot = p; P.fam = 0; P.sweeps = []; P.holdLen = 0; P.test = null; P.stats = null; patchNewSweep();
+  patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
+}
+function patchNewSweep(){
+  const P = PATCH, len = patchSweepLen(), n = Math.round(len / 0.05) + 1;
+  P.sw = { t0: P.t, len, n, i: 0, y: new Float32Array(n), cmd: new Float32Array(n), fam: P.fam, spk: 0, mode: P.mode };
+}
+function patchEndSweep(){
+  const P = PATCH, s = P.sw;
+  if (s && s.i > 10){
+    if (P.prot === "seal") P.test = patchSealTest(s);
+    else P.stats = patchSweepStats(s);
+    if (P.prot === "fam" || P.prot === "step"){ P.sweeps.push(s); if (P.sweeps.length > 8) P.sweeps.shift(); }
+    else { P.sweeps = [s]; }
+  }
+  if (P.prot === "fam"){ P.fam++; if (P.fam >= patchFamN()){ P.prot = "hold"; P.holdLen = s.len; P.fam = 0; P.note = "Family done — the sweeps stay on the scope until the next protocol."; patchUiSync(); } }
+  else if (P.prot === "step"){ P.prot = "hold"; P.holdLen = s.len; patchUiSync(); }
+  patchNewSweep();
+}
+/* the membrane test: a 5 mV step through Rs onto the cell -- read off the simulated trace, as an amplifier does */
+function patchSealTest(s){
+  const d = 0.05, i0 = Math.round(2 / d), i1 = Math.round(12 / d), base = avg(s.y, Math.round(0.5 / d), i0 - 2);
+  let pk = 0, ipk = i0; for (let i = i0; i < Math.min(i1, i0 + 40); i++){ const v = s.y[i] - base; if (Math.abs(v) > Math.abs(pk)){ pk = v; ipk = i; } }
+  const ss = avg(s.y, i1 - Math.round(2 / d), i1 - 1) - base;
+  if (Math.abs(pk) < 1e-6 || Math.abs(ss) < 1e-6) return null;
+  const rs = 5 / pk * 1000, rt = 5 / ss * 1000;                       // mV / pA → GΩ → MΩ
+  let tau = 0; const tgt = ss + (pk - ss) / Math.E;
+  for (let i = ipk; i < i1; i++) if ((pk > 0 ? s.y[i] - base <= tgt : s.y[i] - base >= tgt)){ tau = (i - ipk) * d; break; }
+  const rin = Math.max(0, rt - rs), cm = tau > 0 && rin > 0 ? tau * (1 / rs + 1 / rin) * 1000 : 0;   // ms / MΩ → nF → pF
+  return { rs, rin, cm, ih: base };
+}
+function avg(a, i0, i1){ let s = 0, n = 0; for (let i = Math.max(0, i0); i <= Math.min(a.length - 1, i1); i++){ s += a[i]; n++; } return n ? s / n : 0; }
+function patchSweepStats(s){
+  const d = 0.05, P = PATCH;
+  if (s.mode === "cc"){
+    const pre = avg(s.y, 0, Math.round(95 / d));
+    const stepA = s.cmd[Math.round(300 / d)] - s.cmd[0];
+    const late = avg(s.y, Math.round(450 / d), Math.round(590 / d));
+    return { pre, spk: s.spk, stepA, dv: late - pre, rin: Math.abs(stepA) > 1 && s.spk === 0 ? (late - pre) / stepA * 1000 : null };
+  }
+  return { ih: avg(s.y, 0, Math.round(40 / d)) };
+}
+/* ── one step of the cell and the amplifier, h ms ── */
+function patchStep(h){
+  const P = PATCH, m = P.mdl, x = P.t - P.sw.t0;
+  const cmd = patchCmd(x), cc = P.mode === "cc";
+  if (P.bg && m.bgOn){
+    const ee = Math.exp(-h / 2.7), ei = Math.exp(-h / 10.5);
+    P.ge = Math.max(0, m.ge0 + (P.ge - m.ge0) * ee + m.se * Math.sqrt(1 - ee * ee) * gauss());
+    P.gi = Math.max(0, m.gi0 + (P.gi - m.gi0) * ei + m.si * Math.sqrt(1 - ei * ei) * gauss());
+  } else { P.ge = 0; P.gi = 0; }
+  const pf = P.puffG || { g: 0, E: 0, dEL: 0, ttx: false };
+  let G = m.gL + P.ge + P.gi + pf.g, GE = m.gL * (m.EL + pf.dEL) + P.gi * -75 + pf.g * pf.E;
+  let I = -P.w + P.syn;                                               // pA: adaptation, and the network's synaptic input
+  const since = P.t - P.spk, inSpk = since >= 0 && since < m.width;
+  /* voltage clamp: the escape's Na⁺ current, inward, through the cell -- an "action current" */
+  if (!cc && m.spiking && since >= 0 && since < 2.5) I -= m.Ina * Math.max(0, Math.exp(-since / 0.6) - Math.exp(-since / 0.12)) / 0.535;
+  let gs = 0;
+  if (!cc){ gs = 1000 / Math.max(0.3, P.rs * (1 - P.comp)); G += gs; GE += gs * cmd; } else I += cmd;
+  const Vinf = (GE + I) / G, tau = m.C / G;
+  P.V = Vinf + (P.V - Vinf) * Math.exp(-h / tau);
+  /* Na⁺ inactivation: recovers below ~−50 mV, gone above ~−40 */
+  const hinf = 1 / (1 + Math.exp((P.V + 45) / 3)); P.h += (hinf - P.h) * (1 - Math.exp(-h / 3));
+  P.w += (m.a * (P.V - m.EL) - P.w) * (1 - Math.exp(-h / m.tw));
+  if (P.refr > 0) P.refr -= h;
+  if (m.spiking && !pf.ttx && !DRUG.ttx && P.refr <= 0 && ((P.V >= m.VT && P.h > 0.5) || P.force)){
+    P.force = false; P.spk = P.t; P.refr = m.ref; P.w += m.b; P.h *= 0.4; P.spikes++; if (P.sw) P.sw.spk++;
+    if (cc) P.V = m.Vr;
+    patchSpikeOut();
+  }
+  /* what the amplifier records */
+  let rec;
+  if (cc){
+    let v = P.V;
+    if (inSpk){ const q = since / m.width, gk = Math.exp(-Math.pow((q - 0.3) / 0.16, 2)); v = P.V + (30 - P.V) * gk - 6 * Math.max(0, q - 0.5); }
+    const tgt = v + (P.bridge ? 0 : cmd * P.rs / 1000), tp = Math.max(0.005, P.rs * P.cp / 1000);   // mV; µs → ms
+    P.vrec += (tgt - P.vrec) * (1 - Math.exp(-h / tp)); rec = P.vrec;
+  } else {
+    rec = gs * (cmd - P.V);                                           // pA leaving the amplifier
+    P.iin = rec;
+  }
+  P.t += h;
+  const s = P.sw, k = Math.round((P.t - s.t0) / 0.05);
+  if (k > s.i && k < s.n){ for (let j = s.i + 1; j <= k; j++){ s.y[j] = rec; s.cmd[j] = cmd; } s.i = k; }
+  if (P.t - s.t0 >= s.len) patchEndSweep();
+}
+function patchFrame(sdt){
+  const P = PATCH;
+  if (!P.on || !P.cell || !P.mdl){ dyeFrame(sdt); puffFrame(sdt); return; }
+  const c = P.cell;
+  if (!c.mesh){ patchWithdraw(); return; }
+  puffFrame(sdt);
+  /* the network: synaptic potentials arriving in the stimulation model, as a current; its own decision to fire */
+  P.syn = 0;
+  if (P.net && STIM.on && STIM.active && STIM.active.has(c)){
+    const v = patchPsp(c, STIM.now); P.syn = v * (P.mdl.gL + P.ge + P.gi);
+    if ((c.spkN || 0) > P.spkSeen){ P.spkSeen = c.spkN; if (P.own > 0) P.own--; else P.force = true; }
+  }
+  let ms = Math.min(1000, Math.max(0, sdt * 1000));
+  const n = Math.min(40000, Math.ceil(ms / PT_DT));
+  const h = n ? ms / n : 0;
+  for (let k = 0; k < n; k++) patchStep(h);
+  if (ms >= 1000 && performance.now() - (P._fastSaid || 0) > 8000){ P._fastSaid = performance.now(); P.note = "The clock is too fast for the patch clamp — it shows 1 s of brain time per frame. Slow it to ×0.2 (Recommended: Patch clamp)."; }
+  dyeFrame(sdt);
+  const now = performance.now();
+  if (now - P._at > 100){ P._at = now; patchDrawAll(); }
+}
+function patchPsp(c, t){
+  const soma = somaNode(c, 0); let v = 0;
+  for (const s of c.slots || []){
+    if (s.kind === "A") continue;
+    const d = s.D[soma]; if (d >= 1e8) continue;
+    const sh = psShape(t - s.t0 - d / PSP_V(), s.tr, s.td); if (sh <= 0) continue;
+    v += s.amp * sh * Math.exp(-d / VM.lambda) * (s.kind !== "I" ? shunt(c, s, t, soma) : 1);
+  }
+  return vmSat(v);
+}
+/* its spike goes out through its synapses (stimulation model), when linked */
+function patchSpikeOut(){
+  const P = PATCH, c = P.cell;
+  if (!P.net || !STIM.on || !c || !c.mesh) return;
+  STIM.active = STIM.active || new Set();
+  if (P.force === false && (c.spkN || 0) > P.spkSeen) P.spkSeen = c.spkN;
+  const before = c.spkN || 0;
+  try { fireCell(c, somaNode(c, P.node), STIM.now); } catch (e){ console.warn("[vr] patch → network:", e); }
+  if ((c.spkN || 0) > before){ P.own++; }
+  STIM.running = true;
+}
+
+/* ── placing the pipettes ── */
+function pipetteMesh(tip, dir, col){
+  const grp = new THREE.Group(), L = 420;
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(18, 0.6, L, 20, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xd8ecff, transparent: true, opacity: 0.32, roughness: 0.08, metalness: 0.1, side: THREE.DoubleSide, depthWrite: false }));
+  const fill = new THREE.Mesh(new THREE.CylinderGeometry(14, 0.35, L * 0.97, 14, 1),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(col || "#9fd3ff"), transparent: true, opacity: 0.45, emissive: new THREE.Color(col || "#000000"), emissiveIntensity: col ? 0.35 : 0, depthWrite: false }));
+  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, L * 0.9, 6), new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.9, roughness: 0.3 }));
+  [glass, fill, wire].forEach(o => { o.position.y = L / 2; o.renderOrder = 6; grp.add(o); });
+  grp.userData.fill = fill;
+  grp.position.copy(tip); grp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  return grp;
+}
+function patchDrawPipette(){
+  if (PATCH.group){ disposeGroup(PATCH.group); PATCH.group = null; }
+  if (!PATCH.on || !PATCH.tip) return;
+  const d = DYES[PATCH.dye];
+  PATCH.group = pipetteMesh(PATCH.tip, new THREE.Vector3(-0.8, -0.57, 0.18), d ? d.col : null);   // in from the brain's surface (−y), ~35°
+  content.add(PATCH.group);
+}
+function puffDrawPipette(){
+  if (PUFF.group){ disposeGroup(PUFF.group); PUFF.group = null; }
+  if (!PUFF.pos) return;
+  PUFF.group = pipetteMesh(PUFF.pos, new THREE.Vector3(0.75, -0.6, -0.25), PUFF_AG[PUFF.ag].col);
+  content.add(PUFF.group);
+}
+function patchRayPick(r){
+  _mr.ray.origin.copy(r.origin); _mr.ray.direction.copy(r.dir);
+  const cells = CELLS.filter(c => c.mesh && c.mesh.visible).map(c => c.mesh), targets = cells.slice();
+  if (PUFF.arm && VASC.mesh && VASC.mesh.visible) targets.push(VASC.mesh);
+  const hit = _mr.intersectObjects(targets, false).filter(x => !cutActive() || CUT.plane.distanceToPoint(x.point) >= 0)[0];
+  if (PUFF.arm){
+    if (!hit){ ctxNote.textContent = "Puff pipette: point at a cell or a vessel."; return; }
+    const p = content.worldToLocal(hit.point.clone()), back = content.worldToLocal(r.origin.clone()).sub(p).normalize().multiplyScalar(4);
+    puffPlace(p.add(back)); return;
+  }
+  if (!hit || hit.object.userData.cell == null){ ctxNote.textContent = "Patch clamp: point at a cell."; return; }
+  const c = CELLS[hit.object.userData.cell];
+  patchAttach(c, content.worldToLocal(hit.point.clone()));
+}
+function patchAttach(c, local){
+  const G = cellGraph(c), node = local ? nearestNode(G, local).node : somaNode(c, 0);
+  const P = PATCH;
+  if (P.cell && P.cell !== c) patchWithdraw(true);
+  Object.assign(P, { on: true, arm: false, cell: c, node, tip: nodePos(c, node), mdl: patchModel(c, node), t: 0, spikes: 0, sweeps: [], test: null, stats: null,
+                     w: 0, h: 1, refr: 0, spk: -1e9, ge: 0, gi: 0, syn: 0, spkSeen: c.spkN || 0, own: 0, prot: "hold", fam: 0, note: "" });
+  P.V = P.mdl.EL; P.vrec = P.V;
+  patchNewSweep(); patchDrawPipette(); patchCardShow(true);
+  if (DYES[P.dye]) dyeStart(c, node);
+  simRecommend("patch");
+  const m = P.mdl;
+  ctxNote.textContent = "🧪 Whole-cell on " + shortName(c) + " — " + m.kind + ": membrane ~" + Math.round(m.A).toLocaleString("en-US") + " µm² near the pipette (" + Math.round(m.Aall).toLocaleString("en-US") + " µm² in the whole mesh) → Cm " + Math.round(m.C) + " pF, Rin " + Math.round(1000 / m.gL) + " MΩ at rest"
+    + (m.bgOn && P.bg ? " (lower with the in vivo background)" : "") + ". MODEL — see the note in the panel.";
+  try { PATCHP.dirty = true; if (renderer.xr.isPresenting && !PATCHP.on) vrpShow(PATCHP, true); } catch (e){}
+  patchUiSync();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function patchWithdraw(quiet){
+  const P = PATCH;
+  P.on = false; P.cell = null; P.mdl = null; P.tip = null; P.sw = null;
+  if (P.group){ disposeGroup(P.group); P.group = null; }
+  for (const [, d] of DYE.cells) d.held = false;
+  patchCardShow(false);
+  if (!quiet) ctxNote.textContent = "Pipette withdrawn. The dye already in the cells stays (and goes on spreading between coupled cells).";
+  patchUiSync();
+  try { PATCHP.dirty = true; } catch (e){}
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setPatchArm(v){
+  PATCH.arm = !!v; if (v) PUFF.arm = false;
+  if (v && STIM.electrode) setElectrode(false);
+  document.getElementById("patchBtn").classList.toggle("on", PATCH.arm || PATCH.on);
+  document.getElementById("puffBtn").classList.toggle("on", PUFF.arm || !!PUFF.pos);
+  if (v) ctxNote.textContent = "Patch clamp: click (or trigger) on a cell — the pipette goes whole-cell where you point (a soma is where it is usually done).";
+  patchUiSync();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setPuffArm(v){
+  PUFF.arm = !!v; if (v) PATCH.arm = false;
+  document.getElementById("patchBtn").classList.toggle("on", PATCH.arm || PATCH.on);
+  document.getElementById("puffBtn").classList.toggle("on", PUFF.arm || !!PUFF.pos);
+  if (v) ctxNote.textContent = "Puff pipette: click (or trigger) on a cell or a vessel — the tip goes into the extracellular space just in front of it.";
+  patchUiSync();
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function puffPlace(p){
+  PUFF.pos = p; PUFF.arm = false; PUFF.near.clear(); PUFF.vas = [];
+  puffDrawPipette();
+  document.getElementById("puffBtn").classList.add("on");
+  ctxNote.textContent = "💨 Puff pipette placed. Choose what is in it and press Puff.";
+  patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function puffRemove(){
+  PUFF.pos = null; PUFF.events = []; PUFF.near.clear(); PUFF.vas = [];
+  if (PUFF.group){ disposeGroup(PUFF.group); PUFF.group = null; }
+  if (PUFF.cloud){ disposeGroup(PUFF.cloud); PUFF.cloud = null; }
+  if (NV.puff){ NV.puff = null; }
+  document.getElementById("puffBtn").classList.remove("on");
+  patchUiSync(); if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+
+/* ── THE DYE ── */
+function dyeCoupled(a, b){
+  if (CA.gapBlock) return "";
+  const r = coupledBy(a, b); if (r) return r;
+  if (PATCH.ii && caKind(a) === "neuron" && caKind(b) === "neuron" && cellClass(a) === "inh" && cellClass(b) === "inh") return "electrical synapses between interneurons (Cx36)";
+  return "";
+}
+function dyeEnsureAttr(c){
+  const g = c.mesh.geometry;
+  if (!g.attributes.dyD) g.setAttribute("dyD", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(1e9), 1));
+  const u = c.mesh.material.userData;
+  if (!u.dyA){ u.dyA = { value: 0 }; u.dyL = { value: 1 }; u.dyC = { value: new THREE.Color() }; }
+}
+function dyeEntry(c, sources){
+  const G = cellGraph(c), { D } = arrival(G, sources.map(n => ({ node: n, t0: 0 })), null, 0, 1);
+  const P = G.pos, s0 = sources[0];
+  for (let i = 0; i < D.length; i++) if (D[i] >= 1e8) D[i] = 1.5 * Math.hypot(P[i*3] - P[s0*3], P[i*3+1] - P[s0*3+1], P[i*3+2] - P[s0*3+2]);
+  dyeEnsureAttr(c); writeAttr(c, "dyD", D);
+  return D;
+}
+function dyeStart(c, node){
+  const d = DYES[PATCH.dye]; if (!d) return;
+  for (const [x] of DYE.cells) if (x.mesh && x.mesh.material.userData.dyA) x.mesh.material.userData.dyA.value = 0;
+  DYE.cells.clear(); DYE.t = SIM.t; DYE.kind = PATCH.dye;
+  const D = dyeEntry(c, [node]);
+  DYE.cells.set(c, { conc: 0, t0: SIM.t, held: true, D, src: [node], tau: 0.6 * PATCH.rs * Math.cbrt(d.M), V: Math.max(500, 0.3 * cellArea(c)) });
+  /* the contacts it can cross: found once (section 20) */
+  try { findContacts(); } catch (e){ console.warn("[vr] dye contacts:", e); }
+  const coupled = CT.pairs.filter(P => (P.a === c.i || P.b === c.i) && dyeCoupled(CELLS[P.a], CELLS[P.b]));
+  PATCH.note = d.name + " in the pipette: the soma fills with τ ≈ " + Math.round(0.6 * PATCH.rs * Math.cbrt(d.M)) + " s at Rs " + PATCH.rs + " MΩ (Pusch & Neher 1988)" + (coupled.length ? "; " + coupled.length + " touching cell" + (coupled.length === 1 ? " is" : "s are") + " coupled to it" : "; no loaded cell that touches it is coupled to it") + ". Dye fills take minutes: set the clock to ×20 to watch (Recommended: Dye filling).";
+}
+function dyeFrame(sdt){
+  if (!DYE.cells.size && !DYE.sr.size) return;
+  const dt = Math.min(30, Math.max(0, sdt)), d = DYES[DYE.kind];
+  if (d && dt > 0){
+    /* the patched cell, from the pipette; every other cell from its coupled, touching neighbours */
+    for (const [c, s] of DYE.cells){
+      if (s.held && PATCH.cell === c){ s.tau = 0.6 * PATCH.rs * Math.cbrt(d.M); s.conc += (1 - s.conc) * (1 - Math.exp(-dt / s.tau)); }
+      s.L = Math.sqrt(4 * d.D * Math.max(0, SIM.t - s.t0)) + 2;
+    }
+    const K = 1.0 * d.gj;                                              // µm/s per µm² of coupled contact -- ASSUMED
+    if (K > 0) for (const P of CT.pairs){
+      const A = CELLS[P.a], B = CELLS[P.b]; if (!A || !B || !A.mesh || !B.mesh) continue;
+      const sa = DYE.cells.get(A), sb = DYE.cells.get(B); if (!sa && !sb) continue;
+      if (!dyeCoupled(A, B)) continue;
+      const [from, to, sf, st, fromA] = (sa ? sa.conc : 0) >= (sb ? sb.conc : 0) ? [A, B, sa, sb, true] : [B, A, sb, sa, false];
+      if (!sf || sf.conc < 1e-4) continue;
+      /* only the contacts the dye has reached in the donor */
+      let a = 0, best = null, bw = 0;
+      for (const site of P.sites){ const nf = fromA ? site.na : site.nb, dd = sf.D[nf], wv = Math.exp(-Math.pow(dd / sf.L, 2)); a += site.area * wv; if (wv > bw){ bw = wv; best = site; } }
+      if (a < 1e-3 || !best) continue;
+      let s2 = st;
+      if (!s2){ const nt = fromA ? best.nb : best.na; s2 = { conc: 0, t0: SIM.t, held: false, src: [nt], D: dyeEntry(to, [nt]), V: Math.max(500, 0.3 * cellArea(to)) }; DYE.cells.set(to, s2); s2.L = 2; }
+      const fl = K * a * (sf.conc - s2.conc) * dt;                    // amount (conc·µm³)
+      s2.conc = Math.min(sf.conc, s2.conc + fl / s2.V);
+      if (!(sf.held && PATCH.cell === from)) sf.conc = Math.max(0, sf.conc - fl / sf.V);
+    }
+  }
+  /* what is drawn */
+  const col = d ? new THREE.Color(d.col) : new THREE.Color("#ffffff"), red = new THREE.Color(PUFF_AG.sr101.col);
+  const seen = new Set();
+  for (const [c, s] of DYE.cells){
+    if (!c.mesh) continue; dyeEnsureAttr(c); seen.add(c);
+    const u = c.mesh.material.userData, sr = DYE.sr.get(c) || 0;
+    if (sr > s.conc){ u.dyA.value = sr; u.dyL.value = 1e6; u.dyC.value.copy(red); }
+    else { u.dyA.value = Math.min(1, s.conc * 1.4); u.dyL.value = s.L || 2; u.dyC.value.copy(col); }
+  }
+  for (const [c, sr] of DYE.sr){
+    if (seen.has(c) || !c.mesh) continue; dyeEnsureAttr(c);
+    const u = c.mesh.material.userData; u.dyA.value = sr; u.dyL.value = 1e6; u.dyC.value.copy(red);
+    if (!c._srD){ c._srD = true; const a = c.mesh.geometry.attributes.dyD; a.array.fill(0); a.needsUpdate = true; }
+  }
+}
+function dyeClear(){
+  for (const c of new Set([...DYE.cells.keys(), ...DYE.sr.keys()])) if (c.mesh && c.mesh.material.userData.dyA){ c.mesh.material.userData.dyA.value = 0; c._srD = false; }
+  DYE.cells.clear(); DYE.sr.clear();
+  ctxNote.textContent = "Dye washed out (a model can do that).";
+  try { PATCHP.dirty = true; } catch (e){}
+}
+function setPatchDye(k){
+  PATCH.dye = DYES[k] ? k : "none";
+  const el = document.getElementById("pcDye"); if (el) el.value = PATCH.dye;
+  if (PATCH.on && PATCH.cell && DYES[k]) dyeStart(PATCH.cell, PATCH.node);
+  else if (DYES[k]) PATCH.note = DYES[k].name + " is in the pipette: patch a cell to fill it.";
+  patchDrawPipette(); patchUiSync();
+  try { PATCHP.dirty = true; } catch (e){}
+}
+
+/* ── THE PUFF ── */
+function puffNow(){
+  if (!PUFF.pos){ ctxNote.textContent = "Place the puff pipette first (💨 Puff pipette, then click or trigger on a cell or vessel)."; return; }
+  const ag = PUFF_AG[PUFF.ag], c0 = PUFF.c0 != null ? PUFF.c0 : ag.c0, vol = Math.max(0.1, PUFF.vol);
+  const Ds = ag.D / (ECS_L * ECS_L) / 1000;                            // µm² per ms, in the extracellular space
+  const M = c0 * vol * 1000 / ECS_A;                                   // mM · µm³, spread in the extracellular fraction
+  const r0 = Math.cbrt(3 * vol * 1000 / (4 * Math.PI * ECS_A));        // the bolus as it leaves the tip
+  PUFF.events.push({ ag: PUFF.ag, t0: SIM.t * 1000, M, Ds, tf: r0 * r0 / (6 * Ds), k: ag.k, c0, fired: new Set() });
+  if (PUFF.near.size === 0) puffNear();
+  if (PUFF.ag === "k" || PUFF.ag === "atp") puffVessels();
+  const msg = "💨 Puff: " + vol + " pL of " + ag.name + " at " + c0 + " mM — " + ag.what + ". MODEL.";
+  ctxNote.textContent = msg; try { flashWarn("💨 " + ag.name + " puffed", 1800, ag.col); } catch (e){}
+  if ((PUFF.ag === "k" || PUFF.ag === "atp") && SIM.speed < 0.3 && performance.now() - PUFF.said > 10000){ PUFF.said = performance.now(); setTimeout(() => { ctxNote.textContent += " Vessel responses take seconds: set the clock near ×1 (Recommended: Neurovascular coupling)."; }, 0); }
+}
+/* concentration (mM) at distance r µm, t ms after the puff */
+function puffConc(e, r, t){
+  if (t < 0) return 0;
+  const tt = t + e.tf;
+  return e.M / Math.pow(4 * Math.PI * e.Ds * tt, 1.5) * Math.exp(-r * r / (4 * e.Ds * tt) - e.k * t / 1000);
+}
+function puffNear(){
+  PUFF.near.clear(); const p = PUFF.pos;
+  for (const c of CELLS){
+    if (!c.mesh) continue;
+    const G = cellGraph(c), near = nearestNode(G, p);
+    PUFF.near.set(c, { d: near.dist, node: near.node });
+  }
+}
+/* conducted vascular response: every vessel node within ~600 µm along the network from the nodes the puff reaches */
+function puffVessels(){
+  PUFF.vas = [];
+  if (!DS_HAS.vasc){ return; }
+  if (!NV.on){ setNv(true); setTimeout(() => { ctxNote.textContent += " Vessel regulation switched on to show the vessels' response."; }, 0); }
+  const go = () => {
+    if (!NV.glob || !NV.net){ setTimeout(go, 500); return; }
+    const p = PUFF.pos, seeds = [];
+    for (let li = 1; li < NV.glob.length; li++){ const q = nvPos(NV.glob[li]), d = Math.hypot(q[0] - p.x, q[1] - p.y, q[2] - p.z); if (d < 40) seeds.push([NV.glob[li], d]); }
+    if (!seeds.length){ PUFF.vasNote = "no traced vessel within 40 µm of the tip"; return; }
+    const dist = new Map(), heap = [];
+    const push = (dd, i) => { heap.push([dd, i]); let k = heap.length - 1; while (k){ const q = (k - 1) >> 1; if (heap[q][0] <= heap[k][0]) break; [heap[q], heap[k]] = [heap[k], heap[q]]; k = q; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let k = 0; for (;;){ const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+    for (const [gi, d0] of seeds){ dist.set(gi, d0); push(d0, gi); }
+    let guard = 0;
+    while (heap.length && guard++ < 400000){
+      const [dd, i] = pop(); if (dd > dist.get(i) || dd > 600) continue;
+      nvEach(i, (j, L) => { const nd = dd + L; if (nd < (dist.has(j) ? dist.get(j) : 1e9)){ dist.set(j, nd); push(nd, j); } });
+    }
+    const out = [];
+    for (const [gi, dd] of dist){ const li = NV.loc.get(gi); if (li == null) continue; out.push([li, Math.exp(-dd / 250), dd / 0.01]); }   // delay at 10 µm/s (ms)
+    PUFF.vas = out; PUFF.vasNote = out.length + " vessel points respond";
+  };
+  go();
+}
+function puffFrame(sdt){
+  const P = PATCH, tms = SIM.t * 1000;
+  PUFF.events = PUFF.events.filter(e => tms - e.t0 < 180000);
+  /* on the patched cell */
+  const pg = { g: 0, E: 0, dEL: 0, ttx: false };
+  if (PUFF.events.length){
+    const ntr = PUFF.near;
+    if (P.on && P.cell && P.mdl && !ntr.has(P.cell)) puffNear();
+    if (P.on && P.cell && P.mdl){
+      const nr = ntr.get(P.cell); let gE = 0, gEE = 0, kx = 0, tt = 0;
+      for (const e of PUFF.events){
+        const C = puffConc(e, nr ? nr.d : 1e4, tms - e.t0), a = PUFF_AG[e.ag], sc = P.mdl.A / 20000;
+        if (e.ag === "glu" || e.ag === "gaba"){ const g = a.g * sc * C / (C + a.ec); gE += g; gEE += g * a.E; }
+        if (e.ag === "k") kx += C;
+        if (e.ag === "ttx") tt += C;
+      }
+      pg.g = gE; pg.E = gE > 0 ? gEE / gE : 0;
+      /* K⁺: the resting potential follows E_K partly in neurons, almost fully in astrocytes -- ASSUMED slopes */
+      if (kx > 0.01) pg.dEL = (caKind(P.cell) === "astro" ? 0.9 : 0.6) * 61.5 * Math.log10((3 + kx) / 3);
+      pg.ttx = tt > 10 * PUFF_AG.ttx.ec;
+    }
+    /* on the other cells */
+    for (const e of PUFF.events){
+      const t = tms - e.t0;
+      for (const [c, nr] of ntr){
+        if (!c.mesh || c === P.cell) continue;
+        const C = puffConc(e, nr.d, t);
+        if (e.ag === "glu" && C > PUFF_AG.glu.ec && STIM.on && caKind(c) === "neuron" && inPlay(c) && !c._ttxP){
+          const last = c.apLast || -1e9;
+          if (STIM.now - last > 25 && (!e.lastF || !e.lastF.has(c) || STIM.now - e.lastF.get(c) > 25)){
+            (e.lastF = e.lastF || new Map()).set(c, STIM.now); STIM.active = STIM.active || new Set();
+            try { fireCell(c, nr.node, STIM.now); STIM.running = true; } catch (x){}
+          }
+        }
+        if (e.ag === "ttx") c._ttxP = C > 10 * PUFF_AG.ttx.ec;
+        if (e.ag === "sr101" && caKind(c) === "astro" && C > 0.0005){
+          const v = DYE.sr.get(c) || 0; DYE.sr.set(c, Math.min(1, v + (1 - v) * (C / (C + 0.01)) * Math.min(30, sdt) / 60));
+        }
+      }
+    }
+  }
+  P.puffG = pg;
+  /* the vessels: K⁺ and ATP */
+  if (PUFF.vas.length && NV.glob && NV.texData){
+    if (!NV.puff || NV.puff.length !== NV.glob.length) NV.puff = new Float32Array(NV.glob.length);
+    NV.puff.fill(0);
+    for (const e of PUFF.events){
+      if (e.ag !== "k" && e.ag !== "atp") continue;
+      for (const [li, w, dl] of PUFF.vas){
+        const t = tms - e.t0 - dl; if (t <= 0) continue;
+        const C = puffConc(e, 10, t);
+        let r;
+        if (e.ag === "k") r = C <= 20 ? 0.10 * C / (C + 4) : 0.10 * 20 / 24 - 0.012 * (C - 20);      // dilation up to ~15 mM, constriction beyond
+        else { const ts = t / 1000, x = C / (C + 0.05); r = x * (0.06 * Math.exp(-ts / 4) - 0.10 * (1 - Math.exp(-ts / 3)) * Math.exp(-ts / 40)); }
+        NV.puff[li] += w * r;
+      }
+    }
+    if (!NV.on){ const D = NV.texData; for (let li = 1; li < NV.glob.length; li++) D[li*4] = NV.puff[li]; NV.tex.needsUpdate = true; }
+  } else if (NV.puff && !PUFF.events.some(e => e.ag === "k" || e.ag === "atp")) NV.puff = null;
+  puffDrawCloud(tms);
+}
+function puffDrawCloud(tms){
+  if (!PUFF.pos || !PUFF.events.length){ if (PUFF.cloud){ disposeGroup(PUFF.cloud); PUFF.cloud = null; } return; }
+  if (!PUFF.cloud){
+    PUFF.cloud = new THREE.Group();
+    for (let k = 0; k < 3; k++){ const m = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })); m.renderOrder = 7; PUFF.cloud.add(m); }
+    content.add(PUFF.cloud);
+  }
+  const e = PUFF.events[PUFF.events.length - 1], t = tms - e.t0, tt = t + e.tf, C0 = puffConc(e, 0, t), col = new THREE.Color(PUFF_AG[e.ag].col);
+  PUFF.cloud.position.copy(PUFF.pos);
+  [0.5, 0.1, 0.02].forEach((f, k) => {
+    const m = PUFF.cloud.children[k], cth = f * e.c0, ok = C0 > cth;
+    m.visible = ok;
+    if (!ok) return;
+    const r = Math.sqrt(4 * e.Ds * tt * Math.log(C0 / cth));
+    m.scale.setScalar(Math.max(0.5, r)); m.material.color.copy(col); m.material.opacity = [0.35, 0.18, 0.09][k] * Math.min(1, C0 / e.c0 * 2 + 0.3);
+  });
+}
+
+/* ── THE OSCILLOSCOPE ── */
+function patchScope(g, X, Y, W, H, big){
+  const P = PATCH, fs = big ? 1.8 : 1, cc = P.mode === "cc";
+  g.fillStyle = "rgba(6,10,14,0.92)"; g.fillRect(X, Y, W, H);
+  g.strokeStyle = "rgba(120,220,255,0.6)"; g.lineWidth = 1.5 * fs; g.strokeRect(X + 0.5, Y + 0.5, W - 1, H - 1);
+  const s = P.sw;
+  g.font = "600 " + Math.round(13 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#9be7ff";
+  if (!P.on || !s){ g.fillText(PUFF.pos ? "Puff pipette placed — patch a cell to record." : "Patch a cell to record.", X + 10 * fs, Y + 22 * fs); return; }
+  const m = P.mdl, top = Y + 26 * fs, mainH = (H - 26 * fs) * 0.74, cmdY = top + mainH + 6 * fs, cmdH = H - (cmdY - Y) - 18 * fs;
+  const L = X + 72 * fs, R = X + W - 10 * fs;
+  /* the range: fixed for the mode, widened to the data */
+  let lo, hi;
+  if (cc){ lo = -95; hi = 40; } else {
+    lo = 1e9; hi = -1e9; const all = P.sweeps.concat([s]);
+    for (const q of all) for (let i = 0; i <= q.i; i += 3){ const v = q.y[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (!(hi > lo)){ lo = -100; hi = 100; }
+    const pad = Math.max(20, (hi - lo) * 0.1); lo -= pad; hi += pad;
+  }
+  const yOf = v => top + mainH * (1 - (v - lo) / (hi - lo));
+  /* grid */
+  g.strokeStyle = "rgba(255,255,255,0.07)"; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++){ const y = top + mainH * k / 4; g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); }
+  g.fillStyle = "#8b949e"; g.font = Math.round(11 * fs) + "px system-ui, sans-serif";
+  for (let k = 0; k <= 4; k++){ const v = hi - (hi - lo) * k / 4; g.fillText((Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : Math.round(v)) + (k === 0 ? (cc ? " mV" : " pA") : ""), X + 6 * fs, top + mainH * k / 4 + 4 * fs); }
+  const draw = (q, col, lw) => {
+    g.strokeStyle = col; g.lineWidth = lw * fs; g.beginPath();
+    const stp = Math.max(1, Math.floor(q.n / (R - L) / 1.5));
+    for (let i = 0; i <= q.i; i += stp){
+      let v = q.y[i]; if (stp > 1){ let mn = v, mx = v; for (let j = i; j < Math.min(q.i, i + stp); j++){ mn = Math.min(mn, q.y[j]); mx = Math.max(mx, q.y[j]); } v = Math.abs(mx - q.y[0]) > Math.abs(mn - q.y[0]) ? mx : mn; }
+      const x = L + (R - L) * i / (q.n - 1), y = Math.max(top, Math.min(top + mainH, yOf(v)));
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.stroke();
+  };
+  P.sweeps.forEach((q, k) => { if (q !== s) draw(q, "rgba(120,200,255," + (0.25 + 0.5 * (k + 1) / P.sweeps.length) + ")", 1); });
+  draw(s, cc ? "#7ef9a8" : "#ffd166", 1.4);
+  /* the command */
+  let clo = 1e9, chi = -1e9; for (let i = 0; i <= s.i; i += 4){ clo = Math.min(clo, s.cmd[i]); chi = Math.max(chi, s.cmd[i]); }
+  for (const q of P.sweeps) for (let i = 0; i <= q.i; i += 8){ clo = Math.min(clo, q.cmd[i]); chi = Math.max(chi, q.cmd[i]); }
+  if (!(chi >= clo)){ clo = chi = cc ? P.hold.cc : P.hold.vc; }
+  const cLab = (cc ? "I " : "V ") + (Math.abs(chi - clo) > 2 ? Math.round(clo) + "…" + Math.round(chi) : Math.round(chi)) + (cc ? " pA" : " mV");
+  if (!(chi - clo > 1e-6)){ clo -= 1; chi += 1; }
+  const cy = v => cmdY + cmdH * (1 - (v - clo) / (chi - clo));
+  for (const q of P.sweeps){ if (q === s) continue; g.strokeStyle = "rgba(255,255,255,0.18)"; g.lineWidth = 1 * fs; g.beginPath();
+    for (let i = 0; i <= q.i; i += 4){ const x = L + (R - L) * i / (q.n - 1); i ? g.lineTo(x, cy(q.cmd[i])) : g.moveTo(x, cy(q.cmd[i])); } g.stroke(); }
+  g.strokeStyle = "rgba(255,255,255,0.55)"; g.lineWidth = 1 * fs; g.beginPath();
+  for (let i = 0; i <= s.i; i += 4){ const x = L + (R - L) * i / (s.n - 1); i ? g.lineTo(x, cy(s.cmd[i])) : g.moveTo(x, cy(s.cmd[i])); }
+  g.stroke();
+  g.fillStyle = "#8b949e"; g.fillText(cLab, X + 6 * fs, cmdY + cmdH / 2 + 4 * fs);
+  g.fillText(s.len >= 100 ? s.len + " ms" : s.len + " ms", R - 50 * fs, Y + H - 4 * fs);
+  /* the head line */
+  g.fillStyle = "#e6edf3"; g.font = "600 " + Math.round(13 * fs) + "px system-ui, sans-serif";
+  const head = "🧪 " + shortName(P.cell) + " · " + PATCH_MODE_NAME[P.mode] + " · Rs " + P.rs + " MΩ" + (!cc && P.comp ? " (−" + Math.round(P.comp * 100) + " %)" : "") + (cc && !P.bridge ? " · bridge OFF" : "");
+  g.fillText(vrpFit(g, head, W - 20 * fs), X + 10 * fs, Y + 18 * fs);
+  g.font = Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
+  g.textAlign = "right";
+  const live = cc ? "Vm " + P.vrec.toFixed(1) + " mV" : "I " + Math.round(P.iin) + " pA";
+  g.fillText(live, R, Y + 18 * fs); g.textAlign = "left";
+}
+function patchReadout(){
+  const P = PATCH; if (!P.on || !P.mdl) return [];
+  const m = P.mdl, out = [], cc = P.mode === "cc";
+  const rinBg = 1000 / (m.gL + (P.bg && m.bgOn ? m.ge0 + m.gi0 : 0));
+  out.push(m.kind + " · Cm " + Math.round(m.C) + " pF (" + Math.round(m.A).toLocaleString("en-US") + " of " + Math.round(m.Aall).toLocaleString("en-US") + " µm² of mesh membrane near the pipette) · Rin " + Math.round(1000 / m.gL) + " MΩ" + (P.bg && m.bgOn ? ", ~" + Math.round(rinBg) + " MΩ with the in vivo background" : ""));
+  if (P.test) out.push("Membrane test (from the trace): Rs " + P.test.rs.toFixed(1) + " MΩ · Rin " + Math.round(P.test.rin) + " MΩ · Cm " + Math.round(P.test.cm) + " pF · holding " + Math.round(P.test.ih) + " pA");
+  if (P.stats && cc) out.push("Last sweep: " + P.stats.spk + " spike" + (P.stats.spk === 1 ? "" : "s") + " · baseline " + P.stats.pre.toFixed(1) + " mV" + (P.stats.rin != null ? " · Rin from the step " + Math.round(P.stats.rin) + " MΩ" : ""));
+  if (P.stats && !cc) out.push("Holding current " + Math.round(P.stats.ih) + " pA at " + P.hold.vc + " mV");
+  if (!cc){ const err = P.iin * P.rs * (1 - P.comp) / 1000; if (Math.abs(err) > 2) out.push("⚠ Voltage error now ≈ " + err.toFixed(1) + " mV (I × Rs) — the cell is not where you clamp it."); }
+  if (cc && !P.bridge && Math.abs(patchCmd(P.t - P.sw.t0)) > 20) out.push("⚠ Bridge off: the trace includes I × Rs = " + (patchCmd(P.t - P.sw.t0) * P.rs / 1000).toFixed(1) + " mV across the pipette.");
+  const d = DYES[DYE.kind]; if (d && DYE.cells.size){ const n = [...DYE.cells.values()].filter(s => s.conc > 0.02).length; out.push("Dye: " + d.name + " in " + n + " cell" + (n === 1 ? "" : "s") + (DYE.cells.get(P.cell) ? " · this cell " + Math.round(100 * DYE.cells.get(P.cell).conc) + " %" : "")); }
+  if (PUFF.vasNote && PUFF.events.some(e => e.ag === "k" || e.ag === "atp")) out.push("Vessels: " + PUFF.vasNote);
+  if (P.note) out.push(P.note);
+  return out;
+}
+function patchCardShow(on){
+  if (renderer.xr.isPresenting) on = false;
+  if (!PATCH.card){
+    if (!on) return;
+    const d = PATCH.card = document.createElement("div");
+    d.style.cssText = "position:fixed;right:12px;bottom:64px;z-index:8;width:560px;max-width:calc(100vw - 24px);background:rgba(13,17,23,0.96);border:1px solid #30363d;border-radius:10px;padding:6px;color:#e6edf3;font:12px system-ui,sans-serif";
+    d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 4px"><b>🧪 Patch clamp (model)</b><span><button data-pc="min" title="Smaller / larger" style="font:inherit;padding:1px 7px">▭</button> <button data-pc="x" title="Hide the oscilloscope (the pipette stays)" style="font:inherit;padding:1px 7px">✕</button></span></div><canvas width="1096" height="560" style="width:100%;display:block;border-radius:6px"></canvas><div class="pcRead" style="margin-top:4px;color:#c9d1d9;line-height:1.35"></div>';
+    document.body.appendChild(d);
+    d.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.pc === "x"){ PATCH.scope = false; const el = document.getElementById("pcScope"); if (el) el.checked = false; patchCardShow(false); }
+      if (b.dataset.pc === "min"){ d.style.width = d.style.width === "360px" ? "560px" : "360px"; } });
+  }
+  PATCH.card.style.display = on && PATCH.scope ? "" : "none";
+}
+function patchDrawAll(){
+  const P = PATCH;
+  if (P.card && P.card.style.display !== "none" && !renderer.xr.isPresenting){
+    const cv = P.card.querySelector("canvas"), g = cv.getContext("2d");
+    g.clearRect(0, 0, cv.width, cv.height); patchScope(g, 0, 0, cv.width, cv.height, true);
+    const rd = P.card.querySelector(".pcRead"), html = patchReadout().map(x => "<div>" + x.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</div>").join("");
+    if (rd._h !== html){ rd._h = html; rd.innerHTML = html; }
+  }
+  const el = document.getElementById("patchNote");
+  if (el){ const t = P.on ? patchReadout().join(" · ") : (PUFF.pos ? "Puff pipette placed." : "MODEL. Click 🧪 Patch clamp, then a cell."); if (el.textContent !== t) el.textContent = t; }
+  try { if (PATCHP.on) PATCHP.dirty = true; } catch (e){}
+}
+/* the PC controls: what they show follows the mode */
+function patchUiSync(){
+  const $ = id => document.getElementById(id), P = PATCH;
+  const box = $("patchBox"); if (!box) return;
+  box.style.display = P.on || P.arm || PUFF.arm || PUFF.pos ? "" : "none";
+  $("patchBtn").classList.toggle("on", P.arm || P.on); $("puffBtn").classList.toggle("on", PUFF.arm || !!PUFF.pos);
+  $("pcMode").value = P.mode; $("pcRs").value = P.rs; $("pcRsV").textContent = P.rs + " MΩ";
+  $("pcComp").value = Math.round(P.comp * 100); $("pcCompV").textContent = Math.round(P.comp * 100) + " %"; $("pcCompL").style.display = P.mode === "vc" ? "" : "none";
+  $("pcBridgeL").style.display = P.mode === "cc" ? "" : "none";
+  $("pcBridge").checked = P.bridge; $("pcBg").checked = P.bg; $("pcNet").checked = P.net; $("pcScope").checked = P.scope; $("pcII").checked = P.ii; $("pcDye").value = P.dye;
+  $("pfAg").value = PUFF.ag; $("pfU").textContent = "mM"; const a = PUFF_AG[PUFF.ag]; if (document.activeElement !== $("pfC")) $("pfC").value = PUFF.c0 != null ? PUFF.c0 : a.c0;
+  $("pfV").value = PUFF.vol;
+  const pr = $("pcProt"), key = P.mode + ":" + P.prot + ":" + P.on;
+  if (pr._k !== key){
+    pr._k = key;
+    const b = (id, lbl, tip, on) => '<button data-pp="' + id + '" title="' + tip + '"' + (on ? ' class="on"' : '') + '>' + lbl + '</button>';
+    pr.innerHTML = (P.mode === "cc"
+      ? b("hold", "Free run", "Record continuously at the holding current", P.prot === "hold") + b("step", "Step", "One 500 ms current step of the size set here", P.prot === "step")
+        + '<label title="Step size (pA)">Δ <input type="number" id="pcAmp" value="' + P.amp.cc + '" step="50" style="width:60px"> pA</label>'
+        + b("fam", "F–I family", "Steps from −100 to +400 pA in 100 pA increments", P.prot === "fam")
+        + '<label title="Holding current (pA)">hold <input type="number" id="pcHold" value="' + P.hold.cc + '" step="10" style="width:56px"> pA</label>'
+      : b("hold", "Free run", "Record continuously at the holding potential", P.prot === "hold") + b("seal", "Membrane test", "5 mV pulses: Rs, Rin and Cm read off the current", P.prot === "seal")
+        + b("fam", "Step family", "Steps to −90 … +10 mV", P.prot === "fam") + b("h70", "Hold −70 (EPSCs)", "Near the reversal of inhibition: excitatory currents inward", P.hold.vc === -70)
+        + b("h0", "Hold 0 (IPSCs)", "Near the reversal of excitation: inhibitory currents outward", P.hold.vc === 0))
+      + (P.on ? b("out", "Withdraw", "Pull the pipette out", false) : "");
+  }
+}
+function patchUiInit(){
+  const $ = id => document.getElementById(id);
+  $("patchBtn").addEventListener("click", () => { if (PATCH.on && !PATCH.arm) setPatchArm(true); else setPatchArm(!PATCH.arm); });
+  $("puffBtn").addEventListener("click", () => setPuffArm(!PUFF.arm));
+  $("pcMode").addEventListener("change", e => setPatchMode(e.target.value));
+  $("pcRs").addEventListener("input", e => { PATCH.rs = +e.target.value; $("pcRsV").textContent = PATCH.rs + " MΩ"; });
+  $("pcComp").addEventListener("input", e => { PATCH.comp = +e.target.value / 100; $("pcCompV").textContent = e.target.value + " %"; });
+  $("pcBridge").addEventListener("change", e => { PATCH.bridge = e.target.checked; });
+  $("pcBg").addEventListener("change", e => { PATCH.bg = e.target.checked; });
+  $("pcNet").addEventListener("change", e => setPatchNet(e.target.checked));
+  $("pcScope").addEventListener("change", e => { PATCH.scope = e.target.checked; patchCardShow(PATCH.on); });
+  $("pcII").addEventListener("change", e => { PATCH.ii = e.target.checked; });
+  $("pcDye").addEventListener("change", e => setPatchDye(e.target.value));
+  $("pfAg").addEventListener("change", e => { PUFF.ag = e.target.value; PUFF.c0 = null; puffDrawPipette(); patchUiSync(); });
+  $("pfC").addEventListener("change", e => { const v = +e.target.value; PUFF.c0 = v > 0 ? v : null; });
+  $("pfV").addEventListener("change", e => { const v = +e.target.value; PUFF.vol = v > 0 ? Math.min(500, v) : 5; });
+  $("pfGo").addEventListener("click", puffNow);
+  $("pfOut").addEventListener("click", puffRemove);
+  $("dyeClr").addEventListener("click", dyeClear);
+  $("pcProt").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; patchProtBtn(b.dataset.pp); });
+  $("pcProt").addEventListener("change", e => {
+    if (e.target.id === "pcAmp"){ PATCH.amp.cc = +e.target.value || 0; }
+    if (e.target.id === "pcHold"){ PATCH.hold.cc = +e.target.value || 0; }
+  });
+  patchUiSync();
+}
+function patchProtBtn(k){
+  const P = PATCH;
+  if (k === "out"){ patchWithdraw(); return; }
+  if (!P.on){ ctxNote.textContent = "Patch a cell first (🧪 Patch clamp, then click or trigger on a cell)."; return; }
+  if (k === "h70" || k === "h0"){ P.hold.vc = k === "h70" ? -70 : 0; patchProt("hold"); return; }
+  patchProt(k);
+}
+function setPatchMode(v){
+  const P = PATCH; P.mode = v === "vc" ? "vc" : "cc";
+  if (P.on){ P.vrec = P.V; patchProt("hold"); }
+  patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
+function setPatchNet(v){
+  PATCH.net = !!v;
+  if (v && !STIM.on){ setStim(true); }
+  if (PATCH.cell) PATCH.spkSeen = PATCH.cell.spkN || 0;
+  patchUiSync();
+  if (v) PATCH.note = "Linked: its spikes go out through its synapses (stimulation), and synaptic potentials arriving there come in as current.";
+}
+
+/* ── THE PANEL IN THE HEADSET ── */
+const PATCHP = vrPanel("patch", 1600, 1300, 0.8, 1, patchPanelDraw);
+PATCHP.tick = () => PATCH.on && performance.now() - PATCHP.lastDraw > 120;
+function patchPanelDraw(P, g){
+  const W = P.W, S = PATCH, cc = S.mode === "cc";
+  g.fillStyle = "#f6ecff"; g.font = "700 44px system-ui, sans-serif"; g.fillText("🧪 Patch clamp & 💨 puff (model)", 40, 78);
+  vrpBtn(P, g, 1350, 30, 130, 76, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
+  vrpBtn(P, g, 1494, 30, 76, 76, "✕", () => vrpShow(P, false), { size: 40 });
+  patchScope(g, 30, 120, W - 60, 470, true);
+  let y = 610;
+  const B = (x, w, lbl, act, o) => vrpBtn(P, g, x, y, w, 84, lbl, act, Object.assign({ size: 30 }, o || {}));
+  if (!S.on){
+    B(30, 520, S.arm ? "… trigger on a cell" : "🧪 Patch a cell", () => setPatchArm(!S.arm), { on: S.arm, key: "arm" });
+    B(570, 500, PUFF.arm ? "… trigger on a cell or vessel" : "💨 Place the puff pipette", () => setPuffArm(!PUFF.arm), { on: PUFF.arm, key: "parm" });
+  } else {
+    B(30, 300, "Current clamp", () => setPatchMode("cc"), { on: cc, key: "cc" });
+    B(340, 300, "Voltage clamp", () => setPatchMode("vc"), { on: !cc, key: "vc" });
+    B(670, 80, "−", () => { S.rs = Math.max(2, S.rs - (S.rs > 20 ? 5 : 1)); patchUiSync(); }, { size: 44, key: "rsm" });
+    g.fillStyle = "#f6ecff"; g.font = "600 32px system-ui"; g.textAlign = "center"; g.fillText("Rs " + S.rs + " MΩ", 860, y + 54); g.textAlign = "left";
+    B(970, 80, "+", () => { S.rs = Math.min(100, S.rs + (S.rs >= 20 ? 5 : 1)); patchUiSync(); }, { size: 44, key: "rsp" });
+    if (cc) B(1070, 500, S.bridge ? "Bridge balance on" : "Bridge balance OFF", () => { S.bridge = !S.bridge; patchUiSync(); }, { on: S.bridge, key: "br" });
+    else { B(1070, 80, "−", () => { S.comp = Math.max(0, S.comp - 0.1); patchUiSync(); }, { size: 44, key: "cm" });
+      g.fillStyle = "#f6ecff"; g.font = "600 30px system-ui"; g.textAlign = "center"; g.fillText("comp " + Math.round(S.comp * 100) + " %", 1270, y + 54); g.textAlign = "left";
+      B(1390, 80, "+", () => { S.comp = Math.min(0.8, S.comp + 0.1); patchUiSync(); }, { size: 44, key: "cp" }); }
+    y += 100;
+    if (cc){
+      B(30, 240, "Free run", () => patchProtBtn("hold"), { on: S.prot === "hold", key: "ph" });
+      B(280, 330, "Step " + (S.amp.cc >= 0 ? "+" : "") + S.amp.cc + " pA", () => patchProtBtn("step"), { on: S.prot === "step", key: "ps" });
+      B(620, 80, "−", () => { S.amp.cc -= 50; patchUiSync(); }, { size: 44, key: "am" });
+      B(710, 80, "+", () => { S.amp.cc += 50; patchUiSync(); }, { size: 44, key: "ap" });
+      B(800, 300, "F–I family", () => patchProtBtn("fam"), { on: S.prot === "fam", key: "pf" });
+      B(1110, 460, "Hold " + S.hold.cc + " pA  ▸", () => { const L = [-100, -50, 0, 50, 100]; const i = L.findIndex(x => x > S.hold.cc); S.hold.cc = L[i < 0 ? 0 : i]; patchUiSync(); }, { key: "hc" });
+    } else {
+      B(30, 240, "Free run", () => patchProtBtn("hold"), { on: S.prot === "hold", key: "ph" });
+      B(280, 330, "Membrane test", () => patchProtBtn("seal"), { on: S.prot === "seal", key: "pt" });
+      B(620, 300, "Step family", () => patchProtBtn("fam"), { on: S.prot === "fam", key: "pf" });
+      B(930, 310, "Hold −70 (EPSCs)", () => patchProtBtn("h70"), { on: S.hold.vc === -70, key: "h70" });
+      B(1250, 320, "Hold 0 (IPSCs)", () => patchProtBtn("h0"), { on: S.hold.vc === 0, key: "h0" });
+    }
+    y += 100;
+    B(30, 420, "In vivo background", () => { S.bg = !S.bg; patchUiSync(); }, { on: S.bg, key: "bg" });
+    B(460, 480, "Linked to stimulation", () => setPatchNet(!S.net), { on: S.net, key: "net" });
+    B(950, 620, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
+  }
+  y += 100;
+  B(30, 560, "Puff: " + PUFF_AG[PUFF.ag].name.replace(/ \(.*$/, "") + "  ▸", () => { const o = Object.keys(PUFF_AG); PUFF.ag = o[(o.indexOf(PUFF.ag) + 1) % o.length]; PUFF.c0 = null; puffDrawPipette(); patchUiSync(); }, { key: "ag" });
+  B(600, 260, PUFF.vol + " pL  ▸", () => { const L = [1, 2, 5, 10, 20, 50]; const i = L.findIndex(x => x > PUFF.vol); PUFF.vol = L[i < 0 ? 0 : i]; patchUiSync(); }, { key: "vol" });
+  B(870, 300, "💨 Puff", () => puffNow(), { on: !!PUFF.pos, off: !PUFF.pos, key: "go", size: 36 });
+  B(1180, 390, PUFF.pos ? "Move the puff pipette" : (PUFF.arm ? "… trigger to place" : "Place puff pipette"), () => setPuffArm(!PUFF.arm), { on: PUFF.arm, key: "mv" });
+  y += 100;
+  if (S.on) B(30, 360, "Withdraw pipette", () => patchWithdraw(), { key: "wd" });
+  if (S.on) B(410, 380, "Patch another cell", () => setPatchArm(true), { on: S.arm, key: "re" });
+  if (DYE.cells.size || DYE.sr.size) B(810, 300, "Wash out dye", () => dyeClear(), { key: "dc" });
+  if (PUFF.pos) B(1130, 440, "Remove puff pipette", () => puffRemove(), { key: "pr" });
+  y += 104;
+  g.fillStyle = "#f6ecff"; g.font = "26px system-ui";
+  const lines = []; for (const t of patchReadout()) lines.push(...vrpWrap(g, t, W - 80, 2));
+  lines.slice(0, 4).forEach((l, k) => g.fillText(l, 40, y + k * 32));
+}
+patchUiInit();
+
 /* ── 35. IDENTIFY A CELL (GAME) ────────────────────────────────────────────────────────  2026-10-22
    The project's own idea brought into the headset: a cell arrives alone and unnamed, with the electron
    micrograph through its nucleus; you say what it is -- first the class, then (where it has one) the
@@ -17152,6 +18079,7 @@ const SIM = { speed: 1, eff: 1, t: 0, paused: false, boost: 1, el: null, pop: nu
 const SIM_REC = [
   { k: "ap",   name: "Action potentials",           v: 1 / 5000, why: "a spike crosses a cell in a few ms" },
   { k: "syn",  name: "Synaptic potentials",          v: 1 / 500,  why: "EPSPs and IPSPs last tens of ms" },
+  { k: "patch", name: "Patch clamp",                 v: 0.2,      why: "current steps of ~0.5 s, sweeps of ~1 s" },
   { k: "lfp",  name: "LFP rhythms",                  v: 0.25,     why: "spindles 12 Hz, theta 7 Hz" },
   { k: "ride", name: "Riding a red cell",            v: 0.01,     why: "a capillary passes at ~3 cm/s" },
   { k: "flow", name: "Blood flow",                   v: 0.1,      why: "red cells move 0.3–5 mm/s" },
@@ -17162,7 +18090,8 @@ const SIM_REC = [
   { k: "ca",   name: "Ca²⁺ waves",                   v: 2,        why: "astrocyte waves cross a cell in seconds" },
   { k: "csd",  name: "Spreading depolarization",     v: 5,        why: "3 mm/min; recovery over minutes" },
   { k: "sleep", name: "Sleep cycle",                 v: 4,        why: "NREM bouts last minutes" },
-  { k: "csf",  name: "CSF tracer",                   v: 10,       why: "~19 µm/s along arteries, minutes into tissue" }
+  { k: "csf",  name: "CSF tracer",                   v: 10,       why: "~19 µm/s along arteries, minutes into tissue" },
+  { k: "dye",  name: "Dye filling",                  v: 20,       why: "a dye fills a cell and its coupled neighbours over minutes" }
 ];
 const simFmt = v => v >= 1 ? "×" + (v >= 10 ? Math.round(v) : +v.toFixed(v < 3 ? 2 : 1)) : "×1/" + Math.round(1 / v).toLocaleString("en-US");
 function simBrainTime(t){
@@ -17671,7 +18600,7 @@ document.getElementById("fixSeg").addEventListener("change", fixDraw);
 /* a click on the 3D view (not a drag) brings the window there */
 renderer.domElement.addEventListener("pointerup", e => {
   if (!FIX.on || e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
-  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm) return;
+  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || PATCH.arm || PUFF.arm) return;
   const ndc = canvasNdc(e); _fr.setFromCamera(ndc, camera);
   const P = flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()); if (!P) return;
   fixMoveTo(content.worldToLocal(P.clone()).toArray());
@@ -18088,7 +19017,7 @@ document.getElementById("trwDrop").addEventListener("click", () => { TRW.items =
 /* a click on the 3D view (not a drag) brings the window there */
 renderer.domElement.addEventListener("pointerup", e => {
   if (!TRW.on || e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 4) return;
-  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm) return;
+  if (STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || PATCH.arm || PUFF.arm) return;
   const ndc = canvasNdc(e); _fr.setFromCamera(ndc, camera);
   const P = flyHit(_fr.ray.origin.clone(), _fr.ray.direction.clone()); if (!P) return;
   trwMoveTo(content.worldToLocal(P.clone()).toArray());
@@ -19046,7 +19975,7 @@ window.UJ_CHAT_SCENE = async title => {
    A tap on empty space does nothing. Skipped while a tool wants the click or the EM window is open. */
 renderer.domElement.addEventListener("pointerup", e => {
   if (e.button !== 0 || !_down || Math.hypot(e.clientX - _down[0], e.clientY - _down[1]) > 6) return;
-  if (FIX.on || TRW.on || STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || (typeof RIDE !== "undefined" && RIDE.on)) return;
+  if (FIX.on || TRW.on || STIM.on || CA.on || MEAS.on || SPRAY.on || STK.arm || LFP.arm || PATCH.arm || PUFF.arm || (typeof RIDE !== "undefined" && RIDE.on)) return;
   if (renderer.xr && renderer.xr.isPresenting) return;
   const ndc = canvasNdc(e); raycaster.setFromCamera(ndc, camera);
   const targets = CELLS.filter(c => !c.hidden && c.mesh && c.mesh.visible).map(c => c.mesh);
@@ -19096,6 +20025,7 @@ renderer.setAnimationLoop(() => {
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
+  try { patchFrame(sdt); } catch (e){ if (!window.__patchWarned){ window.__patchWarned = true; console.warn("[vr] patch clamp:", e); } }
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
@@ -20214,7 +21144,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
