@@ -829,7 +829,7 @@
       <span id="fixInfo" style="font-size:12px;color:var(--mut)">pick a cell first</span></div>
   </div>
   <div id="trwBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
-    <div class="ctl" style="align-items:center;margin:0"><button id="trwBtn" title="Trace organelles on the EM of the picked cell: outline them section by section (lofted into 3D, saved as µJump traced structures with their volume) or mark them with a point (saved as µJump organelle reports). Works on a screen and in the headset (EM tab of the palette).">✏️ Trace organelles</button>
+    <div class="ctl" style="align-items:center;margin:0"><button id="trwBtn" title="Trace organelles on the EM of the picked cell: outline them section by section (lofted into 3D, saved as µJump traced structures with their volume) or mark them with a point (saved as µJump organelle reports). Works on a screen and in the headset (palette: Tools → EM section).">✏️ Trace organelles</button>
       <span id="trwInfo" style="font-size:12px;color:var(--mut)">pick a cell first</span></div>
   </div>
   <div id="blockBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0">
@@ -3601,7 +3601,7 @@ async function loadSynapses(){
   if (!SY){ STIM.syn = []; STIM.noSynTable = true; ctxNote.textContent = "No public synapse table for " + DSX.label + " — activity stays in the cell you touch."; return STIM.syn; }
   const tok = caveToken();
   if (!tok){ document.getElementById("caveRow").style.display = "flex"; ctxNote.textContent = "Synapses need a CAVE token (the one " + (VR_DS === "v1dd" ? "δJump" : "µJump") + "'s connectivity panel uses) — paste it below and press Save. The stimulator still works within each cell without it.";
-    try { if (renderer.xr.isPresenting) flashWarn("Spikes stay in the cell you touch: synapses need a CAVE token, which this headset's browser has not been given. Pick a cell → Tools → Connections → “🔑 Give this headset the CAVE token”.", 7000, "#f0a742"); } catch (e){}
+    try { if (renderer.xr.isPresenting) flashWarn("Spikes stay in the cell you touch: synapses need a CAVE token, which this headset's browser has not been given. Pick a cell → Cells → Connections → “🔑 Give this headset the CAVE token”.", 7000, "#f0a742"); } catch (e){}
     return null; }
   /* Every root this collection draws, including proposed fragments, mapped back to its cell. */
   const rootToCell = new Map();
@@ -9350,6 +9350,15 @@ function takeStop(){
   try { TL.keys.cam.forEach(k => tlThumb(k)); } catch (e){}
   ctxNote.textContent = "⏹ The take is the timeline: " + dur.toFixed(1) + " s, " + TL.keys.cam.length + " camera keys (smoothed), " + TL.keys.view.length + " view and " + TL.keys.stim.length + " stimulus keys" + (TL.paint.length ? ", " + TL.paint.length + " paint dabs" : "") + ". ▶ plays it; on the PC, 🎞 Timeline edits or films it (Ctrl+Z undoes the take).";
   try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#c98bff"); } catch (e){}
+  /* straight to editing and saving (2026-11-17, Søren: "After a recording is done, I think the timeline should open
+     automatically and the menu should be open so you can save the recording right away or edit it") */
+  try {
+    if (renderer.xr.isPresenting){
+      if (!TLVR.on) setTlvr(true);
+      MENU.tab = TABS.indexOf("View"); MENU.help = false; MENU.secOpen.View = "Timeline";
+      if (!MENU.open) toggleMenu();
+    }
+  } catch (e){ console.warn("[vr] after the take:", e); }
   MENU.dirty = true;
 }
 /* ── START OVER (2026-11-15, Søren: "We also need some way to delete the whole timeline and start over") ──
@@ -11247,7 +11256,7 @@ function toggleIsolate(quiet){
   ISOLATE = !ISOLATE; applyLook(); MENU.dirty = true;
   if (quiet) return;
   const n = CELLS.filter(c => !c.hidden).length;
-  const msg = ISOLATE ? "Only the picked cell is shown — the other " + Math.max(0, n - 1) + " are hidden. X (left controller) or Tools → “Only the picked cell” shows them again."
+  const msg = ISOLATE ? "Only the picked cell is shown — the other " + Math.max(0, n - 1) + " are hidden. X (left controller) or Cells → “Only the picked cell” shows them again."
                       : "All cells shown again.";
   ctxNote.textContent = msg;
   try { if (renderer.xr.isPresenting) flashWarn(msg, 4000, ISOLATE ? "#f0a742" : "#3fb950"); } catch (e){}
@@ -11269,8 +11278,8 @@ function toggleIsolate(quiet){
    now the View tab's "Help" page. */
 const MENU = { open: false, mesh: null, canvas: null, ctx: null, tex: null, rows: [], hover: null,
                dirty: true, tab: 0, cellPage: 0, help: false, secOpen: {} };
-const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26;
-const TABS = ["Show", "Map", "Tools", "Spray", "EM", "Cells", "View"];
+const MENU_W = 1024, ROW_H = 72, TAB_H = 84, MENU_PAD = 18, PAL_W = 0.26, HEAD_H = 50;
+const TABS = ["Show", "Map", "Cells", "Activity", "Tools", "View"];
 /* ── SECTIONS, MOSTLY CLOSED ─────────────────────────────────────────────────  2026-11-14
    Søren: "the menu is way too long, especially for tools. I think we could arrange the things under categories
    and have most of the categories collapsed." A row pushed after S("name") belongs to that section; rows pushed
@@ -11305,29 +11314,29 @@ const VR_BASIC = {
 };
 const VR_BASIC_TOP = /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Cut in my right hand|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population|Cortical layers|Layers:|Visual areas|Vessels:|Scale bar|Floor grid|Background)/;
 /* settings that are on by default are not "left on": they stay with the advanced tools */
-const VR_BASIC_NEVER = /^(Synapses fire the next cell|Input strength|Hidden cells take part|📈 Voltage plots|   Plot: |Show all synapse markers|Hide synapse markers)/;
+const VR_BASIC_NEVER = /^(Synapses fire the next cell|Input strength|Hidden cells take part|📈 Voltage plots|📈 Plots|   Plot: |Show all synapse markers|Hide synapse markers)/;
 function vrBasicRows(t, rows){
   let keep;
-  if (t === "Spray" || t === "Cells" || (t === "EM" && TRW.on)) keep = rows.slice();
+  if (t === "Cells") keep = rows.filter(r => r.sec !== "Connections" || r.on === true);
+  else if (t === "Tools") keep = rows.filter(r => r.sec === "Spray paint" || (r.sec === "EM section" && (TRW.on || r.on === true || !/^(Trace organelles)/.test(r.label))) || VR_BASIC.Tools.test(r.label) || r.on === true);
+  else if (t === "Activity") keep = rows.filter(r => VR_BASIC.Tools.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || r.sec === "Ca²⁺ wave");
+  else if (t === "Spray" || (t === "EM" && TRW.on)) keep = rows.slice();
   else if (t === "EM") keep = rows.filter(r => r.on === true || !/^(Trace organelles)/.test(r.label));
   else if (t === "View") keep = rows.filter(r => r.sec !== "Timeline");
   else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && (r.sec === "Identify a cell (game)" || r.sec === "Ca²⁺ wave"))) : rows.slice(); }
   /* the everyday rows of a section go to the top, where they are seen without opening it */
   keep = keep.map(r => r.sec && VR_BASIC_TOP.test(r.label) ? Object.assign({}, r, { sec: undefined }) : r);
-  if (t === "Tools" || t === "Map" || t === "Show") keep.push({ label: "🧰 More: turn on Advanced tools", icon: "wrench", act: () => window.setAdvanced(true, true) });
+  if (t === "Tools" || t === "Activity" || t === "Map" || t === "Show") keep.push({ label: "🧰 More: turn on Advanced tools", icon: "wrench", act: () => window.setAdvanced(true, true) });
   return keep;
 }
-function menuRows(){
+function menuRowsRaw(t){
   const rows = [];
-  const t = TABS[MENU.tab];
   let SEC = null;
   const S = n => { SEC = n; };
   { const _push = rows.push.bind(rows); rows.push = (...a) => _push(...a.map(r => (SEC && r.sec === undefined ? Object.assign(r, { sec: SEC }) : r))); }
   if (t === "Show"){
     /* Google's button cannot be drawn inside an immersive session, so the headset says where you stand and where to
        sign in: on the page (top of the panel), before Enter VR -- the Quest browser shows that page first. */
-    rows.push({ label: credOk() ? "✓ Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to leave VR and sign in with Google",
-                act: () => { if (!credOk()) vrLeaveToSignIn(); } });
     const allShown = CELLS.every(c => !c.hidden);
     rows.push({ label: "Cell models", on: allShown, act: () => { const v = !allShown; CELLS.forEach(c => c.hidden = !v); syncVisChecks(); applyLook(); } });
     /* the words in the colours they give (2026-11-16, Søren: "Colour by Excitatory / inhibitory should have text with colors of what they become") */
@@ -11531,14 +11540,16 @@ function menuRows(){
       }
     }
     S("Stimulate & listen");
-    rows.push({ label: "Drug: TTX", on: DRUG.ttx, act: () => setDrug("ttx", !DRUG.ttx) });
-    rows.push({ label: "Drug: CNQX + D-APV", on: DRUG.glu, act: () => setDrug("glu", !DRUG.glu) });
-    rows.push({ label: "Drug: isoflurane", on: DRUG.iso, act: () => setDrug("iso", !DRUG.iso) });
-    rows.push({ label: "Hear spikes" + (spkAudioBlocked() ? "  (blocked — press the trigger once)" : ""), on: SPK.snd, act: () => { spkWake(); setSpkSound(!SPK.snd); } });
+    /* one stepping row for the drugs (2026-11-17, the palette made shorter): none → TTX → CNQX + D-APV → isoflurane */
+    { const DN = { ttx: "TTX", glu: "CNQX + D-APV", iso: "isoflurane" }, on = Object.keys(DN).filter(k => DRUG[k]), order = [null, "ttx", "glu", "iso"];
+      const cur = on.length === 1 ? on[0] : on.length ? "mix" : null;
+      rows.push({ label: "Drug: " + (on.length ? on.map(k => DN[k]).join(" + ") : "none") + "  ▸", on: on.length > 0,
+                  act: () => { const nx = cur === "mix" ? null : order[(order.indexOf(cur) + 1) % order.length]; for (const k in DN) if (DRUG[k] !== (k === nx)) setDrug(k, k === nx); } }); }
+    rows.push({ label: "Hear spikes" + (spkAudioBlocked() ? "  (blocked — press the trigger once)" : ""), on: SPK.snd, act: () => { spkWake(); setSpkSound(!SPK.snd); },
+                ...(SPK.snd ? { right: "▶ test", act2: spkTest } : {}) });
     /* Offered only where it works (2026-11-14, Søren: "If we really can't get it to work there should be no option
        to feel it"): only when the headset's controllers actually offer vibration to the page. */
     if (spkCanBuzz() === true) rows.push({ label: "Feel spikes & heartbeat", on: SPK.hap, act: () => setSpkHaptic(!SPK.hap) });
-    rows.push({ label: spkCanBuzz() === true ? "   Test: click and buzz" : "   Test: a click", act: spkTest });
     S("Blood & vessels (models)");
     if (DS_HAS.flow){
       rows.push({ label: "Stroke (model)", on: STK.on && !STK.quiet, act: () => document.getElementById("stkBtn").click() });
@@ -11582,12 +11593,11 @@ function menuRows(){
     rows.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸",
                 act: () => { const el = document.getElementById("stimGain"); el.value = ({ "10": "1", "1": "30", "30": "10" })[el.value]; } });
     rows.push({ label: "Hidden cells take part too", on: !!STIM.withHidden, act: () => setStimHidden(!STIM.withHidden) });
-    rows.push({ label: "📈 Voltage plots", on: !!STIM.plots, act: () => setPlots(!STIM.plots) });
-    if (STIM.plots){
-      rows.push({ label: "   Plot: membrane potential", on: PLOT_SHOW.vm, act: () => setPlotShow("vm", !PLOT_SHOW.vm) });
-      rows.push({ label: "   Plot: EPSP / IPSP sites", on: PLOT_SHOW.syn, act: () => setPlotShow("syn", !PLOT_SHOW.syn) });
-      rows.push({ label: "   Plot: Ca²⁺", on: PLOT_SHOW.ca, act: () => setPlotShow("ca", !PLOT_SHOW.ca) });
-    }
+    /* one stepping row for the plots: off → Vm → Vm + sites → Vm + sites + Ca²⁺ */
+    { const lvl = !STIM.plots ? 0 : PLOT_SHOW.ca ? 3 : PLOT_SHOW.syn ? 2 : 1;
+      rows.push({ label: "📈 Plots: " + ["off", "membrane potential", "Vm + EPSP/IPSP sites", "Vm + sites + Ca²⁺"][lvl] + "  ▸", on: lvl > 0,
+                  act: () => { const n = (lvl + 1) % 4; if (!n){ setPlots(false); return; } if (!STIM.plots) setPlots(true);
+                    setPlotShow("vm", true); setPlotShow("syn", n >= 2); setPlotShow("ca", n >= 3); } }); }
     rows.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
     S(null);
     rows.push({ label: "Reset activity", act: resetActivity });
@@ -11604,8 +11614,7 @@ function menuRows(){
     if (!(BLOCK.group || BLOCK.loading) && CELLS[SELECTED]) rows.push({ label: "Tissue block around the picked cell's soma",
       act: () => { document.getElementById("blkSrc").value = "soma"; blkSrcUI(); blockFromUI(); } });
     S(null);
-    rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
-    rows.push({ label: "Clear measurements" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), act: clearMeasure });
+    rows.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on), ...(MEAS.items.length ? { right: "clear " + MEAS.items.length, act2: clearMeasure } : {}) });
     S("Cut, see-through & tissue block");
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
                 act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
@@ -11620,8 +11629,9 @@ function menuRows(){
     if (DS_HAS.nb) rows.push({ label: SELECTED >= 0 ? "+3 neighbours of the picked cell" : "+3 neighbours (pick a cell first)", act: () => addNeighbours(3) });
   } else if (t === "Spray"){
     rows.push({ label: "Spray can (hold the right trigger)", on: SPRAY.on, act: () => setSpray(!SPRAY.on) });
-    SPRAY_COLOURS.forEach(([name, hex]) => rows.push({ label: name, swatch: hex, picked: SPRAY.colour === hex && !SPRAY.erase,
-      act: () => { SPRAY.colour = hex; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); } }));
+    { const i = Math.max(0, SPRAY_COLOURS.findIndex(c => c[1] === SPRAY.colour));
+      rows.push({ label: "Colour: " + SPRAY_COLOURS[i][0] + "  ▸", swatch: SPRAY_COLOURS[i][1],
+                  act: () => { SPRAY.colour = SPRAY_COLOURS[(i + 1) % SPRAY_COLOURS.length][1]; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); } }); }
     rows.push({ label: "Glowing paint", on: SPRAY.glow, act: () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); } });
     rows.push({ label: "Eraser (erase spray)", on: SPRAY.on && SPRAY.erase, act: () => { SPRAY.erase = SPRAY.on ? !SPRAY.erase : true; if (!SPRAY.on) setSpray(true); else sprayNote(); syncSprayUI(); } });
     rows.push({ label: "Nozzle: " + ({ s: "fine", m: "medium", l: "wide" })[SPRAY.size] + "  ▸", act: () => { SPRAY.size = ({ s: "m", m: "l", l: "s" })[SPRAY.size]; syncSprayUI(); } });
@@ -11695,9 +11705,8 @@ function menuRows(){
       rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
     } else {
       rows.push({ label: "🧰 Advanced tools" + (vrAdvanced() ? "" : " (models, tracing, timeline…)"), on: vrAdvanced(), icon: "wrench", act: () => window.setAdvanced(!vrAdvanced(), true) });
-      rows.push({ label: "Tabletop size", act: () => setSize(1) });
-      rows.push({ label: "Room-sized", act: () => setSize(6) });
-      rows.push({ label: "Walk inside (giant)", act: () => setSize(30) });
+      { const sz = stage.scale.x / FIT_SCALE, k = sz < 3 ? 0 : sz < 15 ? 1 : 2;
+        rows.push({ label: "World size: " + ["tabletop", "room-sized", "walk inside (giant)"][k] + "  ▸", act: () => setSize([6, 30, 1][k]) }); }
       rows.push({ label: "Reset position", act: resetStage });
       rows.push({ label: "◂ Turn 30° left   |   right ▸", act: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI / 6); USER_MOVED = true; },
                   act2: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -Math.PI / 6); USER_MOVED = true; } });
@@ -11708,7 +11717,6 @@ function menuRows(){
       rows.push({ label: SCENE.saving ? "Saving the scene…" : "Save this scene" + (SCENE.id && SCENE.mine ? " (update)" : "") + (credOk() ? "" : " (needs sign-in)")
                   + (SCENE.savedAt && !SCENE.saving ? "  · saved ✓ " + SCENE.savedAt.toTimeString().slice(0, 5) : ""), act: () => { if (!SCENE.saving) saveScene(true); } });
       rows.push({ label: "🖼 My scenes — open, share, delete", on: SCP.on, icon: "film", act: () => vrpShow(SCP, !SCP.on) });
-      { const n = chatUnread(); rows.push({ label: "💬 Chat" + (n ? " (" + n + " new)" : "") + " — talk to type", on: CHP.on, icon: "user", act: () => vrpShow(CHP, !CHP.on) }); }
       if (SCENE.id) rows.push({ label: "Save as a new scene (new link)", act: () => saveScene(true, true) });
       rows.push({ label: "Help: the controls", act: () => { MENU.help = true; } });
       S("Timeline");
@@ -11717,11 +11725,27 @@ function menuRows(){
       rows.push({ label: "Exit VR", exit: true, act: () => { const se = renderer.xr.getSession(); if (se) se.end(); } });
     }
   }
-  const out = menuSections(vrAdvanced() ? rows : vrBasicRows(t, rows), t);
-  /* SIGN-IN ON EVERY TAB (2026-11-16, Søren: "I still don't see a way to log in to google in the VR with headset"): the
-     way in was a row in View and the first row of Show; signed out, it now heads every tab, where it cannot be missed */
-  if (!credOk() && !MENU.help) out.unshift({ label: "Sign in with Google — leaves VR for a moment", icon: "user", exit: true, act: vrLeaveToSignIn });
-  return out;
+  return rows;
+}
+/* ── THE PALETTE, REORGANISED (2026-11-17, Søren: "The VR menus are overcrowded. We need to fix it." -- "Yes, I want
+   those.") Six tabs by what you do: Show · Map · Cells · Activity (everything that runs a model) · Tools (what you do
+   by hand: measure, fly, cut, spray, the EM section) · View. The cell-finding rows live only in Cells, with the
+   connections and the game. Signed in or not is a line in the palette's header (press it to sign in), not a row on
+   every tab. The rows are still made by menuRowsRaw, tab by old tab; this sorts them into the new ones. */
+const ACT_SECS = new Set(["Stimulate & listen", "Ca²⁺ wave", "Patch clamp & puff (model)", "Blood & vessels (models)", "Clock & brain states (models)", "What a scanner records (model)", "Recorded activity"]);
+function menuRows(){
+  const t = TABS[MENU.tab]; let rows;
+  const sec = (L, n) => L.map(r => Object.assign(r, { sec: r.sec || n }));
+  if (t === "Activity") rows = menuRowsRaw("Tools").filter(r => ACT_SECS.has(r.sec) || /^Reset activity/.test(r.label));
+  else if (t === "Tools"){
+    if (TRW.on) MENU.secOpen.Tools = "EM section";
+    rows = menuRowsRaw("Tools").filter(r => r.sec === "Cut, see-through & tissue block" || /^(Measure|Fly with)/.test(r.label))
+      .concat(sec(menuRowsRaw("Spray"), "Spray paint"), sec(menuRowsRaw("EM"), "EM section"));
+  } else if (t === "Cells"){
+    const tools = menuRowsRaw("Tools");
+    rows = menuRowsRaw("Cells").concat(tools.filter(r => /^\+3 neighbours/.test(r.label)), tools.filter(r => r.sec === "Connections" || r.sec === "Identify a cell (game)"));
+  } else rows = menuRowsRaw(t);
+  return menuSections(vrAdvanced() ? rows : vrBasicRows(t, rows), t);
 }
 /* ── SYMBOLS ON THE PALETTE (2026-11-14, Søren: "We could use symbols also in the VR headset controller menu") ──
    The panel's own icons (UI_ICON, the same line drawings as the PC buttons) drawn on the palette's canvas: one on
@@ -11740,9 +11764,10 @@ const MENU_SVG = Object.assign({}, window.UI_ICON || {}, {
   user: MI_EXTRA('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
   grid: MI_EXTRA('<path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>'),
   palette: MI_EXTRA('<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.9 1.4-2-.5-1.3.4-2.5 1.8-2.5H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>'),
-  exit: MI_EXTRA('<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>')
+  exit: MI_EXTRA('<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>'),
+  chat: MI_EXTRA('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>')
 });
-const MENU_TAB_ICON = { Show: "eye", Map: "map", Tools: "wrench", Spray: "spray", EM: "em", Cells: "nucleus", View: "view" };
+const MENU_TAB_ICON = { Show: "eye", Map: "map", Tools: "wrench", Activity: "bolt", Spray: "spray", EM: "em", Cells: "nucleus", View: "view" };
 const MENU_ICON_RULES = [
   [/^✓ Signed in|Not signed in/, "user"], [/see-through|solid/i, "glass"], [/^Cell models/, "mesh"], [/Colour by e|Vessel colour|Colour:|Colour by flow/i, "palette"],
   [/^Nuclei/, "nucleus"], [/Axon initial/, "trace"], [/Organelle/i, "organelle"], [/centriole vectors|Vectors of/, "cvec"], [/Cilium base/, "lvec"],
@@ -11761,10 +11786,10 @@ const MENU_ICON_RULES = [
   [/Spray can|Nozzle/, "spray"], [/Glowing paint/, "sparkle"], [/Eraser/, "eraser"], [/Wipe all paint/, "trash"],
   [/^Trace|^Draw:|Trace organelles/, "pen"], [/Next section|Previous section|\+5 µm|−5 µm/, "down"], [/Finish this|^Save|Save this scene|Save as a new/, "save"],
   [/Undo/, "reset"], [/Stop tracing|Hide the EM/, "eyeoff"], [/EM section|Wide 65|Close 33|Move it to the picked/, "em"],
-  [/Tabletop|Room-sized|Walk inside|Bigger/, "size"], [/Turn 30°/, "turntable"], [/palette here/, "hand"], [/Help/, "help"], [/Exit VR/, "exit"],
+  [/Tabletop|Room-sized|Walk inside|Bigger|World size/, "size"], [/Turn 30°/, "turntable"], [/palette here/, "hand"], [/Help/, "help"], [/Exit VR/, "exit"],
   [/All types|Page /, "nucleus"]
 ];
-const MENU_SEC_ICON = [[/Stimulate/, "bolt"], [/Ca²⁺/, "wave"], [/Connections/, "synapse"], [/Blood|Vessels/, "vessel"], [/Clock/, "clock"],
+const MENU_SEC_ICON = [[/Spray/, "spray"], [/EM section/, "em"], [/Patch clamp/, "pin"], [/Timeline/, "timeline"], [/Stimulate/, "bolt"], [/Ca²⁺/, "wave"], [/Connections/, "synapse"], [/Blood|Vessels/, "vessel"], [/Clock/, "clock"],
   [/scanner/, "screen"], [/game/, "help"], [/Recorded/, "trace"], [/Cut/, "scissors"], [/Organelles/, "organelle"], [/Synapses/, "synapse"],
   [/Scale bar/, "scalebar"], [/Meninges/, "layers"]];
 function menuIconName(r){
@@ -11788,7 +11813,7 @@ function menuIcon(name, colour){
 function drawMenu(){
   MENU.rows = menuRows();
   const FOOT_H = 96;                                    // the tool's logo (section 17)
-  const H = MENU_PAD * 2 + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H + FOOT_H;
+  const H = MENU_PAD * 2 + HEAD_H + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H + FOOT_H;
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
   const cv = MENU.canvas, g = MENU.ctx;
   if (cv.width !== MENU_W || cv.height !== H){
@@ -11813,10 +11838,16 @@ function drawMenu(){
   g.shadowColor = "#c58bff"; g.shadowBlur = 26; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, MENU_W - 16, H - 16, 30); g.stroke(); g.shadowBlur = 0;
   g.strokeStyle = "#f0d9ff"; g.lineWidth = 6;
   [[22, 22, 1, 1], [MENU_W - 22, 22, -1, 1], [22, H - 22, 1, -1], [MENU_W - 22, H - 22, -1, -1]].forEach(([x, y, a, b]) => { g.beginPath(); g.moveTo(x, y + 56 * b); g.lineTo(x, y); g.lineTo(x + 56 * a, y); g.stroke(); });
+  /* The header: signed in or not, one line; press it to sign in (2026-11-17: instead of a row on every tab) */
+  { const ok = credOk(), hv = MENU.hover && MENU.hover.head;
+    if (!ok && hv){ g.fillStyle = "rgba(255,176,112,0.18)"; g.beginPath(); g.roundRect(26, MENU_PAD + 4, MENU_W - 52, HEAD_H - 6, 12); g.fill(); }
+    const ui = menuIcon("user", ok ? "#cdb6ef" : "#ffb070"); let hx = 40; if (ui){ g.drawImage(ui, hx, MENU_PAD + 9, 32, 32); hx += 44; }
+    g.fillStyle = ok ? "#cdb6ef" : "#ffb070"; g.font = "600 28px system-ui, sans-serif";
+    g.fillText(ok ? "Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to sign in with Google (leaves VR)", hx, MENU_PAD + 35, MENU_W - hx - 40); }
   /* Tabs. */
   const tw = (MENU_W - MENU_PAD * 2) / TABS.length;
   TABS.forEach((t, k) => {
-    const x = MENU_PAD + k * tw, y = MENU_PAD, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
+    const x = MENU_PAD + k * tw, y = MENU_PAD + HEAD_H, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : (hv ? "rgba(214,160,255,0.25)" : "rgba(255,255,255,0.07)");
     g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.fill();
     if (on){ g.shadowColor = "#e0b3ff"; g.shadowBlur = 18; g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.stroke(); g.shadowBlur = 0; }
@@ -11825,8 +11856,8 @@ function drawMenu(){
     g.fillStyle = on ? "#ffffff" : "#d7c4f2"; g.font = "600 " + (ti ? 25 : 34) + "px system-ui, sans-serif"; g.textAlign = "center";
     g.fillText(t, x + tw / 2, ti ? y + 70 : y + 54); g.textAlign = "left";
   });
-  g.fillStyle = "rgba(230,200,255,0.45)"; g.fillRect(MENU_PAD + 10, MENU_PAD + TAB_H + 2, MENU_W - MENU_PAD * 2 - 20, 2);
-  const top = MENU_PAD + TAB_H + 10;
+  g.fillStyle = "rgba(230,200,255,0.45)"; g.fillRect(MENU_PAD + 10, MENU_PAD + HEAD_H + TAB_H + 2, MENU_W - MENU_PAD * 2 - 20, 2);
+  const top = MENU_PAD + HEAD_H + TAB_H + 10;
   MENU.rows.forEach((r, k) => {
     const y = top + k * ROW_H;
     if (r.head){ g.fillStyle = r.open ? "rgba(214,160,255,0.30)" : "rgba(255,255,255,0.07)"; g.beginPath(); g.roundRect(22, y + 6, MENU_W - 44, ROW_H - 12, 14); g.fill(); }
@@ -11861,7 +11892,21 @@ function drawMenu(){
   /* Footer: a rule, the tool's logo and grubblab.com. */
   g.strokeStyle = "rgba(230,200,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
   const lw = drawLogo(g, 36, H - FOOT_H + 14, 54, false);
-  g.fillStyle = "#cdb6ef"; g.font = "600 30px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("VR · grubblab.com", MENU_W - 40, H - FOOT_H + 62); g.textAlign = "left";
+  g.fillStyle = "#cdb6ef"; g.font = "600 26px system-ui, sans-serif"; g.textAlign = "right"; g.fillText("grubblab.com", MENU_W - 36, H - FOOT_H + 60); g.textAlign = "left";
+  /* QUICK ICONS between the logo and the address (2026-11-17, Søren: "chat, cut with my right hand, measure, record,
+     stimulate and the spray can could also be icons in the bottom of menu between the logo and url") */
+  { const L = menuFootIcons(), x0 = 36 + (lw || 150) + 18, x1 = MENU_W - 36 - g.measureText("grubblab.com").width - 18, n = L.length;
+    const sz = 64, gap = n > 1 ? Math.min(24, (x1 - x0 - n * sz) / (n - 1)) : 0, w = n * sz + (n - 1) * gap, xs = x0 + Math.max(0, (x1 - x0 - w) / 2), y = H - FOOT_H + 16;
+    MENU.foot = [];
+    L.forEach((f, k) => {
+      const x = xs + k * (sz + gap), on = !!f.on(), hv = MENU.hover && MENU.hover.foot === k;
+      g.fillStyle = on ? (f.k === "rec" ? "rgba(248,81,73,0.55)" : "rgba(201,139,255,0.6)") : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)";
+      g.beginPath(); g.roundRect(x, y, sz, sz, 16); g.fill();
+      if (hv){ g.strokeStyle = "rgba(240,220,255,0.85)"; g.lineWidth = 2; g.stroke(); }
+      const im = menuIcon(f.icon, on ? "#ffffff" : "#e9d5ff"); if (im) g.drawImage(im, x + 10, y + 10, sz - 20, sz - 20);
+      if (f.badge){ const b = f.badge(); if (b){ g.fillStyle = "#f85149"; g.beginPath(); g.arc(x + sz - 8, y + 8, 13, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "700 18px system-ui"; g.textAlign = "center"; g.fillText(b > 9 ? "9+" : String(b), x + sz - 8, y + 14); g.textAlign = "left"; } }
+      MENU.foot.push({ x, y, w: sz, h: sz });
+    }); }
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
   if (!MENU.mesh){
@@ -11870,6 +11915,18 @@ function drawMenu(){
     MENU.mesh.renderOrder = 30;
   }
   MENU.dirty = false;
+}
+function menuFootIcons(){
+  const L = [
+    { k: "chat", icon: "chat", on: () => CHP.on, act: () => vrpShow(CHP, !CHP.on), badge: () => chatUnread() },
+    { k: "cut", icon: "scissors", on: () => CUT.mode === "hand" || CUT.mode === "frozen", act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") },
+    { k: "measure", icon: "ruler", on: () => MEAS.on, act: () => setMeasure(!MEAS.on) },
+    { k: "stim", icon: "bolt", on: () => STIM.on, act: () => setStim(!STIM.on) },
+    { k: "spray", icon: "spray", on: () => SPRAY.on, act: () => setSpray(!SPRAY.on) }
+  ];
+  /* a take is part of the timeline, an advanced tool */
+  if (vrAdvanced()) L.splice(3, 0, { k: "rec", icon: TAKE.on ? "stop" : "rec", on: () => TAKE.on, act: () => TAKE.on ? takeStop() : takeStart() });
+  return L;
 }
 function leftHand(){ return hands.find(h => h.source && h.source.handedness === "left") || hands[0]; }
 function toggleMenu(){
@@ -11898,15 +11955,19 @@ function menuHit(h){
   const hit = _uv.intersectObject(MENU.mesh, false)[0];
   if (!hit || !hit.uv) return null;
   const px = hit.uv.x * MENU_W, py = (1 - hit.uv.y) * MENU.canvas.height;
-  if (py >= MENU_PAD && py < MENU_PAD + TAB_H){
+  if (py >= MENU_PAD && py < MENU_PAD + HEAD_H) return { head: true };
+  if (py >= MENU_PAD + HEAD_H && py < MENU_PAD + HEAD_H + TAB_H){
     const k = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / TABS.length));
     return k >= 0 && k < TABS.length ? { tab: k } : { none: true };
   }
-  const k = Math.floor((py - MENU_PAD - TAB_H - 10) / ROW_H);
+  if (MENU.foot) for (let f = 0; f < MENU.foot.length; f++){ const b = MENU.foot[f]; if (px >= b.x - 6 && px <= b.x + b.w + 6 && py >= b.y - 6 && py <= b.y + b.h + 6) return { foot: f }; }
+  const k = Math.floor((py - MENU_PAD - HEAD_H - TAB_H - 10) / ROW_H);
   return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? (MENU.rows[k].act2 ? { row: k, half: px > MENU_W / 2 ? 1 : 0 } : { row: k }) : { none: true };
 }
 function menuAct(hit){
-  if (hit.tab != null){ MENU.tab = hit.tab; MENU.help = false; }
+  if (hit.head){ if (!credOk()) vrLeaveToSignIn(); }
+  else if (hit.foot != null){ const f = menuFootIcons()[hit.foot]; if (f) f.act(); }
+  else if (hit.tab != null){ MENU.tab = hit.tab; MENU.help = false; }
   else if (hit.row != null){ const r = MENU.rows[hit.row]; (hit.half && r.act2 ? r.act2 : r.act)(); }
   MENU.dirty = true;
 }
@@ -17626,6 +17687,15 @@ function setDyeOnly(v){
   try { PATCHP.dirty = true; } catch (e){}
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
+/* ⏩ Watch the dye: ×20; pressed again, back to the clock it was at before (2026-11-17, Søren: "If you click watch the
+   cell once more, it does not revert it back to normal time. I think it should") */
+function dyeFastToggle(){
+  const b = document.getElementById("dyeFast");
+  if (DYE.fastPrev && Math.abs(Math.log(SIM.speed / 20)) < 0.05){ const v = DYE.fastPrev; DYE.fastPrev = null; setSimSpeed(v, "back from watching the dye"); }
+  else { DYE.fastPrev = SIM.speed; simRecommend("dye"); }
+  if (b){ b.classList.toggle("on", !!DYE.fastPrev); b.textContent = DYE.fastPrev ? "⏪ Back to " + simFmt(DYE.fastPrev) : "⏩ Watch the dye"; }
+  try { PATCHP.dirty = true; } catch (e){}
+}
 function dyeClear(){
   let un = false;
   for (const c of CELLS) if (c._dyeGlass){ c.glass = false; c._dyeGlass = false; un = true; }
@@ -17951,7 +18021,7 @@ function patchUiInit(){
   $("pfGo").addEventListener("click", puffNow);
   $("pfOut").addEventListener("click", puffRemove);
   $("dyeClr").addEventListener("click", dyeClear);
-  $("dyeFast").addEventListener("click", () => simRecommend("dye"));
+  $("dyeFast").addEventListener("click", dyeFastToggle);
   $("dyeOnly").addEventListener("click", () => setDyeOnly(!DYE_ONLY));
   $("pcDyeGlass").addEventListener("change", e => { PATCH.dyeGlass = e.target.checked; });
   $("pcProt").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; patchProtBtn(b.dataset.pp); });
@@ -18962,7 +19032,7 @@ function patchPanelDraw(P, g){
     B(30, 260, "In vivo bg", () => { S.bg = !S.bg; patchUiSync(); }, { on: S.bg, key: "bg", size: 28 });
     B(300, 260, "Linked", () => setPatchNet(!S.net), { on: S.net, key: "net", size: 28 });
     B(570, 330, "⚗ Solutions", () => vrpShow(SOLP, !SOLP.on), { on: SOLP.on || !!ISO.key, key: "sol", size: 28 });
-    if (DYE.cells.size) B(1290, 280, "⏩ Watch the dye", () => simRecommend("dye"), { on: SIM.speed >= 10, key: "dsp", size: 28 });
+    if (DYE.cells.size) B(1290, 280, DYE.fastPrev ? "⏪ Back to " + simFmt(DYE.fastPrev) : "⏩ Watch the dye", dyeFastToggle, { on: !!DYE.fastPrev, key: "dsp", size: 28 });
     B(910, DYE.cells.size ? 370 : 660, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
   }
   y += 100;
@@ -20329,7 +20399,7 @@ async function setConnectivity(v){
   } catch (e){
     CN.on = false; document.getElementById("cnBtn").classList.remove("on");
     if (e.noToken){ document.getElementById("cnTokRow").style.display = "flex";
-      cnSay(renderer.xr.isPresenting ? "Connectivity needs a CAVE token, and this headset's browser has not been given one. Palette → Tools → Connections → “🔑 Give this headset the CAVE token” (leaves VR for a moment)." : "Connectivity needs a CAVE token (the one µJump's Connectivity panel uses) — paste it below."); MENU.dirty = true; }
+      cnSay(renderer.xr.isPresenting ? "Connectivity needs a CAVE token, and this headset's browser has not been given one. Palette → Cells → Connections → “🔑 Give this headset the CAVE token” (leaves VR for a moment)." : "Connectivity needs a CAVE token (the one µJump's Connectivity panel uses) — paste it below."); MENU.dirty = true; }
     else cnSay("Connectivity could not be read from CAVE: " + (e.message || e));
   }
   CN.busy = false; MENU.dirty = true;
