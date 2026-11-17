@@ -1826,6 +1826,7 @@ function renderList(){
          <b data-pick="${c.i}" title="${esc(c.label)} — ${EI_NAME[cellClass(c)]}"${c.i === SELECTED ? ' style="text-decoration:underline"' : ""}>${esc(c.root || c.label)}</b>
          <span class="st${c.err ? " err" : ""}">${esc(c.status || "")}</span>${window.__RA && window.__RA.on && raEntry(c) ? `<span title="${esc(raListTitle(c))}">${raMiniSvg(raEntry(c))}</span>` : ""}</div>
          ${c.mesh && cellClass(c) !== "glia" ? `<button class="stimOne${window.__lastStim === c.i ? " on" : ""}" data-stim="${c.i}" title="Stimulate ${esc(c.root || c.label)} at its soma">${(window.UI_ICON || {}).bolt || "⚡"}</button>` : ""}
+         <button class="glassOne hdOne${c.hiRes ? " on" : ""}" data-hd="${c.i}" title="High resolution (full-detail mesh) for this cell only: ${esc(c.root || c.label)}" style="font:600 10px system-ui;padding:2px 3px">HD</button>
          <button class="glassOne${c.glass ? " on" : ""}" data-glass="${c.i}" title="See-through: ${esc(c.root || c.label)}">${(window.UI_ICON || {}).glass || "◐"}</button>
          <input type="checkbox" data-vis="${c.i}" ${c.hidden ? "" : "checked"} title="Show / hide"></div>`).join("");
   }).join("");
@@ -1871,6 +1872,8 @@ listEl.addEventListener("click", e => {
   if (cc){ const c = CELLS[+cc.dataset.ccol]; pickColour("cell", cellKeyCol(c), c.colour); return; }
   const cr = e.target.closest("[data-ccolr]");
   if (cr){ const c = CELLS[+cr.dataset.ccolr]; setUserColour("cell", cellKeyCol(c), null, true); return; }
+  const hd = e.target.closest("[data-hd]");
+  if (hd){ const c = CELLS[+hd.dataset.hd]; setCellHi(c, !c.hiRes); return; }
   const gb = e.target.closest("[data-glass]");
   if (gb){ const c = CELLS[+gb.dataset.glass]; setCellGlass([c], !c.glass); return; }
   const gs = e.target.closest("[data-gstim]");
@@ -4907,7 +4910,7 @@ function captureScene(){
     v: 1, savedAt: new Date().toISOString(),
     timeline: (tlCount()) ? tlData() : undefined,
     voice: VOICE.data ? { data: VOICE.data, offset: VOICE.offset, dur: VOICE.dur } : undefined,
-    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass }, c.group ? { group: c.group } : {},
+    cells: CELLS.map(c => Object.assign({ ds: c.ds, root: c.root, nuc: c.nuc || "", label: c.label, extra: c.extra || [], hidden: !!c.hidden, glass: !!c.glass, ...(c.hiRes ? { hi: true } : {}) }, c.group ? { group: c.group } : {},
                                         c.syn && c.syn.length ? { syn: c.syn } : {}, c.marks && c.marks.length ? { marks: c.marks } : {})),
     ui: { detail: document.getElementById("detail").value, nuc: SHOW_NUC, glass: SEE_THROUGH, glassLevel: GLASS_LEVEL, isolate: ISOLATE,
           colour: COLOUR_MODE, layers: layersOn(), vessels: sel, org: ORG.on, orgKind: ORG.kind, cvec: VEC.cent, lvec: VEC.cil, vtype: VEC.type, vcol: VEC.colour, traced: TRC.on, trcType: TRC.type, trcKind: TRC.kind, sbar: SBAR.on,
@@ -5161,7 +5164,7 @@ async function applyScene(sc){
   const u = sc.ui || {};
   if (u.bg) setBackground(u.bg);
   if (u.grid != null) setGrid(u.grid);
-  CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; if (sc.cells[i] && sc.cells[i].glass) c.glass = true; });
+  CELLS.forEach((c, i) => { if (sc.cells[i] && sc.cells[i].hidden) c.hidden = true; if (sc.cells[i] && sc.cells[i].glass) c.glass = true; if (sc.cells[i] && sc.cells[i].hi) c.hiRes = true; });
   if (u.glassLevel) setGlassLevel(u.glassLevel);
   if (u.colour === "ei") setColourMode("ei");
   setNuclei(u.nuc !== false);
@@ -8889,12 +8892,22 @@ function select(i){ SELECTED = i; applyLook(); renderList();
    moment it is shown again (applyLook asks). Nothing else is thrown away: the stage keeps its place. */
 var LOD = { queue: [], busy: 0 };   // var: applyLook may run before this line during start-up
 function lodWant(){ return document.getElementById("detail").value === "light" ? "light" : "full"; }
+/* HIGH RESOLUTION, CELL BY CELL (2026-11-17, Søren: "I would like the option to turn on high resolution mesh of a cell
+   in VR. It should be regulated on a cell basis"): a cell marked HD is read at full detail whatever the Detail setting
+   says; the others follow the setting. Both details are kept (c.lodCache), so switching back is instant. */
+function lodWantFor(c){ return c && c.hiRes ? "full" : lodWant(); }
+function setCellHi(c, v){
+  c.hiRes = !!v; lodCheck();
+  const msg = c.hiRes ? "HD: " + shortName(c) + " is read at full resolution (heavier — a big neuron can be millions of triangles)." : shortName(c) + " back to the normal detail.";
+  ctxNote.textContent = msg; try { if (renderer.xr.isPresenting) flashWarn(msg, 2500, "#c98bff"); } catch (e){}
+  try { renderList(); } catch (e){}
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
 function lodShown(c){ return !(c.hidden || (ISOLATE && SELECTED >= 0 && SELECTED !== c.i)); }
 function lodCheck(){
-  const want = lodWant();
   /* a cell queued for a view that has since hidden it is let go of again */
-  LOD.queue = LOD.queue.filter(c => { if (lodShown(c) && (c.lod !== want || c.deferred)) return true; c.lodBusy = false; return false; });
-  for (const c of CELLS) if (!c.lodBusy && lodShown(c) && ((c.lod && c.lod !== want && (c.mesh || c.nucMesh)) || c.deferred)){ c.lodBusy = true; LOD.queue.push(c); }
+  LOD.queue = LOD.queue.filter(c => { if (lodShown(c) && (c.lod !== lodWantFor(c) || c.deferred)) return true; c.lodBusy = false; return false; });
+  for (const c of CELLS) if (!c.lodBusy && lodShown(c) && ((c.lod && c.lod !== lodWantFor(c) && (c.mesh || c.nucMesh)) || c.deferred)){ c.lodBusy = true; LOD.queue.push(c); }
   if (!LOD.tick){ LOD.tick = setTimeout(() => { LOD.tick = 0; lodPump(); }, 0); }    // next tick: whatever else this moment hides or shows is in by then
 }
 /* ── BOTH DETAILS KEPT (2026-10-24, Søren: "Now it stopped at some point in the scene") ─────────────────────────────
@@ -8953,7 +8966,7 @@ async function tlPrepCells(){
         const keep = (c.mesh || c.nucMesh) && !c.deferred ? c.lod : null;
         lodStash(c); c.err = false; c.deferred = false;
         await loadOne(c, LOAD_TOKEN, d === "light"); cellBoxGrow(c);
-        if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWant()) lodSwapIn(c, keep);   // the one on show stays on show
+        if (keep && keep !== d && c.lodCache && c.lodCache[keep] && lodShown(c) && keep === lodWantFor(c)) lodSwapIn(c, keep);   // the one on show stays on show
         done++; note();
       }
     } finally { c.lodBusy = false; }
@@ -8975,10 +8988,10 @@ function lodPump(){
     const c = LOD.queue.shift(); LOD.busy++;
     (async () => {
       try {
-        if (CELLS[c.i] === c && lodShown(c) && (c.lod !== lodWant() || c.deferred)){
-          if (c.lodCache && c.lodCache[lodWant()]){ lodSwapIn(c, lodWant()); renderList(); applyLook(); updateTri(); return; }   // read before: no network, no decoding
+        if (CELLS[c.i] === c && lodShown(c) && (c.lod !== lodWantFor(c) || c.deferred)){
+          if (c.lodCache && c.lodCache[lodWantFor(c)]){ lodSwapIn(c, lodWantFor(c)); renderList(); applyLook(); updateTri(); return; }   // read before: no network, no decoding
           lodStash(c); c.err = false; c.deferred = false;
-          await loadOne(c, LOAD_TOKEN, lodWant() === "light");
+          await loadOne(c, LOAD_TOKEN, lodWantFor(c) === "light");
           cellBoxGrow(c);
           renderList(); applyLook(); updateTri();
         }
@@ -9355,8 +9368,8 @@ function takeStop(){
   try {
     if (renderer.xr.isPresenting){
       if (!TLVR.on) setTlvr(true);
-      MENU.tab = TABS.indexOf("View"); MENU.help = false; MENU.secOpen.View = "Timeline";
       if (!MENU.open) toggleMenu();
+      MENU.tab = TABS.indexOf("View"); MENU.help = false; MENU.secOpen.View = "Timeline"; MENU.dirty = true;
     }
   } catch (e){ console.warn("[vr] after the take:", e); }
   MENU.dirty = true;
@@ -11109,7 +11122,7 @@ const hands = [0, 1].map(k => {
   const h = { ctl, grip, ray, squeezing: false, source: null, prevBtn: {}, gripGlove, gripSide: k === 0 ? "R" : "L", hand, tglove };
   ctl.addEventListener("connected", e => { h.source = e.data; });
   ctl.addEventListener("disconnected", () => { h.source = null; });
-  ctl.addEventListener("selectend", () => { h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); tlvrRelease(h); vrpRelease(h); });
+  ctl.addEventListener("selectend", () => { try { menuRelease(h); } catch (e){} h.spraying = false; if (TRW.on) trwHandEnd(h); spkWake(); tlvrRelease(h); vrpRelease(h); });
   ctl.addEventListener("select", () => spkWake());
   ctl.addEventListener("selectstart", () => {
     /* A transient pointer (Apple Vision Pro's look-and-pinch) has no pose until the frame after
@@ -11123,7 +11136,11 @@ const hands = [0, 1].map(k => {
 });
 
 function selectWith(h){
+  if (MENU.talk){ MENU.talk = false; chpStopRec(false, CHP); MENU.dirty = true; return; }   // "Talk now" from the chat icon: this press ends it
   const mh = menuHit(h);
+  if (mh && mh.pop != null){ footPopAct(mh.pop, mh.sub); return; }
+  if (mh && mh.foot != null){ if (MENU.pop && MENU.pop.k !== mh.foot) MENU.pop = null; MENU.footHold = { k: mh.foot, h, t0: performance.now() }; MENU.dirty = true; return; }
+  if (MENU.pop && mh){ MENU.pop = null; MENU.dirty = true; }
   if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
   if (tlvrSelect(h)) return;                         // on the timeline panel (section 48)
   if (vrpSelect(h)) return;                          // on "My scenes" or the chat (section 53)
@@ -11681,9 +11698,11 @@ function menuRowsRaw(t){
     } else {
       const allShown = g.cells.every(c => !c.hidden);
       rows.push({ label: "◂ All types", act: () => { MENU.cellGroup = null; MENU.cellPage = 0; } });
+      const allHi = g.cells.every(c => c.hiRes);
       rows.push({ label: "All " + g.cells.length + " " + g.name, on: allShown, swatch: g.cells[0].colour,
                   act: () => { g.cells.forEach(c => c.hidden = allShown); syncVisChecks(); applyLook(); },
-                  right: g.cells.every(c => c.glass) ? "◐ solid" : "◐ see-through", act2: () => setCellGlass(g.cells, !g.cells.every(c => c.glass)) });
+                  btns: [{ label: "HD", on: allHi, act: () => { g.cells.forEach(c => { c.hiRes = !allHi; }); setCellHi(g.cells[0], !allHi); } },
+                         { label: g.cells.every(c => c.glass) ? "solid" : "see-through", icon: "glass", act: () => setCellGlass(g.cells, !g.cells.every(c => c.glass)) }] });
       const fires = g.cells.some(c => c.mesh && cellClass(c) !== "glia");
       if (fires) rows.push({ label: "⚡ Fire all " + g.cells.filter(c => c.mesh && cellClass(c) !== "glia").length + " together", act: () => stimulateGroup(g.cells, g.name) });
       const pp = fires ? per - 3 : per - 2;
@@ -11692,8 +11711,10 @@ function menuRowsRaw(t){
       g.cells.slice(MENU.cellPage * pp, MENU.cellPage * pp + pp).forEach(c => rows.push({
         label: (c.err ? "⚠ " : "") + (c.root || c.label), swatch: c.colour, on: !c.hidden, picked: c.i === SELECTED,
         act: () => { c.hidden = !c.hidden; syncVisChecks(); applyLook(); },
-        /* The right half fires the cell at its soma, like the ⚡ beside its name on the panel. */
-        ...(c.mesh && cellClass(c) !== "glia" ? { right: "⚡ fire", act2: () => stimulateCell(c) } : {}) }));
+        /* buttons at the right: high resolution, see-through, and (a neuron) fire it at its soma */
+        btns: [{ label: c.hiRes ? (c.lodBusy ? "HD…" : "HD") : "HD", on: !!c.hiRes, act: () => setCellHi(c, !c.hiRes) },
+               { label: "", icon: "glass", on: !!c.glass, act: () => setCellGlass([c], !c.glass) }]
+          .concat(c.mesh && cellClass(c) !== "glia" ? [{ label: "⚡", act: () => stimulateCell(c) }] : []) }));
       if (pages > 1) rows.push({ label: "Page " + (MENU.cellPage + 1) + " of " + pages + "  ▸ next", act: () => { MENU.cellPage = (MENU.cellPage + 1) % pages; } });
     }
   } else if (t === "View"){
@@ -11704,7 +11725,6 @@ function menuRowsRaw(t){
         .forEach(l => rows.push({ label: l, note: true }));
       rows.push({ label: "◂ Back", act: () => { MENU.help = false; } });
     } else {
-      rows.push({ label: "🧰 Advanced tools" + (vrAdvanced() ? "" : " (models, tracing, timeline…)"), on: vrAdvanced(), icon: "wrench", act: () => window.setAdvanced(!vrAdvanced(), true) });
       { const sz = stage.scale.x / FIT_SCALE, k = sz < 3 ? 0 : sz < 15 ? 1 : 2;
         rows.push({ label: "World size: " + ["tabletop", "room-sized", "walk inside (giant)"][k] + "  ▸", act: () => setSize([6, 30, 1][k]) }); }
       rows.push({ label: "Reset position", act: resetStage });
@@ -11734,6 +11754,7 @@ function menuRowsRaw(t){
    every tab. The rows are still made by menuRowsRaw, tab by old tab; this sorts them into the new ones. */
 const ACT_SECS = new Set(["Stimulate & listen", "Ca²⁺ wave", "Patch clamp & puff (model)", "Blood & vessels (models)", "Clock & brain states (models)", "What a scanner records (model)", "Recorded activity"]);
 function menuRows(){
+  if (MENU.tab < 0 || MENU.tab >= TABS.length) return [];
   const t = TABS[MENU.tab]; let rows;
   const sec = (L, n) => L.map(r => Object.assign(r, { sec: r.sec || n }));
   if (t === "Activity") rows = menuRowsRaw("Tools").filter(r => ACT_SECS.has(r.sec) || /^Reset activity/.test(r.label));
@@ -11813,7 +11834,9 @@ function menuIcon(name, colour){
 function drawMenu(){
   MENU.rows = menuRows();
   const FOOT_H = 96;                                    // the tool's logo (section 17)
-  const H = MENU_PAD * 2 + HEAD_H + TAB_H + 10 + Math.max(MENU.rows.length, 1) * ROW_H + FOOT_H;
+  let H = MENU_PAD * 2 + HEAD_H + TAB_H + 10 + (MENU.tab < 0 ? 0 : Math.max(MENU.rows.length, 1)) * ROW_H + FOOT_H;
+  /* room for an icon's menu above the footer, folded or not */
+  if (MENU.pop){ try { const f = menuFootIcons()[MENU.pop.k]; if (f) H = Math.max(H, footPopItems(f.k).length * 64 + 24 + FOOT_H + 24); } catch (e){} }
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
   const cv = MENU.canvas, g = MENU.ctx;
   if (cv.width !== MENU_W || cv.height !== H){
@@ -11842,8 +11865,18 @@ function drawMenu(){
   { const ok = credOk(), hv = MENU.hover && MENU.hover.head;
     if (!ok && hv){ g.fillStyle = "rgba(255,176,112,0.18)"; g.beginPath(); g.roundRect(26, MENU_PAD + 4, MENU_W - 52, HEAD_H - 6, 12); g.fill(); }
     const ui = menuIcon("user", ok ? "#cdb6ef" : "#ffb070"); let hx = 40; if (ui){ g.drawImage(ui, hx, MENU_PAD + 9, 32, 32); hx += 44; }
+    /* BASIC / ADVANCED, top right (2026-11-17, Søren: "The toggle between basic and advanced toolbox should be in the
+       top right corner of the menu") */
+    const adv = vrAdvanced(), aw = 270, ax = MENU_W - 58 - aw, ahv = MENU.hover && MENU.hover.adv;
+    g.fillStyle = adv ? "rgba(201,139,255,0.7)" : ahv ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.12)"; g.beginPath(); g.roundRect(ax, MENU_PAD + 4, aw, HEAD_H - 8, 14); g.fill();
+    if (ahv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 2; g.stroke(); }
+    const wi = menuIcon("wrench", "#ffffff"); if (wi) g.drawImage(wi, ax + 10, MENU_PAD + 10, 28, 28);
+    g.fillStyle = "#ffffff"; g.font = "600 26px system-ui, sans-serif"; g.fillText(adv ? "Advanced" : "Basic", ax + 46, MENU_PAD + 34);
+    g.fillStyle = adv ? "#fff" : "rgba(255,255,255,0.35)"; g.beginPath(); g.roundRect(ax + aw - 62, MENU_PAD + 15, 48, 22, 11); g.fill();
+    g.fillStyle = adv ? "#8a4fe0" : "#ffffff"; g.beginPath(); g.arc(adv ? ax + aw - 25 : ax + aw - 51, MENU_PAD + 26, 8, 0, 7); g.fill();
+    MENU.advX = ax;
     g.fillStyle = ok ? "#cdb6ef" : "#ffb070"; g.font = "600 28px system-ui, sans-serif";
-    g.fillText(ok ? "Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to sign in with Google (leaves VR)", hx, MENU_PAD + 35, MENU_W - hx - 40); }
+    g.fillText(ok ? "Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to sign in (leaves VR)", hx, MENU_PAD + 35, ax - hx - 16); }
   /* Tabs. */
   const tw = (MENU_W - MENU_PAD * 2) / TABS.length;
   TABS.forEach((t, k) => {
@@ -11885,10 +11918,24 @@ function drawMenu(){
     if (r.spans){ const base = g.fillStyle; for (const [t, col] of r.spans){ const tw = g.measureText(t).width;
         if (col){ g.fillStyle = "rgba(14,6,34,0.78)"; g.beginPath(); g.roundRect(x - 6, y + 12, tw + 12, 52, 12); g.fill(); x += 2; }
         g.fillStyle = col || base; g.fillText(t, x, y + 50); x += tw + (col ? 8 : 0); } }
-    else g.fillText(lab, x, y + 50, MENU_W - x - (r.right ? 190 : 30));
+    else {
+      /* chips at the right (2026-11-17: HD, see-through, fire, cell by cell) */
+      let rx = MENU_W - 34; r._b = [];
+      if (r.btns) for (let j = r.btns.length - 1; j >= 0; j--){
+        const b = r.btns[j]; g.font = "600 32px system-ui, sans-serif"; const bi = b.icon ? menuIcon(b.icon, "#ffffff") : null, bw = Math.max(64, (b.label ? g.measureText(b.label).width + 30 : 0) + (bi ? (b.label ? 40 : 30) : 0)); rx -= bw;
+        const hv = MENU.hover && MENU.hover.row === k && MENU.hover.btn === j;
+        g.fillStyle = b.on ? "rgba(201,139,255,0.75)" : hv ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)"; g.beginPath(); g.roundRect(rx, y + 10, bw, ROW_H - 20, 14); g.fill();
+        if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 2; g.stroke(); }
+        if (bi){ const ix = b.label ? rx + 12 : rx + bw / 2 - 18; g.drawImage(bi, ix, y + 18, 36, 36); }
+        if (b.label){ g.fillStyle = b.label === "⚡" ? "#ffe11a" : "#ffffff"; g.textAlign = "center"; g.fillText(b.label, rx + bw / 2 + (bi ? 16 : 0), y + 47); g.textAlign = "left"; }
+        r._b[j] = [rx, rx + bw]; rx -= 10;
+      }
+      g.fillStyle = r.exit ? "#ffb070" : (r.note ? "#cdb6ef" : "#f3eaff"); g.font = (r.note ? "34px" : "40px") + " system-ui, sans-serif";
+      g.fillText(lab, x, y + 50, (r.btns ? rx : MENU_W - (r.right ? 190 : 30)) - x);
+    }
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
-  if (!MENU.rows.length){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
+  if (!MENU.rows.length && MENU.tab >= 0){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
   /* Footer: a rule, the tool's logo and grubblab.com. */
   g.strokeStyle = "rgba(230,200,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
   const lw = drawLogo(g, 36, H - FOOT_H + 14, 54, false);
@@ -11907,6 +11954,7 @@ function drawMenu(){
       if (f.badge){ const b = f.badge(); if (b){ g.fillStyle = "#f85149"; g.beginPath(); g.arc(x + sz - 8, y + 8, 13, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "700 18px system-ui"; g.textAlign = "center"; g.fillText(b > 9 ? "9+" : String(b), x + sz - 8, y + 14); g.textAlign = "left"; } }
       MENU.foot.push({ x, y, w: sz, h: sz });
     }); }
+  try { footPopDraw(g, H, FOOT_H); } catch (e){ console.warn("[vr] icon menu:", e); MENU.pop = null; }
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
   if (!MENU.mesh){
@@ -11928,9 +11976,137 @@ function menuFootIcons(){
   if (vrAdvanced()) L.splice(3, 0, { k: "rec", icon: TAKE.on ? "stop" : "rec", on: () => TAKE.on, act: () => TAKE.on ? takeStop() : takeStart() });
   return L;
 }
+/* ── HOLD AN ICON FOR MORE (2026-11-17, Søren: "For the buttons between the logo and the URL, it would be cool if a
+   small dropdown comes of you hold the trigger on them" -- "Build it") ── A press on a footer icon still switches its
+   tool; holding the trigger on it for 0.4 s opens a small menu just above it. Point at an item while still holding and
+   let go to choose it -- or let go on the icon and click an item. It closes when you let go elsewhere, or after 3 s
+   with nothing chosen. */
+const FOOT_HOLD_MS = 400;
+function footPopItems(k){
+  const I = [];
+  if (k === "chat"){
+    I.push({ label: MENU.talk ? "● Listening… press the trigger to stop" : "🎙 Talk now", on: !!MENU.talk, act: () => { vrpShow(CHP, true); if (!MENU.talk){ MENU.talk = true; chpStartRec(CHP); try { flashWarn("🎙 Listening — press the trigger to stop", 2500, "#c98bff"); } catch (e){} } } });
+    I.push({ label: "Send what I said", off: !chpText(), act: () => chpSend() });
+    I.push({ label: "📸 Screenshot into the chat", act: () => { vrpShow(CHP, true); shotStart(); } });
+    I.push({ label: SELECTED >= 0 ? "🧩 Add the picked cell" : "🧩 Add the picked cell (pick one first)", off: SELECTED < 0, act: () => { vrpShow(CHP, true); chpAddCell(); } });
+    I.push({ label: CHP.on ? "Close the chat" : "Open the chat", act: () => vrpShow(CHP, !CHP.on) });
+  } else if (k === "cut"){
+    I.push({ label: "Cut with my right hand", on: CUT.mode === "hand", act: () => setCut("hand") });
+    I.push({ label: "Freeze the cut where it is", on: CUT.mode === "frozen", off: CUT.mode !== "hand" && CUT.mode !== "frozen", act: () => setCut("frozen") });
+    I.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut("em") });
+    I.push({ label: "Remove the cut", off: CUT.mode === "off", act: () => setCut("off") });
+  } else if (k === "measure"){
+    I.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
+    I.push({ label: "Undo the last one", off: !MEAS.items.length, act: () => { const g = MEAS.items.pop(); if (g) dropMeasure(g); } });
+    I.push({ label: "Clear all" + (MEAS.items.length ? " (" + MEAS.items.length + ")" : ""), off: !MEAS.items.length, act: clearMeasure });
+  } else if (k === "rec"){
+    if (TAKE.on){
+      I.push({ label: "⏹ Stop and keep it", act: () => takeStop() });
+      I.push({ label: "🗑 Stop and throw it away", act: () => takeDiscard() });
+    } else {
+      I.push({ label: "⏺ Record after 3 · 2 · 1", act: () => takeCountdown() });
+      I.push({ label: "Record my voice too", on: VOICE.on, act: () => { VOICE.on = !VOICE.on; voiceOpts(); } });
+      I.push({ label: "Hands in the film", on: TL.showHands !== false, act: () => { TL.showHands = TL.showHands === false; tlSave(); } });
+      I.push({ label: TLVR.on ? "Hide the timeline" : "Open the timeline", on: TLVR.on, act: () => setTlvr(!TLVR.on) });
+    }
+  } else if (k === "stim"){
+    I.push({ label: "⚡ Stimulate (trigger on a cell)", on: STIM.on, act: () => setStim(!STIM.on) });
+    I.push({ label: "Ca²⁺ wave (trigger on any cell)", on: CA.on, act: () => setCa(!CA.on) });
+    I.push({ label: "📍 Electrode (trigger on a cell)", on: !!STIM.electrode, act: () => setElectrode(!STIM.electrode) });
+    I.push({ label: "Input strength: " + GAIN_NAME[String(stimGain())] + "  ▸", keep: true, act: () => { const el = document.getElementById("stimGain"); el.value = ({ "10": "1", "1": "30", "30": "10" })[el.value]; } });
+    I.push({ label: "Reset activity", act: resetActivity });
+  } else if (k === "spray"){
+    I.push({ swatches: SPRAY_COLOURS.map(c => c[1]), keep: true, act: j => { SPRAY.colour = SPRAY_COLOURS[j][1]; SPRAY.erase = false; if (!SPRAY.on) setSpray(true); syncSprayUI(); } });
+    I.push({ label: "Eraser", on: SPRAY.on && SPRAY.erase, act: () => { SPRAY.erase = SPRAY.on ? !SPRAY.erase : true; if (!SPRAY.on) setSpray(true); else sprayNote(); syncSprayUI(); } });
+    I.push({ label: "Glowing paint", on: SPRAY.glow, keep: true, act: () => { SPRAY.glow = !SPRAY.glow; syncSprayUI(); } });
+    I.push({ label: "Nozzle: " + ({ s: "fine", m: "medium", l: "wide" })[SPRAY.size] + "  ▸", keep: true, act: () => { SPRAY.size = ({ s: "m", m: "l", l: "s" })[SPRAY.size]; syncSprayUI(); } });
+    const armed = MENU.wipeArm && performance.now() - MENU.wipeArm < 3000;
+    I.push({ label: armed ? "Press again to wipe all paint" : "Wipe all paint", exit: armed, keep: !armed, act: () => { if (armed){ MENU.wipeArm = 0; wipePaint(); } else MENU.wipeArm = performance.now(); } });
+  }
+  return I;
+}
+function takeDiscard(){
+  if (!TAKE.on) return;
+  TAKE.on = false; try { voiceStop(0); } catch (e){}
+  ctxNote.textContent = "The take was thrown away; the timeline is as it was.";
+  try { flashWarn("🗑 Take thrown away", 2000, "#f0a742"); } catch (e){}
+  MENU.dirty = true;
+}
+function takeCountdown(){
+  if (TAKE.on || MENU.countT) return;
+  let n = 3; MENU.countT = 1;
+  const tick = () => { if (n > 0){ try { flashWarn("⏺ Recording in " + n + "…", 900, "#f85149"); } catch (e){} n--; MENU.countT = setTimeout(tick, 1000); } else { MENU.countT = 0; takeStart(); } };
+  tick();
+}
+function footPopAct(j, sub){
+  const pop = MENU.pop; if (!pop) return;
+  const it = footPopItems(menuFootIcons()[pop.k].k)[j]; if (!it || it.off) return;
+  it.swatches ? it.act(sub || 0) : it.act();
+  if (it.keep) { pop.t = performance.now(); } else MENU.pop = null;
+  MENU.dirty = true;
+}
+/* drawn on the palette, just above its icon */
+function footPopDraw(g, H, FOOT_H){
+  const pop = MENU.pop; MENU.popRects = null;
+  if (!pop || !MENU.foot || !MENU.foot[pop.k]) return;
+  const f = menuFootIcons()[pop.k]; if (!f){ MENU.pop = null; return; }
+  const items = footPopItems(f.k), ih = 64, w = 560, pad = 12, h = items.length * ih + pad * 2;
+  const b = MENU.foot[pop.k], x = Math.max(20, Math.min(MENU_W - w - 20, b.x + b.w / 2 - w / 2)), y = Math.max(10, H - FOOT_H - h - 4);
+  g.save();
+  g.shadowColor = "rgba(0,0,0,0.6)"; g.shadowBlur = 24; g.fillStyle = "rgba(40,16,86,0.97)"; g.beginPath(); g.roundRect(x, y, w, h, 18); g.fill(); g.shadowBlur = 0;
+  g.strokeStyle = "rgba(225,190,255,0.95)"; g.lineWidth = 3; g.stroke();
+  /* a little pointer down to the icon */
+  g.fillStyle = "rgba(40,16,86,0.97)"; g.beginPath(); g.moveTo(b.x + b.w / 2 - 12, y + h - 1); g.lineTo(b.x + b.w / 2 + 12, y + h - 1); g.lineTo(b.x + b.w / 2, y + h + 12); g.closePath(); g.fill();
+  MENU.popRects = [];
+  items.forEach((it, j) => {
+    const iy = y + pad + j * ih, hv = MENU.hover && MENU.hover.pop === j;
+    if (hv && !it.off){ g.fillStyle = "rgba(255,255,255,0.16)"; g.beginPath(); g.roundRect(x + 8, iy + 2, w - 16, ih - 4, 12); g.fill(); }
+    if (it.swatches){
+      const n = it.swatches.length, sw = (w - 40) / n; MENU.popRects.push({ x0: x, x1: x + w, y0: iy, y1: iy + ih, sw: { x: x + 20, w: sw, n } });
+      it.swatches.forEach((c, q) => { const sx = x + 20 + q * sw; g.fillStyle = c; g.beginPath(); g.roundRect(sx + 6, iy + 10, sw - 12, ih - 20, 10); g.fill();
+        if (c === SPRAY.colour && !SPRAY.erase){ g.strokeStyle = "#fff"; g.lineWidth = 4; g.stroke(); }
+        if (hv && MENU.hover.sub === q){ g.strokeStyle = "#ffe11a"; g.lineWidth = 4; g.stroke(); } });
+      return;
+    }
+    MENU.popRects.push({ x0: x, x1: x + w, y0: iy, y1: iy + ih });
+    let tx = x + 24;
+    if (it.on !== undefined){ g.fillStyle = it.on ? "#c98bff" : "rgba(255,255,255,0.16)"; g.beginPath(); g.roundRect(tx, iy + 16, 56, 32, 16); g.fill();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(it.on ? tx + 40 : tx + 16, iy + 32, 11, 0, 7); g.fill(); tx += 72; }
+    g.fillStyle = it.off ? "rgba(243,234,255,0.4)" : it.exit ? "#ffb070" : "#f3eaff"; g.font = "34px system-ui, sans-serif";
+    g.fillText(it.label, tx, iy + 44, x + w - tx - 16);
+  });
+  g.restore();
+}
+/* the trigger let go: a short press switches the tool; a hold that opened the menu chooses where you let go */
+function menuRelease(h){
+  const fh = MENU.footHold;
+  if (fh && fh.h === h){
+    MENU.footHold = null;
+    if (!MENU.pop){ menuAct({ foot: fh.k }); return; }
+    const hit = menuHit(h);
+    if (hit && hit.pop != null){ footPopAct(hit.pop, hit.sub); return; }
+    if (hit && hit.foot === MENU.pop.k){ MENU.pop.t = performance.now(); MENU.pop.clickMode = true; MENU.dirty = true; return; }   // let go on the icon: click an item
+    MENU.pop = null; MENU.dirty = true;
+  }
+}
+function footPopFrame(){
+  const fh = MENU.footHold, now = performance.now();
+  if (fh && !MENU.pop && now - fh.t0 > FOOT_HOLD_MS){ MENU.pop = { k: fh.k, t: now }; MENU.dirty = true; }
+  if (MENU.pop){
+    const hv = MENU.hover && (MENU.hover.pop != null || MENU.hover.foot === MENU.pop.k);
+    if (hv || MENU.footHold) MENU.pop.t = now;
+    else if (now - MENU.pop.t > 3000){ MENU.pop = null; MENU.dirty = true; }
+    if (MENU.pop && MENU.pop.k >= menuFootIcons().length) MENU.pop = null;
+  }
+  if (MENU.pop || MENU.talk) MENU.dirty = MENU.dirty || (now - (MENU._popDraw || 0) > 250 && (MENU._popDraw = now));
+}
 function leftHand(){ return hands.find(h => h.source && h.source.handedness === "left") || hands[0]; }
 function toggleMenu(){
   MENU.open = !MENU.open;
+  /* FOLDED WHEN IT OPENS (2026-11-17, Søren: "when you open the menu, it starts with only the tabs ... and the bottom
+     line with buttons. Then unfolds if you click any of the tabs."): no tab chosen, so only the header, the tabs and
+     the icon row show; a tab unfolds its rows, and the open tab pressed again folds them away. */
+  if (MENU.open){ MENU.tab = -1; MENU.help = false; MENU.pop = null; }
   if (MENU.open && INPUT.mode === "hands"){ drawMenu(); floatMenu(); return; }
   MENU.floating = false;
   if (MENU.mesh) MENU.mesh.scale.setScalar(1);
@@ -11955,20 +12131,24 @@ function menuHit(h){
   const hit = _uv.intersectObject(MENU.mesh, false)[0];
   if (!hit || !hit.uv) return null;
   const px = hit.uv.x * MENU_W, py = (1 - hit.uv.y) * MENU.canvas.height;
-  if (py >= MENU_PAD && py < MENU_PAD + HEAD_H) return { head: true };
+  if (MENU.pop && MENU.popRects) for (let j = 0; j < MENU.popRects.length; j++){ const r = MENU.popRects[j];
+    if (px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1) return r.sw ? { pop: j, sub: Math.max(0, Math.min(r.sw.n - 1, Math.floor((px - r.sw.x) / r.sw.w))) } : { pop: j }; }
+  if (py >= MENU_PAD && py < MENU_PAD + HEAD_H) return MENU.advX && px >= MENU.advX - 6 ? { adv: true } : { head: true };
   if (py >= MENU_PAD + HEAD_H && py < MENU_PAD + HEAD_H + TAB_H){
     const k = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / TABS.length));
     return k >= 0 && k < TABS.length ? { tab: k } : { none: true };
   }
   if (MENU.foot) for (let f = 0; f < MENU.foot.length; f++){ const b = MENU.foot[f]; if (px >= b.x - 6 && px <= b.x + b.w + 6 && py >= b.y - 6 && py <= b.y + b.h + 6) return { foot: f }; }
   const k = Math.floor((py - MENU_PAD - HEAD_H - TAB_H - 10) / ROW_H);
+  if (k >= 0 && k < MENU.rows.length && MENU.rows[k]._b && MENU.rows[k]._b.length){ const B = MENU.rows[k]._b; for (let j = 0; j < B.length; j++) if (B[j] && px >= B[j][0] - 4 && px <= B[j][1] + 4) return { row: k, btn: j }; }
   return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? (MENU.rows[k].act2 ? { row: k, half: px > MENU_W / 2 ? 1 : 0 } : { row: k }) : { none: true };
 }
 function menuAct(hit){
-  if (hit.head){ if (!credOk()) vrLeaveToSignIn(); }
+  if (hit.adv){ window.setAdvanced(!vrAdvanced(), true); }
+  else if (hit.head){ if (!credOk()) vrLeaveToSignIn(); }
   else if (hit.foot != null){ const f = menuFootIcons()[hit.foot]; if (f) f.act(); }
-  else if (hit.tab != null){ MENU.tab = hit.tab; MENU.help = false; }
-  else if (hit.row != null){ const r = MENU.rows[hit.row]; (hit.half && r.act2 ? r.act2 : r.act)(); }
+  else if (hit.tab != null){ MENU.tab = MENU.tab === hit.tab ? -1 : hit.tab; MENU.help = false; MENU.pop = null; }
+  else if (hit.row != null){ const r = MENU.rows[hit.row]; if (hit.btn != null && r.btns && r.btns[hit.btn]) r.btns[hit.btn].act(); else (hit.half && r.act2 ? r.act2 : r.act)(); }
   MENU.dirty = true;
 }
 /* ── THE PALETTE TURNS TOWARD YOUR EYES (2026-11-15, Søren: "I have to bend my wrist a bit down and to the left to
@@ -11994,7 +12174,8 @@ function menuFaceHead(){
   m.updateMatrixWorld(true);
 }
 function menuFrame(){
-  if (!MENU.open) return;
+  if (!MENU.open){ MENU.pop = null; MENU.footHold = null; return; }
+  footPopFrame();
   try { menuFaceHead(); } catch (e){}
   let hv = null;
   for (const h of hands){ const x = menuHit(h); if (x && !x.none){ hv = x; break; } }
@@ -22353,7 +22534,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
