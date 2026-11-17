@@ -533,6 +533,18 @@
       <button id="pcNewPip" title="Start again with a fresh pipette on the same cell">New pipette</button>
     </div>
     <div class="ctl" style="margin:0 0 6px" id="pcProt"></div>
+    <div id="isoBox" style="display:none;border-top:1px solid var(--line);margin:6px 0;padding-top:6px">
+      <div style="font-size:12px;color:var(--mut);margin-bottom:4px" title="NAD's channel lab (Goldman–Hodgkin–Katz currents) run through this pipette">⚗ Solutions &amp; channel lab (model, 22 °C)</div>
+      <div class="ctl" style="margin:0 0 6px"><select id="isoPip"></select> <select id="isoBath"></select></div>
+      <div class="ctl" style="margin:0 0 6px;font-size:12px" title="Concentrations: mM, except Ca²⁺ inside (free, µM)">in: <select id="isoCat"><option value="K">K⁺</option><option value="Cs">Cs⁺</option></select>
+        <input id="isoKi" style="width:42px"> Na⁺<input id="isoNai" style="width:38px"> Cl⁻<input id="isoCli" style="width:38px"> Ca²⁺ µM<input id="isoCai" style="width:42px"></div>
+      <div class="ctl" style="margin:0 0 6px;font-size:12px">out: Na⁺<input id="isoNao" style="width:42px"> K⁺<input id="isoKo" style="width:38px"> <select id="isoDiv"><option value="Ca">Ca²⁺</option><option value="Ba">Ba²⁺</option></select><input id="isoCao" style="width:34px"> Cl⁻<input id="isoClo" style="width:42px"></div>
+      <div id="isoNernst" style="font-size:11.5px;color:var(--mut);margin-bottom:6px"></div>
+      <div class="ctl" style="margin:0 0 6px"><select id="isoCh"></select></div>
+      <div class="catick" id="isoDrugs"></div>
+      <div class="ctl" style="margin:6px 0" id="isoProt"><button data-ip="fam">Step family</button><button data-ip="ramp">Ramp</button><button data-ip="tail" id="isoTail">Tails</button>
+        <label title="Show the channel's current alone, as P/4 leak subtraction does"><input type="checkbox" id="isoSub" checked> leak subtracted</label></div>
+    </div>
     <div class="catick">
       <label id="pcBridgeL" title="Current clamp: subtract the I×Rs drop across the pipette from the recorded voltage"><input type="checkbox" id="pcBridge" checked> bridge balance</label>
       <label title="In vivo the cell is bombarded by synaptic input: fluctuating excitatory and inhibitory conductances (Destexhe et al. 2001) -- Vm fluctuates, the input resistance falls"><input type="checkbox" id="pcBg" checked> in vivo synaptic background</label>
@@ -11392,6 +11404,7 @@ function menuRows(){
       rows.push({ label: "   Patch panel (scope and controls)", on: PATCHP.on, act: () => vrpShow(PATCHP, !PATCHP.on) });
       rows.push({ label: "   " + (PATCH.mode === "cc" ? "Current clamp" : "Voltage clamp") + "  ▸", act: () => setPatchMode(PATCH.mode === "cc" ? "vc" : "cc") });
       rows.push({ label: "   Patch another cell (then trigger)", on: PATCH.arm, act: () => setPatchArm(!PATCH.arm) });
+      rows.push({ label: "   ⚗ Solutions & channels", on: SOLP.on, act: () => vrpShow(SOLP, !SOLP.on) });
       rows.push({ label: "   Withdraw the pipette", act: () => patchWithdraw() });
       if (DYE.cells.size || DYE.sr.size) rows.push({ label: "   🔬 Dye only (hide the cells)", on: DYE_ONLY, act: () => setDyeOnly(!DYE_ONLY) });
     }
@@ -17180,10 +17193,12 @@ const PATCH_MODE_NAME = { cc: "current clamp", vc: "voltage clamp" };
 /* ── the protocols: what the amplifier commands at time x (ms into the sweep) ── */
 function patchSweepLen(){
   const P = PATCH;
+  if (isoOn()){ const L = isoSweepLen(); if (L) return L; }
   return P.prot === "seal" ? 20 : P.prot === "fam" ? (P.mode === "cc" ? 900 : 300) : P.prot === "step" ? 800 : (P.holdLen || (P.mode === "cc" ? 1000 : 500));
 }
 function patchCmd(x){
   const P = PATCH, cc = P.mode === "cc", base = cc ? P.hold.cc : P.hold.vc;
+  if (isoOn()){ const c = isoCmd(x); if (c != null) return c; }
   if (P.prot === "seal") return x >= 2 && x < 12 ? base + 5 : base;
   if (P.prot === "step") return x >= 100 && x < 600 ? base + P.amp[P.mode] : base;
   if (P.prot === "fam"){
@@ -17192,7 +17207,7 @@ function patchCmd(x){
   }
   return base;
 }
-function patchFamN(){ return PATCH.mode === "cc" ? 6 : 6; }
+function patchFamN(){ return isoOn() ? isoSteps().length : 6; }
 function patchProt(p){
   const P = PATCH; P.prot = p; P.fam = 0; P.sweeps = []; P.holdLen = 0; P.test = null; P.stats = null; patchNewSweep();
   patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
@@ -17203,10 +17218,13 @@ function patchNewSweep(){
 }
 function patchEndSweep(){
   const P = PATCH, s = P.sw;
+  if (isoOn() && s && s.i > 10) isoSweepDone(s);
+  if (P.prot === "ramp"){ P.sweeps = s ? [s] : []; P.prot = "hold"; P.holdLen = s ? s.len : 0; patchNewSweep(); patchUiSync(); return; }
+  if (P.prot === "tail"){ if (s){ P.sweeps.push(s); if (P.sweeps.length > 16) P.sweeps.shift(); } P.fam++; if (P.fam >= patchFamN()){ P.prot = "hold"; P.fam = 0; P.holdLen = s.len; patchUiSync(); } patchNewSweep(); return; }
   if (s && s.i > 10){
     if (P.prot === "seal") P.test = patchSealTest(s);
-    else P.stats = patchSweepStats(s);
-    if (P.prot === "fam" || P.prot === "step"){ P.sweeps.push(s); if (P.sweeps.length > 8) P.sweeps.shift(); }
+    else P.stats = isoOn() ? null : patchSweepStats(s);
+    if (P.prot === "fam" || P.prot === "step"){ P.sweeps.push(s); if (P.sweeps.length > (isoOn() ? 24 : 8)) P.sweeps.shift(); }
     else { P.sweeps = [s]; }
   }
   if (P.prot === "fam"){ P.fam++; if (P.fam >= patchFamN()){ P.prot = "hold"; P.holdLen = s.len; P.fam = 0; P.note = "Family done — the sweeps stay on the scope until the next protocol."; patchUiSync(); } }
@@ -17241,18 +17259,20 @@ function patchStep(h){
   const P = PATCH, m = P.mdl, x = P.t - P.sw.t0;
   const pre = P.stage !== "whole" && P.stage !== "torn";
   const cmd = pre ? 0 : patchCmd(x), cc = pre || P.mode === "cc";
-  if (P.bg && m.bgOn){
+  const iso = !pre && isoOn();
+  if (P.bg && m.bgOn && !iso){
     const ee = Math.exp(-h / 2.7), ei = Math.exp(-h / 10.5);
     P.ge = Math.max(0, m.ge0 + (P.ge - m.ge0) * ee + m.se * Math.sqrt(1 - ee * ee) * gauss());
     P.gi = Math.max(0, m.gi0 + (P.gi - m.gi0) * ei + m.si * Math.sqrt(1 - ei * ei) * gauss());
   } else { P.ge = 0; P.gi = 0; }
   const pf = P.puffG || { g: 0, E: 0, dEL: 0, ttx: false };
-  let G = m.gL + P.ge + P.gi + pf.g, GE = m.gL * (m.EL + pf.dEL) + P.gi * -75 + pf.g * pf.E;
+  let G = m.gL + P.ge + P.gi + pf.g, GE = m.gL * (m.EL + pf.dEL + (P.csIn && !pre ? 10 : 0)) + P.gi * (P.eCl != null && !pre ? P.eCl : -75) + pf.g * pf.E;
   if (!pre){ const gsl = 1000 / patchRseal(P.seal); G += gsl; }          // the seal leaks to the bath (0 mV)
-  let I = -P.w + P.syn;                                               // pA: adaptation, and the network's synaptic input
+  let I = (P.csIn && !pre ? 0 : -P.w) + P.syn;                       // pA: adaptation (gone with Cs⁺ inside), and the network's synaptic input
+  let Ich = 0; if (iso){ Ich = isoCurrent(h); I -= Ich; }             // the isolated channel's current (section 56c)
   const since = P.t - P.spk, inSpk = since >= 0 && since < m.width;
   /* voltage clamp: the escape's Na⁺ current, inward, through the cell -- an "action current" */
-  if (!cc && m.spiking && since >= 0 && since < 2.5) I -= m.Ina * Math.max(0, Math.exp(-since / 0.6) - Math.exp(-since / 0.12)) / 0.535;
+  if (!cc && m.spiking && !iso && since >= 0 && since < 2.5) I -= m.Ina * Math.max(0, Math.exp(-since / 0.6) - Math.exp(-since / 0.12)) / 0.535;
   let gs = 0;
   if (!cc){ gs = 1000 / Math.max(0.3, P.rs * (1 - P.comp)); G += gs; GE += gs * cmd; } else I += cmd;
   const Vinf = (GE + I) / G, tau = m.C / G;
@@ -17261,7 +17281,7 @@ function patchStep(h){
   const hinf = 1 / (1 + Math.exp((P.V + 45) / 3)); P.h += (hinf - P.h) * (1 - Math.exp(-h / 3));
   P.w += (m.a * (P.V - m.EL) - P.w) * (1 - Math.exp(-h / m.tw));
   if (P.refr > 0) P.refr -= h;
-  if (m.spiking && !pf.ttx && !DRUG.ttx && P.refr <= 0 && ((P.V >= m.VT && P.h > 0.5) || P.force)){
+  if (m.spiking && !iso && !pf.ttx && !DRUG.ttx && P.refr <= 0 && ((P.V >= m.VT && P.h > 0.5) || P.force)){
     P.force = false; P.spk = P.t; P.refr = m.ref; P.w += m.b; P.h *= 0.4; P.spikes++; if (P.sw) P.sw.spk++;
     if (cc) P.V = m.Vr;
     patchSpikeOut();
@@ -17275,7 +17295,7 @@ function patchStep(h){
     const tgt = v + (P.bridge ? 0 : cmd * P.rs / 1000), tp = Math.max(0.005, P.rs * P.cp / 1000);   // mV; µs → ms
     P.vrec += (tgt - P.vrec) * (1 - Math.exp(-h / tp)); rec = P.vrec;
   } else {
-    rec = gs * (cmd - P.V);                                           // pA leaving the amplifier
+    rec = iso && ISO.sub ? Ich : gs * (cmd - P.V);                    // pA leaving the amplifier (or, leak-subtracted, the channel's own)
     P.iin = rec;
   }
   P.t += h;
@@ -17291,6 +17311,7 @@ function patchFrame(sdt){
   if (!c.mesh){ patchWithdraw(); return; }
   puffFrame(sdt);
   patchSealFrame();
+  P.eCl = isoECl37(); P.csIn = isoSol().i.cation === "Cs";
   /* the network: synaptic potentials arriving in the stimulation model, as a current; its own decision to fire */
   P.syn = 0;
   if (P.net && STIM.on && STIM.active && STIM.active.has(c)){
@@ -17783,7 +17804,7 @@ function patchScope(g, X, Y, W, H, big){
   g.fillText(s.len >= 100 ? s.len + " ms" : s.len + " ms", R - 50 * fs, Y + H - 4 * fs);
   /* the head line */
   g.fillStyle = "#e6edf3"; g.font = "600 " + Math.round(13 * fs) + "px system-ui, sans-serif";
-  const head = "🧪 " + shortName(P.cell) + " · " + (P.stage !== "whole" && P.stage !== "torn" ? SEAL_NAME[P.stage] : PATCH_MODE_NAME[P.mode] + " · Rs " + Math.round(P.rs) + " MΩ") + (!cc && P.comp ? " (−" + Math.round(P.comp * 100) + " %)" : "") + (cc && !P.bridge ? " · bridge OFF" : "");
+  const head = "🧪 " + shortName(P.cell) + " · " + (P.stage !== "whole" && P.stage !== "torn" ? SEAL_NAME[P.stage] : PATCH_MODE_NAME[P.mode] + (isoOn() ? " · " + GHKM.CHANNELS[ISO.key].short + (ISO.sub ? " (leak-subtracted)" : "") : "") + " · Rs " + Math.round(P.rs) + " MΩ") + (!cc && P.comp ? " (−" + Math.round(P.comp * 100) + " %)" : "") + (cc && !P.bridge ? " · bridge OFF" : "");
   g.fillText(vrpFit(g, head, W - 120 * fs), X + 10 * fs, Y + 18 * fs);
   g.font = Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
   g.textAlign = "right";
@@ -17830,7 +17851,7 @@ function patchDrawAll(){
   const P = PATCH;
   if (P.card && P.card.style.display !== "none" && !renderer.xr.isPresenting){
     const cv = P.card.querySelector("canvas"), g = cv.getContext("2d");
-    g.clearRect(0, 0, cv.width, cv.height); patchScope(g, 0, 0, 736, cv.height, true); patchTipFig(g, 746, 0, cv.width - 746, cv.height, 1.4);
+    g.clearRect(0, 0, cv.width, cv.height); patchScope(g, 0, 0, 736, cv.height, true); (ISO.key && isoOn() ? isoIVFig : patchTipFig)(g, 746, 0, cv.width - 746, cv.height, 1.4);
     const rd = P.card.querySelector(".pcRead"), html = patchReadout().map(x => "<div>" + x.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</div>").join("");
     if (rd._h !== html){ rd._h = html; rd.innerHTML = html; }
   }
@@ -17854,6 +17875,7 @@ function patchUiSync(){
   $("pcBridge").checked = P.bridge; $("pcBg").checked = P.bg; $("pcNet").checked = P.net; $("pcScope").checked = P.scope; $("pcII").checked = P.ii; $("pcDye").value = P.dye;
   $("pfAg").value = PUFF.ag; $("pfU").textContent = "mM"; const a = PUFF_AG[PUFF.ag]; if (document.activeElement !== $("pfC")) $("pfC").value = PUFF.c0 != null ? PUFF.c0 : a.c0;
   $("pfV").value = PUFF.vol;
+  try { patchIsoUi(); } catch (e){}
   { const pre = P.on && P.stage !== "whole" && P.stage !== "torn";
     $("pcSealRow").style.display = P.on ? "" : "none"; $("pcStage").textContent = P.on ? SEAL_NAME[P.stage] + ":" : "";
     $("pcTouch").style.display = pre && P.stage === "approach" ? "" : "none";
@@ -18151,6 +18173,575 @@ function patchTipFig(g, X, Y, W, H, fs){
   g.fillStyle = "#c9d1d9"; g.textAlign = "left"; g.fillText("suction " + Math.round(p) + " mbar" + (SUCK.src === "mic" ? (SUCK.an ? " 🎙" : "") : SUCK.src === "trigger" ? " (trigger)" : " (slider)"), X + 8 * fs, Y + H - 32 * fs);
 }
 
+/* ── 56c. THE CHANNEL LAB IN THE PIPETTE: SOLUTIONS, ISOLATED WHOLE-CELL CURRENTS, I–V CURVES (2026-11-17) ──
+   Søren: "Like for the program i made, I would like to control the pipette solutions to measure different whole cell
+   currents."
+   The physics is NAD's own channel lab (learn/ghk.js of the NAD patch-clamp page, Søren's brief, September 2026),
+   included below unchanged: Goldman–Hodgkin–Katz currents (Goldman 1943 J Gen Physiol 27:37; Hodgkin & Katz 1949
+   J Physiol 108:37) through channels with simple gating models -- Nav1.2/1.5/1.8, delayed rectifier, A-type, M-current,
+   L/T/N-type Ca²⁺, VRAC and TMEM16A -- with their blockers and agonists, at 22 °C as in a slice or culture recording.
+   What is new here is that it runs on the patched cell, through the pipette:
+   · the pipette and bath solutions set every reversal potential (and, in an ordinary recording, E_Cl sets where
+     GABA-A inhibition reverses; Cs⁺ inside blocks the cell's K⁺ currents);
+   · "isolating" a current switches off the in vivo background and the cell's own spikes (as a cocktail of blockers
+     would), leaves the leak and the access resistance in -- so Rs still filters and distorts a large current -- and
+     the step family, ramp or tail protocol is the channel's own;
+   · the current is scaled to the cell: the lab's typical whole-cell size per 100 pF of this cell's capacitance;
+   · leak subtraction (as P/4 would) shows the channel current alone;
+   · the I–V curve is read off the sweeps, with the reversal potential measured and the GHK prediction beside it. */
+/* ---- learn/ghk.js, NAD patch-clamp page (unchanged) ---- */
+/* The channel lab's physics, kept apart from the page so it can be tested on
+ * its own (tests_learn.py runs it in node). Used by learn/channels.js.
+ *
+ * Currents are Goldman–Hodgkin–Katz currents (Goldman 1943; Hodgkin & Katz
+ * 1949) through channels whose open probability follows simple gating
+ * models. Units: mV, ms, mM (free Ca²⁺ inside in µM), current in pA,
+ * outward positive. Room temperature, 22 °C.
+ */
+(function (root) {
+  'use strict';
+  var G = root.GHK = {};
+  var RTF = 8.314462 * 295.15 / 96485.33 * 1000;   // RT/F in mV at 22 °C ≈ 25.4
+  G.RTF = RTF;
+  G.Z = { Na: 1, K: 1, Cs: 1, Ca: 2, Ba: 2, Cl: -1 };
+
+  /** Nernst potential, mV. `out`, `inn` in the same units. */
+  G.nernst = function (z, out, inn) {
+    if (!(out > 0) || !(inn > 0)) return NaN;
+    return RTF / z * Math.log(out / inn);
+  };
+
+  /** GHK current for one ion, per unit permeability, without the constant
+   *  F: z² u (Ci − Co e^(−zu)) / (1 − e^(−zu)), u = V/(RT/F). */
+  G.flux = function (z, V, ci, co) {
+    var u = V / RTF, zu = z * u;
+    if (Math.abs(zu) < 1e-6) return z * (ci - co);
+    var e = Math.exp(-zu);
+    return z * z * u * (ci - co * e) / (1 - e);
+  };
+
+  /** Concentrations each ion sees, in mM, from the solutions. */
+  G.conc = function (sol) {
+    var o = sol.o, i = sol.i;
+    return {
+      Na: [i.Na, o.Na], K: [i.cation === 'K' ? i.K : 0, o.K], Cs: [i.cation === 'Cs' ? i.K : 0, 0],
+      Ca: [i.Ca / 1000, o.div === 'Ca' ? o.Ca : 0], Ba: [0, o.div === 'Ba' ? o.Ca : 0],
+      Cl: [i.Cl, o.Cl]
+    };
+  };
+
+  /** The sum of GHK currents through a channel with relative permeabilities `perm`. */
+  G.ghkSum = function (perm, V, sol) {
+    var c = G.conc(sol), I = 0;
+    for (var ion in perm) if (perm[ion]) I += perm[ion] * G.flux(G.Z[ion], V, c[ion][0], c[ion][1]);
+    return I;
+  };
+
+  /** Reversal potential of a channel: where its GHK current is zero. */
+  G.erev = function (perm, sol) {
+    var lo = -200, hi = 200, flo = G.ghkSum(perm, lo, sol), fhi = G.ghkSum(perm, hi, sol);
+    if (!(flo < 0 && fhi > 0)) return NaN;
+    for (var k = 0; k < 80; k++) {
+      var mid = (lo + hi) / 2, f = G.ghkSum(perm, mid, sol);
+      if (f < 0) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+
+  // ---------------------------------------------------------------- gating
+  function relax(x, inf, tau, dt) { return inf + (x - inf) * Math.exp(-dt / tau); }
+  function vtrap(x, k) { return Math.abs(x / k) < 1e-6 ? k + x / 2 : x / (1 - Math.exp(-x / k)); }
+  // Hodgkin–Huxley rates (absolute mV, rest −65), as on the rest of the page.
+  var am = function (v) { return 0.1 * vtrap(v + 40, 10); },
+      bm = function (v) { return 4 * Math.exp(-(v + 65) / 18); },
+      ah = function (v) { return 0.07 * Math.exp(-(v + 65) / 20); },
+      bh = function (v) { return 1 / (1 + Math.exp(-(v + 35) / 10)); },
+      an = function (v) { return 0.01 * vtrap(v + 55, 10); },
+      bn = function (v) { return 0.125 * Math.exp(-(v + 65) / 80); };
+  function hh(x, a, b, dt) { return relax(x, a / (a + b), 1 / (a + b), dt); }
+  function boltz(v, vh, k) { return 1 / (1 + Math.exp(-(v - vh) / k)); }
+
+  function cacc(v, ca) {                              // TMEM16A steady-state open probability
+    var ec50 = 1.2 * Math.exp(-v / 120), h = 2.5;
+    return ca <= 0 ? 0 : Math.pow(ca, h) / (Math.pow(ca, h) + Math.pow(ec50, h));
+  }
+
+  /* Each channel: permeabilities, gating (init/step/open), drugs, the step
+   * family, and where on each step the current is read for the I–V curve. */
+  G.CHANNELS = {
+    na: {
+      name: 'Na⁺ channels', ion: 'Na', perm: { Na: 1, K: 0.08 },
+      family: 'na', short: 'Nav1.2 · neurons',
+      steps: [-100, 60, 10], T: 20, read: 'peak', target: [0, -4000],
+      drugs: {
+        ttx: { name: 'TTX 1 µM', block: 1 },
+        vtd: { name: 'Veratridine 50 µM', kind: 'agonist' }
+      },
+      init: function (v) { return { m: am(v) / (am(v) + bm(v)), h: ah(v) / (ah(v) + bh(v)) }; },
+      step: function (s, v, dt) { s.m = hh(s.m, am(v), bm(v), dt); s.h = hh(s.h, ah(v), bh(v), dt); },
+      open: function (s, v, ctx) {
+        var h = ctx.drugs.vtd ? s.h + 0.3 * (1 - s.h) : s.h;   // veratridine: some channels no longer inactivate
+        return s.m * s.m * s.m * h;
+      }
+    },
+    k: {
+      name: 'K⁺ channels (delayed rectifier)', ion: 'K', perm: { K: 1, Na: 0.01 },
+      family: 'k', short: 'Delayed rectifier',
+      steps: [-100, 60, 10], T: 100, read: 'end', target: [40, 3000],
+      tail: { pre: 40, ms: 30, read: [0.2, 0.8], T: 40, steps: [-120, 0, 10] },
+      drugs: {
+        tea: { name: 'TEA 10 mM (outside)', block: 0.8 },
+        ap: { name: '4-AP 1 mM', block: 0.5 }
+      },
+      init: function (v) { return { n: an(v) / (an(v) + bn(v)) }; },
+      step: function (s, v, dt) { s.n = hh(s.n, an(v), bn(v), dt); },
+      open: function (s) { return s.n * s.n * s.n * s.n; }
+    },
+    ca: {
+      name: 'Ca²⁺ channels (L-type)', ion: 'Ca', perm: { Ca: 1, Ba: 1.6, Na: 0.001, K: 0.001, Cs: 0.00025 },
+      family: 'ca', short: 'L-type · Cav1.2',
+      steps: [-80, 100, 10], T: 150, read: 'peak', target: [10, -600],
+      drugs: {
+        nif: { name: 'Nifedipine 1 µM', block: 0.9 },
+        cd: { name: 'Cd²⁺ 100 µM', block: 0.98 },
+        bayk: { name: 'Bay K 8644 1 µM', kind: 'agonist' }
+      },
+      dInf: function (v, ctx) { var h = ctx.drugs.bayk ? -20 : -10; return 1 / (1 + Math.exp(-(v - h) / 6)); },
+      init: function (v, ctx) { return { d: this.dInf(v, ctx), f: 1 / (1 + Math.exp((v + 30) / 7)) }; },
+      step: function (s, v, dt, ctx) {
+        s.d = relax(s.d, this.dInf(v, ctx), 1, dt);
+        // Inactivation is faster with Ca²⁺ than with Ba²⁺ as the charge carrier:
+        // much of it is driven by the Ca²⁺ that has come in.
+        s.f = relax(s.f, 0.05 + 0.95 / (1 + Math.exp((v + 30) / 7)), ctx.sol.o.div === 'Ca' ? 60 : 400, dt);
+      },
+      open: function (s, v, ctx) { return s.d * s.f * (ctx.drugs.bayk ? 2 : 1); }
+    },
+    // ---- More members of each family. Søren, 22 September 2026: "We could
+    // also add a couple of different Na channels and K+ channels and Ca2+
+    // channels to see the difference in kinetics." Simple models, tuned to
+    // the textbook differences: where they activate, how fast, and whether
+    // and how fast they inactivate.
+    na15: {
+      name: 'Na⁺ channels: Nav1.5 (heart)', ion: 'Na', perm: { Na: 1, K: 0.08 },
+      family: 'na', short: 'Nav1.5 · heart',
+      steps: [-100, 60, 10], T: 20, read: 'peak', target: [-10, -4000],
+      drugs: {
+        ttx: { name: 'TTX 1 µM', block: 0.4, say: 'Nav1.5 is TTX-resistant: it takes micromolar TTX to block it, so 1 µM removes well under half the current — the nanomolar concentrations that silence neurons leave the heart beating.' },
+        lido: { name: 'Lidocaine 100 µM', block: 0.3 }
+      },
+      // Activates and inactivates about 10 mV more negative than the neuronal
+      // channel, and inactivates a little more slowly.
+      init: function (v) { var a = v + 10; return { m: am(a) / (am(a) + bm(a)), h: ah(a) / (ah(a) + bh(a)) }; },
+      step: function (s, v, dt) { var a = v + 10; s.m = hh(s.m, am(a), bm(a), dt); s.h = hh(s.h, ah(a), bh(a), dt / 1.5); },
+      open: function (s) { return s.m * s.m * s.m * s.h; }
+    },
+    na18: {
+      name: 'Na⁺ channels: Nav1.8 (pain-sensing neurons)', ion: 'Na', perm: { Na: 1, K: 0.08 },
+      family: 'na', short: 'Nav1.8 · pain',
+      steps: [-100, 60, 10], T: 20, read: 'peak', target: [10, -3000],
+      drugs: {
+        ttx: { name: 'TTX 1 µM', block: 0.02, say: 'Nav1.8 is almost untouched by TTX — it needs tens of micromolar. That is how its current was first told apart from the other Na⁺ currents of sensory neurons.' },
+        a803: { name: 'A-803467 1 µM', block: 0.9 }
+      },
+      // Activates at more depolarised voltages and inactivates several times
+      // more slowly than the neuronal channel.
+      init: function (v) { var a = v - 15, b = v - 20; return { m: am(a) / (am(a) + bm(a)), h: ah(b) / (ah(b) + bh(b)) }; },
+      step: function (s, v, dt) { var a = v - 15, b = v - 20; s.m = hh(s.m, am(a), bm(a), dt / 2); s.h = hh(s.h, ah(b), bh(b), dt / 6); },
+      open: function (s) { return s.m * s.m * s.m * s.h; }
+    },
+    ka: {
+      name: 'K⁺ channels: A-type (Kv4)', ion: 'K', perm: { K: 1, Na: 0.01 },
+      family: 'k', short: 'A-type · Kv4',
+      steps: [-100, 60, 10], T: 100, read: 'peak', target: [40, 3000],
+      drugs: {
+        ap: { name: '4-AP 5 mM', block: 0.8 },
+        tea: { name: 'TEA 10 mM (outside)', block: 0.05, say: 'A-type Kv4 channels barely notice TEA — the reverse of 4-AP, which blocks them well.' }
+      },
+      // Fast activation (a³) and fast inactivation (b): a transient outward current.
+      init: function (v) { return { a: boltz(v, -45, 12), b: 1 - boltz(v, -70, 6) }; },
+      step: function (s, v, dt) { s.a = relax(s.a, boltz(v, -45, 12), 1.5, dt); s.b = relax(s.b, 1 - boltz(v, -70, 6), 20, dt); },
+      open: function (s) { return s.a * s.a * s.a * s.b; }
+    },
+    km: {
+      name: 'K⁺ channels: M-current (Kv7.2/7.3)', ion: 'K', perm: { K: 1, Na: 0.01 },
+      family: 'k', short: 'M-current · Kv7',
+      steps: [-100, 40, 10], T: 400, read: 'end', target: [0, 1200],
+      tail: { pre: -10, ms: 400, read: [2, 6], T: 300, steps: [-120, -30, 10] },
+      drugs: {
+        xe: { name: 'XE991 10 µM', block: 0.9 },
+        ret: { name: 'Retigabine 10 µM', kind: 'agonist' }
+      },
+      // Opens slowly from about −60 mV and never inactivates; retigabine
+      // shifts its activation some 20 mV to the left.
+      nInf: function (v, ctx) { return boltz(v, ctx.drugs.ret ? -55 : -35, 10); },
+      init: function (v, ctx) { return { n: this.nInf(v, ctx) }; },
+      step: function (s, v, dt, ctx) { s.n = relax(s.n, this.nInf(v, ctx), 100, dt); },
+      open: function (s) { return s.n; }
+    },
+    cat: {
+      name: 'Ca²⁺ channels: T-type (Cav3)', ion: 'Ca', perm: { Ca: 1, Ba: 1, Na: 0.001, K: 0.001, Cs: 0.00025 },
+      family: 'ca', short: 'T-type · Cav3',
+      steps: [-90, 60, 10], T: 150, read: 'peak', target: [-30, -400],
+      drugs: {
+        ni: { name: 'Ni²⁺ 50 µM', block: 0.7 },
+        tta: { name: 'TTA-P2 1 µM', block: 0.9 },
+        nif: { name: 'Nifedipine 1 µM', block: 0.05, say: 'Nifedipine hardly touches T-type channels: a quick way to tell them from L-type.' }
+      },
+      // Low-voltage activated, and inactivates within tens of milliseconds.
+      init: function (v) { return { d: boltz(v, -45, 6), f: 1 - boltz(v, -70, 5) }; },
+      step: function (s, v, dt) { s.d = relax(s.d, boltz(v, -45, 6), 2, dt); s.f = relax(s.f, 1 - boltz(v, -70, 5), 20, dt); },
+      open: function (s) { return s.d * s.d * s.f; }
+    },
+    can: {
+      name: 'Ca²⁺ channels: N-type (Cav2.2)', ion: 'Ca', perm: { Ca: 1, Ba: 1.6, Na: 0.001, K: 0.001, Cs: 0.00025 },
+      family: 'ca', short: 'N-type · Cav2.2',
+      steps: [-80, 100, 10], T: 150, read: 'peak', target: [10, -600],
+      drugs: {
+        ctx: { name: 'ω-Conotoxin GVIA 1 µM', block: 0.95 },
+        cd: { name: 'Cd²⁺ 100 µM', block: 0.98 },
+        nif: { name: 'Nifedipine 1 µM', block: 0.02, say: 'Nifedipine leaves N-type channels alone: it is selective for L-type.' }
+      },
+      // High-voltage activated like L-type, with moderate, partial inactivation.
+      init: function (v) { return { d: boltz(v, -5, 6), f: 0.3 + 0.7 * (1 - boltz(v, -45, 8)) }; },
+      step: function (s, v, dt) { s.d = relax(s.d, boltz(v, -5, 6), 1, dt); s.f = relax(s.f, 0.3 + 0.7 * (1 - boltz(v, -45, 8)), 80, dt); },
+      open: function (s) { return s.d * s.f; }
+    },
+    vrac: {
+      name: 'Cl⁻ channels: VRAC (LRRC8)', ion: 'Cl', perm: { Cl: 1 }, family: 'vrac', short: 'VRAC',
+      steps: [-100, 100, 20], T: 500, read: 'start', target: [80, 1500],
+      drugs: { dcpib: { name: 'DCPIB 10 µM', block: 0.9 } },
+      init: function (v) { return { i: 1 / (1 + Math.exp((v - 70) / 12)) }; },
+      step: function (s, v, dt) { s.i = relax(s.i, 1 / (1 + Math.exp((v - 70) / 12)), 250, dt); },
+      open: function (s, v, ctx) {
+        var active = ctx.swollen ? 1 : 0.03;                  // barely open until the cell swells
+        return active * s.i * Math.exp(v / 150);             // outward rectification, inactivation at strongly positive voltages
+      }
+    },
+    cacc: {
+      name: 'Cl⁻ channels: CaCC (TMEM16A)', ion: 'Cl', perm: { Cl: 1 }, family: 'cacc', short: 'CaCC',
+      steps: [-100, 100, 20], T: 500, read: 'end', target: [80, 1500], targetCa: 1,
+      tail: { pre: 80, ms: 400, read: [1, 4], T: 200, steps: [-100, 60, 20] },
+      drugs: {
+        ani9: { name: 'Ani9 1 µM', block: 0.95 },
+        nfa: { name: 'Niflumic acid 100 µM', block: 0.8 }
+      },
+      init: function (v, ctx) { return { o: cacc(v, ctx.sol.i.Ca) }; },
+      step: function (s, v, dt, ctx) {
+        var inf = cacc(v, ctx.sol.i.Ca);
+        s.o = relax(s.o, inf, 10 + 150 * (1 - inf), dt);
+      },
+      open: function (s) { return s.o; }
+    }
+  };
+
+  G.STANDARD = function () {
+    return { o: { Na: 140, K: 5, Ca: 2, div: 'Ca', Cl: 150 },
+             i: { cation: 'K', K: 130, Na: 10, Cl: 30, Ca: 0.1 } };
+  };
+  G.HOLD = -80;
+
+  function blockOf(ch, drugs) {
+    var keep = 1;
+    for (var d in drugs) if (drugs[d] && ch.drugs[d] && ch.drugs[d].block) keep *= 1 - ch.drugs[d].block;
+    return keep;
+  }
+
+  /** Run one voltage command `vOf(t)` for T ms. Returns sampled t, v, i. */
+  function runCmd(ch, ctx, T, vOf, npts) {
+    var n = 3000, dt = T / n, s = ch.init(G.HOLD, ctx), out = { t: [], v: [], i: [] };
+    var every = Math.max(1, Math.round(n / (npts || 500))), keep = blockOf(ch, ctx.drugs), sc = ctx.scale;
+    // Settle at the holding potential first.
+    for (var k = 0; k < 200; k++) ch.step(s, G.HOLD, T / 400, ctx);
+    for (var j = 0; j <= n; j++) {
+      var t = j * dt, v = vOf(t);
+      ch.step(s, v, dt, ctx);
+      if (j % every === 0) {
+        out.t.push(t); out.v.push(v);
+        out.i.push(sc * keep * ch.open(s, v, ctx) * G.ghkSum(ch.perm, v, ctx.sol));
+      }
+    }
+    return out;
+  }
+
+  /** Scale so that standard solutions give the channel's typical whole-cell
+   *  current at its reference voltage — then solutions and drugs change it. */
+  G.scaleFor = function (key) {
+    var ch = G.CHANNELS[key], sol = G.STANDARD();
+    if (ch.targetCa) sol.i.Ca = ch.targetCa;
+    var ctx = { sol: sol, drugs: {}, swollen: true, scale: 1 };
+    var r = G.steps(key, ctx, [ch.target[0]]);
+    return ch.target[1] / r.values[0];
+  };
+
+  /** The step family: hold, step for T ms, back to hold. */
+  G.steps = function (key, ctx, list, Tover) {
+    var ch = G.CHANNELS[key], T = Tover || ch.T, pre = T * 0.1, post = T * 0.25, total = pre + T + post;
+    var vs = list || [];
+    if (!list) for (var v = ch.steps[0]; v <= ch.steps[1] + 1e-9; v += ch.steps[2]) vs.push(v);
+    var traces = [], values = [], win = G.window(ch, pre, T);
+    vs.forEach(function (V) {
+      var r = runCmd(ch, ctx, total, function (t) { return t >= pre && t < pre + T ? V : G.HOLD; });
+      traces.push(r);
+      values.push(G.measure(r, win));
+    });
+    return { v: vs, traces: traces, values: values, win: win, total: total, pre: pre, T: T };
+  };
+
+  /** Where on the step the current is read. */
+  G.window = function (ch, pre, T) {
+    T = T || ch.T;
+    if (ch.read === 'end') return { from: pre + T * 0.93, to: pre + T, how: 'end' };
+    if (ch.read === 'start') return { from: pre + 2, to: pre + 6, how: 'start' };
+    return { from: pre + 0.2, to: pre + T, how: 'peak' };
+  };
+  /** The members of a family, in order. */
+  G.family = function (fam) {
+    return Object.keys(G.CHANNELS).filter(function (k) { return G.CHANNELS[k].family === fam; });
+  };
+  G.measure = function (r, win) {
+    var best = 0, sum = 0, n = 0;
+    for (var k = 0; k < r.t.length; k++) {
+      if (r.t[k] < win.from || r.t[k] > win.to) continue;
+      if (win.how === 'peak') { if (Math.abs(r.i[k]) > Math.abs(best)) best = r.i[k]; }
+      else { sum += r.i[k]; n++; }
+    }
+    return win.how === 'peak' ? best : (n ? sum / n : 0);
+  };
+
+  /** A ramp from vFrom to vTo over T ms, after a short step to vFrom. */
+  G.ramp = function (key, ctx, T) {
+    var ch = G.CHANNELS[key], lo = ch.steps[0], hi = ch.steps[1], pre = 20, total = pre + T + 20;
+    var r = runCmd(ch, ctx, total, function (t) {
+      return t < 5 ? G.HOLD : t < pre ? lo : t < pre + T ? lo + (hi - lo) * (t - pre) / T : G.HOLD;
+    }, 800);
+    r.pre = pre; r.T = T; r.total = total; r.lo = lo; r.hi = hi;
+    return r;
+  };
+
+  /** Tail currents: open the channels with a step to tail.pre, then step to
+   *  each test voltage and read the current in the first moments, before the
+   *  channels have had time to close. What is left is how the open channels'
+   *  current depends on voltage alone — it crosses zero at the reversal
+   *  potential, even for channels that are shut at that voltage. */
+  G.tails = function (key, ctx) {
+    var ch = G.CHANNELS[key], tl = ch.tail, pre = 5, t1 = pre + tl.ms, total = t1 + tl.T;
+    var vs = [], traces = [], values = [], st = tl.steps || ch.steps;
+    for (var v = st[0]; v <= st[1] + 1e-9; v += st[2]) vs.push(v);
+    var win = { from: t1 + tl.read[0], to: t1 + tl.read[1], how: 'start' };
+    vs.forEach(function (V) {
+      var r = runCmd(ch, ctx, total, function (t) { return t < pre ? G.HOLD : t < t1 ? tl.pre : V; }, 700);
+      traces.push(r); values.push(G.measure(r, win));
+    });
+    return { v: vs, traces: traces, values: values, win: win, total: total, pre: t1, T: tl.T, tail: true };
+  };
+
+  /** Is a zero crossing trustworthy? Not if the current on both sides of it
+   *  is a sliver of the largest current — then the channels are simply shut. */
+  G.clearCrossing = function (vs, is) {
+    var x = G.crossing(vs, is);
+    if (isNaN(x)) return { v: NaN, clear: false };
+    var big = 0; is.forEach(function (i) { big = Math.max(big, Math.abs(i)); });
+    var below = 0, above = 0;
+    vs.forEach(function (v, k) { if (v < x) below = Math.max(below, Math.abs(is[k])); else above = Math.max(above, Math.abs(is[k])); });
+    return { v: x, clear: Math.min(below, above) > 0.02 * big };
+  };
+
+  /** Where an I–V curve crosses zero (linear interpolation), NaN if it does not. */
+  G.crossing = function (vs, is) {
+    for (var k = 1; k < vs.length; k++) {
+      var a = is[k - 1], b = is[k];
+      if ((a < 0 && b >= 0) || (a > 0 && b <= 0)) {
+        if (Math.abs(a - b) < 1e-12) continue;
+        return vs[k - 1] + (vs[k] - vs[k - 1]) * (0 - a) / (b - a);
+      }
+    }
+    return NaN;
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+/* ---- end of ghk.js ---- */
+const GHKM = window.GHK;
+const SOL_PIP = {
+  kglu:  { name: "K-gluconate (standard)", i: { cation: "K", K: 135, Na: 8, Cl: 8, Ca: 0.05 } },
+  kcl:   { name: "High Cl⁻ (KCl)", i: { cation: "K", K: 140, Na: 8, Cl: 140, Ca: 0.05 } },
+  cs:    { name: "Cs⁺-based (blocks K⁺ currents)", i: { cation: "Cs", K: 135, Na: 8, Cl: 10, Ca: 0.05 } },
+  ca1:   { name: "1 µM free Ca²⁺ (opens CaCC)", i: { cation: "K", K: 130, Na: 8, Cl: 30, Ca: 1 } },
+  nahi:  { name: "High Na⁺ inside (40 mM)", i: { cation: "K", K: 100, Na: 40, Cl: 8, Ca: 0.05 } }
+};
+const SOL_BATH = {
+  acsf:  { name: "ACSF (standard)", o: { Na: 140, K: 3, Ca: 2, div: "Ca", Cl: 130 } },
+  ba:    { name: "Ba²⁺ instead of Ca²⁺", o: { Na: 140, K: 3, Ca: 2, div: "Ba", Cl: 130 } },
+  nmdg:  { name: "Low Na⁺ (NMDG)", o: { Na: 10, K: 3, Ca: 2, div: "Ca", Cl: 130 } },
+  k30:   { name: "High K⁺ (30 mM)", o: { Na: 113, K: 30, Ca: 2, div: "Ca", Cl: 130 } },
+  locl:  { name: "Low Cl⁻ (gluconate)", o: { Na: 140, K: 3, Ca: 2, div: "Ca", Cl: 10 } },
+  hypo:  { name: "Hypotonic (cells swell: VRAC opens)", o: { Na: 100, K: 3, Ca: 2, div: "Ca", Cl: 90 }, swell: true }
+};
+const ISO = { key: null, drugs: {}, pip: "kglu", bath: "acsf", sol: null, swollen: false, sub: true, s: null, iv: [], ramp: null, scale: {}, read: null };
+function isoSol(){ if (!ISO.sol) ISO.sol = { o: Object.assign({}, SOL_BATH[ISO.bath].o), i: Object.assign({}, SOL_PIP[ISO.pip].i) }; return ISO.sol; }
+function isoSetPip(k){ ISO.pip = k; isoSol(); Object.assign(ISO.sol.i, SOL_PIP[k].i); isoChanged("Pipette: " + SOL_PIP[k].name + "."); }
+function isoSetBath(k){ ISO.bath = k; isoSol(); Object.assign(ISO.sol.o, SOL_BATH[k].o); ISO.swollen = !!SOL_BATH[k].swell; isoChanged("Bath: " + SOL_BATH[k].name + "."); }
+function isoChanged(msg){
+  if (PATCH.on && msg) PATCH.note = msg + " " + isoNernst();
+  ISO.iv = []; ISO.ramp = null; patchIsoUi(); try { PATCHP.dirty = true; SOLP.dirty = true; } catch (e){}
+}
+/* reversal potentials of the main ions, from the solutions (Nernst, 22 °C like the channel models) */
+function isoNernst(){
+  const s = isoSol(), f = (z, o, i) => { const v = GHKM.nernst(z, o, i); return isFinite(v) ? (v > 0 ? "+" : "") + Math.round(v) : "—"; };
+  return "E_Na " + f(1, s.o.Na, s.i.Na) + " · E_K " + f(1, s.o.K, s.i.cation === "K" ? s.i.K : 0) + " · E_Cl " + f(-1, s.o.Cl, s.i.Cl) + " · E_Ca " + f(2, s.o.div === "Ca" ? s.o.Ca : 0, s.i.Ca / 1000) + " mV";
+}
+/* E_Cl at body temperature, for the inhibition of an ordinary recording */
+function isoECl37(){ const s = isoSol(); return -26.7 * Math.log(s.o.Cl / Math.max(0.5, s.i.Cl)); }
+function isoCtx(){ return { sol: isoSol(), drugs: ISO.drugs, swollen: ISO.swollen, scale: 1 }; }
+function isoScale(k){ if (ISO.scale[k] == null) ISO.scale[k] = GHKM.scaleFor(k); return ISO.scale[k] * Math.max(0.2, PATCH.mdl.C / 100); }
+function isoOn(){ return !!(ISO.key && PATCH.on && (PATCH.stage === "whole" || PATCH.stage === "torn") && PATCH.mode === "vc"); }
+function setIso(k){
+  const P = PATCH;
+  ISO.key = GHKM.CHANNELS[k] ? k : null; ISO.drugs = {}; ISO.iv = []; ISO.ramp = null; ISO.s = null;
+  if (ISO.key){
+    if (P.on && P.mode !== "vc") setPatchMode("vc");
+    P.hold.vc = GHKM.HOLD;
+    const ch = GHKM.CHANNELS[ISO.key];
+    P.note = "Isolating " + ch.name + ": background synaptic input and the cell's own spikes are off (as with a blocker cocktail); leak and Rs are still there. " + isoNernst();
+    if (P.on) patchProt("fam");
+  } else { P.hold.vc = -70; P.note = "Back to the whole cell as it is."; if (P.on) patchProt("hold"); }
+  patchIsoUi(); try { PATCHP.dirty = true; SOLP.dirty = true; } catch (e){}
+}
+/* the channel's own protocols */
+function isoSweepLen(){
+  const ch = GHKM.CHANNELS[ISO.key], P = PATCH;
+  if (P.prot === "fam") return Math.round(ch.T * 1.35);
+  if (P.prot === "ramp") return 540;
+  if (P.prot === "tail" && ch.tail) return 5 + ch.tail.ms + ch.tail.T;
+  return null;
+}
+function isoSteps(){
+  const ch = GHKM.CHANNELS[ISO.key], P = PATCH, st = P.prot === "tail" && ch.tail ? (ch.tail.steps || ch.steps) : ch.steps, out = [];
+  for (let v = st[0]; v <= st[1] + 1e-9; v += st[2]) out.push(v);
+  return out;
+}
+function isoCmd(x){
+  const ch = GHKM.CHANNELS[ISO.key], P = PATCH, H = P.hold.vc;
+  if (P.prot === "fam"){ const V = isoSteps()[P.fam]; const pre = ch.T * 0.1; return x >= pre && x < pre + ch.T ? V : H; }
+  if (P.prot === "ramp"){ const lo = ch.steps[0], hi = ch.steps[1]; return x < 5 ? H : x < 20 ? lo : x < 520 ? lo + (hi - lo) * (x - 20) / 500 : H; }
+  if (P.prot === "tail" && ch.tail){ const t1 = 5 + ch.tail.ms; return x < 5 ? H : x < t1 ? ch.tail.pre : isoSteps()[P.fam]; }
+  return null;
+}
+/* the channel's current at the cell's real (Rs-filtered) membrane potential, pA outward */
+function isoCurrent(h){
+  const ch = GHKM.CHANNELS[ISO.key], P = PATCH, ctx = isoCtx();
+  if (!ISO.s){ ISO.s = ch.init(GHKM.HOLD, ctx); for (let k = 0; k < 200; k++) ch.step(ISO.s, GHKM.HOLD, 1, ctx); }
+  ch.step(ISO.s, P.V, h, ctx);
+  let keep = 1; for (const d in ISO.drugs) if (ISO.drugs[d] && ch.drugs[d] && ch.drugs[d].block) keep *= 1 - ch.drugs[d].block;
+  return isoScale(ISO.key) * keep * ch.open(ISO.s, P.V, ctx) * GHKM.ghkSum(ch.perm, P.V, ctx.sol);
+}
+function isoSweepDone(s){
+  const ch = GHKM.CHANNELS[ISO.key], P = PATCH; if (!ch) return;
+  const r = { t: [], i: [] }; for (let j = 0; j <= s.i; j += 2){ r.t.push(j * 0.05); r.i.push(s.y[j]); }
+  if (P.prot === "fam"){ const pre = ch.T * 0.1, w = GHKM.window(ch, pre, ch.T); ISO.iv.push([isoSteps()[P.fam], GHKM.measure(r, w)]); ISO.ivKind = w.how; }
+  else if (P.prot === "tail" && ch.tail){ const t1 = 5 + ch.tail.ms; ISO.iv.push([isoSteps()[P.fam], GHKM.measure(r, { from: t1 + ch.tail.read[0], to: t1 + ch.tail.read[1], how: "start" })]); ISO.ivKind = "tail"; }
+  else if (P.prot === "ramp"){ const lo = ch.steps[0], hi = ch.steps[1]; ISO.ramp = []; ISO.ivKind = "ramp"; for (let k = 0; k < r.t.length; k++){ const x = r.t[k]; if (x >= 20 && x < 520) ISO.ramp.push([lo + (hi - lo) * (x - 20) / 500, r.i[k]]); } }
+}
+/* ── the I–V curve, drawn where the tip close-up was ── */
+function isoIVFig(g, X, Y, W, H, fs){
+  const ch = GHKM.CHANNELS[ISO.key];
+  g.fillStyle = "rgba(6,10,14,0.92)"; g.fillRect(X, Y, W, H);
+  g.strokeStyle = "rgba(120,220,255,0.6)"; g.lineWidth = 1.5 * fs; g.strokeRect(X + 0.5, Y + 0.5, W - 1, H - 1);
+  g.font = "600 " + Math.round(12 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#9be7ff";
+  g.fillText(vrpFit(g, "I–V · " + ch.short + (ISO.ivKind === "tail" ? " (tails)" : ISO.ivKind === "ramp" ? " (ramp)" : ""), W - 16 * fs), X + 8 * fs, Y + 17 * fs);
+  const pts = ISO.ramp && PATCH.prot === "ramp" ? ISO.ramp : ISO.iv.length ? ISO.iv : ISO.ramp || [];
+  const vlo = -120, vhi = 100; let ilo = -50, ihi = 50; for (const [, i] of pts){ ilo = Math.min(ilo, i); ihi = Math.max(ihi, i); }
+  const pad = (ihi - ilo) * 0.08; ilo -= pad; ihi += pad;
+  const L = X + 10 * fs, R = X + W - 10 * fs, T = Y + 28 * fs, B = Y + H - 44 * fs;
+  const xs = v => L + (R - L) * (v - vlo) / (vhi - vlo), ys = i => B - (B - T) * (i - ilo) / (ihi - ilo);
+  g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1 * fs; g.beginPath(); g.moveTo(L, ys(0)); g.lineTo(R, ys(0)); g.moveTo(xs(0), T); g.lineTo(xs(0), B); g.stroke();
+  g.fillStyle = "#8b949e"; g.font = Math.round(10 * fs) + "px system-ui, sans-serif";
+  g.fillText("−120", L, ys(0) + 12 * fs); g.fillText("+100 mV", R - 46 * fs, ys(0) + 12 * fs);
+  g.fillText((Math.abs(ihi) >= 1000 ? (ihi / 1000).toFixed(1) + " nA" : Math.round(ihi) + " pA"), xs(0) + 4 * fs, T + 8 * fs);
+  g.fillText((Math.abs(ilo) >= 1000 ? (ilo / 1000).toFixed(1) + " nA" : Math.round(ilo) + " pA"), xs(0) + 4 * fs, B);
+  /* the GHK prediction: where this channel's current reverses with these solutions */
+  const eg = GHKM.erev(ch.perm, isoSol());
+  if (isFinite(eg) && eg > vlo && eg < vhi){ g.strokeStyle = "rgba(255,209,102,0.7)"; g.setLineDash([5 * fs, 4 * fs]); g.beginPath(); g.moveTo(xs(eg), T); g.lineTo(xs(eg), B); g.stroke(); g.setLineDash([]); }
+  if (pts.length){
+    g.strokeStyle = "#7ef9a8"; g.lineWidth = 2 * fs; g.beginPath(); pts.forEach(([v, i], k) => k ? g.lineTo(xs(v), ys(i)) : g.moveTo(xs(v), ys(i))); g.stroke();
+    if (pts !== ISO.ramp){ g.fillStyle = "#7ef9a8"; for (const [v, i] of pts){ g.beginPath(); g.arc(xs(v), ys(i), 3 * fs, 0, 6.283); g.fill(); } }
+  }
+  const cr = pts.length > 2 ? GHKM.clearCrossing(pts.map(p => p[0]), pts.map(p => p[1])) : { v: NaN };
+  g.font = Math.round(11 * fs) + "px system-ui, sans-serif"; g.fillStyle = "#c9d1d9";
+  g.fillText("measured E_rev " + (isFinite(cr.v) && cr.clear ? (cr.v > 0 ? "+" : "") + cr.v.toFixed(0) + " mV" : "—"), X + 8 * fs, Y + H - 28 * fs);
+  g.fillStyle = "#ffd166"; g.fillText("GHK " + (isFinite(eg) ? (eg > 0 ? "+" : "") + eg.toFixed(0) + " mV" : "—"), X + 8 * fs, Y + H - 12 * fs);
+  if (!pts.length){ g.fillStyle = "#8b949e"; g.fillText("run the step family or a ramp", L + 4 * fs, T + 30 * fs); }
+}
+/* ── the PC controls ── */
+function patchIsoUi(){
+  const $ = id => document.getElementById(id); const box = $("isoBox"); if (!box) return;
+  const P = PATCH, whole = P.on && (P.stage === "whole" || P.stage === "torn");
+  box.style.display = P.on ? "" : "none";
+  $("isoCh").value = ISO.key || ""; $("isoPip").value = ISO.pip; $("isoBath").value = ISO.bath; $("isoSub").checked = ISO.sub;
+  const s = isoSol();
+  for (const [id, o, k] of [["isoKi", "i", "K"], ["isoNai", "i", "Na"], ["isoCli", "i", "Cl"], ["isoCai", "i", "Ca"], ["isoNao", "o", "Na"], ["isoKo", "o", "K"], ["isoCao", "o", "Ca"], ["isoClo", "o", "Cl"]]){ const el = $(id); if (document.activeElement !== el) el.value = s[o][k]; }
+  $("isoCat").value = s.i.cation; $("isoDiv").value = s.o.div;
+  const ch = ISO.key && GHKM.CHANNELS[ISO.key], dr = $("isoDrugs"), key = ISO.key + JSON.stringify(ISO.drugs);
+  if (dr._k !== key){ dr._k = key; dr.innerHTML = ch ? Object.entries(ch.drugs).map(([k, d]) => '<label title="' + (d.say || "").replace(/"/g, "&quot;") + '"><input type="checkbox" data-iso-drug="' + k + '"' + (ISO.drugs[k] ? " checked" : "") + '> ' + d.name + '</label>').join(" ") : ""; }
+  $("isoProt").style.display = ch ? "" : "none"; $("isoTail").style.display = ch && ch.tail ? "" : "none";
+  $("isoNernst").textContent = isoNernst() + (whole ? "" : " · break in to record");
+}
+function patchIsoInit(){
+  const $ = id => document.getElementById(id);
+  $("isoCh").innerHTML = '<option value="">Whole cell as it is (no isolation)</option>' + Object.entries(GHKM.CHANNELS).map(([k, c]) => '<option value="' + k + '">Isolate: ' + c.name + '</option>').join("");
+  $("isoPip").innerHTML = Object.entries(SOL_PIP).map(([k, s]) => '<option value="' + k + '">Pipette: ' + s.name + '</option>').join("");
+  $("isoBath").innerHTML = Object.entries(SOL_BATH).map(([k, s]) => '<option value="' + k + '">Bath: ' + s.name + '</option>').join("");
+  $("isoCh").addEventListener("change", e => setIso(e.target.value));
+  $("isoPip").addEventListener("change", e => isoSetPip(e.target.value));
+  $("isoBath").addEventListener("change", e => isoSetBath(e.target.value));
+  $("isoSub").addEventListener("change", e => { ISO.sub = e.target.checked; });
+  $("isoCat").addEventListener("change", e => { isoSol().i.cation = e.target.value; isoChanged("Pipette cation: " + e.target.value + "⁺."); });
+  $("isoDiv").addEventListener("change", e => { isoSol().o.div = e.target.value; isoChanged("Bath divalent: " + e.target.value + "²⁺."); });
+  for (const [id, o, k] of [["isoKi", "i", "K"], ["isoNai", "i", "Na"], ["isoCli", "i", "Cl"], ["isoCai", "i", "Ca"], ["isoNao", "o", "Na"], ["isoKo", "o", "K"], ["isoCao", "o", "Ca"], ["isoClo", "o", "Cl"]])
+    $(id).addEventListener("change", e => { const v = +String(e.target.value).replace(",", "."); if (v >= 0){ isoSol()[o][k] = v; isoChanged(); } });
+  $("isoDrugs").addEventListener("change", e => { const k = e.target.dataset.isoDrug; if (!k) return; ISO.drugs[k] = e.target.checked; ISO.iv = []; const d = GHKM.CHANNELS[ISO.key].drugs[k]; if (d.say && e.target.checked) PATCH.note = d.say; patchIsoUi(); });
+  $("isoProt").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; isoRun(b.dataset.ip); });
+  patchIsoUi();
+}
+function isoRun(p){
+  const P = PATCH;
+  if (!P.on || (P.stage !== "whole" && P.stage !== "torn")){ P.note = "Break in first: the channel lab needs whole-cell."; patchUiSync(); return; }
+  if (!ISO.key){ P.note = "Choose a current to isolate first."; return; }
+  if (P.mode !== "vc") setPatchMode("vc");
+  if (p === "fam" || p === "tail") ISO.iv = []; if (p === "ramp") ISO.ramp = null;
+  ISO.s = null; patchProt(p);
+}
+/* ── and in the headset: a panel of its own ── */
+const SOLP = vrPanel("solutions", 1500, 1200, 0.62, -1, solPanelDraw);
+function solPanelDraw(P, g){
+  const W = P.W, s = isoSol();
+  g.fillStyle = "#f6ecff"; g.font = "700 44px system-ui, sans-serif"; g.fillText("⚗ Solutions & channels (model)", 40, 78);
+  vrpBtn(P, g, 1250, 30, 130, 76, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
+  vrpBtn(P, g, 1394, 30, 76, 76, "✕", () => vrpShow(P, false), { size: 40 });
+  let y = 120; const B = (x, w, lbl, act, o) => vrpBtn(P, g, x, y, w, 80, lbl, act, Object.assign({ size: 28 }, o || {}));
+  const cyc = (obj, cur) => { const o = Object.keys(obj); return o[(o.indexOf(cur) + 1) % o.length]; };
+  B(30, 1440, "Pipette: " + SOL_PIP[ISO.pip].name + "  ▸", () => isoSetPip(cyc(SOL_PIP, ISO.pip)), { key: "pip" }); y += 92;
+  B(30, 1440, "Bath: " + SOL_BATH[ISO.bath].name + "  ▸", () => isoSetBath(cyc(SOL_BATH, ISO.bath)), { key: "bath" }); y += 92;
+  g.fillStyle = "#e9d5ff"; g.font = "26px system-ui";
+  g.fillText(vrpFit(g, "inside: " + s.i.cation + "⁺ " + s.i.K + " · Na⁺ " + s.i.Na + " · Cl⁻ " + s.i.Cl + " mM · Ca²⁺ " + s.i.Ca + " µM   outside: Na⁺ " + s.o.Na + " · K⁺ " + s.o.K + " · " + s.o.div + "²⁺ " + s.o.Ca + " · Cl⁻ " + s.o.Cl + " mM", W - 80), 40, y + 26);
+  g.fillText(isoNernst(), 40, y + 62); y += 90;
+  const keys = [null].concat(Object.keys(GHKM.CHANNELS)), cur = keys.indexOf(ISO.key);
+  B(30, 1440, ISO.key ? "Isolate: " + GHKM.CHANNELS[ISO.key].name + "  ▸" : "Whole cell as it is (no isolation)  ▸", () => setIso(keys[(cur + 1) % keys.length]), { on: !!ISO.key, key: "ch" }); y += 92;
+  const ch = ISO.key && GHKM.CHANNELS[ISO.key];
+  if (ch){
+    let x = 30; for (const [k, d] of Object.entries(ch.drugs)){ const w = Math.min(470, 40 + d.name.length * 16); B(x, w, d.name, () => { ISO.drugs[k] = !ISO.drugs[k]; ISO.iv = []; if (d.say && ISO.drugs[k]) PATCH.note = d.say; patchIsoUi(); }, { on: !!ISO.drugs[k], key: "d" + k, size: 26 }); x += w + 12; }
+    y += 92;
+    B(30, 330, "Step family", () => isoRun("fam"), { on: PATCH.prot === "fam", key: "pf" });
+    B(372, 260, "Ramp", () => isoRun("ramp"), { on: PATCH.prot === "ramp", key: "pr" });
+    if (ch.tail) B(644, 260, "Tails", () => isoRun("tail"), { on: PATCH.prot === "tail", key: "pt" });
+    B(916, 554, ISO.sub ? "Leak subtracted (P/4)" : "Raw current (leak + capacitive)", () => { ISO.sub = !ISO.sub; patchIsoUi(); }, { on: ISO.sub, key: "sub" });
+    y += 92;
+  }
+  g.fillStyle = "#f6ecff"; g.font = "26px system-ui";
+  const msg = !PATCH.on ? "Patch a cell and break in to record." : (PATCH.stage !== "whole" && PATCH.stage !== "torn") ? "Break in first: whole-cell is needed to set the inside of the cell." : (PATCH.note || "");
+  vrpWrap(g, msg, W - 80, 3).forEach((l, k) => g.fillText(l, 40, y + 30 + k * 34));
+  y += 120;
+  if (ch) isoIVFig(g, 30, y, W - 60, P.H - y - 20, 1.7);
+}
+
 /* ── THE PANEL IN THE HEADSET ── */
 const PATCHP = vrPanel("patch", 1600, 1300, 0.8, 1, patchPanelDraw);
 PATCHP.tick = () => PATCH.on && performance.now() - PATCHP.lastDraw > 120;
@@ -18159,7 +18750,7 @@ function patchPanelDraw(P, g){
   g.fillStyle = "#f6ecff"; g.font = "700 44px system-ui, sans-serif"; g.fillText("🧪 Patch clamp & 💨 puff (model)", 40, 78);
   vrpBtn(P, g, 1350, 30, 130, 76, P.follow ? "Look…" : "Here", () => { P.follow = performance.now() + 2500; }, { on: !!P.follow, key: "here" });
   vrpBtn(P, g, 1494, 30, 76, 76, "✕", () => vrpShow(P, false), { size: 40 });
-  patchScope(g, 30, 120, 1010, 470, true); patchTipFig(g, 1050, 120, 520, 470, 1.6);
+  patchScope(g, 30, 120, 1010, 470, true); (ISO.key && isoOn() ? isoIVFig : patchTipFig)(g, 1050, 120, 520, 470, 1.6);
   let y = 610;
   const B = (x, w, lbl, act, o) => vrpBtn(P, g, x, y, w, 84, lbl, act, Object.assign({ size: 30 }, o || {}));
   const suckBtn = (x, w) => B(x, w, SUCK.held ? "● Sucking… " + Math.round(SUCK.p) + " mbar" : (SUCK.src === "mic" ? "🎙 Hold & suck (sound)" : SUCK.src === "trigger" ? "Hold & pull trigger" : "Hold to suck"), () => {},
@@ -18205,10 +18796,11 @@ function patchPanelDraw(P, g){
       B(1250, 320, "Hold 0 (IPSCs)", () => patchProtBtn("h0"), { on: S.hold.vc === 0, key: "h0" });
     }
     y += 100;
-    B(30, 420, "In vivo background", () => { S.bg = !S.bg; patchUiSync(); }, { on: S.bg, key: "bg" });
-    B(460, 480, "Linked to stimulation", () => setPatchNet(!S.net), { on: S.net, key: "net" });
+    B(30, 260, "In vivo bg", () => { S.bg = !S.bg; patchUiSync(); }, { on: S.bg, key: "bg", size: 28 });
+    B(300, 260, "Linked", () => setPatchNet(!S.net), { on: S.net, key: "net", size: 28 });
+    B(570, 330, "⚗ Solutions", () => vrpShow(SOLP, !SOLP.on), { on: SOLP.on || !!ISO.key, key: "sol", size: 28 });
     if (DYE.cells.size) B(1290, 280, "⏩ Watch the dye", () => simRecommend("dye"), { on: SIM.speed >= 10, key: "dsp", size: 28 });
-    B(950, DYE.cells.size ? 330 : 620, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
+    B(910, DYE.cells.size ? 370 : 660, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
   }
   y += 100;
   B(30, 560, "Puff: " + PUFF_AG[PUFF.ag].name.replace(/ \(.*$/, "") + "  ▸", () => { const o = Object.keys(PUFF_AG); PUFF.ag = o[(o.indexOf(PUFF.ag) + 1) % o.length]; PUFF.c0 = null; puffDrawPipette(); patchUiSync(); }, { key: "ag" });
@@ -18226,6 +18818,7 @@ function patchPanelDraw(P, g){
   lines.slice(0, 4).forEach((l, k) => g.fillText(l, 40, y + k * 32));
 }
 patchUiInit();
+patchIsoInit();
 
 /* ── 35. IDENTIFY A CELL (GAME) ────────────────────────────────────────────────────────  2026-10-22
    The project's own idea brought into the headset: a cell arrives alone and unnamed, with the electron
@@ -21526,7 +22119,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
