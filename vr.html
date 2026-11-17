@@ -542,6 +542,9 @@
     <div class="ctl" style="margin:6px 0">
       <select id="pcDye" title="A dye in the pipette fills the cell, and crosses into touching cells that are coupled by gap junctions -- if it is small enough"><option value="none">Pipette: no dye</option><option value="nb">Neurobiotin (crosses gap junctions)</option><option value="bc">Biocytin</option><option value="ly">Lucifer yellow</option><option value="alexa">Alexa Fluor 594 (stays in the cell)</option></select>
       <label title="Interneurons of the same class are coupled by electrical synapses (Cx36): dye and current can pass"><input type="checkbox" id="pcII" checked> interneuron gap junctions</label>
+      <button id="dyeFast" title="Dye fills take minutes of brain time: run the clock at ×20 to watch">⏩ Watch the dye</button>
+      <label title="Make the cells the dye reaches see-through, so the colour is seen filling them"><input type="checkbox" id="pcDyeGlass" checked> see-through while filling</label>
+      <button id="dyeOnly" title="Hide the segmentation (cells, nuclei, vessels) and see only the dye, like a fluorescence image">🔬 Dye only</button>
       <button id="dyeClr" title="Remove the dye from all cells">Wash out dye</button>
     </div>
     <div class="ctl" style="margin:6px 0">
@@ -1861,7 +1864,7 @@ function geometryFrom(positions, indices){
    the clock is slowed down. 1e9 means "never". */
 const AP_UNI = { apNow: { value: -1e9 }, apCol: { value: new THREE.Color(1.0, 0.97, 0.75) },
                  epspCol: { value: new THREE.Color(1.0, 0.55, 0.15) }, ipspCol: { value: new THREE.Color(0.75, 0.35, 1.0) },
-                 apBand: { value: 0.12 }, sprayTime: { value: 0 },
+                 apBand: { value: 0.12 }, sprayTime: { value: 0 }, dyOnly: { value: 0 },
                  apRef: { value: 3.0 }, refCol: { value: new THREE.Color(0.28, 0.42, 0.95) } };
 function cellMaterial(colour){
   const m = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide });
@@ -1881,7 +1884,7 @@ function cellMaterial(colour){
        that paint glows. Two attributes rather than one code in alpha, because alpha is interpolated
        across each triangle: a single "0 none / 0.5 glow / 1 matte" code made every matte stroke
        grow a glowing rim where it fell from 1 to 0 through 0.5. */
-    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform float mcA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nuniform float dyA;\nuniform float dyL;\nuniform vec3 dyC;\nvarying float vDyD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
+    sh.fragmentShader = "uniform float apNow;\nuniform vec3 apCol;\nuniform vec3 epspCol;\nuniform vec3 ipspCol;\nuniform float apBand;\nuniform float sprayTime;\nuniform float apRef;\nuniform vec3 refCol;\nuniform float caNow;\nuniform vec3 caCol;\nuniform float caTr;\nuniform float caTd;\nuniform float caNorm;\nuniform float raA;\nuniform float mcA;\nuniform vec3 raCol;\nuniform vec4 raS;\nuniform float raVs;\nuniform float dyOnly;\nuniform float dyA;\nuniform float dyL;\nuniform vec3 dyC;\nvarying float vDyD;\nvarying float vRaD;\nvarying float vCaT;\nvarying float vCaA;\nvarying float vGlow;\nvarying float vApT;\nvarying float vVm;\nvarying vec4 vPaint;\n"
       + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
         if (vPaint.a > 0.5) diffuseColor.rgb = vPaint.rgb;`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
@@ -1909,6 +1912,16 @@ function cellMaterial(colour){
           float q = vDyD / max(dyL, 0.5), f = dyA * exp(-q * q);
           totalEmissiveRadiance += dyC * 1.3 * f;
           diffuseColor.rgb = mix(diffuseColor.rgb, dyC, 0.6 * clamp(f * 1.5, 0.0, 1.0));
+          /* in a see-through cell the dye shows as a coloured filling, denser where there is more of it */
+          diffuseColor.a = max(diffuseColor.a, min(0.9, diffuseColor.a + 0.6 * f));
+        }
+        if (dyOnly > 0.5){
+          /* "Dye only" (section 56): the segmentation is gone; only where the dye is glows, like a fluorescence image */
+          float fo = 0.0;
+          if (dyA > 0.003 && vDyD < 1e8){ float qo = vDyD / max(dyL, 0.5); fo = dyA * exp(-qo * qo); }
+          if (fo < 0.01) discard;
+          diffuseColor.rgb = dyC * 0.12; diffuseColor.a = clamp(0.12 + 0.7 * fo, 0.0, 0.92);
+          totalEmissiveRadiance = dyC * (0.4 + 1.6 * fo);
         }
         if (mcA > 0.003){
           /* Modelled Ca²⁺ of a mural, endothelial or astrocyte cell (section 23): the whole cell. */
@@ -8805,6 +8818,10 @@ function applyLook(){
       c.nucMesh.material.depthWrite = !dim; c.nucMesh.material.needsUpdate = true;
     }
   }
+  if (typeof DYE_ONLY !== "undefined" && DYE_ONLY) for (const c of CELLS){
+    if (c.mesh){ const m = c.mesh.material; m.transparent = true; m.opacity = 1; m.depthWrite = false; m.emissive.set(0x000000); m.needsUpdate = true; }
+    if (c.nucMesh) c.nucMesh.visible = false;
+  }
   /* Transparent things draw back to front; the nuclei should draw before the glassy cells. */
   for (const c of CELLS){ if (c.nucMesh) c.nucMesh.renderOrder = 0; if (c.mesh) c.mesh.renderOrder = 1; }
   applyClip(); applyTracedLook(); applyPointsLook();
@@ -11369,6 +11386,7 @@ function menuRows(){
       rows.push({ label: "   " + (PATCH.mode === "cc" ? "Current clamp" : "Voltage clamp") + "  ▸", act: () => setPatchMode(PATCH.mode === "cc" ? "vc" : "cc") });
       rows.push({ label: "   Patch another cell (then trigger)", on: PATCH.arm, act: () => setPatchArm(!PATCH.arm) });
       rows.push({ label: "   Withdraw the pipette", act: () => patchWithdraw() });
+      if (DYE.cells.size || DYE.sr.size) rows.push({ label: "   🔬 Dye only (hide the cells)", on: DYE_ONLY, act: () => setDyeOnly(!DYE_ONLY) });
     }
     rows.push({ label: "💨 Puff pipette" + (PUFF.pos ? " (placed)" : "") + (PUFF.arm ? " — trigger on a cell or vessel" : ""), on: PUFF.arm || !!PUFF.pos, act: () => setPuffArm(!PUFF.arm) });
     if (PUFF.pos){
@@ -17094,7 +17112,7 @@ const PATCH = { on: false, arm: false, cell: null, node: -1, tip: null, mode: "c
                 cp: 4, V: -70, w: 0, h: 1, ge: 0, gi: 0, refr: 0, spk: -1e9, vrec: -70, iin: 0, t: 0, prot: "hold", fam: 0, famN: 0,
                 hold: { cc: 0, vc: -70 }, amp: { cc: 200, vc: 20 }, sw: null, sweeps: [], spikes: 0, mdl: null, group: null, cv: null, card: null,
                 test: null, stats: null, syn: 0, spkSeen: 0, own: 0, ii: true, dye: "none", force: false, note: "", _at: 0,
-                stage: "approach", seal: 0, tipOff: 0, dir: new THREE.Vector3(-0.8, -0.57, 0.18).normalize(), anim: null, breakT: 0 };
+                dyeGlass: true, stage: "approach", seal: 0, tipOff: 0, dir: new THREE.Vector3(-0.8, -0.57, 0.18).normalize(), anim: null, breakT: 0 };
 const PUFF = { arm: false, pos: null, ag: "glu", c0: null, vol: 5, events: [], group: null, near: new Map(), vas: [], said: 0 };
 const DYE = { cells: new Map(), sr: new Map(), t: 0 };
 const DYES = {
@@ -17500,6 +17518,14 @@ function dyeFrame(sdt){
       if (!(sf.held && PATCH.cell === from)) sf.conc = Math.max(0, sf.conc - fl / sf.V);
     }
   }
+  /* SEE-THROUGH WHILE FILLING (2026-11-17, Søren: "if you have a dye in the pipette and the cell is semi-transparent
+     and you do whole cell ... the dye slowly diffuses into the cell. If the cell is coupled with other cells, it should
+     flow to them as well."): every cell the dye reaches becomes see-through, so the colour is seen filling it from
+     inside; "Wash out dye" makes them solid again. */
+  let glassed = false;
+  if (PATCH.dyeGlass) for (const [c, st] of DYE.cells) if (c.mesh && !c.glass && st.conc > 0.01){ c.glass = true; c._dyeGlass = true; glassed = true; }
+  if (glassed){ try { renderList(); applyLook(); } catch (e){} if (typeof MENU !== "undefined") MENU.dirty = true; }
+  dyePlume(d);
   /* what is drawn */
   const col = d ? new THREE.Color(d.col) : new THREE.Color("#ffffff"), red = new THREE.Color(PUFF_AG.sr101.col);
   const seen = new Set();
@@ -17515,7 +17541,39 @@ function dyeFrame(sdt){
     if (!c._srD){ c._srD = true; const a = c.mesh.geometry.attributes.dyD; a.array.fill(0); a.needsUpdate = true; }
   }
 }
+/* the dye leaving the tip: a small glowing cloud at the opening, fading as the cell comes up to the pipette's level */
+function dyePlume(d){
+  const P = PATCH, g = P.group;
+  if (!g) return;
+  let pl = g.userData.plume;
+  const st = P.cell && DYE.cells.get(P.cell), on = !!(d && st && st.held && (P.stage === "whole" || P.stage === "torn"));
+  if (!on){ if (pl) pl.visible = false; return; }
+  if (!pl){ pl = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    pl.renderOrder = 8; g.add(pl); g.userData.plume = pl; }
+  pl.visible = true; pl.material.color.set(d.col);
+  const c = st.conc, flick = 0.85 + 0.15 * Math.sin(performance.now() / 180);
+  const r = 0.5 + 1.6 * Math.sqrt(c);
+  pl.scale.setScalar(r); pl.position.set(0, -(r + 0.4), 0);          // just inside the membrane, under the opening
+  pl.material.opacity = Math.max(0, 0.9 * (1 - c * c)) * flick;
+}
+/* DYE ONLY (2026-11-17, Søren: "Perhaps we could turn off the segmentations to only see the dye spreading in the
+   cell? That could look cool."): every cell surface, nucleus and vessel is hidden; what is left is the dye -- in the
+   patched cell and in every coupled cell it has reached, glowing as far as it has got -- and the pipettes. */
+let DYE_ONLY = false;
+function setDyeOnly(v){
+  DYE_ONLY = !!v; AP_UNI.dyOnly.value = DYE_ONLY ? 1 : 0;
+  if (VASC.mesh){ if (DYE_ONLY){ VASC._dyeHid = VASC.mesh.visible; VASC.mesh.visible = false; } else if (VASC._dyeHid != null){ VASC.mesh.visible = VASC._dyeHid; VASC._dyeHid = null; } }
+  applyLook();
+  const b = document.getElementById("dyeOnly"); if (b) b.classList.toggle("on", DYE_ONLY);
+  if (DYE_ONLY && !DYE.cells.size && !DYE.sr.size) ctxNote.textContent = "Dye only: nothing is dyed yet — put a dye in the pipette and break in (or puff sulforhodamine 101 near astrocytes).";
+  else if (DYE_ONLY) ctxNote.textContent = "Dye only: the cells are hidden; the dye shows where it has spread. Press again to bring the cells back.";
+  try { PATCHP.dirty = true; } catch (e){}
+  if (typeof MENU !== "undefined") MENU.dirty = true;
+}
 function dyeClear(){
+  let un = false;
+  for (const c of CELLS) if (c._dyeGlass){ c.glass = false; c._dyeGlass = false; un = true; }
+  if (un){ try { renderList(); applyLook(); } catch (e){} }
   for (const c of new Set([...DYE.cells.keys(), ...DYE.sr.keys()])) if (c.mesh && c.mesh.material.userData.dyA){ c.mesh.material.userData.dyA.value = 0; c._srD = false; }
   DYE.cells.clear(); DYE.sr.clear();
   ctxNote.textContent = "Dye washed out (a model can do that).";
@@ -17821,6 +17879,9 @@ function patchUiInit(){
   $("pfGo").addEventListener("click", puffNow);
   $("pfOut").addEventListener("click", puffRemove);
   $("dyeClr").addEventListener("click", dyeClear);
+  $("dyeFast").addEventListener("click", () => simRecommend("dye"));
+  $("dyeOnly").addEventListener("click", () => setDyeOnly(!DYE_ONLY));
+  $("pcDyeGlass").addEventListener("change", e => { PATCH.dyeGlass = e.target.checked; });
   $("pcProt").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; patchProtBtn(b.dataset.pp); });
   $("pcTouch").addEventListener("click", patchTouch);
   $("pcNewPip").addEventListener("click", patchNewPipette);
@@ -17964,7 +18025,7 @@ function patchBreakIn(early){
     : "Broke in ✓ — whole-cell, Rs " + P.rs + " MΩ. Stop sucking now (more suction raises Rs). The big transients are the whole membrane charging.";
   P.note = why;
   try { flashWarn((early ? "⚠ " : "✓ ") + (early ? "Torn — leaky" : "Whole-cell") + " · Rs " + P.rs + " MΩ", 2600, early || P.rs > 25 ? "#f0a742" : "#3fb950"); } catch (e){}
-  if (DYES[P.dye]) dyeStart(P.cell, P.node);
+  if (DYES[P.dye]){ dyeStart(P.cell, P.node); P.note += " " + DYES[P.dye].name + " is diffusing in — “⏩ Watch the dye” speeds the clock up (×20)."; }
   patchUiSync(); try { PATCHP.dirty = true; } catch (e){}
   if (typeof MENU !== "undefined") MENU.dirty = true;
 }
@@ -18132,7 +18193,8 @@ function patchPanelDraw(P, g){
     y += 100;
     B(30, 420, "In vivo background", () => { S.bg = !S.bg; patchUiSync(); }, { on: S.bg, key: "bg" });
     B(460, 480, "Linked to stimulation", () => setPatchNet(!S.net), { on: S.net, key: "net" });
-    B(950, 620, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
+    if (DYE.cells.size) B(1290, 280, "⏩ Watch the dye", () => simRecommend("dye"), { on: SIM.speed >= 10, key: "dsp", size: 28 });
+    B(950, DYE.cells.size ? 330 : 620, "Dye: " + (DYES[S.dye] ? DYES[S.dye].name : "none") + "  ▸", () => { const o = ["none", "nb", "bc", "ly", "alexa"]; setPatchDye(o[(o.indexOf(S.dye) + 1) % o.length]); }, { key: "dye" });
   }
   y += 100;
   B(30, 560, "Puff: " + PUFF_AG[PUFF.ag].name.replace(/ \(.*$/, "") + "  ▸", () => { const o = Object.keys(PUFF_AG); PUFF.ag = o[(o.indexOf(PUFF.ag) + 1) % o.length]; PUFF.c0 = null; puffDrawPipette(); patchUiSync(); }, { key: "ag" });
@@ -18142,7 +18204,7 @@ function patchPanelDraw(P, g){
   y += 100;
   if (S.on) B(30, 360, "Withdraw pipette", () => patchWithdraw(), { key: "wd" });
   if (S.on) suckBtn(410, 380);
-  if (DYE.cells.size || DYE.sr.size) B(810, 300, "Wash out dye", () => dyeClear(), { key: "dc" });
+  if (DYE.cells.size || DYE.sr.size){ B(800, 160, "Wash", () => dyeClear(), { key: "dc" }); B(970, 150, "🔬 Dye", () => setDyeOnly(!DYE_ONLY), { on: DYE_ONLY, key: "do" }); }
   if (PUFF.pos) B(1130, 440, "Remove puff pipette", () => puffRemove(), { key: "pr" });
   y += 104;
   g.fillStyle = "#f6ecff"; g.font = "26px system-ui";
@@ -21449,7 +21511,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { SUCK, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
