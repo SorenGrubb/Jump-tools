@@ -83,6 +83,9 @@
   .lbl{font-size:12px}
   body.nolbl .lbl{display:none}
   body.basic .adv{display:none!important}
+  .cbox.collapsed{border:none!important;padding:0!important;margin:6px 0!important}
+  .cbox.collapsed > :not(.cboxBtn){display:none!important}
+  .cbox:not(.collapsed) > .cboxBtn{margin-bottom:6px}
   #advBtn.on{background:var(--acc,#2bd9b0);color:#06231d;border-color:transparent}
   body.nolbl button.ui{padding:5px 7px}
   .segwrap{display:inline-flex}
@@ -1148,6 +1151,16 @@
     "fixBox", "trwBox", "blockBox", "recRow", "recOut", "tlBtn", "grpBtn",
     "patchBtn", "puffBtn", "patchBox", "puffBox"];
   ADV_IDS.forEach(id => { const el = $(id); if (el) (el._wrap || el).classList.add("adv"); });
+  /* Collapsed until asked for (2026-11-17, Søren: "These should also be collapsed by default, so only the button until
+     clicked"): the temperature/ICP box and the scanner box show just a button; it opens and closes them. */
+  [["physBox", "🌡 Temperature & ICP", "Brain temperature and intracranial pressure (model): open the controls"],
+   ["imgBox", "📡 Scanner imaging (fMRI / fUS)", "What a scanner would record (model): open the controls"]].forEach(([id, lbl, tip]) => {
+    const box = $(id); if (!box) return;
+    const b = document.createElement("button"); b.type = "button"; b.className = "cboxBtn"; b.textContent = lbl; b.title = tip;
+    box.classList.add("cbox", "collapsed"); box.insertBefore(b, box.firstChild);
+    b.addEventListener("click", () => { const open = box.classList.toggle("collapsed") === false; b.classList.toggle("on", open); });
+    box._open = () => { box.classList.remove("collapsed"); b.classList.add("on"); };
+  });
   panes.querySelectorAll(".ctl").forEach(r => { if (r.children.length && [...r.children].every(c => c.classList.contains("adv"))) r.classList.add("adv"); });
   const ab = document.createElement("button"); ab.id = "advBtn"; ab.type = "button";
   ab.innerHTML = "🧰 Advanced"; ab.title = "Basic shows the everyday tools; Advanced adds every model, tracing, connectivity, the timeline and films. Remembered in this browser.";
@@ -22218,7 +22231,7 @@ function imgNote(){
   const el = document.getElementById("imgNote"); if (el) el.textContent = IMG.note;
 }
 async function setImg(v){
-  IMG.on = !!v;
+  IMG.on = !!v; if (v){ const bx = document.getElementById("imgBox"); if (bx && bx._open) bx._open(); }
   document.getElementById("imgBtn").classList.toggle("on", IMG.on);
   if (IMG.on){
     if (!DSX.flowNet){ ctxNote.textContent = "Imaging needs the blood-flow network (MICrONS only)."; IMG.on = false; document.getElementById("imgBtn").classList.remove("on"); return; }
