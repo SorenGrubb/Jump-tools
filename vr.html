@@ -11327,7 +11327,7 @@ const VR_BASIC = {
   Show: /^(✓ Signed in|Not signed in|Cell models|Colour by excitatory|Nuclei|Scale bar|Floor grid|Background)/,
   Map: /^(Cortical layers|Layers:|Visual areas|Vessels:)/,
   /* 2026-11-16, Søren: "Here are things that should be in basic: Cut feature, Ca2+ stimulation, LFP probe. But no AIS." */
-  Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|Cut at the EM section|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population)/
+  Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|Cut at the EM section|Cut at an EM section|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population)/
 };
 const VR_BASIC_TOP = /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Cut in my right hand|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population|Cortical layers|Layers:|Visual areas|Vessels:|Scale bar|Floor grid|Background)/;
 /* settings that are on by default are not "left on": they stay with the advanced tools */
@@ -11635,7 +11635,7 @@ function menuRowsRaw(t){
     S("Cut, see-through & tissue block");
     rows.push({ label: "Cut in my right hand", on: CUT.mode === "hand" || CUT.mode === "frozen",
                 act: () => setCut(CUT.mode === "hand" || CUT.mode === "frozen" ? "off" : "hand") });
-    rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
+    rows.push({ label: EM.mesh || EM.loading ? "Cut at the EM section" : "Cut at an EM section (places one)", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
     rows.push({ label: "See-through cells", on: SEE_THROUGH, act: toggleGlass });
     rows.push({ label: SELECTED >= 0 ? "Others see-through (picked stays solid)" : "Others see-through (pick a cell first)", act: glassOthers });
     if (SELECTED >= 0 && CELLS[SELECTED]) rows.push({ label: "Picked cell see-through", on: !!CELLS[SELECTED].glass, act: () => setCellGlass([CELLS[SELECTED]], !CELLS[SELECTED].glass) });
@@ -11993,7 +11993,15 @@ function footPopItems(k){
   } else if (k === "cut"){
     I.push({ label: "Cut with my right hand", on: CUT.mode === "hand", act: () => setCut("hand") });
     I.push({ label: "Freeze the cut where it is", on: CUT.mode === "frozen", off: CUT.mode !== "hand" && CUT.mode !== "frozen", act: () => setCut("frozen") });
-    I.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut("em") });
+    /* the EM section is placed with it (2026-11-17, Søren: "Cut at the em section only makes sense if you can also place an
+       EM section. So I think it should include placing an EM section.") */
+    I.push({ label: EM.mesh || EM.loading ? "Cut at the EM section" : "Place an EM section " + (SELECTED >= 0 ? "at the picked cell" : "") + " and cut there", on: CUT.mode === "em", act: () => setCut("em") });
+    if (EM.mesh){
+      I.push({ label: "EM section +5 µm", keep: true, act: () => moveEM(5) });
+      I.push({ label: "EM section −5 µm", keep: true, act: () => moveEM(-5) });
+      if (SELECTED >= 0) I.push({ label: "Move the EM section to the picked cell", act: () => showEM() });
+      I.push({ label: "Hide the EM section", act: () => { if (CUT.mode === "em") setCut("off"); hideEM(); } });
+    }
     I.push({ label: "Remove the cut", off: CUT.mode === "off", act: () => setCut("off") });
   } else if (k === "measure"){
     I.push({ label: "Measure (trigger: two points)", on: MEAS.on, act: () => setMeasure(!MEAS.on) });
