@@ -5454,7 +5454,11 @@ function mousePeel(){
      mouse is almost not transparent"): the end of a fly-out is ~0.017 m, so the fur only starts to fade above 0.02 */
   const W = WIN.on ? 2.5 : 1;   /* with the window open the fur and skull stay longer: you look in through it */
   const op = { mouse: 0.94 * (1 - smooth01(0.02 * W, 0.045 * W, d)), skull: 1 - smooth01(0.045 * W * 1.6, 0.09 * W * 1.6, d), brain: 1 - 0.82 * smooth01(0.08, 0.25, d) - 0.18 * smooth01(0.6, 1.2, d) };
-  if (WIN.on) op.brain = Math.min(op.brain, 0.5);   /* see-through with the window open, so the penetrating vessels show diving in */
+  /* with the window open the brain is solid from afar -- seen through the hole in the skull -- and turns half
+     see-through only close up, where the penetrating vessels are worth following (2026-11-18, Søren: "the brain
+     should be visible even from far away") */
+  if (WIN.on){ op.brain = Math.min(op.brain, 1 - 0.5 * smooth01(0.06, 0.12, d));
+    if (WIN.collar){ const fo = Math.max(0, Math.min(1, op.mouse / 0.94)); WIN.collar.visible = fo > 0.02; WIN.collar.material.opacity = fo; WIN.collar.material.depthWrite = fo > 0.9; } }   /* see-through with the window open, so the penetrating vessels show diving in */
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
     m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.9; }
   /* no orange block (2026-11-18, Søren: "there is no need to make the orange box around the dataset. That was just the
@@ -5557,11 +5561,39 @@ function winBuild(){
   const glass = new THREE.Mesh(new THREE.CylinderGeometry(WIN_R, WIN_R, 150, 128, 1),
     new THREE.MeshStandardMaterial({ color: "#d8ecff", transparent: true, opacity: 0.14, roughness: 0.05, metalness: 0.1, depthWrite: false }));
   glass.position.copy(at(60 + 75)); glass.quaternion.copy(q); glass.renderOrder = 5; grp.add(glass);
-  /* cement: a ring turned from a profile (radius, height above the glia limitans), closed underneath */
+  /* cement: from just over the glass edge up to the skin all the way round (2026-11-18, Søren: "We still have a gap on
+     one side of the cranial window, where the skin is missing"): the head slopes, so the skin is higher above the
+     window on one side; the cement's outer edge is raised to where a ray along the window's axis meets the fur, angle
+     by angle, and its surface runs down from there to the glass rim */
+  const fur = MOUSE.parts.mouse, ray = new THREE.Raycaster(), NA = 128, NR = 7, R1 = WIN_CEM - 650 + 40;
+  const e1 = new THREE.Vector3(1, 0, 0).projectOnPlane(n).normalize(), e2 = new THREE.Vector3().crossVectors(n, e1);
+  const furH = th => {
+    const d = e1.clone().multiplyScalar(Math.cos(th) * R1).addScaledVector(e2, Math.sin(th) * R1);
+    ray.set(c.clone().add(d).addScaledVector(n, -12000), n); ray.far = 20000;
+    /* the skin nearest the brain along the ray (not an ear standing above it), and never more than 3 mm up */
+    const hs = ray.intersectObject(fur, true).map(x => -x.point.clone().sub(c).dot(n)).filter(h => h > 500 && h < 3500);
+    return hs.length ? Math.min(...hs) : 900;              /* height above the glia limitans */
+  };
+  const P = [], I = [], rim = [];
+  for (let a = 0; a < NA; a++) rim.push(Math.max(700, furH(a / NA * Math.PI * 2) + 60));
+  /* top surface: rings from the glass rim (r WIN_OPEN, h 260) to the skin (r R1, h rim) */
+  for (let k = 0; k <= NR; k++){ const u = k / NR, r = WIN_OPEN + (R1 - WIN_OPEN) * u;
+    for (let a = 0; a < NA; a++){ const th = a / NA * Math.PI * 2, h = 260 + (rim[a] - 260) * Math.pow(u, 0.7);
+      const p = c.clone().addScaledVector(e1, Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r).addScaledVector(n, -h); P.push(p.x, p.y, p.z); } }
+  /* the inner lip, down onto the glass */
+  for (let a = 0; a < NA; a++){ const th = a / NA * Math.PI * 2, p = c.clone().addScaledVector(e1, Math.cos(th) * (WIN_OPEN + 10)).addScaledVector(e2, Math.sin(th) * (WIN_OPEN + 10)).addScaledVector(n, -205); P.push(p.x, p.y, p.z); }
+  const ring = k => k * NA;
+  for (let k = 0; k < NR; k++) for (let a = 0; a < NA; a++){ const b = (a + 1) % NA, p0 = ring(k) + a, p1 = ring(k) + b, q0 = ring(k + 1) + a, q1 = ring(k + 1) + b; I.push(p0, q0, p1, p1, q0, q1); }
+  const lip = ring(NR + 1); for (let a = 0; a < NA; a++){ const b = (a + 1) % NA; I.push(lip + a, ring(0) + a, lip + b, lip + b, ring(0) + a, ring(0) + b); }
+  const cg = new THREE.BufferGeometry(); cg.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); cg.setIndex(I); cg.computeVertexNormals();
+  /* the part of the cement that climbs to the skin goes with the skin when the fur is peeled away; the cement on the
+     skull round the glass (a turned ring, ~0.9 mm high) stays */
+  const cem = new THREE.Mesh(cg, new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide, transparent: true }));
+  grp.add(cem); WIN.collar = cem;
   const prof = [[WIN_OPEN, 170], [WIN_OPEN - 20, 260], [WIN_OPEN + 150, 520], [1900, 780], [2300, 900], [2650, 880], [2900, 760], [WIN_CEM, 600], [WIN_CEM, 300], [2100, 170], [WIN_OPEN, 170]]
     .map(([r, h]) => new THREE.Vector2(r, h));
-  const cem = new THREE.Mesh(new THREE.LatheGeometry(prof, 128), new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide }));
-  cem.position.copy(at(0)); cem.quaternion.copy(q); grp.add(cem);
+  const base = new THREE.Mesh(new THREE.LatheGeometry(prof, 128), new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide }));
+  base.position.copy(c); base.quaternion.copy(q); grp.add(base);
   return grp;
 }
 async function setWindow(v){
@@ -5570,7 +5602,7 @@ async function setWindow(v){
   if (WIN.on){
     if (!MOUSE.on) await setMouse(true);
     if (!MOUSE.group){ WIN.on = false; return; }
-    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 50); MOUSE.holed = true; }
+    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 650);   /* the fur laps over the cement's outer edge, so no skull shows on the high side of the slope (Søren: "a gap on one side ... where the skin is missing") */ MOUSE.holed = true; }
     winUniforms().uWinOn.value = 1;
     if (!WIN.group){ WIN.group = winBuild(); }
     MOUSE.group.add(WIN.group);
@@ -5583,6 +5615,7 @@ async function setWindow(v){
     WIN.prev.vasc = document.getElementById("vascSel").value; WIN.prev.vpart = Object.assign({}, VPART.on); WIN.prev.vcol = NV.colour ? (NV.colourSrc || "order") : "one";
     if (DS_HAS.vasc){
       setVpart({ pa: true, pen: true, cap: false, av: true, pv: true, unk: false });   /* + the penetrating ones, diving in (Søren, 2026-11-18) */
+      VASC.hideUntilParts = true;
       document.getElementById("vascSel").value = "whole"; await buildVessels(); setVesselColour("order");
     }
     ctxNote.textContent = "Cranial window: 4 mm, centred on the V1/LM border 3.5 mm lateral and ~1 mm in front of lambda, as in the MICrONS Ca²⁺ imaging. The cement covers the glass rim, leaving ~3 mm clear. Under the glass: the dataset's glia limitans and its pial and penetrating arterioles (red) and venules (blue), the brain see-through — the data cover ~1.3 × 0.9 mm of it.";
@@ -5591,7 +5624,7 @@ async function setWindow(v){
     if (WIN.group && WIN.group.parent) WIN.group.parent.remove(WIN.group);
     const P = WIN.prev; WIN.prev = null;
     if (P){ if (DS_HAS.men && MEN.on.glia !== P.glia) setMen("glia", P.glia);
-      if (DS_HAS.vasc){ setVpart(P.vpart); setVesselColour(P.vcol); document.getElementById("vascSel").value = P.vasc; buildVessels(); } }
+      if (DS_HAS.vasc){ VASC.hideUntilParts = false; if (VASC.mesh) VASC.mesh.visible = true; setVpart(P.vpart); setVesselColour(P.vcol); document.getElementById("vascSel").value = P.vasc; buildVessels(); } }
   }
 }
 document.getElementById("winBtn").addEventListener("click", () => setWindow(!WIN.on));
@@ -7843,7 +7876,7 @@ async function vpartApply(){
     const out = new Uint32Array(F.length); let m = 0;
     for (let t = 0; t < F.length; t += 3){ const a = F[t], b = F[t+1], c = F[t+2]; if (ok[C[a]] && ok[C[b]] && ok[C[c]]){ out[m++] = a; out[m++] = b; out[m++] = c; } }
     g.setIndex(new THREE.BufferAttribute(out.slice(0, m), 1));
-    mesh.userData.vpartKey = key;
+    mesh.userData.vpartKey = key; if (VASC.hideUntilParts){ VASC.hideUntilParts = false; mesh.visible = true; }
     ctxNote.textContent = "Vessels shown: " + ["pial arterioles", "penetrating arterioles", "capillaries", "ascending venules", "pial venules", "not classified"].filter((x, i) => ok[i]).join(", ") + ".";
   } finally { VPART.busy = false; }
 }
@@ -22104,6 +22137,10 @@ renderer.setAnimationLoop(() => {
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
   sprayFrame(dt); trwFrame();
+  /* the window's vessels: the whole TriSAM mesh, capillaries and all, stays hidden until it is cut down to the pial and
+     penetrating vessels (2026-11-18, Søren: "now it is loading all vessels, including all the capillaries, which makes it
+     lag") -- drawn 2.8 M triangles in the meantime is what lagged */
+  if (VASC.mesh && VASC.hideUntilParts && VASC.mesh.userData.vpartKey !== vpartKey() + "|" + VASC.mesh.geometry.uuid) VASC.mesh.visible = false;
   if (VASC.mesh && !VPART.busy && VASC.mesh.userData.vpartKey !== vpartKey() + "|" + VASC.mesh.geometry.uuid && (!vpartAll() || VASC.mesh.userData.vpartKey)) vpartApply();
   filmCards(); try { if (STK.on) bloodVis(); } catch (e){}
   /* every frame, just before drawing (2026-10-25, Søren: blood cells and sphincters "showing in a brief moment in the
