@@ -2513,6 +2513,9 @@ async function buildLayers(){
     const ym = clampY(yAt((f0 + f1) / 2, b.max.x, b.min.z));
     const lab = textSprite([nm], { fit: true, border: col });
     const h = ext * 0.05; lab.scale.set(h * lab.userData.aspect, h, 1);
+    /* behind the cells (2026-11-18, Søren: "The layer labels should be behind the meshes"): the name is hidden where a
+       mesh is in front of it, instead of always drawn on top; it writes no depth itself, so it hides nothing */
+    lab.material.depthTest = true; lab.material.depthWrite = false; lab.renderOrder = 2;
     lab.position.set(b.max.x, ym, b.min.z); grp.add(lab);
   }
   /* The boundaries themselves: faint sheets across the box, tinted with the band below, with rims. */
@@ -11379,8 +11382,146 @@ function vrBasicRows(t, rows){
   else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && (r.sec === "Identify a cell (game)" || r.sec === "Ca²⁺ wave"))) : rows.slice(); }
   /* the everyday rows of a section go to the top, where they are seen without opening it */
   keep = keep.map(r => r.sec && VR_BASIC_TOP.test(r.label) ? Object.assign({}, r, { sec: undefined }) : r);
-  if (t === "Tools" || t === "Activity" || t === "Map" || t === "Show") keep.push({ label: "🧰 More: turn on Advanced tools", icon: "wrench", act: () => window.setAdvanced(true, true) });
   return keep;
+}
+/* ── THE BASIC PALETTE AS TILES (2026-11-18, Søren: "I would like to make the basic toolbox more simple, perhaps using
+   some screenshots to illustrate the functions or some more useful icons" -- chose: quick-settings tiles, picture
+   cards on the Map tab, no Tools tab, no "More: Advanced" rows, the game as a card, one-word labels with the full
+   explanation shown while you point at a tile) ──
+   Every basic row that has a tile here becomes a square: one icon, a word or two, lit white when it is on. Rows with
+   choices ("Background: dark ▸") show the choice under the word. The Map tab's tiles are picture cards (drawn
+   pictures of what you will see). Anything without a tile (the cell list, help lines, turn left|right) stays a row.
+   The Tools tab is gone from Basic: cut, measure, stimulate and spray are the icons at the bottom (hold one for its
+   options); see-through moved to Show and the EM section to Map. */
+const BASIC_TILE = [
+  [/^Only the picked cell/, "Only picked", "eye"], [/^\+3 neighbours/, "+3 neighbours", "neighbours"],
+  [/^Identify a cell \(game\)/, "Identify a cell", "help", { card: true }],
+  [/^Cell models/, "Cells", "mesh"], [/^Nuclei/, "Nuclei", "nucleus"], [/^Colour by excitatory/, "Cell types", "palette", { sub: "by colour" }],
+  [/^See-through cells/, "See-through", "glass"], [/^Others see-through/, "Others see-through", "glass"], [/^Picked cell see-through/, "Picked see-through", "glass"],
+  [/^Scale bar/, "Scale bar", "scalebar"], [/^Floor grid/, "Floor", "grid"], [/^Background/, "Background", "moon"],
+  [/^Cortical layers/, "Cortical layers", null, { pic: "layers" }], [/^Layers:/, "Layers", "layers"],
+  [/^Visual areas/, "Visual areas", null, { pic: "areas" }], [/^Vessels:/, "Blood vessels", null, { pic: "vessels" }],
+  [/^EM section —/, "EM section", null, { pic: "em" }],
+  [/^⚡ Stimulate/, "Stimulate", "bolt"], [/^Ca²⁺ wave/, "Ca²⁺ wave", "wave"], [/^LFP probe/, "LFP probe", "trace"],
+  [/^\s+Power spectrum/, "Spectrum", "plot"], [/^Hear spikes/, "Hear spikes", "speaker"], [/^Feel spikes/, "Feel spikes", "hand"], [/^Reset activity/, "Reset", "reset"],
+  [/^World size/, "World size", "size"], [/^Reset position/, "Reset position", "reset"], [/^Bring the palette here/, "Palette here", "hand"],
+  [/^Saving the scene|^Save this scene/, "Save scene", "save"], [/^🖼 My scenes/, "My scenes", "film"], [/^Save as a new scene/, "Save as new", "save"],
+  [/^Help: the controls/, "Help", "help"], [/^Exit VR/, "Exit VR", "exit"]
+];
+/* what a tile says on its face: its word, and the current choice of a "Name: choice ▸" row under it */
+function basicTile(r){
+  for (const [re, word, icon, o] of BASIC_TILE) if (re.test(r.label)){
+    const m = /^[^:]+:\s*(.+?)\s*▸?\s*$/.exec(r.label), t = Object.assign({ word, icon }, o || {});
+    if (!t.sub && m && !t.card && /▸\s*$/.test(r.label)) t.sub = m[1] + " ▸";
+    if (t.card){ const k = r.label.indexOf("—"); t.sub = (k > 0 ? r.label.slice(k + 1).trim() + " · " : "") + "name the cell, earn points, become an expert"; }
+    return t;
+  }
+  return null;
+}
+function vrBasicTabRows(t, rows){
+  const on = r => r.on === true && !VR_BASIC_NEVER.test(r.label);
+  let keep;
+  if (t === "Show"){
+    keep = rows.filter(r => !/^(✓ Signed in|Not signed in)/.test(r.label) && (VR_BASIC.Show.test(r.label) || on(r)));
+    const tools = menuRowsRaw("Tools"), glass = tools.filter(r => /^See-through cells/.test(r.label) || (/see-through|All cells solid/i.test(r.label) && r.on === true));
+    const k = keep.findIndex(r => /^Scale bar/.test(r.label)); keep.splice(k < 0 ? keep.length : k, 0, ...glass);
+  } else if (t === "Map"){
+    keep = rows.filter(r => VR_BASIC.Map.test(r.label) || on(r));
+    keep.push({ label: "EM section — a real electron-microscopy picture where the picked cell is (more: hold ✂ below)", on: !!EM.mesh || !!EM.loading,
+                act: () => { if (EM.mesh || EM.loading){ if (CUT.mode === "em") setCut("off"); hideEM(); } else showEM(); } });
+  } else keep = vrBasicRows(t, rows).filter(r => !(t === "View" && /^Not signed in/.test(r.label)));
+  keep = keep.map(r => Object.assign(r, { sec: undefined }));
+  keep.forEach(r => { r._tile = r.act2 || r.btns || r.note ? null : basicTile(r); });
+  /* the game card first, then the picture cards, then the tiles, then the rows that stay rows (the cell list,
+     turn left | right) -- each kept in its own order */
+  const rank = r => !r._tile ? 3 : r._tile.card ? 0 : r._tile.pic ? 1 : 2;
+  keep = keep.map((r, i) => [r, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(x => x[0]);
+  return keep;
+}
+/* which tabs the tab bar shows: Basic has no Tools tab (its tools are the icons at the bottom), unless you are tracing */
+function menuTabList(){ return TABS.map((t, i) => i).filter(i => vrAdvanced() || TABS[i] !== "Tools" || TRW.on); }
+/* where each row sits: a full-width row, or (Basic) a tile in a grid of 4, a picture card in a grid of 3, a card */
+const TILE_H = 150, PIC_H = 196, CARD_H = 112, TILE_GAP = 14, TILE_X = 26, HINT_H = 54;
+function menuLayout(rows, top){
+  let y = top, line = null;
+  const flush = () => { if (line){ y += line.th + TILE_GAP; line = null; } };
+  rows.forEach(r => {
+    const t = r._tile;
+    if (t && !t.card){
+      const cols = 4, th = t.pic ? PIC_H : TILE_H;
+      if (!line || line.cols !== cols || line.th !== th || line.n >= cols){ flush(); if (line === null && y === top) y += 6; line = { cols, th, n: 0 }; }
+      const w = (MENU_W - 2 * TILE_X - (cols - 1) * TILE_GAP) / cols;
+      r._rect = { x: TILE_X + line.n * (w + TILE_GAP), y, w, h: th }; line.n++;
+    } else if (t){ flush(); if (y === top) y += 6; r._rect = { x: TILE_X, y, w: MENU_W - 2 * TILE_X, h: CARD_H }; y += CARD_H + TILE_GAP; }
+    else { flush(); r._rect = { x: 0, y, w: MENU_W, h: ROW_H }; y += ROW_H; }
+  });
+  flush();
+  return y;
+}
+/* the pictures on the Map tab's cards: drawn, in the colours the scene uses */
+function tilePic(g, kind, x, y, w, h){
+  g.save(); g.beginPath(); g.roundRect(x, y, w, h, [16, 16, 0, 0]); g.clip();
+  g.fillStyle = "#140f2a"; g.fillRect(x, y, w, h);
+  const wave = (f, a) => xx => y + h * f + Math.sin((xx - x) / w * 3.2 + f * 5) * a;
+  if (kind === "layers"){
+    const L = ["Layer 1", "Layer 2/3", "Layer 4", "Layer 5a", "Layer 5b", "Layer 6a", "Layer 6b"], fr = [0.1, 0.24, 0.45, 0.56, 0.66, 0.78, 0.9];
+    L.forEach((n, i) => { const f = wave(fr[i], h * 0.03); g.fillStyle = LAYER_TINT[n] || "#888"; g.globalAlpha = 0.75; g.beginPath(); g.moveTo(x, f(x));
+      for (let xx = x; xx <= x + w; xx += 8) g.lineTo(xx, f(xx)); g.lineTo(x + w, y + h); g.lineTo(x, y + h); g.fill(); });
+    g.globalAlpha = 1; const cx = x + w / 2, cy = y + h * 0.5; g.strokeStyle = "#f2c14e"; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx - 4, y + h * 0.08); g.moveTo(cx - 2, y + h * 0.3); g.lineTo(cx - 30, y + h * 0.16); g.moveTo(cx - 3, y + h * 0.22); g.lineTo(cx + 26, y + h * 0.1);
+    g.moveTo(cx, cy); g.lineTo(cx - 34, cy + 34); g.moveTo(cx, cy); g.lineTo(cx + 36, cy + 30); g.moveTo(cx, cy); g.lineTo(cx + 6, y + h); g.stroke();
+    g.fillStyle = "#f2c14e"; g.beginPath(); g.ellipse(cx, cy, 10, 13, 0, 0, 7); g.fill();
+  } else if (kind === "areas"){
+    const A = [["V1", "#4f7cc9", 0, 0.42, 0.34], ["RL", "#43b28a", 0.42, 0.7, 0.62], ["AL", "#d3884a", 0.7, 1.01, 1.01]];
+    A.forEach(([n, c, a, b, bb], i) => { g.fillStyle = c; g.globalAlpha = 0.8; g.beginPath(); g.moveTo(x + w * a, y); g.lineTo(x + w * b, y); g.lineTo(x + w * bb, y + h);
+      g.lineTo(x + w * (i ? A[i - 1][4] : 0), y + h); g.fill(); g.globalAlpha = 1;
+      g.fillStyle = "#fff"; g.font = "700 30px system-ui, sans-serif"; g.textAlign = "center"; g.fillText(n, x + w * (a + b) / 2 - 8, y + h * 0.58); g.textAlign = "left"; });
+  } else if (kind === "vessels"){
+    g.strokeStyle = "#e0474c"; g.lineCap = "round";
+    const br = (x0, y0, ang, len, wd, d) => { if (d > 5 || wd < 1) return; const x1 = x0 + Math.sin(ang) * len, y1 = y0 + Math.cos(ang) * len;
+      g.lineWidth = wd; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      br(x1, y1, ang - 0.55 + d * 0.05, len * 0.72, wd * 0.62, d + 1); br(x1, y1, ang + 0.5 - d * 0.04, len * 0.7, wd * 0.6, d + 1); };
+    br(x + w / 2, y - 4, 0, h * 0.34, 12, 0);
+    g.strokeStyle = "#7aa6ff"; g.globalAlpha = 0.6; br(x + w * 0.16, y + h + 4, Math.PI - 0.15, h * 0.3, 7, 1); g.globalAlpha = 1;
+  } else if (kind === "em"){
+    let sd = 7; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    g.fillStyle = "#77736c"; g.fillRect(x, y, w, h);
+    for (let i = 0; i < 70; i++){ const ex = x + rnd() * w, ey = y + rnd() * h, rr = 6 + rnd() * 16;
+      g.fillStyle = rnd() < 0.5 ? "#8c8880" : "#6a665f"; g.strokeStyle = "#2c2a27"; g.lineWidth = 1.6; g.beginPath(); g.ellipse(ex, ey, rr, rr * (0.6 + rnd() * 0.4), rnd() * 3, 0, 7); g.fill(); g.stroke(); }
+    g.fillStyle = "#9c978e"; g.strokeStyle = "#1f1d1b"; g.lineWidth = 3; g.beginPath(); g.ellipse(x + w * 0.42, y + h * 0.52, w * 0.17, h * 0.3, 0.3, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#5e5a54"; g.beginPath(); g.ellipse(x + w * 0.42, y + h * 0.52, w * 0.09, h * 0.16, 0.3, 0, 7); g.fill();
+  }
+  g.restore();
+}
+function drawTile(g, r, hv){
+  const t = r._tile, R = r._rect, on = r.on === true;
+  g.fillStyle = t.card ? "rgba(255,226,122,0.16)" : on && !t.pic ? "rgba(255,255,255,0.93)" : "rgba(20,8,60,0.38)";
+  g.beginPath(); g.roundRect(R.x, R.y, R.w, R.h, 18); g.fill();
+  if (on){ g.shadowColor = "#ffffff"; g.shadowBlur = 20; }
+  g.strokeStyle = on ? "#ffffff" : hv ? "rgba(240,220,255,0.9)" : t.card ? "rgba(255,226,122,0.6)" : "rgba(255,255,255,0.16)"; g.lineWidth = on || hv ? 3 : 2;
+  g.beginPath(); g.roundRect(R.x, R.y, R.w, R.h, 18); g.stroke(); g.shadowBlur = 0;
+  if (hv && !on){ g.fillStyle = "rgba(255,255,255,0.1)"; g.beginPath(); g.roundRect(R.x, R.y, R.w, R.h, 18); g.fill(); }
+  const ink = r.exit ? "#ffb070" : on && !t.pic ? "#4b1fb0" : "#f6eeff";
+  if (t.card){
+    const im = menuIcon("help", "#ffe27a"); if (im) g.drawImage(im, R.x + 22, R.y + 22, 68, 68);
+    g.fillStyle = "#fff4c8"; g.font = "700 38px system-ui, sans-serif"; g.fillText(t.word + " — the game", R.x + 110, R.y + 50, R.w - 130);
+    g.fillStyle = "#efe3ff"; g.font = "26px system-ui, sans-serif"; g.fillText(t.sub, R.x + 110, R.y + 88, R.w - 130); return;
+  }
+  if (t.pic){
+    tilePic(g, t.pic, R.x + 2, R.y + 2, R.w - 4, R.h - 58);
+    g.fillStyle = ink; g.font = "600 25px system-ui, sans-serif"; g.fillText(t.word, R.x + 14, R.y + R.h - 20, R.w - 100);
+    const sub = t.sub || (r.on === undefined ? "" : on ? "ON" : "OFF");
+    if (sub){ g.font = "700 20px system-ui, sans-serif"; const sw = Math.min(R.w * 0.36, g.measureText(sub).width + 18), sx = R.x + R.w - sw - 12, sy = R.y + R.h - 44;
+      g.fillStyle = on ? "#3ee0b0" : "rgba(255,255,255,0.22)"; g.beginPath(); g.roundRect(sx, sy, sw, 30, 12); g.fill();
+      g.fillStyle = on ? "#11303a" : "#f3eaff"; g.textAlign = "center"; g.fillText(sub, sx + sw / 2, sy + 22, sw - 10); g.textAlign = "left"; }
+    return;
+  }
+  const im = t.icon ? menuIcon(t.icon, r.exit ? "#ffb070" : on ? "#5b2fc9" : "#efe0ff") : null, cx = R.x + R.w / 2, isz = t.sub ? 50 : 58;
+  if (im) g.drawImage(im, cx - isz / 2, R.y + (t.sub ? 16 : 22), isz, isz);
+  g.fillStyle = ink; g.font = "600 29px system-ui, sans-serif"; g.textAlign = "center";
+  g.fillText(t.word, cx, R.y + (t.sub ? 100 : 118), R.w - 16);
+  if (t.sub){ g.font = "21px system-ui, sans-serif"; g.fillStyle = on ? "#5b2fc9" : "#d9c8f7"; g.fillText(t.sub, cx, R.y + 130, R.w - 16); }
+  g.textAlign = "left";
 }
 function menuRowsRaw(t){
   const rows = [];
@@ -11802,7 +11943,9 @@ function menuRows(){
     const tools = menuRowsRaw("Tools");
     rows = menuRowsRaw("Cells").concat(tools.filter(r => /^\+3 neighbours/.test(r.label)), tools.filter(r => r.sec === "Connections" || r.sec === "Identify a cell (game)"));
   } else rows = menuRowsRaw(t);
-  return menuSections(vrAdvanced() ? rows : vrBasicRows(t, rows), t);
+  if (!vrAdvanced()) return vrBasicTabRows(t, rows);
+  rows.forEach(r => { r._tile = null; });
+  return menuSections(rows, t);
 }
 /* ── SYMBOLS ON THE PALETTE (2026-11-14, Søren: "We could use symbols also in the VR headset controller menu") ──
    The panel's own icons (UI_ICON, the same line drawings as the PC buttons) drawn on the palette's canvas: one on
@@ -11868,9 +12011,13 @@ function menuIcon(name, colour){
   return im.complete && im.naturalWidth ? im : null;
 }
 function drawMenu(){
+  if (MENU.tab >= 0 && !menuTabList().includes(MENU.tab)) MENU.tab = -1;
   MENU.rows = menuRows();
   const FOOT_H = 96;                                    // the tool's logo (section 17)
-  let H = MENU_PAD * 2 + HEAD_H + TAB_H + 10 + (MENU.tab < 0 ? 0 : Math.max(MENU.rows.length, 1)) * ROW_H + FOOT_H;
+  const basic = !vrAdvanced(), top = MENU_PAD + HEAD_H + TAB_H + 10;
+  let bottom = MENU.tab < 0 ? top : MENU.rows.length ? menuLayout(MENU.rows, top) : top + ROW_H;
+  const hintY = bottom; if (basic && MENU.tab >= 0) bottom += HINT_H;
+  let H = bottom + MENU_PAD + FOOT_H;
   /* room for an icon's menu above the footer, folded or not */
   if (MENU.pop){ try { const f = menuFootIcons()[MENU.pop.k]; if (f) H = Math.max(H, footPopItems(f.k).length * 64 + 24 + FOOT_H + 24); } catch (e){} }
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
@@ -11914,9 +12061,9 @@ function drawMenu(){
     g.fillStyle = ok ? "#cdb6ef" : "#ffb070"; g.font = "600 28px system-ui, sans-serif";
     g.fillText(ok ? "Signed in as " + String(CRED_NAME).slice(0, 40) : "Not signed in — press here to sign in (leaves VR)", hx, MENU_PAD + 35, ax - hx - 16); }
   /* Tabs. */
-  const tw = (MENU_W - MENU_PAD * 2) / TABS.length;
-  TABS.forEach((t, k) => {
-    const x = MENU_PAD + k * tw, y = MENU_PAD + HEAD_H, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
+  const VT = menuTabList(), tw = (MENU_W - MENU_PAD * 2) / VT.length;
+  VT.forEach((k, kk) => { const t = TABS[k];
+    const x = MENU_PAD + kk * tw, y = MENU_PAD + HEAD_H, on = k === MENU.tab, hv = MENU.hover && MENU.hover.tab === k;
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : (hv ? "rgba(214,160,255,0.25)" : "rgba(255,255,255,0.07)");
     g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.fill();
     if (on){ g.shadowColor = "#e0b3ff"; g.shadowBlur = 18; g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.beginPath(); g.roundRect(x + 4, y + 6, tw - 8, TAB_H - 14, 14); g.stroke(); g.shadowBlur = 0; }
@@ -11926,9 +12073,9 @@ function drawMenu(){
     g.fillText(t, x + tw / 2, ti ? y + 70 : y + 54); g.textAlign = "left";
   });
   g.fillStyle = "rgba(230,200,255,0.45)"; g.fillRect(MENU_PAD + 10, MENU_PAD + HEAD_H + TAB_H + 2, MENU_W - MENU_PAD * 2 - 20, 2);
-  const top = MENU_PAD + HEAD_H + TAB_H + 10;
   MENU.rows.forEach((r, k) => {
-    const y = top + k * ROW_H;
+    if (r._tile){ drawTile(g, r, MENU.hover && MENU.hover.row === k); return; }
+    const y = r._rect.y;
     if (r.head){ g.fillStyle = r.open ? "rgba(214,160,255,0.30)" : "rgba(255,255,255,0.07)"; g.beginPath(); g.roundRect(22, y + 6, MENU_W - 44, ROW_H - 12, 14); g.fill(); }
     if (MENU.hover && MENU.hover.row === k && !r.note){ g.fillStyle = "rgba(255,255,255,0.13)"; g.beginPath(); g.roundRect(22, y + 4, MENU_W - 44, ROW_H - 8, 12); g.fill();
       g.strokeStyle = "rgba(240,220,255,0.7)"; g.lineWidth = 2; g.stroke(); }
@@ -11972,6 +12119,15 @@ function drawMenu(){
     if (r.right){ g.textAlign = "right"; g.fillStyle = "#ffe11a"; g.font = "600 38px system-ui, sans-serif"; g.fillText(r.right, MENU_W - 40, y + 50); g.textAlign = "left"; }
   });
   if (!MENU.rows.length && MENU.tab >= 0){ g.fillStyle = "#cdb6ef"; g.font = "36px system-ui, sans-serif"; g.fillText("Nothing here yet", 34, top + 48); }
+  /* Basic: what the tile you point at does, in full (its one word is on the tile) */
+  if (basic && MENU.tab >= 0){
+    const hv = MENU.hover, r = hv && hv.row != null ? MENU.rows[hv.row] : null, f = hv && hv.foot != null ? menuFootIcons()[hv.foot] : null;
+    const FOOTN = { chat: "Chat", cut: "Cut with your right hand", measure: "Measure: trigger on two points", stim: "Stimulate: trigger on a cell", spray: "Spray paint: hold the right trigger", rec: "Record a take" };
+    const txt = r && r._tile ? r.label.replace(/^[⚡🖼🧰📍]\s*/u, "").replace(/\s*▸\s*$/, "") + (r._tile.sub && /▸/.test(r._tile.sub) ? "  — press to change" : "")
+      : f ? (FOOTN[f.k] || f.k) + "  — hold for more" : "Point at a tile to see what it does · hold an icon below for its options";
+    g.fillStyle = r || f ? "#ffffff" : "#cdb6ef"; g.font = (r || f ? "600 " : "") + "25px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(txt, MENU_W / 2, hintY + 34, MENU_W - 60); g.textAlign = "left";
+  }
   /* Footer: a rule, the tool's logo and grubblab.com. */
   g.strokeStyle = "rgba(230,200,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(30, H - FOOT_H); g.lineTo(MENU_W - 30, H - FOOT_H); g.stroke();
   const lw = drawLogo(g, 36, H - FOOT_H + 14, 54, false);
@@ -12180,11 +12336,11 @@ function menuHit(h){
     if (px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1) return r.sw ? { pop: j, sub: Math.max(0, Math.min(r.sw.n - 1, Math.floor((px - r.sw.x) / r.sw.w))) } : { pop: j }; }
   if (py >= MENU_PAD && py < MENU_PAD + HEAD_H) return MENU.advX && px >= MENU.advX - 6 ? { adv: true } : { head: true };
   if (py >= MENU_PAD + HEAD_H && py < MENU_PAD + HEAD_H + TAB_H){
-    const k = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / TABS.length));
-    return k >= 0 && k < TABS.length ? { tab: k } : { none: true };
+    const VT = menuTabList(), kk = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / VT.length));
+    return kk >= 0 && kk < VT.length ? { tab: VT[kk] } : { none: true };
   }
   if (MENU.foot) for (let f = 0; f < MENU.foot.length; f++){ const b = MENU.foot[f]; if (px >= b.x - 6 && px <= b.x + b.w + 6 && py >= b.y - 6 && py <= b.y + b.h + 6) return { foot: f }; }
-  const k = Math.floor((py - MENU_PAD - HEAD_H - TAB_H - 10) / ROW_H);
+  const k = MENU.rows.findIndex(r => r._rect && py >= r._rect.y && py < r._rect.y + r._rect.h && px >= r._rect.x && px <= r._rect.x + r._rect.w);
   if (k >= 0 && k < MENU.rows.length && MENU.rows[k]._b && MENU.rows[k]._b.length){ const B = MENU.rows[k]._b; for (let j = 0; j < B.length; j++) if (B[j] && px >= B[j][0] - 4 && px <= B[j][1] + 4) return { row: k, btn: j }; }
   return k >= 0 && k < MENU.rows.length && !MENU.rows[k].note ? (MENU.rows[k].act2 ? { row: k, half: px > MENU_W / 2 ? 1 : 0 } : { row: k }) : { none: true };
 }
@@ -22599,7 +22755,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { voiceMerge, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { voiceMerge, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
