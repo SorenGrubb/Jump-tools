@@ -65,24 +65,27 @@ def mouse_to_S(v):   # mouse: x = left, y = posterior, z = up  ->  S: x = ventra
 #      blended back to the model 600 um outside it ----
 GX0, GX1, GZ0, GZ1 = 150.0, 1750.0, 317.0, 1112.0
 def glia(x, z): return -0.0501 * x - 0.0610 * z + 426.9
-def glia_morph(V):
-    cell = 100.0; xs = np.arange(GX0 - 900, GX1 + 900, cell); zs = np.arange(GZ0 - 900, GZ1 + 900, cell)
-    top = np.full((len(zs), len(xs)), np.nan)
-    ix = np.floor((V[:, 0] - xs[0]) / cell).astype(int); iz = np.floor((V[:, 2] - zs[0]) / cell).astype(int)
-    ok = (ix >= 0) & (ix < len(xs)) & (iz >= 0) & (iz < len(zs)) & (V[:, 1] < 2500)
-    for a_, b_, y in zip(iz[ok], ix[ok], V[ok, 1]):
-        if not (top[a_, b_] <= y): top[a_, b_] = y
-    from scipy.ndimage import generic_filter
-    top = generic_filter(top, np.nanmean, size=3, mode="nearest")       # fill holes, smooth a little
-    X, Z = np.meshgrid(xs + cell / 2, zs + cell / 2); D = glia(X, Z) - top; D = np.nan_to_num(D)
-    out = np.maximum(np.maximum(GX0 - X, X - GX1), np.maximum(GZ0 - Z, Z - GZ1)).clip(0)
-    W = 1 - np.clip(out / 600.0, 0, 1); W = W * W * (3 - 2 * W); D = D * W
-    from scipy.interpolate import RegularGridInterpolator
-    f = RegularGridInterpolator((zs + cell / 2, xs + cell / 2), D, bounds_error=False, fill_value=0.0)
-    vtop = RegularGridInterpolator((zs + cell / 2, xs + cell / 2), np.nan_to_num(top, nan=1e9), bounds_error=False, fill_value=1e9)
-    q = np.c_[V[:, 2], V[:, 0]]; d = f(q); t = vtop(q)
-    near = np.clip(1 - (V[:, 1] - t) / 600.0, 0, 1)                      # the dorsal shell moves, the base of the brain stays
-    V = V.copy(); V[:, 1] += d * near; return V
+def glia_morph(V, F=None):
+    """Per vertex, no grid (2026-11-18, Søren: "the brain has been pulled upwards at the corner of the dataset so that it
+    goes through the window ... align the surface of the brain with the glia limitans, so that we don't have glia
+    limitans or blood vessels hidden by the brain surface"). The grid version estimated the brain's top per 100 um
+    cell and spiked where a cell caught too few vertices. Now every vertex of the brain's DORSAL surface (outward
+    normal pointing up) that lies within 600 um of the traced plane is put 20 um under it inside the volume's
+    footprint, blended back to where it was 600 um outside; nothing else moves."""
+    n = trimesh.Trimesh(V, F, process=False).vertex_normals
+    dorsal = n[:, 1] < -0.3                                   # outward normal up (y is down)
+    g = glia(V[:, 0], V[:, 2]) + 20.0
+    out = np.maximum(np.maximum(GX0 - V[:, 0], V[:, 0] - GX1), np.maximum(GZ0 - V[:, 2], V[:, 2] - GZ1)).clip(0)
+    w = 1 - np.clip(out / 600.0, 0, 1); w = w * w * (3 - 2 * w)
+    near = np.abs(V[:, 1] - g) < 600
+    w = np.where(dorsal & near, w, 0.0)
+    V = V.copy(); V[:, 1] += (g - V[:, 1]) * w
+    # ... and round the footprint the brain may not rise above the glia plane either, or its own curve stands up as a
+    # rim that hides the edges of the glia limitans and the pial vessels from the side; let go between 1.0 and 1.8 mm out
+    ab = dorsal & (V[:, 1] < g)
+    s = np.clip((out - 1000.0) / 800.0, 0, 1); s = s * s * (3 - 2 * s)
+    V[ab, 1] = g[ab] + (V[ab, 1] - g[ab]) * s[ab]
+    return V
 def dec(m, target):
     v, f = fast_simplification.simplify(m.vertices.astype(np.float32), m.faces.astype(np.int32), 1 - target / len(m.faces))
     return v.astype(np.float64), f
@@ -91,7 +94,7 @@ for name, m, tgt, pre in [("brain", br, 60000, None), ("skull", sk, 60000, None)
     v, f = dec(m, tgt)
     if pre is not None: v = pre(v)
     vN = toN(v)
-    if name == "brain": vN = glia_morph(vN)
+    if name == "brain": vN = glia_morph(vN, f)
     else: vN = vN - 120.0 * n_in_N     # skull and fur 120 um up, so the model skull (0.5 mm thick) clears the meninges
     vN = vN.astype(np.float32)
     idx = f.astype(np.uint32)
