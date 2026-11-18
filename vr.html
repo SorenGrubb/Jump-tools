@@ -2701,18 +2701,29 @@ async function emSegPaint(token){
   if (!ds.seg){ ctxNote.textContent = "This dataset has no flat segmentation to paint."; EM.seg = false; MENU.dirty = true; return; }
   if (!UJ.segread.configured()) UJ.segread.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
   if (!UJ.segpaint.configured()) UJ.segpaint.configure({ seg: ds.seg, nuc: "", res: ds.res, segInfo: ds.segInfo, segOffsetNm: ds.segOffsetNm });
-  EM.segBusy = true; MENU.dirty = true; const was = ctxNote.textContent; ctxNote.textContent = "EM: reading the segmentation…";
+  EM.segBusy = true; EM.segProg = "…"; MENU.dirty = true; const was = ctxNote.textContent; ctxNote.textContent = "EM: reading the segmentation…"; emSegBtn();
   try {
     const cv = document.createElement("canvas"); cv.width = EM.base.width; cv.height = EM.base.height;
     const g = cv.getContext("2d"); g.drawImage(EM.base, 0, 0);
     const img = g.getImageData(0, 0, cv.width, cv.height);
-    await fixMosaic(img.data, EM.view, ds, emSegOpts());
+    const o = emSegOpts(); o.anyZ = true;
+    o.onProg = (d, n, res) => { if (token !== EM.token) return; EM.segProg = d + "/" + n; MENU.dirty = true; emSegBtn();
+      ctxNote.textContent = "EM: reading the segmentation — " + d + " of " + n + " pieces (" + Math.round(res[0]) + " nm)…"; };
+    const st = await fixMosaic(img.data, EM.view, ds, o);
     if (token !== EM.token || !EM.seg || !EM.mesh) return;
+    if (st && st.chunks && !st.read){ ctxNote.textContent = "EM segmentation could not be read: " + (st.firstError || "none of the " + st.chunks + " pieces came back (offline, or the server refused)") + "."; try { if (renderer.xr.isPresenting) flashWarn(ctxNote.textContent, 6000, "#f85149"); } catch (e){} return; }
     g.putImageData(img, 0, 0);
     if (EM.mesh.material.map) EM.mesh.material.map.dispose(); EM.mesh.material.map = emTexture(cv); EM.mesh.material.needsUpdate = true;
     ctxNote.textContent = was.replace(/^EM: reading.*$/, "") + " · segmentation: your cells in their own colours, every other segment pale";
   } catch (e){ if (token === EM.token) ctxNote.textContent = "EM segmentation could not be read (" + (e.message || e) + ")."; }
-  finally { if (token === EM.token){ EM.segBusy = false; MENU.dirty = true; } }
+  finally { if (token === EM.token){ EM.segBusy = false; EM.segProg = ""; MENU.dirty = true; emSegBtn(); } }
+}
+/* the desktop button says it is working, and how far it has got */
+function emSegBtn(){
+  const b = document.getElementById("emSeg"); if (!b) return;
+  const t = EM.segBusy ? "Segmentation " + (EM.segProg || "…") : "Segmentation", lab = b.querySelector(".lbl");
+  if (lab) lab.textContent = t; else b.textContent = t;
+  b.classList.toggle("busy", !!EM.segBusy); b.title = EM.segBusy ? "Reading the segmentation for this section…" : "Paint the segmentation on the EM section: your loaded cells in their own colours, every other segment a pale colour of its own";
 }
 function setEmSeg(v){
   EM.seg = !!v; MENU.dirty = true; if (window.uiSync) uiSync();
@@ -8357,7 +8368,8 @@ function lfpPlotDraw(R){
       g.fillStyle = "#e6edf3"; g.font = "12px system-ui, sans-serif"; g.fillText(dc.toFixed(0), 552, y0 + 4);
     }
   }
-  if (!R){ g.fillStyle = "#8b949e"; g.fillText(dcOn ? "No spikes now — the DC column shows the spreading depolarization." : "Start sleep, recorded activity or stimulation.", 16, 90); }
+  if (!R){ g.fillStyle = "#8b949e"; g.fillText(dcOn ? "No spikes now — the DC column shows the spreading depolarization." : "Start sleep, recorded activity or stimulation.", 16, 90);
+    const nw = lfpNoNeuronWarn(); if (nw){ g.fillStyle = "#f0a742"; g.font = "600 14px system-ui, sans-serif"; g.fillText(vrpFit(g, nw, W - 32), 16, 116); } }
   else {
     const L = 70, Rt = 540, T = 72, B = H - 52, rowH = (B - T) / LFP.n;
     let mx = 1; for (const a of R.phi) for (let b = 0; b < R.n; b += 2) mx = Math.max(mx, Math.abs(a[b]));
@@ -8420,10 +8432,26 @@ function lfpPlaceAt(p){
   LFP.top = new THREE.Vector3(p.x, p.y - (LFP.n - 1) * LFP.pitch / 2, p.z); LFP.sig = ""; LFP.arm = false;
   document.getElementById("lfpPlace").classList.remove("on");
   if (!LFP.on) setLfp(true); else lfpDraw();
-  ctxNote.textContent = "LFP probe placed: 16 contacts, 50 µm apart, " + Math.round((LFP.n - 1) * LFP.pitch) + " µm from top to bottom.";
+  const nw = lfpNoNeuronWarn();
+  ctxNote.textContent = "LFP probe placed: 16 contacts, 50 µm apart, " + Math.round((LFP.n - 1) * LFP.pitch) + " µm from top to bottom." + (nw ? " " + nw : "");
+  if (nw) try { if (renderer.xr.isPresenting) flashWarn(nw, 7000, "#f0a742"); } catch (e){}
+}
+/* No neuron loaded: the probe can still go in (2026-11-18, Søren: "Is it on purpose that you can't place an LFP
+   probe when there is only an astrocyte cell loaded? ... it should be possible to place it but come with a warning
+   that astrocytes (or other cells) are not electrically active enough to measure with an LFP"). The model only puts
+   neurons' synaptic and spike currents on the contacts; glia and vascular cells add nothing, which is close to the
+   truth: the LFP is dominated by synaptic currents in aligned pyramidal dendrites (Buzsáki, Anastassiou & Koch 2012,
+   Nat Rev Neurosci 13:407, https://doi.org/10.1038/nrn3241); astrocytes have no action potentials and only small,
+   slow potassium-buffering currents. */
+function lfpNoNeuronWarn(){
+  if (CELLS.some(c => c.mesh && caKind(c) === "neuron")) return "";
+  const k = CELLS.filter(c => c.mesh).map(c => caKind(c)), nm = { astro: "astrocytes", micro: "microglia", oligo: "oligodendrocytes", opc: "OPCs", endo: "endothelial cells", mural: "mural cells" };
+  const what = [...new Set(k.map(x => nm[x] || "these cells"))].join(", ") || "these cells";
+  return "⚠ No neuron loaded: " + what + " fire no action potentials and carry almost no synaptic current, so they make no LFP to speak of. The traces stay flat until a neuron is loaded.";
 }
 function lfpAuto(){
-  const ps = CELLS.filter(c => c.mesh && caKind(c) === "neuron").map(c => nvSoma(c)).filter(Boolean);
+  let ps = CELLS.filter(c => c.mesh && caKind(c) === "neuron").map(c => nvSoma(c)).filter(Boolean);
+  if (!ps.length) ps = CELLS.filter(c => c.mesh).map(c => nvSoma(c)).filter(Boolean);   /* glia only: beside them, with the warning */
   if (!ps.length) return false;
   const m = ps.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / ps.length);
   lfpPlaceAt(m.add(new THREE.Vector3(25, 0, 0))); return true;
@@ -8438,7 +8466,7 @@ function lfpWithRay(r){
 function setLfp(v){
   LFP.on = !!v; document.getElementById("lfpBtn").classList.toggle("on", LFP.on);
   document.getElementById("lfpBox").style.display = LFP.on ? "" : "none";
-  if (LFP.on && !LFP.top && !lfpAuto()){ LFP.on = false; document.getElementById("lfpBtn").classList.remove("on"); ctxNote.textContent = "LFP probe: load some neurons first."; return; }
+  if (LFP.on && !LFP.top && !lfpAuto()){ LFP.on = false; document.getElementById("lfpBtn").classList.remove("on"); ctxNote.textContent = "LFP probe: load a cell first."; return; }
   lfpDraw();
   if (!LFP.on && LFP.spr) LFP.spr.visible = false;
   if (typeof MENU !== "undefined") MENU.dirty = true;
@@ -11423,7 +11451,7 @@ function vrBasicRows(t, rows){
   else if (t === "Activity") keep = rows.filter(r => VR_BASIC.Tools.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || r.sec === "Ca²⁺ wave");
   else if (t === "Spray" || (t === "EM" && TRW.on)) keep = rows.slice();
   else if (t === "EM") keep = rows.filter(r => r.on === true || !/^(Trace organelles)/.test(r.label));
-  else if (t === "View") keep = rows.filter(r => r.sec !== "Timeline");
+  else if (t === "View") keep = rows.filter(r => r.sec !== "Timeline" || TAKE.on || tlCount() > 0);   /* a take recorded from the ⏺ icon is played, edited and saved here */
   else { const re = VR_BASIC[t]; keep = re ? rows.filter(r => r.exit || re.test(r.label) || (r.on === true && !VR_BASIC_NEVER.test(r.label)) || (t === "Tools" && (r.sec === "Identify a cell (game)" || r.sec === "Ca²⁺ wave"))) : rows.slice(); }
   /* the everyday rows of a section go to the top, where they are seen without opening it */
   keep = keep.map(r => r.sec && VR_BASIC_TOP.test(r.label) ? Object.assign({}, r, { sec: undefined }) : r);
@@ -11458,6 +11486,7 @@ function basicTile(r){
   for (const [re, word, icon, o] of BASIC_TILE) if (re.test(r.label)){
     const m = /^[^:]+:\s*(.+?)\s*▸?\s*$/.exec(r.label), t = Object.assign({ word, icon }, o || {});
     if (!t.sub && m && !t.card && /▸\s*$/.test(r.label)) t.sub = m[1] + " ▸";
+    if (t.pic === "emseg" && EM.segBusy) t.sub = EM.segProg || "…";
     if (t.card){ const k = r.label.indexOf("—"); t.sub = (k > 0 ? r.label.slice(k + 1).trim() + " · " : "") + "name the cell, earn points, become an expert"; }
     return t;
   }
@@ -11474,11 +11503,14 @@ function vrBasicTabRows(t, rows){
     keep = rows.filter(r => VR_BASIC.Map.test(r.label) || on(r));
     keep.push({ label: "EM section — a real electron-microscopy picture where the picked cell is (more: hold ✂ below)", on: !!EM.mesh || !!EM.loading,
                 act: () => { if (EM.mesh || EM.loading){ if (CUT.mode === "em") setCut("off"); hideEM(); } else showEM(); } });
-    if (DSX.seg && (EM.mesh || EM.loading)) keep.push({ label: "Segmentation on the EM section — your cells in their own colours, every other cell pale" + (EM.segBusy ? " (reading…)" : ""),
+    if (DSX.seg && (EM.mesh || EM.loading)) keep.push({ label: "Segmentation on the EM section — your cells in their own colours, every other cell pale" + (EM.segBusy ? " (reading " + (EM.segProg || "…") + ")" : ""),
                 on: EM.seg, act: () => setEmSeg(!EM.seg) });
   } else keep = vrBasicRows(t, rows).filter(r => !(t === "View" && /^Not signed in/.test(r.label)));
   keep = keep.map(r => Object.assign(r, { sec: undefined }));
-  keep.forEach(r => { r._tile = r.act2 || r.btns || r.note ? null : basicTile(r); });
+  /* a row with a tile keeps its tile when it grows a second button while on (2026-11-18, Søren: "when you click hear
+     spikes the button disappears and becomes a normal toggle" -- on, it gained "▶ test" and fell back to a row);
+     the tile drops that extra, which stays in Advanced */
+  keep.forEach(r => { r._tile = r.btns || r.note ? null : basicTile(r); if (r._tile && r.act2 && !/^(Turn|Bigger)/.test(r.label)){ delete r.act2; delete r.right; } else if (r.act2) r._tile = null; });
   /* the game card first, then the picture cards, then the tiles, then the rows that stay rows (the cell list,
      turn left | right) -- each kept in its own order */
   const rank = r => !r._tile ? 3 : r._tile.card ? 0 : r._tile.pic ? 1 : 2;
@@ -11902,7 +11934,7 @@ function menuRowsRaw(t){
       rows.push({ label: "−5 µm", act: () => moveEM(-5) });
       rows.push({ label: EM.size === "wide" ? "Wide 65 µm → close 33 µm" : "Close 33 µm → wide 65 µm",
                   act: () => { document.getElementById("emSize").value = EM.size === "wide" ? "close" : "wide"; showEM(EM.centre); } });
-      if (DSX.seg) rows.push({ label: EM.segBusy ? "Segmentation on the section… (reading)" : "Segmentation on the section", icon: "palette", on: EM.seg, act: () => setEmSeg(!EM.seg) });
+      if (DSX.seg) rows.push({ label: EM.segBusy ? "Segmentation on the section — reading " + (EM.segProg || "…") : "Segmentation on the section", icon: "palette", on: EM.seg, act: () => setEmSeg(!EM.seg) });
       rows.push({ label: "Cut at the EM section", on: CUT.mode === "em", act: () => setCut(CUT.mode === "em" ? "off" : "em") });
       rows.push({ label: "Hide the EM section", act: hideEM });
     }
@@ -12215,8 +12247,8 @@ function menuFootIcons(){
     { k: "stim", icon: "bolt", on: () => STIM.on, act: () => setStim(!STIM.on) },
     { k: "spray", icon: "spray", on: () => SPRAY.on, act: () => setSpray(!SPRAY.on) }
   ];
-  /* a take is part of the timeline, an advanced tool */
-  if (vrAdvanced()) L.splice(3, 0, { k: "rec", icon: TAKE.on ? "stop" : "rec", on: () => TAKE.on, act: () => TAKE.on ? takeStop() : takeStart(true) });
+  /* record a take: in Basic too (2026-11-18, Søren: "the recording button has disappeared from the bottom line") */
+  L.splice(3, 0, { k: "rec", icon: TAKE.on ? "stop" : "rec", on: () => TAKE.on, act: () => TAKE.on ? takeStop() : takeStart(true) });
   return L;
 }
 /* ── HOLD AN ICON FOR MORE (2026-11-17, Søren: "For the buttons between the logo and the URL, it would be cool if a
@@ -20100,7 +20132,11 @@ function fixPale(k){ const h = (k * 0.618034) % 1, f = x => Math.min(1, Math.max
   return [f(0), f(4), f(2)].map(v => Math.round(255 * (v * 0.58 + 0.42))); }
 async function fixMosaic(px, view, ds, opt){
   const base = UJ.segread._httpBase(ds.seg), info = await UJ.segread._getInfo(base);
-  const sc = UJ.segpaint.pickScale(info, view.effNmPerPx), words = /uint64/.test(String(info.data_type || "")) ? 2 : 1;
+  /* opt.anyZ: one picture of a section may come from a coarser-z level (a 160 nm slab at 128 nm/px) -- for the VR EM
+     section, where the finest-z rule (8/16/32 nm only, on minnie65) meant ~256 sharded chunks for 66 µm and a wait of
+     minutes (2026-11-18, Søren: "I have waited, but it does not come and no indication that it is loading") */
+  const sc = opt && opt.anyZ ? (() => { let b = info.scales[0]; for (const x of info.scales) if (x.resolution[0] <= view.effNmPerPx * 1.001) b = x; return b; })()
+                             : UJ.segpaint.pickScale(info, view.effNmPerPx), words = /uint64/.test(String(info.data_type || "")) ? 2 : 1;
   const res = sc.resolution, ch = sc.chunk_sizes[0], off = sc.voxel_offset || [0, 0, 0], R = ds.res;
   let want = new Map(), k0 = 3;
   if (opt){ want = opt.want; k0 = opt.k0; } else {
@@ -20121,7 +20157,8 @@ async function fixMosaic(px, view, ds, opt){
       if (ix >= 0 && iy >= 0 && cz >= 0 && ix < grid[0] && iy < grid[1] && cz < grid[2]) list.push([ix, iy, cz]);
   /* one class per screen pixel, then coloured in one pass */
   const L = new Uint8Array(view.w * view.h);
-  await UJ.segread.mapPool(list, 6, async cc => {
+  if (opt && opt.onProg) opt.onProg(0, list.length, sc.resolution);
+  const got = await UJ.segread.mapPool(list, 6, async cc => {
     const start = [0, 1, 2].map(i => off[i] + cc[i] * ch[i]);
     const end = [0, 1, 2].map(i => Math.min(start[i] + ch[i], off[i] + sc.size[i]));
     const buf = await UJ.segread._chunkBuf(base, sc, { c: cc, grid, start, end, local: [0, 0, 0], shape: ch });
@@ -20143,7 +20180,9 @@ async function fixMosaic(px, view, ds, opt){
           for (let ox = Math.max(0, pL); ox < Math.min(view.w, pR); ox++) L[o + ox] = k; }
       }
     }
-  });
+    return true;
+  }, opt && opt.onProg ? (d, n) => opt.onProg(d, n, sc.resolution) : undefined);
+  const failed = got.filter(x => x && x.error).length;
   const pal = new Array(256);
   for (let y = 0; y < view.h; y++) for (let x = 0; x < view.w; x++){
     const i = y * view.w + x, k = L[i]; if (!k) continue;
@@ -20155,6 +20194,7 @@ async function fixMosaic(px, view, ds, opt){
     px[o] += (col[0] - px[o]) * a; px[o + 1] += (col[1] - px[o + 1]) * a; px[o + 2] += (col[2] - px[o + 2]) * a;
   }
   return list.length;
+  return { chunks: list.length, failed, read: got.filter(x => x === true).length, firstError: failed ? (got.find(x => x && x.error) || {}).error : "" };
 }
 function fixPxToVox(ev){
   const cv = document.getElementById("fixEm"), r = cv.getBoundingClientRect(), v = FIX.view; if (!v) return null;
