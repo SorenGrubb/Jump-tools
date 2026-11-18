@@ -5454,6 +5454,7 @@ function mousePeel(){
      mouse is almost not transparent"): the end of a fly-out is ~0.017 m, so the fur only starts to fade above 0.02 */
   const W = WIN.on ? 2.5 : 1;   /* with the window open the fur and skull stay longer: you look in through it */
   const op = { mouse: 0.94 * (1 - smooth01(0.02 * W, 0.045 * W, d)), skull: 1 - smooth01(0.045 * W * 1.6, 0.09 * W * 1.6, d), brain: 1 - 0.82 * smooth01(0.08, 0.25, d) - 0.18 * smooth01(0.6, 1.2, d) };
+  if (WIN.on) op.brain = Math.min(op.brain, 0.5);   /* see-through with the window open, so the penetrating vessels show diving in */
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
     m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.9; }
   /* no orange block (2026-11-18, Søren: "there is no need to make the orange box around the dataset. That was just the
@@ -5545,15 +5546,22 @@ function winHole(mat, r){
   };
   mat.customProgramCacheKey = () => "winhole" + r; mat.needsUpdate = true;
 }
+/* the glass (4 mm, the size of the craniotomy, lying on the brain) and the cement over its rim: the cement runs from just
+   over the glass edge up onto the skull, so only the middle 3 mm is clear and there is no gap between glass and cement
+   (2026-11-18, Søren: "there is also a gap between the glass and the dental cement, which is not realistic. usually the
+   glass rim is covered by cement so the field of view is smaller"). The fur is opened only as far as the cement. */
+const WIN_OPEN = 1500, WIN_CEM = 3050;
 function winBuild(){
-  const grp = new THREE.Group(), { c, n } = winGeom(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+  const grp = new THREE.Group(), { c, n } = winGeom(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().negate());
+  const at = h => c.clone().addScaledVector(n, -h);      /* h µm out of the brain along the window's axis */
   const glass = new THREE.Mesh(new THREE.CylinderGeometry(WIN_R, WIN_R, 150, 128, 1),
-    new THREE.MeshStandardMaterial({ color: "#d8ecff", transparent: true, opacity: 0.16, roughness: 0.05, metalness: 0.1, depthWrite: false }));
-  glass.position.copy(c).addScaledVector(n, -60 - 75); glass.quaternion.copy(q); glass.renderOrder = 5; grp.add(glass);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(WIN_R, 40, 12, 128), new THREE.MeshStandardMaterial({ color: "#a9cbe8", transparent: true, opacity: 0.7, roughness: 0.2 }));
-  rim.position.copy(glass.position); rim.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)); grp.add(rim);
-  const cement = new THREE.Mesh(new THREE.TorusGeometry(WIN_R + 380, 330, 16, 128), new THREE.MeshStandardMaterial({ color: "#e3c7c4", roughness: 0.85 }));
-  cement.scale.set(1, 1, 0.55); cement.position.copy(c).addScaledVector(n, -380); cement.quaternion.copy(rim.quaternion); grp.add(cement);
+    new THREE.MeshStandardMaterial({ color: "#d8ecff", transparent: true, opacity: 0.14, roughness: 0.05, metalness: 0.1, depthWrite: false }));
+  glass.position.copy(at(60 + 75)); glass.quaternion.copy(q); glass.renderOrder = 5; grp.add(glass);
+  /* cement: a ring turned from a profile (radius, height above the glia limitans), closed underneath */
+  const prof = [[WIN_OPEN, 170], [WIN_OPEN - 20, 260], [WIN_OPEN + 150, 520], [1900, 780], [2300, 900], [2650, 880], [2900, 760], [WIN_CEM, 600], [WIN_CEM, 300], [2100, 170], [WIN_OPEN, 170]]
+    .map(([r, h]) => new THREE.Vector2(r, h));
+  const cem = new THREE.Mesh(new THREE.LatheGeometry(prof, 128), new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide }));
+  cem.position.copy(at(0)); cem.quaternion.copy(q); grp.add(cem);
   return grp;
 }
 async function setWindow(v){
@@ -5562,20 +5570,28 @@ async function setWindow(v){
   if (WIN.on){
     if (!MOUSE.on) await setMouse(true);
     if (!MOUSE.group){ WIN.on = false; return; }
-    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_R + 1400); MOUSE.holed = true; }
+    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 50); MOUSE.holed = true; }
     winUniforms().uWinOn.value = 1;
     if (!WIN.group){ WIN.group = winBuild(); }
     MOUSE.group.add(WIN.group);
     /* the glia limitans and the pial vessels, as long as the window is open; what was on before comes back after */
     WIN.prev = { glia: MEN.on.glia, skel: SKEL.mode, groups: new Set(SKEL.groups) };
     if (DS_HAS.men && !MEN.on.glia) setMen("glia", true);
-    if (DS_HAS.skel){ SKEL.groups = new Set(["pial"]); setSkel(SKEL.mode === "off" ? "whole" : SKEL.mode); }
-    ctxNote.textContent = "Cranial window: 4 mm, centred on the V1/LM border 3.5 mm lateral and ~1 mm in front of lambda, as in the MICrONS Ca²⁺ imaging. Under the glass: the dataset's glia limitans and pial vessels (the data cover ~1.3 × 0.9 mm of the window).";
+    /* the pial vessels as the TriSAM meshes, arterioles red and venules blue (2026-11-18, Søren: "The pial vessels are
+       only shown by their skeleton in green. I want the meshes where the arterioles are red and the venules are
+       blue/purple") */
+    WIN.prev.vasc = document.getElementById("vascSel").value; WIN.prev.vpart = Object.assign({}, VPART.on); WIN.prev.vcol = NV.colour ? (NV.colourSrc || "order") : "one";
+    if (DS_HAS.vasc){
+      setVpart({ pa: true, pen: true, cap: false, av: true, pv: true, unk: false });   /* + the penetrating ones, diving in (Søren, 2026-11-18) */
+      document.getElementById("vascSel").value = "whole"; await buildVessels(); setVesselColour("order");
+    }
+    ctxNote.textContent = "Cranial window: 4 mm, centred on the V1/LM border 3.5 mm lateral and ~1 mm in front of lambda, as in the MICrONS Ca²⁺ imaging. The cement covers the glass rim, leaving ~3 mm clear. Under the glass: the dataset's glia limitans and its pial and penetrating arterioles (red) and venules (blue), the brain see-through — the data cover ~1.3 × 0.9 mm of it.";
   } else {
     winUniforms().uWinOn.value = 0;
     if (WIN.group && WIN.group.parent) WIN.group.parent.remove(WIN.group);
     const P = WIN.prev; WIN.prev = null;
-    if (P){ if (DS_HAS.men && MEN.on.glia !== P.glia) setMen("glia", P.glia); if (DS_HAS.skel){ SKEL.groups = P.groups; setSkel(P.skel); } }
+    if (P){ if (DS_HAS.men && MEN.on.glia !== P.glia) setMen("glia", P.glia);
+      if (DS_HAS.vasc){ setVpart(P.vpart); setVesselColour(P.vcol); document.getElementById("vascSel").value = P.vasc; buildVessels(); } }
   }
 }
 document.getElementById("winBtn").addEventListener("click", () => setWindow(!WIN.on));
