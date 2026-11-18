@@ -5311,6 +5311,7 @@ const catFor=(raw,cls)=>{const l=String(raw).toLowerCase();if(cls==="excitatory_
     randomTypeSelect.style.color=(o&&o.style.color)||"";
   };
   window.__syncTypeColour=syncTypeColour;
+  window.__catFor=catFor;   /* the dropdown's category, for Neuroglancer's colours (ngCatHex) */
   randomTypeSelect.addEventListener("change",syncTypeColour);
   const CAT_COLOUR={
     "Excitatory neurons":"var(--cat-exc)", "Inhibitory neurons":"var(--cat-inh)",
@@ -5685,6 +5686,34 @@ let PREV_CELL_POS=null,NAV_FROM_NJUMP=false;
    reaches buildState() (celltypeLink -> neuroglancerLinkForPos -> buildState, the .jumpview
    listener, wireJump() in the organelle form, the #go button handler, etc.). */
 let CUR_IS_NEURON=false;
+/* NEUROGLANCER COLOURS = THE DROPDOWN'S COLOURS, 2026-11-18 (Søren: "When you open a cell in neuroglancer, then unless
+   there is some other specific reason it is colored, it should have the color code of the dropdown list. In the
+   filter, if the result is many cells they should have random variations of that color, so that each cell can be
+   differentiated from other cells of that type, but still also be differentiated from cells in the other color
+   categories"). The hexes are the dark theme's --cat-* tokens (Neuroglancer's background is dark whatever the page's
+   theme). ngVary() turns one category colour into a per-cell variant -- a small hue turn and a lightness/saturation
+   change, decided by the segment ID, so the same cell always gets the same shade -- that stays inside its family. */
+const NG_CAT_HEX={"Excitatory neurons":"#f0883e","Inhibitory neurons":"#58a6ff","Neurons":"#27e0b3","Glia":"#3fb950",
+  "Vascular cells":"#e3b341","Blood cells":"#f85149","Immune & perivascular cells":"#8957e5","Leptomeninges":"#bb549f","Other":"#8b949e"};
+let CUR_CAT=null;   /* the dropdown category of the cell on screen, set where CUR_ROOT is */
+function ngCatOf(raw,cls){
+  try{if(window.__catFor&&raw)return window.__catFor(raw,cls);}catch(e){}
+  if(cls==="excitatory_neuron"||/excitatory/i.test(raw||""))return "Excitatory neurons";
+  if(cls==="inhibitory_neuron"||/inhibitory/i.test(raw||""))return "Inhibitory neurons";
+  return raw?"Other":null;
+}
+function ngVary(hex,key){
+  const n=parseInt(String(hex).slice(1),16);let r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,l=(mx+mn)/2,sat=0;const d=mx-mn;
+  if(d){sat=l>0.5?d/(2-mx-mn):d/(mx+mn);h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?(b-r)/d+2:(r-g)/d+4;h/=6;}
+  let x=2166136261;const k=String(key);for(let i=0;i<k.length;i++){x^=k.charCodeAt(i);x=Math.imul(x,16777619);}
+  const u=i=>((x>>>(i*8))&255)/255;
+  h=(h+(u(0)-0.5)*0.075+1)%1;                               /* ±13° */
+  l=Math.min(0.82,Math.max(0.36,l+(u(1)-0.5)*0.34));         /* ±17 % lightness */
+  sat=Math.min(1,Math.max(0.35,sat+(u(2)-0.5)*0.3));
+  const q=l<0.5?l*(1+sat):l+sat-l*sat,pp=2*l-q,f=t=>{t=(t+1)%1;return t<1/6?pp+(q-pp)*6*t:t<0.5?q:t<2/3?pp+(q-pp)*(2/3-t)*6:pp;};
+  return "#"+[f(h+1/3),f(h),f(h-1/3)].map(v=>Math.round(v*255).toString(16).padStart(2,"0")).join("");
+}
 /* excitatory_neuron/inhibitory_neuron are the only two of the 16 leaf slugs (and the only two
    CT_CLASS values, see CAB above) that represent neurons -- used wherever a leaf SLUG is known
    (gallery/random-example images). Where only a free-text display name is known instead (Søren's
@@ -6045,6 +6074,7 @@ function showNucleus(pos){
   }
   const r=nearest(vx,vy,vz),i=r.i,ti=typeInfo(i),root=rootId(i),nid=String(NID[i]);
   CUR_ROOT=root;CUR_NUCID=nid;
+  CUR_CAT=ngCatOf(ti.name,ti.cls);
   window.CUR_NUC_CENTER_VOX=[NX[i],NY[i],NZ[i]]; // the nucleus's own centroid, not the (possibly offset) query point -- used by the PowerPoint download's coordinate label and reused by loadRootIdPanel()'s alternate root IDs for the same nucleus
   CUR_IS_NEURON=ti.cls==="excitatory_neuron"||ti.cls==="inhibitory_neuron";
   const ciBroad=CELLTYPE_INFO[ti.name],ciFine=ti.mtype?MTYPE_INFO[ti.mtype]:null;
@@ -6341,6 +6371,8 @@ function buildState(pos){
     const segs=[];if(CUR_ROOT)segs.push(CUR_ROOT);if(CUR_NUC_ROOT&&CUR_NUC_ROOT!==CUR_ROOT)segs.push(CUR_NUC_ROOT);ex65.forEach(function(r){if(r&&segs.indexOf(r)<0)segs.push(r);});
     if(segs.length)s.segments=segs;
     if(CUR_NUC_ROOT)s.segmentColors={...(s.segmentColors||{}),[CUR_NUC_ROOT]:"#ff3b3b"};
+    /* the cell in its dropdown category's colour, unless something already coloured it */
+    if(CUR_ROOT&&CUR_CAT&&NG_CAT_HEX[CUR_CAT]&&!(s.segmentColors&&s.segmentColors[CUR_ROOT]))s.segmentColors={...(s.segmentColors||{}),[CUR_ROOT]:NG_CAT_HEX[CUR_CAT]};
     layers.push(s);}
   if(nearBorder||ex35.length||exNuc35.length){var s35={type:"segmentation",source:SRC.seg35,tab:"source",name:"segmentation (Img35)",notSelectedAlpha:0.05};var seg35=[].concat(ex35,exNuc35);if(seg35.length){s35.segments=seg35;s35.objectAlpha=0.5;}if(exNuc35.length){var sc35={};exNuc35.forEach(function(x){sc35[x]="#ff3b3b";});s35.segmentColors=sc35;}layers.push(s35);}
   if(wantNuc){const nl={type:"segmentation",source:SRC.nuc,tab:"source",name:"nuclei",notSelectedAlpha:0.05,objectAlpha:NG_NUC_ALPHA};var nsegs=[];if(CUR_NUCID)nsegs.push(CUR_NUCID);exNuc65.forEach(function(x){if(x&&nsegs.indexOf(x)<0)nsegs.push(x);});if(nsegs.length){nl.segments=nsegs;if(CUR_NUCID)nl.segmentColors={[CUR_NUCID]:"#ff3b3b"};}layers.push(nl);}
@@ -9115,6 +9147,7 @@ function renderUserReportedCell(ur,panel){
      second, separate optional ID for cases where the raw minnie35 segmentation happens to split
      the nucleus off as its own mesh -- buildState() highlights it alongside CUR_ROOT. */
   CUR_ROOT=ur.rootId||null;CUR_NUCID=null;CUR_NUC_ROOT=ur.nucRootId||null;
+  CUR_CAT=ngCatOf(ur.identified,null);
   CUR_IS_NEURON=looksLikeNeuron(ur.identified);
   const who=ur.reporterName&&ur.reporterName.trim()?ur.reporterName.trim():"anonymous";
   /* A report with no identified value on file is a deliberate "location only" report -- see
@@ -9242,6 +9275,7 @@ function renderMergedSubCell(sub,panel){
   panel.className="nuc show";
   setNearestLine("");   /* this sub-cell's nucleus is the FUSED detection, not a nearest one */
   CUR_ROOT=sub.subRootId||null;CUR_NUCID=null;CUR_NUC_ROOT=null;
+  CUR_CAT=ngCatOf(sub.identified,null);
   CUR_IS_NEURON=looksLikeNeuron(sub.identified);
   window.CUR_POS=sub.pos;window.CUR_CELLTYPE_DISPLAY=sub.identified;window.CUR_ID_SOURCE="community";window.CUR_HAS_CELL=true;
   let h='<span class="tag" style="background:color-mix(in srgb,var(--gold) 15%,transparent);color:var(--gold);border:1px solid var(--gold)" title="Reported through the ‘report a merged nucleus’ flow: MICrONS’s automatic nucleus detector fused this cell together with at least one other real nucleus into a single detection, but this specific sub-cell has since been given its own identity (and, if known, its own root ID) by a tool user.">community-reported — merged-nucleus split</span>';
@@ -13754,13 +13788,20 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     "Lymphocyte":"Lymphocytes",
     "Dendritic cell":"Dendritic cells"
   };
-  const CATEGORY_COLORS={
+  /* the filter viewer's buckets in their DROPDOWN category's colour (2026-11-18): glia green, vessel wall amber,
+     immune & perivascular purple, ... -- each matched cell a shade of it (ngVary), see NG_CAT_HEX */
+  const VIEWER_DROPDOWN_CAT={"Excitatory neurons":"Excitatory neurons","Inhibitory neurons":"Inhibitory neurons",
+    "Astrocytes":"Glia","Microglia":"Glia","Oligodendrocytes":"Glia","OPCs":"Glia","Endothelial cells":"Vascular cells",
+    "Mural cells":"Vascular cells","Fibroblasts":"Immune & perivascular cells","Macrophages":"Immune & perivascular cells",
+    "Lymphocytes":"Immune & perivascular cells","Dendritic cells":"Immune & perivascular cells","Leptomeninges":"Leptomeninges","Other":"Other"};
+  const CATEGORY_COLORS_OLD={
     "Microglia":"#51cf66","Fibroblasts":"#f6c945","Mural cells":"#e03131","Endothelial cells":"#69db7c",
     "Astrocytes":"#9c36b5","Macrophages":"#66d9e8","Excitatory neurons":"#ffffff","Inhibitory neurons":"#adb5bd",
     "OPCs":"#f76707","Oligodendrocytes":"#b2f2bb","Lymphocytes":"#ffec99","Dendritic cells":"#2b8a3e",
     "Leptomeninges":"#748ffc",
     "Other":"#495057" // erythrocyte/platelet/neutrophil/monocyte — not otherwise specified
   };
+  const CATEGORY_COLORS={};for(const k in CATEGORY_COLORS_OLD)CATEGORY_COLORS[k]=NG_CAT_HEX[VIEWER_DROPDOWN_CAT[k]||"Other"]||CATEGORY_COLORS_OLD[k];
   const VIEWER_CATEGORY_ORDER=["Excitatory neurons","Inhibitory neurons","Astrocytes","Microglia","Oligodendrocytes","OPCs",
     "Endothelial cells","Mural cells","Fibroblasts","Leptomeninges","Macrophages","Lymphocytes","Dendritic cells","Other"];
   const NUCLEUS_COLOR="#1c7ed6";
@@ -14440,7 +14481,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
       const nameSuffix=isRef?" (near-type reference)":"";
       if(bucket.segIds.size){
         const segArr=Array.from(bucket.segIds),colors={};
-        for(const id of segArr)colors[id]=color;
+        for(const id of segArr)colors[id]=segArr.length>1?ngVary(color,id):color;
         layers.push({type:"segmentation",source:SRC.seg,tab:"source",name:cat+nameSuffix,segments:segArr,segmentColors:colors,objectAlpha:0.85});
       }
       if(bucket.nucIds.size){
@@ -14450,7 +14491,7 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
       }
       if(bucket.seg35Ids&&bucket.seg35Ids.size){
         const seg35Arr=Array.from(bucket.seg35Ids),colors35={};
-        for(const id of seg35Arr)colors35[id]=color;
+        for(const id of seg35Arr)colors35[id]=seg35Arr.length>1?ngVary(color,id):color;
         layers.push({type:"segmentation",source:SRC.seg35,tab:"source",name:cat+nameSuffix+" (Img35 proposed)",segments:seg35Arr,segmentColors:colors35,objectAlpha:0.85});
         anyIn35=true;
       }
