@@ -20,9 +20,9 @@
   19.4
  ],
  "inward_normal_model": [
-  0.8195,
-  -0.4323,
-  -0.3763
+  0.8197,
+  -0.4304,
+  -0.3779
  ],
  "glia_limitans_at_volume_centre_um": [
   950.0,
@@ -33,9 +33,10 @@
  "mouse_body_fit": {
   "skull_scale_in_head_units": 0.8,
   "pitch_deg_snout_up": 20.0,
-  "nose_y": -34.0,
-  "top_offset": -3.5,
-  "rule": "all of the upper skull at least 0.75 model units under the fur (0.1th percentile maximised); lower jaw and incisors may stick out"
+  "nose_y": -34.75,
+  "top_offset": -2.65,
+  "rule": "upper skull inside the fur, closest point 0.056 units (exact signed distance) after padding the fur over the snout by up to 0.5 units; lower jaw and incisors may stick out",
+  "snout_pad": 0.5
  },
  "radial_axis_um": [
   0.0499,
@@ -44,19 +45,19 @@
  ],
  "R_model_to_um": [
   [
-   0.43327,
-   0.87903,
-   -0.19895
+   0.43133,
+   0.88,
+   -0.19887
   ],
   [
-   0.82276,
-   -0.47588,
-   -0.31081
+   0.82316,
+   -0.47409,
+   -0.31248
   ],
   [
-   -0.36789,
-   -0.02903,
-   -0.92942
+   -0.36927,
+   -0.02892,
+   -0.92887
   ]
  ],
  "meshes": {
@@ -66,14 +67,14 @@
    "bytes": 1079996,
    "bounds_um": [
     [
-     -4168.0,
+     -4176.0,
      -91.0,
-     -4015.0
+     -4019.0
     ],
     [
-     3039.0,
-     6051.0,
-     8326.0
+     3035.0,
+     6048.0,
+     8322.0
     ]
    ]
   },
@@ -83,14 +84,14 @@
    "bytes": 1079816,
    "bounds_um": [
     [
-     -4687.0,
-     -433.0,
-     -3703.0
+     -4694.0,
+     -432.0,
+     -3707.0
     ],
     [
-     5344.0,
-     10596.0,
-     14282.0
+     5339.0,
+     10608.0,
+     14272.0
     ]
    ]
   },
@@ -100,14 +101,14 @@
    "bytes": 540032,
    "bounds_um": [
     [
-     -12277.0,
-     -9659.0,
-     -51927.0
+     -12152.0,
+     -9384.0,
+     -52872.0
     ],
     [
-     15005.0,
-     26666.0,
-     15831.0
+     15099.0,
+     26917.0,
+     14901.0
     ]
    ]
   }
