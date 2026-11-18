@@ -9465,6 +9465,10 @@ function placeLabel(){
   /* Just above the collection, wherever it has been carried to. */
   const r = TABLE_SIZE * 0.5 * (stage.scale.x / FIT_SCALE);
   label.position.set(stage.position.x, stage.position.y + r + 0.08, stage.position.z);
+  /* out of the way of the mouse (2026-11-18, Søren: "It is annoying that this part is covering the fly-in"): while a
+     fly runs, and while the cells are zoomed out to less than half their first size with the mouse shown, the card
+     sits right on top of the scene, so it hides */
+  if (!label.userData.filmHid) label.visible = !(MOUSE.fly || (MOUSE.on && stage.scale.x < FIT_SCALE * 0.5));
 }
 
 /* ── 47. THE TIMELINE IN THE HEADSET ──────────────────────────────────────────  2026-11-14
