@@ -5544,13 +5544,15 @@ function winUniforms(){
 }
 /* a round hole through a mesh: fragments within r of the window's axis, on the near side of the brain, are dropped */
 function winHole(mat, r, top){
-  top = top || 6000;            /* how far out of the brain the hole goes (µm): the fur's stops at the skin, not the ear above it */
+  top = top || 6000;            /* how far out of the brain the hole goes (µm): the fur's stops at the skin, not the ear above it;
+                                   and it goes no deeper than the top of the brain -- not through the base of the skull or the belly
+                                   (2026-11-18, Søren: "Obviously, the cranial window does not go through the base of the skull") */
   const U = winUniforms();
   mat.onBeforeCompile = sh => {
     sh.uniforms.uWinOn = U.uWinOn; sh.uniforms.uWinC = U.uWinC; sh.uniforms.uWinN = U.uWinN; sh.uniforms.uWinR = { value: r }; sh.uniforms.uWinTop = { value: top };
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvWinP = position;");
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP; uniform float uWinOn; uniform vec3 uWinC; uniform vec3 uWinN; uniform float uWinR; uniform float uWinTop;")
-      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 20000.0 && a > -uWinTop && length(d - a * uWinN) < uWinR) discard; }");
+      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 300.0 && a > -uWinTop && length(d - a * uWinN) < uWinR) discard; }");
   };
   mat.customProgramCacheKey = () => "winhole" + r + "_" + top; mat.needsUpdate = true;
 }
