@@ -5612,9 +5612,10 @@ function winBuild(){
   const NA = 64, NR = 7, R1 = WIN_CEM - 650 + 40, { e1, e2 } = winAxes();
   const PR = [1650, 1900, 2300, 2650, 2900, WIN_CEM], SK = winSkinTable(PR.concat([R1]), NA), skR1 = SK[PR.length];
   const P = [], I = [], rim = [];
-  /* ...but never up the ear: where the skin climbs into the ear's base (3-3.6 mm on the lateral side) the cement stops at
-     the height of the rest of the head, and the ear stands over it uncut */
-  for (let a = 0; a < NA; a++) rim.push(Math.max(700, Math.min(2650, skR1[a] + 60)));
+  /* the fur is cut as a plain hole 3.3 mm up (2026-11-18, Søren, after trying a cut that stopped at the cement: "I don't
+     want that skin flap, then it was better with the hole"), so the cement climbs to the skin up to that height and no
+     skull shows between them */
+  for (let a = 0; a < NA; a++) rim.push(Math.max(700, Math.min(3240, skR1[a] + 60)));
   /* the fur's hole stops a little over the cement's rim, angle by angle */
   winUniforms().uWinRim.value = rim.map(h => h + 120);
   /* top surface: rings from the glass rim (r WIN_OPEN, h 260) to the skin (r R1, h rim) */
@@ -5654,7 +5655,7 @@ async function setWindow(v){
   if (WIN.on){
     if (!MOUSE.on) await setMouse(true);
     if (!MOUSE.group){ WIN.on = false; return; }
-    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 650, "rim");   /* the fur laps over the cement's outer edge, so no skull shows on the high side of the slope (Søren: "a gap on one side ... where the skin is missing") */ MOUSE.holed = true; }
+    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 650, 3300);   /* the fur laps over the cement's outer edge, so no skull shows on the high side of the slope (Søren: "a gap on one side ... where the skin is missing") */ MOUSE.holed = true; }
     winUniforms().uWinOn.value = 1;
     if (!WIN.group){ WIN.group = winBuild(); }
     MOUSE.group.add(WIN.group);
