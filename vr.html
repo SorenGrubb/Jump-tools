@@ -11253,6 +11253,7 @@ function selectWith(h){
   if (mh && mh.pop != null){ footPopAct(mh.pop, mh.sub); return; }
   if (mh && mh.foot != null){ if (MENU.pop && MENU.pop.k !== mh.foot) MENU.pop = null; MENU.footHold = { k: mh.foot, h, t0: performance.now() }; MENU.dirty = true; return; }
   if (MENU.pop && mh){ MENU.pop = null; MENU.dirty = true; }
+  if (mh && mh.clock != null){ MENU.clockDrag = h; clockSet(mh.clock); return; }
   if (mh){ if (!mh.none) menuAct(mh); return; }    // on the palette: the palette has it
   if (tlvrSelect(h)) return;                         // on the timeline panel (section 48)
   if (vrpSelect(h)) return;                          // on "My scenes" or the chat (section 53)
@@ -12100,7 +12101,7 @@ function drawMenu(){
   const basic = !vrAdvanced(), top = MENU_PAD + HEAD_H + TAB_H + 10;
   let bottom = MENU.tab < 0 ? top : MENU.rows.length ? menuLayout(MENU.rows, top) : top + ROW_H;
   const hintY = bottom; if (basic && MENU.tab >= 0) bottom += HINT_H;
-  let H = bottom + MENU_PAD + FOOT_H;
+  let H = bottom + MENU_PAD + FOOT_H + (MENU.clockOpen ? CLOCK_H : 0);
   /* room for an icon's menu above the footer, folded or not */
   if (MENU.pop){ try { const f = menuFootIcons()[MENU.pop.k]; if (f) H = Math.max(H, footPopItems(f.k).length * 64 + 24 + FOOT_H + 24); } catch (e){} }
   if (!MENU.canvas){ MENU.canvas = document.createElement("canvas"); MENU.ctx = MENU.canvas.getContext("2d"); }
@@ -12205,7 +12206,7 @@ function drawMenu(){
   /* Basic: what the tile you point at does, in full (its one word is on the tile) */
   if (basic && MENU.tab >= 0){
     const hv = MENU.hover, r = hv && hv.row != null ? MENU.rows[hv.row] : null, f = hv && hv.foot != null ? menuFootIcons()[hv.foot] : null;
-    const FOOTN = { chat: "Chat", cut: "Cut with your right hand", measure: "Measure: trigger on two points", stim: "Stimulate: trigger on a cell", spray: "Spray paint: hold the right trigger", rec: "Record a take" };
+    const FOOTN = { clock: "Brain time: how fast the clock runs (a slider opens above)", chat: "Chat", cut: "Cut with your right hand", measure: "Measure: trigger on two points", stim: "Stimulate: trigger on a cell", spray: "Spray paint: hold the right trigger", rec: "Record a take" };
     const txt = r && r._tile ? r.label.replace(/^[⚡🖼🧰📍]\s*/u, "").replace(/\s*▸\s*$/, "") + (r._tile.sub && /▸/.test(r._tile.sub) ? "  — press to change" : "")
       : f ? (FOOTN[f.k] || f.k) + "  — hold for more" : "Point at a tile to see what it does · hold an icon below for its options";
     g.fillStyle = r || f ? "#ffffff" : "#cdb6ef"; g.font = (r || f ? "600 " : "") + "25px system-ui, sans-serif"; g.textAlign = "center";
@@ -12229,6 +12230,7 @@ function drawMenu(){
       if (f.badge){ const b = f.badge(); if (b){ g.fillStyle = "#f85149"; g.beginPath(); g.arc(x + sz - 8, y + 8, 13, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "700 18px system-ui"; g.textAlign = "center"; g.fillText(b > 9 ? "9+" : String(b), x + sz - 8, y + 14); g.textAlign = "left"; } }
       MENU.foot.push({ x, y, w: sz, h: sz });
     }); }
+  if (MENU.clockOpen) try { clockStripDraw(g, H - FOOT_H - CLOCK_H); } catch (e){ console.warn("[vr] clock:", e); }
   try { footPopDraw(g, H, FOOT_H); } catch (e){ console.warn("[vr] icon menu:", e); MENU.pop = null; }
   if (!MENU.tex){ MENU.tex = new THREE.CanvasTexture(cv); MENU.tex.colorSpace = THREE.SRGBColorSpace; if (MENU.mesh) MENU.mesh.material.map = MENU.tex; }
   MENU.tex.needsUpdate = true;
@@ -12247,6 +12249,9 @@ function menuFootIcons(){
     { k: "stim", icon: "bolt", on: () => STIM.on, act: () => setStim(!STIM.on) },
     { k: "spray", icon: "spray", on: () => SPRAY.on, act: () => setSpray(!SPRAY.on) }
   ];
+  /* the clock: a slider just above the footer (2026-11-18, Søren: "a slider that you could change the time speed ...
+     as an icon between those that opens just above or below") */
+  L.push({ k: "clock", icon: "clock", on: () => !!MENU.clockOpen, act: () => { MENU.clockOpen = !MENU.clockOpen; MENU.dirty = true; } });
   /* record a take: in Basic too (2026-11-18, Søren: "the recording button has disappeared from the bottom line") */
   L.splice(3, 0, { k: "rec", icon: TAKE.on ? "stop" : "rec", on: () => TAKE.on, act: () => TAKE.on ? takeStop() : takeStart(true) });
   return L;
@@ -12259,6 +12264,12 @@ function menuFootIcons(){
 const FOOT_HOLD_MS = 400;
 function footPopItems(k){
   const I = [];
+  if (k === "clock"){   /* hold the clock: jump to a recommended speed */
+    I.push({ label: SIM.paused ? "▶ Run the clock" : "⏸ Pause the clock", act: () => { SIM.paused = !SIM.paused; simUi(true); MENU.dirty = true; } });
+    I.push({ label: "×1 Real time", act: () => setSimSpeed(1) });
+    for (const r of SIM_REC.filter(r => ["ap", "syn", "patch", "flow", "ca", "sleep", "dye"].includes(r.k))) I.push({ label: simFmt(r.v) + "  " + r.name, act: () => setSimSpeed(r.v) });
+    return I;
+  }
   if (k === "chat"){
     I.push({ label: MENU.talk ? "● Listening… press the trigger to stop" : "🎙 Talk now", on: !!MENU.talk, act: () => { vrpShow(CHP, true); if (!MENU.talk){ MENU.talk = true; chpStartRec(CHP); try { flashWarn("🎙 Listening — press the trigger to stop", 2500, "#c98bff"); } catch (e){} } } });
     I.push({ label: "Send what I said", off: !chpText(), act: () => chpSend() });
@@ -12364,6 +12375,7 @@ function footPopDraw(g, H, FOOT_H){
 }
 /* the trigger let go: a short press switches the tool; a hold that opened the menu chooses where you let go */
 function menuRelease(h){
+  if (MENU.clockDrag === h){ MENU.clockDrag = null; MENU.dirty = true; }
   const fh = MENU.footHold;
   if (fh && fh.h === h){
     MENU.footHold = null;
@@ -12374,8 +12386,51 @@ function menuRelease(h){
     MENU.pop = null; MENU.dirty = true;
   }
 }
+/* ── THE CLOCK STRIP ── brain-time speed on a log slider from ×1/10,000 to ×100 (the clock's own range), with the
+   recommended speeds as orange ticks, the nearest one named, and pause / real-time buttons. Press on the track and
+   drag with the trigger held; it follows the ray until you let go. */
+const CLOCK_H = 112, CLK = { x0: 60, x1: 724, lo: -4, hi: 2 };
+function clockFrac(v){ return (Math.log10(v) - CLK.lo) / (CLK.hi - CLK.lo); }
+function clockStripDraw(g, y){
+  MENU.clockY = y;
+  g.fillStyle = "rgba(20,8,60,0.42)"; g.beginPath(); g.roundRect(24, y + 4, MENU_W - 48, CLOCK_H - 12, 16); g.fill();
+  const v = SIM.speed, near = SIM_REC.filter(r => Math.abs(Math.log(r.v / v)) < 0.05).map(r => r.name.toLowerCase());
+  g.fillStyle = "#ffffff"; g.font = "600 27px system-ui, sans-serif";
+  g.fillText("Brain time " + (SIM.paused ? "paused" : simFmt(v)) + (v === 1 && !SIM.paused ? " (real time)" : ""), CLK.x0 - 16, y + 38, 480);
+  if (near.length){ g.fillStyle = "#f0a742"; g.font = "21px system-ui, sans-serif"; g.fillText("good for " + near.slice(0, 2).join(", "), CLK.x0 + 470, y + 38, CLK.x1 - CLK.x0 - 470); }
+  const ty = y + 74, X = f => CLK.x0 + (CLK.x1 - CLK.x0) * Math.max(0, Math.min(1, f));
+  g.fillStyle = "rgba(255,255,255,0.25)"; g.beginPath(); g.roundRect(CLK.x0, ty - 5, CLK.x1 - CLK.x0, 10, 5); g.fill();
+  g.fillStyle = "#f0a742"; for (const r of SIM_REC) g.fillRect(X(clockFrac(r.v)) - 1.5, ty - 16, 3, 10);
+  g.fillStyle = "#ffffff"; g.fillRect(X(clockFrac(1)) - 2, ty - 18, 4, 36);
+  g.fillStyle = "#cdb6ef"; g.font = "18px system-ui, sans-serif"; g.fillText("slow motion", CLK.x0, ty + 32); g.textAlign = "right"; g.fillText("fast", CLK.x1, ty + 32); g.textAlign = "left";
+  const hv = MENU.hover && MENU.hover.clock != null;
+  g.fillStyle = SIM.paused ? "#8b949e" : "#ffffff"; g.beginPath(); g.arc(X(clockFrac(v)), ty, hv || MENU.clockDrag ? 17 : 14, 0, 7); g.fill();
+  g.strokeStyle = "#5b2fc9"; g.lineWidth = 3; g.stroke();
+  /* the two buttons */
+  const B = [["pause", SIM.paused ? "▶" : "⏸"], ["real", "×1"]];
+  MENU.clockBtns = B.map(([k, t], i) => { const bx = CLK.x1 + 40 + i * 110, by = y + 50, hb = MENU.hover && MENU.hover.clockBtn === k;
+    g.fillStyle = hb ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.14)"; g.beginPath(); g.roundRect(bx, by, 96, 50, 12); g.fill();
+    g.fillStyle = "#ffffff";
+    if (k === "pause"){ const cx = bx + 48, cy = by + 25;   /* drawn, not a glyph: the headset's font has no ⏸ */
+      if (SIM.paused){ g.beginPath(); g.moveTo(cx - 9, cy - 13); g.lineTo(cx + 13, cy); g.lineTo(cx - 9, cy + 13); g.fill(); }
+      else { g.fillRect(cx - 11, cy - 13, 8, 26); g.fillRect(cx + 3, cy - 13, 8, 26); } }
+    else { g.font = "600 28px system-ui, sans-serif"; g.textAlign = "center"; g.fillText(t, bx + 48, by + 35); g.textAlign = "left"; }
+    return { k, x0: bx, x1: bx + 96, y0: by, y1: by + 50 }; });
+}
+function clockHit(px, py){
+  if (!MENU.clockOpen || MENU.clockY == null || py < MENU.clockY || py > MENU.clockY + CLOCK_H) return null;
+  for (const b of MENU.clockBtns || []) if (px >= b.x0 && px <= b.x1 && py >= b.y0 - 6 && py <= b.y1 + 6) return { clockBtn: b.k };
+  if (px >= CLK.x0 - 30 && px <= CLK.x1 + 30 && py >= MENU.clockY + 44) return { clock: Math.max(0, Math.min(1, (px - CLK.x0) / (CLK.x1 - CLK.x0))) };
+  return { none: true };
+}
+function clockSet(f){
+  let v = Math.pow(10, CLK.lo + (CLK.hi - CLK.lo) * f);
+  for (const r of SIM_REC.concat([{ v: 1 }])) if (Math.abs(Math.log(r.v / v)) < 0.12){ v = r.v; break; }   /* snaps onto a recommended speed */
+  setSimSpeed(v); MENU.dirty = true;
+}
 function footPopFrame(){
   const fh = MENU.footHold, now = performance.now();
+  if (MENU.clockDrag){ const mh = menuHit(MENU.clockDrag); if (mh && mh.clock != null) clockSet(mh.clock); }
   if (fh && !MENU.pop && now - fh.t0 > FOOT_HOLD_MS){ MENU.pop = { k: fh.k, t: now }; MENU.dirty = true; }
   if (MENU.pop){
     const hv = MENU.hover && (MENU.hover.pop != null || MENU.hover.foot === MENU.pop.k);
@@ -12423,6 +12478,7 @@ function menuHit(h){
     const VT = menuTabList(), kk = Math.floor((px - MENU_PAD) / ((MENU_W - MENU_PAD * 2) / VT.length));
     return kk >= 0 && kk < VT.length ? { tab: VT[kk] } : { none: true };
   }
+  { const ch = clockHit(px, py); if (ch) return ch; }
   if (MENU.foot) for (let f = 0; f < MENU.foot.length; f++){ const b = MENU.foot[f]; if (px >= b.x - 6 && px <= b.x + b.w + 6 && py >= b.y - 6 && py <= b.y + b.h + 6) return { foot: f }; }
   const k = MENU.rows.findIndex(r => r._rect && py >= r._rect.y && py < r._rect.y + r._rect.h && px >= r._rect.x && px <= r._rect.x + r._rect.w);
   if (k >= 0 && k < MENU.rows.length && MENU.rows[k]._b && MENU.rows[k]._b.length){ const B = MENU.rows[k]._b; for (let j = 0; j < B.length; j++) if (B[j] && px >= B[j][0] - 4 && px <= B[j][1] + 4) return { row: k, btn: j }; }
@@ -12432,6 +12488,8 @@ function menuAct(hit){
   if (hit.adv){ window.setAdvanced(!vrAdvanced(), true); }
   else if (hit.head){ if (!credOk()) vrLeaveToSignIn(); }
   else if (hit.foot != null){ const f = menuFootIcons()[hit.foot]; if (f) f.act(); }
+  else if (hit.clockBtn){ if (hit.clockBtn === "pause"){ SIM.paused = !SIM.paused; simUi(true); } else setSimSpeed(1); MENU.dirty = true; }
+  else if (hit.clock != null) clockSet(hit.clock);
   else if (hit.tab != null){ MENU.tab = MENU.tab === hit.tab ? -1 : hit.tab; MENU.help = false; MENU.pop = null; }
   else if (hit.row != null){ const r = MENU.rows[hit.row]; if (hit.btn != null && r.btns && r.btns[hit.btn]) r.btns[hit.btn].act(); else (hit.half && r.act2 ? r.act2 : r.act)(); }
   MENU.dirty = true;
