@@ -1,0 +1,115 @@
+{
+ "what": "Thingiverse mouse (YahooJAPAN, thing:182233) + Mouse Skull and Brain (smcinturff, thing:3079327), CC-licensed, moved into the minnie65 frame",
+ "frame": "minnie65 micrometres as vr.html's content group: x lateral, y down into the cortex, z anterior",
+ "hemisphere": "right -- the stimulus was shown to the LEFT visual field (MICrONS Consortium, bioRxiv 2021.07.28.454025) and visual cortex is contralateral; the dataset's own areas agree: LM (posterior) has the lowest z, RL the highest, so +z is anterior, and with +x lateral and y down the axes are a proper right-handed set only on the right side",
+ "craniotomy": "4 mm, centred on the V1/LM border, 3.5 mm lateral of the midline, ~1 mm anterior of lambda (same paper, Methods)",
+ "em_volume_centre": {
+  "ap_mm_anterior_of_lambda": 1.2,
+  "ml_mm_right": 3.3,
+  "why": "the volume holds V1 medially and LM / AL / RL laterally (vr_v1areas_microns.json: V1 x 700, LM x 1180 z 610, RL x 1225 z 949, AL x 1437 z 800 um), i.e. it sits just anterior-medial of the V1/LM border the craniotomy was centred on; the exact stereotaxic position of the EM block is not published, so +-0.3 mm"
+ },
+ "skull_landmarks_model_units": {
+  "bregma_z": 15.4,
+  "lambda_z": 21.0,
+  "midline_y": 13.45
+ },
+ "um_per_model_unit": 778.0,
+ "target_on_brain_model": [
+  2.987,
+  16.785,
+  19.4
+ ],
+ "inward_normal_model": [
+  0.82,
+  -0.43,
+  -0.3777
+ ],
+ "glia_limitans_at_volume_centre_um": [
+  950.0,
+  335.7,
+  715.0
+ ],
+ "glia_limitans_plane": "y = -0.0501 x - 0.0610 z + 426.9 (um), fitted to data/meninges/minnie65.json",
+ "mouse_body_fit": {
+  "skull_scale_in_head_units": 0.85,
+  "pitch_deg_snout_up": 22.0,
+  "nose_y": -34.0,
+  "top_offset": -1.5,
+  "rule": "upper skull inside the fur (99.5%), lower jaw and incisors allowed out, cranium as close under the fur as fits"
+ },
+ "radial_axis_um": [
+  0.0499,
+  0.9969,
+  0.0608
+ ],
+ "R_model_to_um": [
+  [
+   0.43102,
+   0.88023,
+   -0.19854
+  ],
+  [
+   0.82348,
+   -0.47367,
+   -0.31229
+  ],
+  [
+   -0.36893,
+   -0.02889,
+   -0.92901
+  ]
+ ],
+ "meshes": {
+  "brain": {
+   "verts": 30001,
+   "tris": 59998,
+   "bytes": 1079996,
+   "bounds_um": [
+    [
+     -4178.0,
+     -91.0,
+     -4018.0
+    ],
+    [
+     3033.0,
+     6046.0,
+     8323.0
+    ]
+   ]
+  },
+  "skull": {
+   "verts": 29986,
+   "tris": 59998,
+   "bytes": 1079816,
+   "bounds_um": [
+    [
+     -4696.0,
+     -433.0,
+     -3706.0
+    ],
+    [
+     5336.0,
+     10607.0,
+     14274.0
+    ]
+   ]
+  },
+  "mouse": {
+   "verts": 15002,
+   "tris": 30000,
+   "bytes": 540032,
+   "bounds_um": [
+    [
+     -10441.0,
+     -6875.0,
+     -48052.0
+    ],
+    [
+     15183.0,
+     27664.0,
+     15360.0
+    ]
+   ]
+  }
+ }
+}
