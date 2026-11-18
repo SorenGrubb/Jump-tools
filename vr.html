@@ -5451,7 +5451,9 @@ function mousePeel(){
   const op = { mouse: 1 - smooth01(0.012, 0.03, d), skull: 1 - smooth01(0.03, 0.08, d), brain: 1 - 0.82 * smooth01(0.08, 0.25, d) - 0.18 * smooth01(0.6, 1.2, d) };
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
     m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.97; }
-  const bo = 1 - smooth01(0.1, 0.3, d); MOUSE.box.visible = bo > 0.01; MOUSE.box.material.opacity = 0.9 * bo;
+  /* no orange block (2026-11-18, Søren: "there is no need to make the orange box around the dataset. That was just the
+     arachnoid mater I had in the video") -- built, never shown */
+  MOUSE.box.visible = false;
   if (MOUSE.label){ const lo = MOUSE.parts.mouse.material.opacity; MOUSE.label.visible = lo > 0.05; MOUSE.label.material.opacity = lo; MOUSE.label.material.transparent = true; }
 }
 /* "Fly out" / "Fly back in": the zoom of Søren's film, 6 s on a log scale, aimed at the whole mouse or the cells */
