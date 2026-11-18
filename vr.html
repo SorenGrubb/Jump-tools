@@ -165,6 +165,7 @@
     <span>Right click</span><span>fly to that point</span>
     <span>Left drag</span><span>turn</span>
     <span>Right drag · scroll</span><span>pan · zoom</span>
+    <span><kbd>Z</kbd></span><span>lock to the nearest axis</span>
     <span><kbd>H</kbd></span><span>hide this</span>
   </div>
 </div>
@@ -387,6 +388,7 @@
     </select>
     <button id="rboxBtn" class="on" style="display:none" title="The region box(es) that limited Filter and show, in the same colours as its 3D view">Region box</button>
     <button id="mouseBtn" title="The whole mouse around the volume: its body, skull and brain, with the volume where it was taken (right visual cortex, V1 / LM border, ~1.2 mm in front of lambda, 3.3 mm lateral). Zoom out to see it; zooming in peels the fur, the skull and the brain away. 3D models: mouse by YahooJAPAN (Thingiverse thing:182233); skull and brain by smcinturff (Thingiverse thing:3079327); Creative Commons">Mouse</button>
+    <button id="winBtn" title="The cranial window the Ca²⁺ imaging was done through: a 4 mm craniotomy centred on the V1/LM border, 3.5 mm lateral and ~1 mm in front of lambda, closed with glass and a ring of dental cement (MICrONS Consortium, bioRxiv 2021.07.28.454025, Methods). Shows the glia limitans and the pial vessels under the glass">Window</button>
     <button id="mouseFly" title="Fly out to the whole mouse, or back in to the cells">Fly out</button>
     <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
   </div>
@@ -1032,7 +1034,7 @@
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
     sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], aisBtn: ["trace", "AIS"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
-    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], mouseFly: ["brain", "Fly out"],
+    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], winBtn: ["eye", "Window"], mouseFly: ["brain", "Fly out"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"], emSeg: ["areas", "Segmentation"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
@@ -1100,7 +1102,7 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["mouseBtn", "mouseFly"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["mouseBtn", "winBtn", "mouseFly"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["patchBtn", "puffBtn"], ["#patchBox"], ["#puffBox"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp", "emSeg"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
@@ -5435,7 +5437,7 @@ async function mouseLoad(){
 async function setMouse(v){
   MOUSE.on = !!v; MENU.dirty = true;
   const b = document.getElementById("mouseBtn"); if (b) b.classList.toggle("on", MOUSE.on);
-  if (!MOUSE.on){ if (MOUSE.group) content.remove(MOUSE.group); return; }
+  if (!MOUSE.on){ if (WIN.on) await setWindow(false); if (MOUSE.group) content.remove(MOUSE.group); return; }
   try { await mouseLoad(); } catch (e){ ctxNote.textContent = "The mouse could not be loaded: " + (e.message || e); MOUSE.on = false; return; }
   if (!MOUSE.on) return;
   content.add(MOUSE.group); mousePeel();
@@ -5448,9 +5450,12 @@ const smooth01 = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b -
 function mousePeel(){
   if (!MOUSE.on || !MOUSE.group) return;
   const d = mouseVolM();
-  const op = { mouse: 1 - smooth01(0.012, 0.03, d), skull: 1 - smooth01(0.03, 0.08, d), brain: 1 - 0.82 * smooth01(0.08, 0.25, d) - 0.18 * smooth01(0.6, 1.2, d) };
+  /* all the way out the fur is near-solid (2026-11-18, Søren: "when the flyout is all the way out, it would be ok if the
+     mouse is almost not transparent"): the end of a fly-out is ~0.017 m, so the fur only starts to fade above 0.02 */
+  const W = WIN.on ? 2.5 : 1;   /* with the window open the fur and skull stay longer: you look in through it */
+  const op = { mouse: 0.94 * (1 - smooth01(0.02 * W, 0.045 * W, d)), skull: 1 - smooth01(0.045 * W * 1.6, 0.09 * W * 1.6, d), brain: 1 - 0.82 * smooth01(0.08, 0.25, d) - 0.18 * smooth01(0.6, 1.2, d) };
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
-    m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.97; }
+    m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.9; }
   /* no orange block (2026-11-18, Søren: "there is no need to make the orange box around the dataset. That was just the
      arachnoid mater I had in the video") -- built, never shown */
   MOUSE.box.visible = false;
@@ -5505,6 +5510,75 @@ function mouseFrame(dt){
 function fbLabel(fb){ const l = fb.querySelector(".lbl"); const t = mouseOut() ? "Fly in" : "Fly out"; if (l) l.textContent = t; else fb.textContent = t; }
 document.getElementById("mouseBtn").addEventListener("click", () => setMouse(!MOUSE.on));
 document.getElementById("mouseFly").addEventListener("click", () => mouseFly());
+
+/* ── THE CRANIAL WINDOW (2026-11-18, Søren: "show the cranial window as they made it when recording Ca2+ imaging ...
+   When that is on, I think it should show the glia limitans and pial vessels as well through the window glass") ──
+   The paper's window: a 4 mm round craniotomy centred on the V1/LM border, 3.5 mm lateral and ~1 mm in front of lambda
+   (MICrONS Consortium, bioRxiv 2021.07.28.454025, Methods) -- 0.2 mm lateral and 0.2 mm behind the volume's own centre
+   as placed in models/mouse/placement.json. Drawn as: a round hole through the skull (and a wider one through the fur,
+   where the skin was opened), a 150 µm glass disc lying on the brain, and a ring of dental cement round it. The glass
+   is centred on the glia limitans plane and tilted with it. While it is on, the glia limitans and the pial vessels of
+   the dataset are shown (they are the only real ones: the data cover ~1.3 × 0.9 mm of the 4 mm window), and the fur
+   and skull peel later, so the window can be seen up close. */
+const WIN = { on: false, group: null, prev: null, uni: null };
+const WIN_R = 2000;
+function winGeom(){
+  const gl = (x, z) => -0.0501 * x - 0.0610 * z + 426.9;
+  const n = new THREE.Vector3(0.0501, 1, 0.0610).normalize();          // into the brain
+  const x = 950 + 200, z = 715 - 200, c = new THREE.Vector3(x, gl(x, z), z);
+  return { c, n };
+}
+function winUniforms(){
+  if (WIN.uni) return WIN.uni;
+  const { c, n } = winGeom();
+  WIN.uni = { uWinOn: { value: 0 }, uWinC: { value: c }, uWinN: { value: n } };
+  return WIN.uni;
+}
+/* a round hole through a mesh: fragments within r of the window's axis, on the near side of the brain, are dropped */
+function winHole(mat, r){
+  const U = winUniforms();
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uWinOn = U.uWinOn; sh.uniforms.uWinC = U.uWinC; sh.uniforms.uWinN = U.uWinN; sh.uniforms.uWinR = { value: r };
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvWinP = position;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP; uniform float uWinOn; uniform vec3 uWinC; uniform vec3 uWinN; uniform float uWinR;")
+      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 1500.0 && a > -6000.0 && length(d - a * uWinN) < uWinR) discard; }");
+  };
+  mat.customProgramCacheKey = () => "winhole" + r; mat.needsUpdate = true;
+}
+function winBuild(){
+  const grp = new THREE.Group(), { c, n } = winGeom(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(WIN_R, WIN_R, 150, 128, 1),
+    new THREE.MeshStandardMaterial({ color: "#d8ecff", transparent: true, opacity: 0.16, roughness: 0.05, metalness: 0.1, depthWrite: false }));
+  glass.position.copy(c).addScaledVector(n, -60 - 75); glass.quaternion.copy(q); glass.renderOrder = 5; grp.add(glass);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(WIN_R, 40, 12, 128), new THREE.MeshStandardMaterial({ color: "#a9cbe8", transparent: true, opacity: 0.7, roughness: 0.2 }));
+  rim.position.copy(glass.position); rim.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)); grp.add(rim);
+  const cement = new THREE.Mesh(new THREE.TorusGeometry(WIN_R + 380, 330, 16, 128), new THREE.MeshStandardMaterial({ color: "#e3c7c4", roughness: 0.85 }));
+  cement.scale.set(1, 1, 0.55); cement.position.copy(c).addScaledVector(n, -380); cement.quaternion.copy(rim.quaternion); grp.add(cement);
+  return grp;
+}
+async function setWindow(v){
+  WIN.on = !!v; MENU.dirty = true;
+  const b = document.getElementById("winBtn"); if (b) b.classList.toggle("on", WIN.on);
+  if (WIN.on){
+    if (!MOUSE.on) await setMouse(true);
+    if (!MOUSE.group){ WIN.on = false; return; }
+    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_R + 1400); MOUSE.holed = true; }
+    winUniforms().uWinOn.value = 1;
+    if (!WIN.group){ WIN.group = winBuild(); }
+    MOUSE.group.add(WIN.group);
+    /* the glia limitans and the pial vessels, as long as the window is open; what was on before comes back after */
+    WIN.prev = { glia: MEN.on.glia, skel: SKEL.mode, groups: new Set(SKEL.groups) };
+    if (DS_HAS.men && !MEN.on.glia) setMen("glia", true);
+    if (DS_HAS.skel){ SKEL.groups = new Set(["pial"]); setSkel(SKEL.mode === "off" ? "whole" : SKEL.mode); }
+    ctxNote.textContent = "Cranial window: 4 mm, centred on the V1/LM border 3.5 mm lateral and ~1 mm in front of lambda, as in the MICrONS Ca²⁺ imaging. Under the glass: the dataset's glia limitans and pial vessels (the data cover ~1.3 × 0.9 mm of the window).";
+  } else {
+    winUniforms().uWinOn.value = 0;
+    if (WIN.group && WIN.group.parent) WIN.group.parent.remove(WIN.group);
+    const P = WIN.prev; WIN.prev = null;
+    if (P){ if (DS_HAS.men && MEN.on.glia !== P.glia) setMen("glia", P.glia); if (DS_HAS.skel){ SKEL.groups = P.groups; setSkel(P.skel); } }
+  }
+}
+document.getElementById("winBtn").addEventListener("click", () => setWindow(!WIN.on));
 
 /* ── the visual areas ── */
 const AREA_COL = ["#3fb950", "#f0883e", "#d2a8ff", "#58a6ff"];       // V1, AL, LM, RL -- the order of areadata's NAMES
@@ -11566,7 +11640,7 @@ function vrAdvanced(){ return window.VR_ADV !== false && !!window.VR_ADV; }
 window.onAdvChange = () => { try { MENU.dirty = true; } catch (e){} };
 const VR_BASIC = {
   Show: /^(✓ Signed in|Not signed in|Cell models|Colour by excitatory|Nuclei|Scale bar|Floor grid|Background)/,
-  Map: /^(Cortical layers|Layers:|Visual areas|Vessels:|Mouse —|Fly out to the whole mouse|Fly back in|Flying)/,
+  Map: /^(Cortical layers|Layers:|Visual areas|Vessels:|Mouse, skull|Cranial window|Fly out$|Fly in$|Flying)/,
   /* 2026-11-16, Søren: "Here are things that should be in basic: Cut feature, Ca2+ stimulation, LFP probe. But no AIS." */
   Tools: /^(⚡ Stimulate|Hear spikes|Feel spikes|   Test: |Reset activity|Measure|Clear measurements|Cut in my right hand|Cut at the EM section|Cut at an EM section|See-through cells|Others see-through|Picked cell see-through|All cells solid|Only the picked cell|\+3 neighbours|LFP probe|   Power spectrum of the LFP|   Place the probe|   Background population)/
 };
@@ -11603,18 +11677,18 @@ const BASIC_TILE = [
   [/^Scale bar/, "Scale bar", "scalebar"], [/^Floor grid/, "Floor", "grid"], [/^Background/, "Background", "moon"],
   [/^Cortical layers/, "Cortical layers", null, { pic: "layers" }], [/^Layers:/, "Layers", "layers"],
   [/^Visual areas/, "Visual areas", null, { pic: "areas" }], [/^Vessels:/, "Blood vessels", null, { pic: "vessels" }],
-  [/^EM section —/, "EM section", null, { pic: "em" }], [/^Mouse —/, "Whole mouse", null, { pic: "mouse" }],
-  [/^Fly out to the whole mouse|^Fly back in|^Flying/, "Fly out", "brain"], [/^Segmentation on the EM section/, "Segmentation", null, { pic: "emseg" }],
+  [/^EM section —/, "EM section", null, { pic: "em" }], [/^Mouse, skull/, "Mouse", null, { pic: "mouse" }], [/^Cranial window/, "Window", null, { pic: "window" }],
+  [/^Fly out$|^Fly in$|^Flying/, "", "brain"], [/^Segmentation on the EM section/, "Segmentation", null, { pic: "emseg" }],
   [/^⚡ Stimulate/, "Stimulate", "bolt"], [/^Ca²⁺ wave/, "Ca²⁺ wave", "wave"], [/^LFP probe/, "LFP probe", "trace"],
   [/^\s+Power spectrum/, "Spectrum", "plot"], [/^Hear spikes/, "Hear spikes", "speaker"], [/^Feel spikes/, "Feel spikes", "hand"], [/^Reset activity/, "Reset", "reset"],
-  [/^World size/, "World size", "size"], [/^Reset position/, "Reset position", "reset"], [/^Bring the palette here/, "Palette here", "hand"],
+  [/^World size/, "World size", "size"], [/^Lock to the nearest axis/, "Nearest axis", "grid"], [/^Reset position/, "Reset position", "reset"], [/^Bring the palette here/, "Palette here", "hand"],
   [/^Saving the scene|^Save this scene/, "Save scene", "save"], [/^🖼 My scenes/, "My scenes", "film"], [/^Save as a new scene/, "Save as new", "save"],
   [/^Help: the controls/, "Help", "help"], [/^Exit VR/, "Exit VR", "exit"]
 ];
 /* what a tile says on its face: its word, and the current choice of a "Name: choice ▸" row under it */
 function basicTile(r){
   for (const [re, word, icon, o] of BASIC_TILE) if (re.test(r.label)){
-    const m = /^[^:]+:\s*(.+?)\s*▸?\s*$/.exec(r.label), t = Object.assign({ word, icon }, o || {});
+    const m = /^[^:]+:\s*(.+?)\s*▸?\s*$/.exec(r.label), t = Object.assign({ word: word || r.label, icon }, o || {});   /* "" = the row's own (changing) label */
     if (!t.sub && m && !t.card && /▸\s*$/.test(r.label)) t.sub = m[1] + " ▸";
     if (t.pic === "emseg" && EM.segBusy) t.sub = EM.segProg || "…";
     if (t.card){ const k = r.label.indexOf("—"); t.sub = (k > 0 ? r.label.slice(k + 1).trim() + " · " : "") + "name the cell, earn points, become an expert"; }
@@ -11692,6 +11766,18 @@ function tilePic(g, kind, x, y, w, h){
       br(x1, y1, ang - 0.55 + d * 0.05, len * 0.72, wd * 0.62, d + 1); br(x1, y1, ang + 0.5 - d * 0.04, len * 0.7, wd * 0.6, d + 1); };
     br(x + w / 2, y - 4, 0, h * 0.34, 12, 0);
     g.strokeStyle = "#7aa6ff"; g.globalAlpha = 0.6; br(x + w * 0.16, y + h + 4, Math.PI - 0.15, h * 0.3, 7, 1); g.globalAlpha = 1;
+  } else if (kind === "window"){
+    /* skull with a round glass window, pial vessels under it */
+    const cx = x + w / 2, cy = y + h / 2, R = Math.min(w, h) * 0.34;
+    g.fillStyle = "#e6dcc8"; g.fillRect(x, y, w, h);
+    g.fillStyle = "#d9b4b0"; g.beginPath(); g.arc(cx, cy, R * 1.25, 0, 7); g.fill();
+    g.fillStyle = "#e9c9b8"; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+    g.strokeStyle = "#c0392b"; g.lineWidth = 5; g.beginPath(); g.moveTo(cx - R, cy - R * 0.3); g.bezierCurveTo(cx - R * 0.3, cy - R * 0.1, cx, cy + R * 0.4, cx + R, cy + R * 0.2); g.stroke();
+    g.lineWidth = 2.5; g.beginPath(); g.moveTo(cx - R * 0.2, cy + R * 0.05); g.lineTo(cx - R * 0.4, cy + R); g.moveTo(cx + R * 0.3, cy + R * 0.25); g.lineTo(cx + R * 0.1, cy - R); g.stroke();
+    g.strokeStyle = "#3b5bdb"; g.lineWidth = 4; g.beginPath(); g.moveTo(cx - R, cy + R * 0.5); g.bezierCurveTo(cx - R * 0.2, cy + R * 0.6, cx + R * 0.2, cy - R * 0.5, cx + R * 0.6, cy - R); g.stroke();
+    g.fillStyle = "rgba(200,230,255,0.25)"; g.fillRect(x, y, w, h); g.restore();
+    g.strokeStyle = "rgba(255,255,255,0.8)"; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
   } else if (kind === "mouse"){
     /* a brain seen from above, the volume as an orange patch on its right visual cortex */
     const cx = x + w / 2, cy = y + h * 0.52, bw = w * 0.2, bh = h * 0.36;
@@ -11811,8 +11897,9 @@ function menuRowsRaw(t){
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
     if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
     if (DS_HAS.mouse){
-      rows.push({ label: "Mouse — the whole animal, skull and brain around the volume (zoom out; zooming in peels them away). Models: YahooJAPAN; smcinturff (Thingiverse, CC)", on: MOUSE.on, act: () => setMouse(!MOUSE.on) });
-      rows.push({ label: MOUSE.fly ? "Flying…" : mouseOut() ? "Fly back in to the cells" : "Fly out to the whole mouse", icon: "brain", act: () => mouseFly() });
+      rows.push({ label: "Cranial window", on: WIN.on, act: () => setWindow(!WIN.on) });
+      rows.push({ label: "Mouse, skull & brain", on: MOUSE.on, act: () => setMouse(!MOUSE.on) });
+      rows.push({ label: MOUSE.fly ? "Flying…" : mouseOut() ? "Fly in" : "Fly out", icon: "brain", act: () => mouseFly() });
     }
     S("Meninges");
     if (DS_HAS.men) for (const k in MEN_PARTS) rows.push({ label: MEN_PARTS[k].label + (k === "villus" ? " (3 outlines)" : ""), on: MEN.on[k], act: () => setMen(k, !MEN.on[k]) });
@@ -12130,6 +12217,7 @@ function menuRowsRaw(t){
       { const sz = stage.scale.x / FIT_SCALE, k = sz < 3 ? 0 : sz < 15 ? 1 : 2;
         rows.push({ label: "World size: " + ["tabletop", "room-sized", "walk inside (giant)"][k] + "  ▸", act: () => setSize([6, 30, 1][k]) }); }
       rows.push({ label: "Reset position", act: resetStage });
+      rows.push({ label: "Lock to the nearest axis (Z on a keyboard)", act: snapToAxis });
       rows.push({ label: "◂ Turn 30° left   |   right ▸", act: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI / 6); USER_MOVED = true; },
                   act2: () => { stage.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -Math.PI / 6); USER_MOVED = true; } });
       rows.push({ label: "◂ Bigger ×1.5   |   smaller ▸", act: () => setSize(stage.scale.x / FIT_SCALE * 1.5),
@@ -12929,7 +13017,30 @@ addEventListener("keydown", e => {
   if (e.key === "Shift") KEYS.add("shift");
   if (e.key === "Alt" || e.key === "AltGraph"){ KEYS.add("alt"); e.preventDefault(); }
   if (e.code === "KeyH" && !e.altKey){ toggleKeysCard(); }
+  if (e.code === "KeyZ" && !e.altKey){ snapToAxis(); e.preventDefault(); }
 });
+/* Z: LOCK TO THE NEAREST AXIS, as in Neuroglancer (2026-11-18, Søren: "pressing z ... would lock you to the nearest
+   axis"). The data's own x / y / z are turned to the nearest of the 24 square-on orientations relative to your eye
+   (screen or headset), so you look straight along one of them with another one upright. The point you orbit about
+   (desktop) or the collection's centre (headset) stays where it is. */
+function snapToAxis(){
+  stage.updateMatrixWorld(true);
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; cam.updateMatrixWorld(true);
+  const qc = cam.getWorldQuaternion(new THREE.Quaternion()), qs = stage.quaternion.clone();
+  const rel = qc.clone().invert().multiply(qs), m = new THREE.Matrix4().makeRotationFromQuaternion(rel), e = m.elements;
+  const col = j => [e[j * 4], e[j * 4 + 1], e[j * 4 + 2]];
+  const order = [0, 1, 2].sort((a, b) => Math.max(...col(b).map(Math.abs)) - Math.max(...col(a).map(Math.abs)));
+  const used = new Set(), out = [];
+  for (const j of order.slice(0, 2)){ const c = col(j); let bi = -1, bv = -1; for (let i = 0; i < 3; i++) if (!used.has(i) && Math.abs(c[i]) > bv){ bv = Math.abs(c[i]); bi = i; }
+    used.add(bi); const v = new THREE.Vector3(); v.setComponent(bi, Math.sign(c[bi]) || 1); out[j] = v; }
+  const j3 = order[2], a = out[(j3 + 1) % 3], b = out[(j3 + 2) % 3]; out[j3] = new THREE.Vector3().crossVectors(a, b);
+  const snapped = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(out[0], out[1], out[2]));
+  const pivot = renderer.xr.isPresenting ? stage.position.clone() : controls.target.clone();
+  const L = stage.worldToLocal(pivot.clone());
+  stage.quaternion.copy(qc.clone().multiply(snapped)); stage.updateMatrixWorld(true);
+  stage.position.add(pivot.clone().sub(stage.localToWorld(L))); stage.updateMatrixWorld(true);
+  USER_MOVED = true; if (typeof ctxNote !== "undefined") ctxNote.textContent = "Z: locked to the nearest axis.";
+}
 addEventListener("keyup", e => {
   const k = KEY_CODE[e.code]; if (k) KEYS.delete(k);
   /* NO SWING BACK (2026-11-08). On release in "around the picked cell" mode this used to call
@@ -22593,7 +22704,7 @@ const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, va
                  nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, seg: !!DSX.seg, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet, men: !!DSX.meninges, mouse: !!DSX.mouse };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
-  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", mouseBtn: "mouse", mouseFly: "mouse", menRow: "men", vascSel: "vasc", skelSel: "skel", capSel: "skel",
+  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", mouseBtn: "mouse", winBtn: "mouse", mouseFly: "mouse", menRow: "men", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
                  emBtn: "em", emSize: "em", emDn: "em", emUp: "em", emSeg: "seg", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapWbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn", tsBtn: "seg", tsR: "seg", tsTop: "seg", tsList: "seg" };
   for (const id in gone){
@@ -23092,7 +23203,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { WIN, setWindow, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
