@@ -18343,10 +18343,17 @@ function patchScope(g, X, Y, W, H, big){
   const draw = (q, col, lw) => {
     g.strokeStyle = col; g.lineWidth = lw * fs; g.beginPath();
     const stp = Math.max(1, Math.floor(q.n / (R - L) / 1.5));
-    for (let i = 0; i <= q.i; i += stp){
-      let v = q.y[i]; if (stp > 1){ let mn = v, mx = v; for (let j = i; j < Math.min(q.i, i + stp); j++){ mn = Math.min(mn, q.y[j]); mx = Math.max(mx, q.y[j]); } v = Math.abs(mx - q.y[0]) > Math.abs(mn - q.y[0]) ? mx : mn; }
-      const x = L + (R - L) * i / (q.n - 1), y = Math.max(top, Math.min(top + mainH, yOf(v)));
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    /* each screen column draws BOTH its lowest and its highest sample, in the order they came (2026-11-18, Søren: "the
+       spikes are missing"): it kept only the one further from the sweep's first sample, which was the empty 0 mV --
+       so a spike to +27 mV lost to its −58 mV reset and the action potentials vanished from the trace */
+    const Y = v => Math.max(top, Math.min(top + mainH, yOf(v)));
+    for (let i = 1; i <= q.i; i += stp){
+      const x = L + (R - L) * i / (q.n - 1);
+      if (stp <= 1){ i > 1 ? g.lineTo(x, Y(q.y[i])) : g.moveTo(x, Y(q.y[i])); continue; }
+      let mn = q.y[i], mx = mn, imn = i, imx = i;
+      for (let j = i; j < Math.min(q.i + 1, i + stp); j++){ const v = q.y[j]; if (v < mn){ mn = v; imn = j; } if (v > mx){ mx = v; imx = j; } }
+      const a = imn <= imx ? mn : mx, b2 = imn <= imx ? mx : mn;
+      i > 1 ? g.lineTo(x, Y(a)) : g.moveTo(x, Y(a)); g.lineTo(x, Y(b2));
     }
     g.stroke();
   };
