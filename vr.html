@@ -5401,7 +5401,7 @@ document.getElementById("v1Sel").addEventListener("change", e => setV1Col(e.targ
    box marks the volume while it is too small to see. "Fly" animates the same zoom, like Søren's film. */
 const MOUSE = { on: false, group: null, loading: null, parts: {}, box: null, label: null, fly: null, manual: null };
 const MOUSE_CREDIT = ["3D models: mouse by YahooJAPAN (Thingiverse 182233)", "skull and brain by smcinturff (Thingiverse 3079327) · CC"];
-const MOUSE_COL = { mouse: "#b9a48c", skull: "#efe7d4", brain: "#ecd2c0" };
+const MOUSE_COL = { mouse: "#b9a48c", skull: "#efe7d4", brain: "#e6aa9c" };   /* brain pinker than bone, so it reads through the window (2026-11-18) */
 async function mouseLoad(){
   if (MOUSE.group) return MOUSE.group;
   if (MOUSE.loading) return MOUSE.loading;
@@ -5457,7 +5457,7 @@ function mousePeel(){
   /* with the window open the brain is solid from afar -- seen through the hole in the skull -- and turns half
      see-through only close up, where the penetrating vessels are worth following (2026-11-18, Søren: "the brain
      should be visible even from far away") */
-  if (WIN.on){ op.brain = Math.min(op.brain, 1 - 0.5 * smooth01(0.06, 0.12, d));
+  if (WIN.on){ op.brain = (1 - 0.5 * smooth01(0.15, 0.3, d)) * (1 - smooth01(0.6, 1.2, d));   /* solid until close, then half, gone only among the cells (Søren: "a point where ... the brain is no longer visible") */
     if (WIN.collar){ const fo = Math.max(0, Math.min(1, op.mouse / 0.94)); WIN.collar.visible = fo > 0.02; WIN.collar.material.opacity = fo; WIN.collar.material.depthWrite = fo > 0.9; } }   /* see-through with the window open, so the penetrating vessels show diving in */
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
     m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.9; }
@@ -5546,7 +5546,7 @@ function winHole(mat, r){
     sh.uniforms.uWinOn = U.uWinOn; sh.uniforms.uWinC = U.uWinC; sh.uniforms.uWinN = U.uWinN; sh.uniforms.uWinR = { value: r };
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvWinP = position;");
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP; uniform float uWinOn; uniform vec3 uWinC; uniform vec3 uWinN; uniform float uWinR;")
-      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 1500.0 && a > -6000.0 && length(d - a * uWinN) < uWinR) discard; }");
+      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 20000.0 && a > -6000.0 && length(d - a * uWinN) < uWinR) discard; }");
   };
   mat.customProgramCacheKey = () => "winhole" + r; mat.needsUpdate = true;
 }
