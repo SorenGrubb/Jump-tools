@@ -9778,7 +9778,7 @@ function tlClearAll(){
     try { paintZero(); replayStrokes(STROKES); } catch (e){} }
   TL.keys = { cam: [], view: [], stim: [], cap: [], fx: [] }; TL.paint = []; TL.paintBase = undefined; TL.hands = undefined; TL.cut = undefined; TL.paintAt = null; TL.t = 0; TL.sel = null;
   try { voiceSet(null); } catch (e){}
-  try { TLVR.sel = null; TLVR.dirty = true; } catch (e){}
+  try { TLVR.sel = null; TLVR.from = null; TLVR.dirty = true; } catch (e){}
   tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
   ctxNote.textContent = "The timeline is empty — record a new take or add keys. (Undo brings the old one back.)";
   MENU.dirty = true;
@@ -10650,7 +10650,7 @@ function edFit(E, at, words, replacing){
   const startsSentence = prev == null || /[.!?:]["')\]]*$/.test(prev);
   const out = words.slice();
   if (!startsSentence) out[0] = edLow(out[0]);
-  else if (prev == null && next != null) out[0] = edCap(out[0]);
+  else out[0] = edCap(out[0]);   /* a sentence's first word has its capital, even into an empty caption (2026-11-18, Søren: "it thought that the first word should not be with a capital letter") */
   if (next != null){
     out[out.length - 1] = out[out.length - 1].replace(/[.!?]+$/, "") || out[out.length - 1];
     if (prev == null && !replacing) return { words: out, lowerNext: true };
@@ -10663,7 +10663,7 @@ function chpInsert(text, E = CHP){
   else if (E.ins != null && E.ins <= E.w.length){ const at = E.ins, f = edFit(E, at, words, false);
     if (f.lowerNext && E.w[at] != null) E.w[at] = edLow(E.w[at]);
     E.w.splice(at, 0, ...f.words); E.ins += f.words.length; }
-  else { if (E.w.length){ const f = edFit(E, E.w.length, words, false); words = f.words; } E.w.push(...words); }
+  else { const f = edFit(E, E.w.length, words, false); words = f.words; E.w.push(...words); }
   E.w = E.w.filter(Boolean); if (E.ins != null) E.ins = Math.min(E.ins, E.w.length);
 }
 /* the keyboard edits the marked word, or the last one */
@@ -11186,18 +11186,25 @@ function chpDraw(P, g){
      · the buttons along the top: play/pause, start, + camera key (where you stand), + view, + stimulus (picked
        neuron), delete (the picked key, or the keys at the playhead), undo, bring the panel back in front of you,
        close. Everything goes through the same timeline the PC edits, so undo, save and the PC editor see it. */
-const TLVR = { mesh: null, cv: null, g: null, tex: null, on: false, dirty: true, hover: null, drag: null, sel: null, lastDraw: 0 };
+const TLVR = { many: false, from: null, mesh: null, cv: null, g: null, tex: null, on: false, dirty: true, hover: null, drag: null, sel: null, lastDraw: 0 };
 const TLVR_W = 2048, TLVR_H = 800, TLVR_X0 = 250, TLVR_X1 = 1990, TLVR_LANE0 = 196, TLVR_LH = 76;
 /* read when drawn: TL_LANES is declared further down the page */
 const tlvrLanes = () => TL_LANES.concat([["paint", "Paint", "#f778ba"]]);
 const TLVR_BTNS = [["play", "▶", "Play / pause"], ["home", "⏮", "To the start"], ["cam", "+ Camera"], ["view", "+ View"], ["stim", "+ Stimulus"],
                    ["capt", "+ Caption"], ["del", "Delete"], ["undo", "Undo"], ["here", "Bring here"], ["snap", "🧲"], ["close", "✕"]];
-function tlvrEdRect(){ return TLVR.sel && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: 668, w: 384, h: 84 } : null; }
+function tlvrEdRect(){ return TLVR.sel && TL.multi.size < 2 && TLVR.sel.lane === "cap" ? { x: TLVR_W - 420, y: 668, w: 384, h: 84 } : null; }
 /* the second row, under the lanes: the window on the film (zoom and move) */
-const TLVR_BTNS2 = [["zout", "🔍−"], ["zin", "🔍+"], ["pl", "◀"], ["pr", "▶"], ["fit", "Fit"], ["title", "+ 🎬 Title"]];
+/* SEVERAL KEYS AT ONCE IN THE HEADSET (2026-11-18, Søren: "when I have deleted a title and want to move everything to
+   the start of the recording, I can't. There is no option to select several keyframes and move them together.")
+   · ☑ Several: while on, the trigger on a key adds it to the picked set or takes it out (the same set as Shift+click on
+     the PC). Holding the trigger on any picked key and moving slides them all, keeping their spacing.
+   · All after: picks every key from the playhead on -- and the drawing, hands and cuts after it go along when moved.
+   · ⇤ To 0: slides the picked keys so the first sits at 0 s; with nothing picked, slides the whole film so it starts at 0.
+   · Delete removes every picked key; a deleted title slide closes its gap, as on the PC. */
+const TLVR_BTNS2 = [["zout", "🔍−"], ["zin", "🔍+"], ["pl", "◀"], ["pr", "▶"], ["fit", "Fit"], ["title", "+ 🎬 Title"], ["many", "☐ Several"], ["after", "All after"], ["to0", "⇤ To 0"]];
 function tlvrBtnRects(){
   let x = 24; const top = TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" || id === "snap" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
-  x = 24; const low = TLVR_BTNS2.map(([id, label]) => { const w = id === "title" ? 230 : 120; const r = { id, label, x, y: 700, w, h: 84, low: true }; x += w + 12; return r; });
+  x = 24; const low = TLVR_BTNS2.map(([id, label]) => { const w = id === "title" ? 230 : id === "many" ? 200 : id === "after" || id === "to0" ? 170 : 104; const r = { id, label, x, y: 700, w, h: 84, low: true }; x += w + 12; return r; });
   return top.concat(low);
 }
 const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * ((t - tlVa()) / ((tlVb() - tlVa()) || 1));
@@ -11212,11 +11219,11 @@ function tlvrDraw(){
   g.shadowColor = "#c58bff"; g.shadowBlur = 24; g.strokeStyle = "rgba(205,150,255,0.95)"; g.lineWidth = 5; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 28); g.stroke(); g.shadowBlur = 0;
   /* buttons */
   for (const b of tlvrBtnRects()){
-    const hv = TLVR.hover && TLVR.hover.btn === b.id, on = (b.id === "play" && TL.playing) || (b.id === "snap" && TL.snap);
+    const hv = TLVR.hover && TLVR.hover.btn === b.id, on = (b.id === "play" && TL.playing) || (b.id === "snap" && TL.snap) || (b.id === "many" && TLVR.many);
     g.fillStyle = on ? "rgba(214,160,255,0.55)" : hv ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 16); g.fill();
     if (hv){ g.strokeStyle = "#f3e2ff"; g.lineWidth = 3; g.stroke(); }
-    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.low ? 36 : b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
-    g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.label, b.x + b.w / 2, b.y + (b.low ? 56 : b.w < 100 ? 64 : 60)); g.textAlign = "left";
+    g.fillStyle = b.id === "close" ? "#ffb070" : "#f6ecff"; g.font = "600 " + (b.low ? (b.w > 160 && b.id !== "title" ? 30 : 36) : b.w < 100 ? 46 : 30) + "px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText(b.id === "play" ? (TL.playing ? "⏸" : "▶") : b.id === "many" ? (TLVR.many ? "☑ Several" : "☐ Several") : b.label, b.x + b.w / 2, b.y + (b.low ? 56 : b.w < 100 ? 64 : 60)); g.textAlign = "left";
   }
   g.fillStyle = "#f6ecff"; g.font = "600 40px system-ui, sans-serif"; g.textAlign = "right";
   g.fillText(TL.t.toFixed(1) + " / " + TL.dur + " s", W - 40, 84); g.textAlign = "left";
@@ -11230,7 +11237,7 @@ function tlvrDraw(){
   /* where the window is in the whole film, and how much of it is shown */
   if (TL.vb != null){ g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(TLVR_X0, ry + 46, TLVR_X1 - TLVR_X0, 6);
     g.fillStyle = "#ffd866"; g.fillRect(TLVR_X0 + va / TL.dur * (TLVR_X1 - TLVR_X0), ry + 46, Math.max(8, (vb - va) / TL.dur * (TLVR_X1 - TLVR_X0)), 6); }
-  g.fillStyle = "#e9d5ff"; g.font = "28px system-ui, sans-serif"; g.fillText(TL.vb == null ? "whole film shown" : (vb - va).toFixed(vb - va < 10 ? 1 : 0) + " s shown (" + va.toFixed(1) + "–" + vb.toFixed(1) + " s)", 24 + 5 * 132 + 242 + 10, 752);
+  if (!TLVR.sel && !TL.multi.size){ g.fillStyle = "#e9d5ff"; g.font = "28px system-ui, sans-serif"; g.fillText(TL.vb == null ? "whole film shown" : (vb - va).toFixed(vb - va < 10 ? 1 : 0) + " s shown (" + va.toFixed(1) + "–" + vb.toFixed(1) + " s)", TLVR_X0, 688); }
   /* lanes and keys */
   tlvrLanes().forEach(([lane, name, col], i) => {
     const y = TLVR_LANE0 + i * TLVR_LH;
@@ -11242,7 +11249,7 @@ function tlvrDraw(){
     g.save(); g.beginPath(); g.rect(TLVR_X0 - 30, y - 4, TLVR_X1 - TLVR_X0 + 52, TLVR_LH); g.clip();
     if (lane === "paint"){ (TL.paint || []).forEach(x => { const px = tlvrX(x[0]); if (!tlvrIn(px)) return; g.fillStyle = x[1][5] || col; g.fillRect(px - 1.5, cy - 14, 3, 28); }); g.restore(); return; }
     for (const k of TL.keys[lane] || []){
-      const x = tlvrX(k.t), sel = TLVR.sel === k, hv = TLVR.hover && TLVR.hover.key === k;
+      const x = tlvrX(k.t), sel = TLVR.sel === k || TL.multi.has(k), hv = TLVR.hover && TLVR.hover.key === k;
       if ((lane === "cap" || lane === "fx") ? (tlvrX(k.t + (k.dur || 3)) < TLVR_X0 - 30 || x > TLVR_X1 + 30) : !tlvrIn(x)) continue;
       if (lane === "cap" || lane === "fx"){
         const x2 = tlvrX(Math.min(TL.dur, k.t + (k.dur || 3)));
@@ -11261,7 +11268,11 @@ function tlvrDraw(){
   /* the playhead */
   const px = tlvrX(TL.t); if (tlvrIn(px)){ g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.beginPath(); g.moveTo(px, ry + 30); g.lineTo(px, TLVR_LANE0 + tlvrLanes().length * TLVR_LH); g.stroke();
   g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(px - 14, ry + 22); g.lineTo(px + 14, ry + 22); g.lineTo(px, ry + 42); g.closePath(); g.fill(); }
-  if (TLVR.sel){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
+  if (TL.multi.size > 1){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
+    const ts = [...TL.multi].map(k => k.t);
+    g.fillText(TL.multi.size + " keys picked (" + Math.min(...ts).toFixed(1) + "–" + Math.max(...ts).toFixed(1) + " s)" + (TLVR.from != null ? " + drawing, hands and cuts after " + TLVR.from.toFixed(1) + " s" : "")
+      + " — hold the trigger on one and move to slide them all", TLVR_X0, 688, W - TLVR_X0 - 40); }
+  else if (TLVR.sel){ g.fillStyle = "#f6ecff"; g.font = "30px system-ui, sans-serif";
     const isCap = TLVR.sel.lane === "cap";
     g.fillText("Picked: " + ({ cam: "camera", view: "view", stim: "stimulus", cap: "caption", fx: "effect" })[TLVR.sel.lane] + " key at " + TLVR.sel.t.toFixed(1) + " s"
       + (isCap ? ": “" + String(TLVR.sel.text || "").slice(0, 40) + (String(TLVR.sel.text || "").length > 40 ? "…" : "") + "”" : "") + " — hold the trigger on it and move to slide it", TLVR_X0, 688, W - TLVR_X0 - 460);
@@ -11319,11 +11330,22 @@ function tlvrButton(id){
   else if (id === "view") tlAdd("view", { v: tlCaptureView(), fade: 0.5 });
   else if (id === "stim"){ if (pick >= 0) tlAdd("stim", { cell: pick, gain: document.getElementById("stimGain").value, mode: document.getElementById("stimMode").value, n: 1, every: 0.5 }); else ctxNote.textContent = "Pick a neuron first (trigger on it), then + Stimulus."; }
   else if (id === "del"){
-    if (TLVR.sel){ const L = TLVR.sel.lane; TL.keys[L] = TL.keys[L].filter(k => k !== TLVR.sel); TLVR.sel = null; }
-    else for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => Math.abs(k.t - TL.t) > 0.25);
-    tlSave(); tlSync();
+    const grp = tlvrGroup();
+    const del = new Set(grp.length ? grp : [].concat(...Object.values(TL.keys)).filter(k => Math.abs(k.t - TL.t) <= 0.25));
+    tlSave();
+    [...del].filter(x => x.title).sort((a, b) => b.t - a.t).forEach(x => tlRipple(x.t + x.dur, -x.dur, x));   // a title slide leaves no gap
+    for (const L in TL.keys) TL.keys[L] = TL.keys[L].filter(k => !del.has(k));
+    tlvrPickNone(); tlSave(); tlSync();
   }
-  else if (id === "undo"){ tlUndo(-1); TLVR.sel = null; }
+  else if (id === "many"){ TLVR.many = !TLVR.many; if (TLVR.many && TLVR.sel && !TL.multi.size) TL.multi.add(TLVR.sel);
+    flashWarn(TLVR.many ? "☑ Several: the trigger on a key picks it or drops it" : "☐ Several off", 2000, "#c98bff"); }
+  else if (id === "after"){
+    tlvrPickNone(); for (const L in TL.keys) for (const k of TL.keys[L]) if (k.t >= TL.t - 1e-6) TL.multi.add(k);
+    if (TL.multi.size){ TLVR.from = TL.t; TLVR.sel = [...TL.multi][0]; } else flashWarn("No keys after the playhead", 2000, "#c98bff");
+    tlSync();
+  }
+  else if (id === "to0") tlvrToZero();
+  else if (id === "undo"){ tlUndo(-1); tlvrPickNone(); }
   else if (id === "here") tlvrPlace();
   else if (id === "close") setTlvr(false);
   TLVR.dirty = true;
@@ -11333,14 +11355,69 @@ function tlvrSelect(h){
   const x = tlvrHit(h); if (!x) return false;
   if (x.btn){ tlvrButton(x.btn); return true; }
   if (x.bar){ TLVR.sel = x.bar; TLVR.drag = null; if (x.bar.lane === "cap") capEdit(x.bar); TLVR.dirty = true; return true; }
-  if (x.key){ TLVR.sel = x.key; TLVR.drag = { h, key: x.key, t0: x.key.t, x0: x.x, moved: false }; }
-  else if (x.track){ TLVR.sel = null; TLVR.drag = { h, scrub: true }; tlSeek(tlvrT(x.x)); }
+  if (x.key){
+    if (TLVR.many){
+      if (TLVR.sel && !TL.multi.size) TL.multi.add(TLVR.sel);
+      if (TL.multi.has(x.key)){ TL.multi.delete(x.key); TLVR.sel = TLVR.sel === x.key ? [...TL.multi].pop() || null : TLVR.sel; TLVR.from = null; tlSync(); TLVR.dirty = true; return true; }
+      TL.multi.add(x.key); TLVR.from = null;
+    } else if (!TL.multi.has(x.key)){ TL.multi.clear(); TLVR.from = null; }
+    TLVR.sel = x.key;
+    const grp = TL.multi.size > 1 ? [...TL.multi] : [x.key];
+    TLVR.drag = { h, key: x.key, t0: x.key.t, x0: x.x, moved: false, grp: grp.map(k => [k, k.t]), moving: new Set(grp), rest: tlvrRest(),
+                  lo: -Math.min(...grp.map(k => k.t)), hi: TL.dur - Math.max(...grp.map(k => k.t + (k.lane === "fx" || k.lane === "cap" ? (k.dur || 0) : 0))) };
+    tlSync();
+  }
+  else if (x.track){ tlvrPickNone(); TLVR.drag = { h, scrub: true }; tlSeek(tlvrT(x.x)); }
   TLVR.dirty = true; return true;
+}
+/* the picked keys (the set, or the one picked), and what the "All after" pick carries with it */
+function tlvrGroup(){ return TL.multi.size ? [...TL.multi] : TLVR.sel ? [TLVR.sel] : []; }
+function tlvrPickNone(){ TLVR.sel = null; TL.sel = null; TL.multi.clear(); TLVR.from = null; }
+function tlvrRest(){
+  if (TLVR.from == null) return null; const f = TLVR.from - 1e-6;
+  let v = null; try { if (VOICE.data && VOICE.offset >= f) v = VOICE.offset; } catch (e){}
+  return { paint: (TL.paint || []).filter(x => x[0] >= f).map(x => [x, x[0]]), hands: (TL.hands || []).filter(x => x.t >= f).map(x => [x, x.t]),
+           cut: (TL.cut || []).filter(x => x.t >= f).map(x => [x, x.t]), voice: v, from: TLVR.from };
+}
+function tlvrShift(d, delta){
+  const r2 = x => Math.round(x * 100) / 100;
+  for (const [k, t0] of d.grp) k.t = r2(t0 + delta);
+  const R = d.rest; if (!R) return;
+  for (const [x, t0] of R.paint) x[0] = r2(Math.max(0, t0 + delta));
+  for (const [x, t0] of R.hands) x.t = r2(Math.max(0, t0 + delta));
+  for (const [x, t0] of R.cut) x.t = r2(Math.max(0, t0 + delta));
+  if (R.voice != null) try { VOICE.offset = Math.max(0, R.voice + delta); } catch (e){}
+  TLVR.from = Math.max(0, R.from + delta); d.shifted = true;
+}
+/* ⇤ To 0: the picked keys, or with nothing picked the whole film, slide back so the first thing starts at 0 s */
+function tlvrToZero(){
+  const grp = tlvrGroup();
+  if (grp.length){
+    const d = { grp: grp.map(k => [k, k.t]), rest: tlvrRest() };
+    let lo = Math.min(...grp.map(k => k.t));
+    if (d.rest){ d.rest.paint.forEach(([, t]) => lo = Math.min(lo, t)); d.rest.hands.forEach(([, t]) => lo = Math.min(lo, t)); d.rest.cut.forEach(([, t]) => lo = Math.min(lo, t)); if (d.rest.voice != null) lo = Math.min(lo, d.rest.voice); }
+    if (lo < 0.01){ flashWarn("The picked keys already start at 0 s", 2000, "#c98bff"); return; }
+    tlSave(); tlvrShift(d, -lo); if (d.rest && d.rest.voice != null) try { voiceStore(); } catch (e){}
+    flashWarn("⇤ Moved " + grp.length + " key" + (grp.length > 1 ? "s" : "") + " back by " + lo.toFixed(1) + " s", 2500, "#c98bff");
+  } else {
+    let lo = Infinity;
+    for (const L in TL.keys) for (const k of TL.keys[L]) lo = Math.min(lo, k.t);
+    (TL.paint || []).forEach(x => lo = Math.min(lo, x[0])); (TL.hands || []).forEach(x => lo = Math.min(lo, x.t)); (TL.cut || []).forEach(x => lo = Math.min(lo, x.t));
+    try { if (VOICE.data) lo = Math.min(lo, VOICE.offset); } catch (e){}
+    if (!isFinite(lo) || lo < 0.01){ flashWarn(isFinite(lo) ? "The film already starts at 0 s" : "The timeline is empty", 2000, "#c98bff"); return; }
+    tlSave();
+    const all = []; for (const L in TL.keys) for (const k of TL.keys[L]) all.push(k);
+    TLVR.from = 0; const d = { grp: all.map(k => [k, k.t]), rest: tlvrRest() }; tlvrShift(d, -lo); TLVR.from = null;
+    try { if (VOICE.data) voiceStore(); } catch (e){}
+    TL.dur = Math.max(2, Math.round((TL.dur - lo) * 100) / 100);
+    flashWarn("⇤ The film now starts at 0 s (" + lo.toFixed(1) + " s cut from the start)", 2500, "#c98bff");
+  }
+  tlSort(); tlSeek(0); tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
 }
 function tlvrRelease(h){
   const d = TLVR.drag; if (!d || d.h !== h) return;
   TLVR.drag = null;
-  if (d.key && d.moved){ tlSort(); tlSave(); tlSync(); try { tlPathBuild(); } catch (e){} }
+  if (d.key && d.moved){ if (d.rest && d.rest.voice != null) try { voiceStore(); } catch (e){} tlSort(); tlSave(); tlSync(); try { tlPathBuild(); } catch (e){} }
   TLVR.dirty = true;
 }
 function tlvrFrame(){
@@ -11354,8 +11431,9 @@ function tlvrFrame(){
       if (d.scrub){ const t = tlvrT(x.x); if (Math.abs(t - TL.t) > 0.04){ tlSeek(t); TLVR.dirty = true; } }
       /* a key moves only once the hand has really moved it (a steady 14 px of the panel), and then snaps */
       else if (d.key && (d.moved || Math.abs(x.x - d.x0) > 14)){
-        const t = tlSnapT(d.key, tlvrT(x.x), null, 26 * TL.dur / (TLVR_X1 - TLVR_X0));
-        if (t !== d.key.t){ d.key.t = t; d.moved = true; TLVR.dirty = true; } }
+        const want = tlSnapT(d.key, tlvrT(x.x), d.moving, 26 * TL.dur / (TLVR_X1 - TLVR_X0));
+        const delta = Math.round(Math.max(d.lo, Math.min(d.hi, want - d.t0)) * 100) / 100;
+        if (Math.abs(d.t0 + delta - d.key.t) > 1e-6 || !d.moved){ tlvrShift(d, delta); d.moved = true; TLVR.dirty = true; } }
     } }
   /* while playing the playhead moves: ten redraws a second is smooth enough and cheap enough for a Quest */
   if (TLVR.dirty || (TL.playing && performance.now() - TLVR.lastDraw > 100)) tlvrDraw();
@@ -23306,7 +23384,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
