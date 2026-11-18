@@ -386,7 +386,7 @@
       <option value="cells">V1 column: outline + its 1,899 cells</option>
     </select>
     <button id="rboxBtn" class="on" style="display:none" title="The region box(es) that limited Filter and show, in the same colours as its 3D view">Region box</button>
-    <button id="mouseBtn" title="The whole mouse around the volume: its body, skull and brain, with the volume where it was taken (right visual cortex, V1 / LM border, ~1.2 mm in front of lambda, 3.3 mm lateral). Zoom out to see it; zooming in peels the fur, the skull and the brain away">Mouse</button>
+    <button id="mouseBtn" title="The whole mouse around the volume: its body, skull and brain, with the volume where it was taken (right visual cortex, V1 / LM border, ~1.2 mm in front of lambda, 3.3 mm lateral). Zoom out to see it; zooming in peels the fur, the skull and the brain away. 3D models: mouse by YahooJAPAN (Thingiverse thing:182233); skull and brain by smcinturff (Thingiverse thing:3079327); Creative Commons">Mouse</button>
     <button id="mouseFly" title="Fly out to the whole mouse, or back in to the cells">Fly out</button>
     <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
   </div>
@@ -5398,6 +5398,7 @@ document.getElementById("v1Sel").addEventListener("change", e => setV1Col(e.targ
    THE PEEL follows how big the volume is in the room: fur, then skull, then brain fade as you zoom in, and an orange
    box marks the volume while it is too small to see. "Fly" animates the same zoom, like Søren's film. */
 const MOUSE = { on: false, group: null, loading: null, parts: {}, box: null, label: null, fly: null, manual: null };
+const MOUSE_CREDIT = ["3D models: mouse by YahooJAPAN (Thingiverse 182233)", "skull and brain by smcinturff (Thingiverse 3079327) · CC"];
 const MOUSE_COL = { mouse: "#b9a48c", skull: "#efe7d4", brain: "#ecd2c0" };
 async function mouseLoad(){
   if (MOUSE.group) return MOUSE.group;
@@ -5419,6 +5420,14 @@ async function mouseLoad(){
     const bx = new THREE.Mesh(new THREE.BoxGeometry(G.x1 - G.x0, 650, G.z1 - G.z0),
       new THREE.MeshBasicMaterial({ color: "#f08a24", transparent: true, opacity: 0.9, depthTest: true }));
     bx.position.set((G.x0 + G.x1) / 2, 340 + 325, (G.z0 + G.z1) / 2); bx.renderOrder = 3; grp.add(bx); MOUSE.box = bx;
+    /* WHO MADE THEM (2026-11-18, Søren: "we need to have a reference to those that have made the structures"):
+       a credit under the animal, readable whenever the fur is, and in the info line and on the Mouse button */
+    const mb = MOUSE.parts.mouse.geometry.boundingBox, sz = mb.getSize(new THREE.Vector3());
+    const cr = textSprite([MOUSE_CREDIT[0], MOUSE_CREDIT[1]], { fit: true, border: "#b9a48c" });
+    const ch = sz.z * 0.07; cr.scale.set(ch * cr.userData.aspect, ch, 1);
+    cr.position.set((mb.min.x + mb.max.x) / 2, mb.max.y + ch * 1.5, (mb.min.z + mb.max.z) / 2);   /* y is down: under the feet */
+    cr.material.depthTest = false; cr.renderOrder = 12;
+    grp.add(cr); MOUSE.label = cr;
     MOUSE.group = grp; return grp;
   })().catch(e => { MOUSE.loading = null; throw e; });
   return MOUSE.loading;
@@ -5430,7 +5439,7 @@ async function setMouse(v){
   try { await mouseLoad(); } catch (e){ ctxNote.textContent = "The mouse could not be loaded: " + (e.message || e); MOUSE.on = false; return; }
   if (!MOUSE.on) return;
   content.add(MOUSE.group); mousePeel();
-  ctxNote.textContent = "Mouse: the volume sits on the right visual cortex, at the V1/LM border ~1.2 mm in front of lambda and 3.3 mm from the midline. Zoom out to see the whole animal; zooming in peels the fur, skull and brain away.";
+  ctxNote.textContent = "Mouse: the volume sits on the right visual cortex, at the V1/LM border ~1.2 mm in front of lambda and 3.3 mm from the midline. Zoom out to see the whole animal; zooming in peels the fur, skull and brain away. " + MOUSE_CREDIT.join(", ") + ".";
 }
 /* metres the volume spans in the room: the one number the peel follows */
 function mouseVolM(){ return 1600 * stage.scale.x; }
@@ -5443,6 +5452,7 @@ function mousePeel(){
   for (const k in MOUSE.parts){ const m = MOUSE.parts[k], o = Math.max(0, Math.min(1, op[k]));
     m.visible = o > 0.01; m.material.opacity = o; m.material.depthWrite = o > 0.97; }
   const bo = 1 - smooth01(0.1, 0.3, d); MOUSE.box.visible = bo > 0.01; MOUSE.box.material.opacity = 0.9 * bo;
+  if (MOUSE.label){ const lo = MOUSE.parts.mouse.material.opacity; MOUSE.label.visible = lo > 0.05; MOUSE.label.material.opacity = lo; MOUSE.label.material.transparent = true; }
 }
 /* "Fly out" / "Fly back in": the zoom of Søren's film, 6 s on a log scale, aimed at the whole mouse or the cells */
 function mouseFly(){
@@ -5456,12 +5466,22 @@ function mouseFly(){
     /* the target: the mouse filling ~0.7 m, centred where the collection was; or the collection as it first appeared */
     const mb = MOUSE.parts.mouse.geometry.boundingBox, size = mb.getSize(new THREE.Vector3()), ctr = mb.getCenter(new THREE.Vector3());
     const s1 = out ? 0.7 / Math.max(size.x, size.y, size.z) : FIT_SCALE;
-    const focus0 = out ? (CELL_BOX ? CELL_BOX.getCenter(new THREE.Vector3()) : new THREE.Vector3(950, 600, 715)) : ctr;
-    const focus1 = out ? ctr : (CELL_BOX ? CELL_BOX.getCenter(new THREE.Vector3()) : new THREE.Vector3(950, 600, 715));
+    /* straight in and out along the volume (2026-11-18, Søren: "moves towards the brainstem before flying in/out ... I would
+       rather that it flies directly to or from it"): the zoom is about the cells all the way, so the volume stays at the
+       centre of the room and the animal grows or shrinks around it */
+    const vc = mouseShownCentre();
+    const focus0 = vc, focus1 = vc;
     MOUSE.fly = { t: 0, dur: 6, s0, s1, f0: focus0, f1: focus1, anchor: HOME.clone() };
     USER_MOVED = true; MENU.dirty = true;
   };
   go();
+}
+/* the middle of the cells you can see (Søren: "to or from the shown cells"), else of all loaded, else of the volume */
+function mouseShownCentre(){
+  const box = new THREE.Box3();
+  for (const c of CELLS){ const m = c.mesh || c.nucMesh; if (!m || !m.visible) continue; const b = cellBoxOf(c); if (b) box.union(b); }
+  if (box.isEmpty() && CELL_BOX) box.copy(CELL_BOX);
+  return box.isEmpty() ? new THREE.Vector3(950, 600, 715) : box.getCenter(new THREE.Vector3());
 }
 const _mf = new THREE.Vector3();
 function mouseFrame(dt){
@@ -11785,7 +11805,7 @@ function menuRowsRaw(t){
     if (RBOX.list.length) rows.push({ label: "Region box" + (RBOX.list.length > 1 ? "es (" + RBOX.list.length + ")" : "") + " from Filter and show", on: RBOX.on, act: () => setRegionBoxes(!RBOX.on) });
     if (DS_HAS.v1) rows.push({ label: "Visual areas (V1 · RL · AL · LM)", on: AREAS.on, act: () => setAreas(!AREAS.on) });
     if (DS_HAS.mouse){
-      rows.push({ label: "Mouse — the whole animal, skull and brain around the volume (zoom out; zooming in peels them away)", on: MOUSE.on, act: () => setMouse(!MOUSE.on) });
+      rows.push({ label: "Mouse — the whole animal, skull and brain around the volume (zoom out; zooming in peels them away). Models: YahooJAPAN; smcinturff (Thingiverse, CC)", on: MOUSE.on, act: () => setMouse(!MOUSE.on) });
       rows.push({ label: MOUSE.fly ? "Flying…" : mouseOut() ? "Fly back in to the cells" : "Fly out to the whole mouse", icon: "brain", act: () => mouseFly() });
     }
     S("Meninges");

@@ -15,14 +15,14 @@
  },
  "um_per_model_unit": 778.0,
  "target_on_brain_model": [
-  2.987,
+  2.986,
   16.785,
   19.4
  ],
  "inward_normal_model": [
-  0.82,
-  -0.43,
-  -0.3777
+  0.8195,
+  -0.4323,
+  -0.3763
  ],
  "glia_limitans_at_volume_centre_um": [
   950.0,
@@ -31,11 +31,11 @@
  ],
  "glia_limitans_plane": "y = -0.0501 x - 0.0610 z + 426.9 (um), fitted to data/meninges/minnie65.json",
  "mouse_body_fit": {
-  "skull_scale_in_head_units": 0.85,
-  "pitch_deg_snout_up": 22.0,
+  "skull_scale_in_head_units": 0.8,
+  "pitch_deg_snout_up": 20.0,
   "nose_y": -34.0,
-  "top_offset": -1.5,
-  "rule": "upper skull inside the fur (99.5%), lower jaw and incisors allowed out, cranium as close under the fur as fits"
+  "top_offset": -3.5,
+  "rule": "all of the upper skull at least 0.75 model units under the fur (0.1th percentile maximised); lower jaw and incisors may stick out"
  },
  "radial_axis_um": [
   0.0499,
@@ -44,19 +44,19 @@
  ],
  "R_model_to_um": [
   [
-   0.43102,
-   0.88023,
-   -0.19854
+   0.43327,
+   0.87903,
+   -0.19895
   ],
   [
-   0.82348,
-   -0.47367,
-   -0.31229
+   0.82276,
+   -0.47588,
+   -0.31081
   ],
   [
-   -0.36893,
-   -0.02889,
-   -0.92901
+   -0.36789,
+   -0.02903,
+   -0.92942
   ]
  ],
  "meshes": {
@@ -66,14 +66,14 @@
    "bytes": 1079996,
    "bounds_um": [
     [
-     -4178.0,
+     -4168.0,
      -91.0,
-     -4018.0
+     -4015.0
     ],
     [
-     3033.0,
-     6046.0,
-     8323.0
+     3039.0,
+     6051.0,
+     8326.0
     ]
    ]
   },
@@ -83,14 +83,14 @@
    "bytes": 1079816,
    "bounds_um": [
     [
-     -4696.0,
+     -4687.0,
      -433.0,
-     -3706.0
+     -3703.0
     ],
     [
-     5336.0,
-     10607.0,
-     14274.0
+     5344.0,
+     10596.0,
+     14282.0
     ]
    ]
   },
@@ -100,14 +100,14 @@
    "bytes": 540032,
    "bounds_um": [
     [
-     -10441.0,
-     -6875.0,
-     -48052.0
+     -12277.0,
+     -9659.0,
+     -51927.0
     ],
     [
-     15183.0,
-     27664.0,
-     15360.0
+     15005.0,
+     26666.0,
+     15831.0
     ]
    ]
   }

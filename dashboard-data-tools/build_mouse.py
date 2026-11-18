@@ -40,8 +40,10 @@ S_UM = (S_UM + 806.0) / 2                                 # ... averaged with th
 def toN(v): return C_N + S_UM * (v - P0) @ R.T
 # ---- the mouse body into the skull frame, fitted (fit2.py): the skull from the nose to behind the ears, its
 #      upper part (all but the lower jaw and incisors) inside the fur, its top as close under the fur as fits:
-#      skull 0.85x the head's units, tipped 22 deg snout-up, cranium ~1 mm under the fur ----
-K, PITCH, NY, TOP = 0.85, 22.0, -34.0, -1.5
+#      skull 0.80x the head's units, tipped 20 deg snout-up, nose ~1 unit behind the fur's (moved 1 unit forward on request, every upper-skull point still >= 0.25 under the fur); refitted 2026-11-18 (Søren: "the skull is protruding a tiny bit
+#      on the top of the mouse head. I would rather have that the teeth are protruding"): every point of the upper skull
+#      at least 0.75 units under the fur (fit_mouse_skull.py), only the lower jaw and incisors may come out ----
+K, PITCH, NY, TOP = 0.80, 20.0, -34.0, -3.5
 def mouse_to_S(v):   # mouse: x = left, y = posterior, z = up  ->  S: x = ventral, y = right, z = posterior
     a = np.radians(PITCH); y0, z0 = -25.0, 18.0; y, z = v[:, 1], v[:, 2]
     yr = y0 + (y - y0) * np.cos(a) + (z - z0) * np.sin(a); zr = z0 - (y - y0) * np.sin(a) + (z - z0) * np.cos(a)
@@ -97,7 +99,7 @@ place = {
   "um_per_model_unit": round(S_UM, 1),
   "target_on_brain_model": P0.round(3).tolist(), "inward_normal_model": n_in_S.round(4).tolist(),
   "glia_limitans_at_volume_centre_um": C_N.tolist(), "glia_limitans_plane": "y = -0.0501 x - 0.0610 z + 426.9 (um), fitted to data/meninges/minnie65.json",
-  "mouse_body_fit": {"skull_scale_in_head_units": K, "pitch_deg_snout_up": PITCH, "nose_y": NY, "top_offset": TOP, "rule": "upper skull inside the fur (99.5%), lower jaw and incisors allowed out, cranium as close under the fur as fits"}, "radial_axis_um": n_in_N.round(4).tolist(),
+  "mouse_body_fit": {"skull_scale_in_head_units": K, "pitch_deg_snout_up": PITCH, "nose_y": NY, "top_offset": TOP, "rule": "all of the upper skull at least 0.75 model units under the fur (0.1th percentile maximised); lower jaw and incisors may stick out"}, "radial_axis_um": n_in_N.round(4).tolist(),
   "R_model_to_um": R.round(5).tolist(), "meshes": meta }
 json.dump(place, open(f"{OUT}/placement.json", "w"), indent=1)
 print(json.dumps(meta, indent=1)); print("target", P0.round(2), "normal", n_in_S.round(3), "S_UM", round(S_UM, 1))
