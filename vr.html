@@ -5539,7 +5539,8 @@ function winGeom(){
 function winUniforms(){
   if (WIN.uni) return WIN.uni;
   const { c, n } = winGeom();
-  WIN.uni = { uWinOn: { value: 0 }, uWinC: { value: c }, uWinN: { value: n } };
+  const { e1, e2 } = winAxes();
+  WIN.uni = { uWinOn: { value: 0 }, uWinC: { value: c }, uWinN: { value: n }, uWinRim: { value: new Array(64).fill(3300) }, uWinE1: { value: e1 }, uWinE2: { value: e2 } };
   return WIN.uni;
 }
 /* a round hole through a mesh: fragments within r of the window's axis, on the near side of the brain, are dropped */
@@ -5547,20 +5548,55 @@ function winHole(mat, r, top){
   top = top || 6000;            /* how far out of the brain the hole goes (µm): the fur's stops at the skin, not the ear above it;
                                    and it goes no deeper than the top of the brain -- not through the base of the skull or the belly
                                    (2026-11-18, Søren: "Obviously, the cranial window does not go through the base of the skull") */
-  const U = winUniforms();
+  const U = winUniforms(), rim = top === "rim";
+  /* THE FUR IS CUT ONLY UP TO THE CEMENT (2026-11-18, Søren: "We are still cutting off a lot of the ear. Can you start
+     the cut around the top of the dental cement?"): for the fur the hole's top is the cement's rim at that angle round
+     the window (uWinRim, 64 angles, filled by winBuild), so the ear standing above it is left whole */
+  /* (over the clear glass itself, r < 1.7 mm, the cut still goes 3.3 mm up, so no fold of skin from the ear's base hangs
+     over the window) */
+  if (rim) top = 0;
   mat.onBeforeCompile = sh => {
     sh.uniforms.uWinOn = U.uWinOn; sh.uniforms.uWinC = U.uWinC; sh.uniforms.uWinN = U.uWinN; sh.uniforms.uWinR = { value: r }; sh.uniforms.uWinTop = { value: top };
+    sh.uniforms.uWinRim = U.uWinRim; sh.uniforms.uWinE1 = U.uWinE1; sh.uniforms.uWinE2 = U.uWinE2;
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvWinP = position;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP; uniform float uWinOn; uniform vec3 uWinC; uniform vec3 uWinN; uniform float uWinR; uniform float uWinTop;")
-      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); if (a < 300.0 && a > -uWinTop && length(d - a * uWinN) < uWinR) discard; }");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWinP; uniform float uWinOn; uniform vec3 uWinC; uniform vec3 uWinN; uniform float uWinR; uniform float uWinTop; uniform float uWinRim[64]; uniform vec3 uWinE1; uniform vec3 uWinE2;")
+      .replace("void main() {", "void main() {\n  if (uWinOn > 0.5){ vec3 d = vWinP - uWinC; float a = dot(d, uWinN); float tp = uWinTop;"
+        + (rim ? " float th = atan(dot(d, uWinE2), dot(d, uWinE1)); float fa = mod(th / 6.2831853 * 64.0 + 64.0, 64.0); int ia = int(floor(fa)); int ib = ia + 1; if (ib > 63) ib = 0; tp = mix(uWinRim[ia], uWinRim[ib], fract(fa)); if (length(d - a * uWinN) < 1700.0) tp = max(tp, 3300.0);" : "")
+        + " if (a < 300.0 && a > -tp && length(d - a * uWinN) < uWinR) discard; }");
   };
-  mat.customProgramCacheKey = () => "winhole" + r + "_" + top; mat.needsUpdate = true;
+  mat.customProgramCacheKey = () => "winhole" + r + "_" + (rim ? "rim" : top); mat.needsUpdate = true;
 }
 /* the glass (4 mm, the size of the craniotomy, lying on the brain) and the cement over its rim: the cement runs from just
    over the glass edge up onto the skull, so only the middle 3 mm is clear and there is no gap between glass and cement
    (2026-11-18, Søren: "there is also a gap between the glass and the dental cement, which is not realistic. usually the
    glass rim is covered by cement so the field of view is smaller"). The fur is opened only as far as the cement. */
 const WIN_OPEN = 1500, WIN_CEM = 3050;
+function winAxes(){ const { n } = winGeom(), e1 = new THREE.Vector3(1, 0, 0).projectOnPlane(n).normalize(); return { e1, e2: new THREE.Vector3().crossVectors(n, e1) }; }
+/* the skin's height above the glia limitans at radius r and angle th round the window's axis: the skin nearest the
+   brain along the ray (not an ear standing above it), and never more than 3.5 mm up */
+const _wsRay = new THREE.Raycaster();
+function winSkinH(r, th){
+  const { c, n } = winGeom(), { e1, e2 } = winAxes();
+  const d = e1.clone().multiplyScalar(Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r);
+  /* the window lives in the mouse group's frame; the ray is cast in the world's (the stage is scaled and moved) */
+  const G = MOUSE.group; G.updateMatrixWorld(true);
+  const o = G.localToWorld(c.clone().add(d).addScaledVector(n, -12000)), o2 = G.localToWorld(c.clone().add(d).addScaledVector(n, 8000));
+  _wsRay.set(o, o2.clone().sub(o).normalize()); _wsRay.far = o.distanceTo(o2);
+  const hs = _wsRay.intersectObject(MOUSE.parts.mouse, true).map(x => -G.worldToLocal(x.point.clone()).sub(c).dot(n)).filter(h => h > 300 && h < 3500);
+  return hs.length ? Math.min(...hs) : NaN;
+}
+/* skin heights round the window at a few radii, NA angles each; a ray that finds no skin (under the ear) takes the
+   heights of the nearest angles that did */
+function winSkinTable(radii, NA){
+  return radii.map(r => {
+    const h = []; for (let a = 0; a < NA; a++) h.push(winSkinH(r, a / NA * Math.PI * 2));
+    const ok = h.map((v, i) => isFinite(v) ? i : -1).filter(i => i >= 0);
+    if (!ok.length) return h.map(() => 900);
+    return h.map((v, i) => { if (isFinite(v)) return v;
+      let lo = i, hi = i; while (!isFinite(h[(lo + NA) % NA])) lo--; while (!isFinite(h[hi % NA])) hi++;
+      const u = (i - lo) / (hi - lo); return h[(lo + NA) % NA] * (1 - u) + h[hi % NA] * u; });
+  });
+}
 function winBuild(){
   const grp = new THREE.Group(), { c, n } = winGeom(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().negate());
   const at = h => c.clone().addScaledVector(n, -h);      /* h µm out of the brain along the window's axis */
@@ -5571,17 +5607,16 @@ function winBuild(){
      one side of the cranial window, where the skin is missing"): the head slopes, so the skin is higher above the
      window on one side; the cement's outer edge is raised to where a ray along the window's axis meets the fur, angle
      by angle, and its surface runs down from there to the glass rim */
-  const fur = MOUSE.parts.mouse, ray = new THREE.Raycaster(), NA = 128, NR = 7, R1 = WIN_CEM - 650 + 40;
-  const e1 = new THREE.Vector3(1, 0, 0).projectOnPlane(n).normalize(), e2 = new THREE.Vector3().crossVectors(n, e1);
-  const furH = th => {
-    const d = e1.clone().multiplyScalar(Math.cos(th) * R1).addScaledVector(e2, Math.sin(th) * R1);
-    ray.set(c.clone().add(d).addScaledVector(n, -12000), n); ray.far = 20000;
-    /* the skin nearest the brain along the ray (not an ear standing above it), and never more than 3 mm up */
-    const hs = ray.intersectObject(fur, true).map(x => -x.point.clone().sub(c).dot(n)).filter(h => h > 500 && h < 3500);
-    return hs.length ? Math.min(...hs) : 900;              /* height above the glia limitans */
-  };
+  /* the skin was measured in the window's own frame only from 2026-11-18 on: before that the rays were cast in the
+     wrong frame, missed, and the cement stood a flat 0.9 mm high whatever the skin did */
+  const NA = 64, NR = 7, R1 = WIN_CEM - 650 + 40, { e1, e2 } = winAxes();
+  const PR = [1650, 1900, 2300, 2650, 2900, WIN_CEM], SK = winSkinTable(PR.concat([R1]), NA), skR1 = SK[PR.length];
   const P = [], I = [], rim = [];
-  for (let a = 0; a < NA; a++) rim.push(Math.max(700, furH(a / NA * Math.PI * 2) + 60));
+  /* ...but never up the ear: where the skin climbs into the ear's base (3-3.6 mm on the lateral side) the cement stops at
+     the height of the rest of the head, and the ear stands over it uncut */
+  for (let a = 0; a < NA; a++) rim.push(Math.max(700, Math.min(2650, skR1[a] + 60)));
+  /* the fur's hole stops a little over the cement's rim, angle by angle */
+  winUniforms().uWinRim.value = rim.map(h => h + 120);
   /* top surface: rings from the glass rim (r WIN_OPEN, h 260) to the skin (r R1, h rim) */
   for (let k = 0; k <= NR; k++){ const u = k / NR, r = WIN_OPEN + (R1 - WIN_OPEN) * u;
     for (let a = 0; a < NA; a++){ const th = a / NA * Math.PI * 2, h = 260 + (rim[a] - 260) * Math.pow(u, 0.7);
@@ -5596,10 +5631,21 @@ function winBuild(){
      skull round the glass (a turned ring, ~0.9 mm high) stays */
   const cem = new THREE.Mesh(cg, new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide, transparent: true }));
   grp.add(cem); WIN.collar = cem;
-  const prof = [[WIN_OPEN, 170], [WIN_OPEN - 20, 260], [WIN_OPEN + 150, 520], [1900, 780], [2300, 900], [2650, 880], [2900, 760], [WIN_CEM, 600], [WIN_CEM, 300], [2100, 170], [WIN_OPEN, 170]]
-    .map(([r, h]) => new THREE.Vector2(r, h));
-  const base = new THREE.Mesh(new THREE.LatheGeometry(prof, 128), new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide }));
-  base.position.copy(c); base.quaternion.copy(q); grp.add(base);
+  /* THINNER, AND UNDER THE SKIN (2026-11-18, Søren: "the dental cement is penetrating the skin at one side, perhaps it
+     could be a bit less thick?"): the ring is ~0.7 mm high instead of 0.9, and angle by angle its top is kept 0.1 mm
+     under the skin, so where the head slopes away it thins rather than pokes out */
+  const prof = [[WIN_OPEN, 170], [WIN_OPEN - 20, 260], [1650, 450], [1900, 620], [2300, 700], [2650, 660], [2900, 560], [WIN_CEM, 430], [WIN_CEM, 300], [2100, 170], [WIN_OPEN, 170]];
+  const NP = prof.length, BP = [], BI = [];
+  for (let a = 0; a < NA; a++){ const th = a / NA * Math.PI * 2;
+    prof.forEach(([r, h], j) => {
+      const pi = PR.indexOf(r);
+      if (j >= 2 && j <= 7 && pi >= 0) h = Math.max(j === 7 ? 340 : 240, Math.min(h, SK[pi][a] - 100));
+      if (j === 8) h = Math.min(h, Math.max(200, SK[PR.length - 1][a] - 180));
+      const p = c.clone().addScaledVector(e1, Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r).addScaledVector(n, -h); BP.push(p.x, p.y, p.z); }); }
+  for (let a = 0; a < NA; a++){ const b = (a + 1) % NA; for (let j = 0; j < NP - 1; j++){ const p0 = a * NP + j, p1 = a * NP + j + 1, q0 = b * NP + j, q1 = b * NP + j + 1; BI.push(p0, p1, q0, q0, p1, q1); } }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute("position", new THREE.Float32BufferAttribute(BP, 3)); bg.setIndex(BI); bg.computeVertexNormals();
+  const base = new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ color: "#e6cfcb", roughness: 0.85, side: THREE.DoubleSide }));
+  grp.add(base);
   return grp;
 }
 async function setWindow(v){
@@ -5608,7 +5654,7 @@ async function setWindow(v){
   if (WIN.on){
     if (!MOUSE.on) await setMouse(true);
     if (!MOUSE.group){ WIN.on = false; return; }
-    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 650, 3300);   /* the fur laps over the cement's outer edge, so no skull shows on the high side of the slope (Søren: "a gap on one side ... where the skin is missing") */ MOUSE.holed = true; }
+    if (!MOUSE.holed){ winHole(MOUSE.parts.skull.material, WIN_R); winHole(MOUSE.parts.mouse.material, WIN_CEM - 650, "rim");   /* the fur laps over the cement's outer edge, so no skull shows on the high side of the slope (Søren: "a gap on one side ... where the skin is missing") */ MOUSE.holed = true; }
     winUniforms().uWinOn.value = 1;
     if (!WIN.group){ WIN.group = winBuild(); }
     MOUSE.group.add(WIN.group);
@@ -11201,10 +11247,10 @@ function tlvrEdRect(){ return TLVR.sel && TL.multi.size < 2 && TLVR.sel.lane ===
    · All after: picks every key from the playhead on -- and the drawing, hands and cuts after it go along when moved.
    · ⇤ To 0: slides the picked keys so the first sits at 0 s; with nothing picked, slides the whole film so it starts at 0.
    · Delete removes every picked key; a deleted title slide closes its gap, as on the PC. */
-const TLVR_BTNS2 = [["zout", "🔍−"], ["zin", "🔍+"], ["pl", "◀"], ["pr", "▶"], ["fit", "Fit"], ["title", "+ 🎬 Title"], ["many", "☐ Several"], ["after", "All after"], ["to0", "⇤ To 0"]];
+const TLVR_BTNS2 = [["zout", "🔍−"], ["zin", "🔍+"], ["pl", "◀"], ["pr", "▶"], ["fit", "Fit"], ["title", "+ 🎬 Title"], ["many", "☐ Several"], ["after", "All after"], ["to0", "⇤ To 0"], ["trim", "✂ Trim end"]];
 function tlvrBtnRects(){
   let x = 24; const top = TLVR_BTNS.map(([id, label]) => { const w = id === "play" || id === "home" || id === "close" || id === "snap" ? 96 : 166; const r = { id, label, x, y: 22, w, h: 96 }; x += w + 14; return r; });
-  x = 24; const low = TLVR_BTNS2.map(([id, label]) => { const w = id === "title" ? 230 : id === "many" ? 200 : id === "after" || id === "to0" ? 170 : 104; const r = { id, label, x, y: 700, w, h: 84, low: true }; x += w + 12; return r; });
+  x = 24; const low = TLVR_BTNS2.map(([id, label]) => { const w = id === "title" ? 230 : id === "many" ? 200 : id === "after" || id === "to0" ? 170 : id === "trim" ? 196 : 104; const r = { id, label, x, y: 700, w, h: 84, low: true }; x += w + 12; return r; });
   return top.concat(low);
 }
 const tlvrX = t => TLVR_X0 + (TLVR_X1 - TLVR_X0) * ((t - tlVa()) / ((tlVb() - tlVa()) || 1));
@@ -11345,6 +11391,7 @@ function tlvrButton(id){
     tlSync();
   }
   else if (id === "to0") tlvrToZero();
+  else if (id === "trim") tlTrimEnd();
   else if (id === "undo"){ tlUndo(-1); tlvrPickNone(); }
   else if (id === "here") tlvrPlace();
   else if (id === "close") setTlvr(false);
@@ -11413,6 +11460,23 @@ function tlvrToZero(){
     flashWarn("⇤ The film now starts at 0 s (" + lo.toFixed(1) + " s cut from the start)", 2500, "#c98bff");
   }
   tlSort(); tlSeek(0); tlSave(); tlSync(); try { tlPathBuild(); } catch (e){}
+}
+/* ✂ TRIM END (2026-11-18, Søren: "How do I shorten the video, there is a lot of space at the end now."): the film ends
+   where its last thing ends -- the last key (a caption or effect at the end of its showing, a camera orbit at the end of
+   its turn), the last brush stroke, hand pose or cut, and the voice. On the PC the Length field still sets it by hand. */
+function tlContentEnd(){
+  let e = 0;
+  for (const l in TL.keys) for (const k of TL.keys[l]){ e = Math.max(e, k.t + ((l === "cap" || l === "fx") ? (k.dur || 0) : 0)); if (k.orb && k.orb.dur) e = Math.max(e, k.t + k.orb.dur); }
+  (TL.paint || []).forEach(x => { e = Math.max(e, x[0]); }); (TL.hands || []).forEach(x => { e = Math.max(e, x.t); }); (TL.cut || []).forEach(x => { e = Math.max(e, x.t); });
+  try { if (VOICE.data) e = Math.max(e, VOICE.offset + (VOICE.dur || 0)); } catch (err){}
+  return e;
+}
+function tlTrimEnd(){
+  const e = Math.max(2, Math.ceil(tlContentEnd() * 10) / 10);
+  if (e >= TL.dur - 0.05){ flashWarn("Nothing to trim: the film already ends with its last key", 2200, "#c98bff"); return; }
+  tlSave(); const was = TL.dur; TL.dur = e; TL.t = Math.min(TL.t, TL.dur); if (TL.vb != null) try { tlFit(); } catch (err){}
+  const f = document.getElementById("tlDur"); if (f) f.value = TL.dur;
+  tlSave(); tlSync(); flashWarn("✂ Film trimmed to " + e.toFixed(1) + " s (" + (was - e).toFixed(1) + " s of empty end cut)", 2500, "#c98bff");
 }
 function tlvrRelease(h){
   const d = TLVR.drag; if (!d || d.h !== h) return;
@@ -23384,7 +23448,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
