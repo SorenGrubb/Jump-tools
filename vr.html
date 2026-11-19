@@ -2981,7 +2981,8 @@ function niceUm(target){
   return (m >= 5 ? 5 : m >= 2 ? 2 : 1) * p;
 }
 function scaleBarFrame(){
-  if (!SBAR.on || !CELL_BOX){ if (SBAR.group) SBAR.group.visible = false; return; }
+  let scope = false; try { scope = TPM.on && (TPM.mode === "ls" || TPM.showRig); } catch (e){}
+  if (!SBAR.on || (!CELL_BOX && !scope)){ if (SBAR.group) SBAR.group.visible = false; return; }
   const mPerUm = stage.scale.x, um = niceUm(0.18 / mPerUm), len = um * mPerUm;
   if (!SBAR.group){
     SBAR.group = new THREE.Group();
@@ -3005,6 +3006,15 @@ function scaleBarFrame(){
   SBAR.group.position.set(stage.position.x, stage.position.y - r - 0.06, stage.position.z);
   const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
   cam.getWorldPosition(_cam);
+  /* with a microscope in view the bar goes in front of it, at the foot of its chamber or rig, on the side facing you
+     (2026-11-19, Søren: "I don't see the scale bar. Is it inside the stage?" -- it was: under the cells, which sat
+     inside the light sheet's chamber and stage) */
+  try { if (TPM.on && TPM.grp && (TPM.mode === "ls" ? TPM.lsMesh : TPM.showRig && TPM.rigMesh)){
+    let c, rr, yb;
+    if (TPM.mode === "ls"){ const u = TPM.lsMesh.userData; c = TPM.lsMesh.localToWorld(new THREE.Vector3(0, 0, u.zFoot || 0)); const ws = new THREE.Vector3(); TPM.lsMesh.getWorldScale(ws); rr = (u.chR || 5000) * ws.x; yb = c.y; }
+    else { const b = new THREE.Box3().setFromObject(TPM.rigMesh); if (MOUSE.parts && MOUSE.parts.mouse && MOUSE.group.visible) b.union(new THREE.Box3().setFromObject(MOUSE.parts.mouse)); c = b.getCenter(new THREE.Vector3()); rr = Math.hypot(b.max.x - b.min.x, b.max.z - b.min.z) / 2; yb = b.min.y; }
+    const d = new THREE.Vector3(_cam.x - c.x, 0, _cam.z - c.z); if (d.lengthSq() > 1e-12) d.normalize();
+    SBAR.group.position.set(c.x + d.x * (rr + 0.02), yb + 0.01, c.z + d.z * (rr + 0.02)); } } catch (e){}
   SBAR.group.lookAt(_cam.x, SBAR.group.position.y, _cam.z);
 }
 /* the bar is light on a dark background and dark on a light one (2026-10-22, Søren: hard to see on white) */
@@ -13426,7 +13436,8 @@ function lsBuild(){
      through a glass window on top of the cuvette. */
   const WDu = TPM.obj.wd * 1000, dry = TPM.obj.imm === "air";
   const Cx = Math.max(9000, Bk + 8000), Cy = Math.max(6300, By + 4000);
-  const zBot = Bz / 2 + 2000, zSurf = dry ? -Bz / 2 - 4000 : -Bz / 2 - WDu - 2000, zTopW = zSurf - (dry ? 0 : 1500), Cz = zBot - zTopW;
+  const zBot = Bz / 2 + 2000; grp.userData.chR = Math.max(Cx, Cy) / 2 + 3000; grp.userData.zFoot = zBot + 17000;
+  const zSurf = dry ? -Bz / 2 - 4000 : -Bz / 2 - WDu - 2000, zTopW = zSurf - (dry ? 0 : 1500), Cz = zBot - zTopW;
   const medCol = L.E > 1 ? "#9fd3ff" : L.clear === "none" ? "#b8d8ff" : L.clear === "idisco" ? "#ffe9b0" : "#d8ecff";
   const fill = new THREE.Mesh(new THREE.BoxGeometry(Cx - 200, Cy - 200, zBot - zSurf), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.05 }));
   fill.position.z = (zBot + zSurf) / 2; grp.add(fill);
@@ -13533,8 +13544,30 @@ function lsRigParts(grp, Bk, By, Bz, BX){
   lab("Emission filter wheel", 48000, 0, zF);
   box(60000, 60000, 70000, "#1b1f24", 0, 0, zC - 25000); lab("sCMOS camera (2048 × 2048)", 0, 0, zC - 70000);
   const emB = [], camB = [];
-  if (TPM.laserOn){ beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zF + 2500]], "#3dff6a", 150, emB);
-    beam([[0, 0, zF - 2500], [0, 0, zC + 10000]], "#3dff6a", 150, camB); }
+  /* THE FLUORESCENCE AS A BUNDLE, NOT A RAY (2026-11-19, Søren: "If it can acquire light from the whole sample at once,
+     shouldn't the emitted light be the size of the sample?"): every point of the lit plane in the camera's field sends
+     light up, so it leaves as a frustum from the field (clipped to the block) to the objective's front lens; the
+     objective makes it parallel (infinity space, ~the back aperture wide) through the tube lens; the tube lens brings
+     it together as an image as big as the chip (13.3 mm) on the camera. Pale: it is a volume of light. */
+  if (TPM.laserOn){
+    const zf = TPM.depth - BX.sz / 2, tip = zf - TPM.obj.wd * 1000, ox = TPM.cx - BX.cx, oy = TPM.cy - BX.cy, Fh = lsFov() / 2;
+    const x0 = Math.max(-Bk / 2, ox - Fh), x1 = Math.min(Bk / 2, ox + Fh), y0 = Math.max(-By / 2, oy - Fh), y1 = Math.min(By / 2, oy + Fh);
+    const rB = Math.min(9000, (TPM.objR || 12000) * 0.6), chip = 6650;
+    const frus = (a, za, b, zb, into) => {            // a, b: [x0, x1, y0, y1] rectangles at za and zb
+      const v = [a[0], a[2], za, a[1], a[2], za, a[1], a[3], za, a[0], a[3], za, b[0], b[2], zb, b[1], b[2], zb, b[1], b[3], zb, b[0], b[3], zb];
+      const gm = new THREE.BufferGeometry(); gm.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); gm.setIndex([0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7, 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+      const m = new THREE.Mesh(gm, new THREE.MeshBasicMaterial({ color: "#3dff6a", transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(m); into.push(m.material); };
+    const sq = (r, cx, cy) => [cx - r, cx + r, cy - r, cy + r];
+    /* the field → the WHOLE front lens (2026-11-19, Søren: "the emitted light should be captured by the whole objective
+       lens"): each point of the field fills the lens, so the bundle widens from the field's rectangle to the lens's circle */
+    { const N = 64, rL = TPM.obj.wd * 1000 * Math.tan(tpmTheta()) + 700 - 150, v = [], idx = [], cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hx = (x1 - x0) / 2, hy = (y1 - y0) / 2;
+      for (let i = 0; i < N; i++){ const a = i / N * 2 * Math.PI, c = Math.cos(a), sn = Math.sin(a), t = 1 / Math.max(Math.abs(c) / hx, Math.abs(sn) / hy);
+        v.push(cx + c * t, cy + sn * t, zf, ox + c * rL, oy + sn * rL, tip); const j = (i + 1) % N; idx.push(2 * i, 2 * j, 2 * j + 1, 2 * i, 2 * j + 1, 2 * i + 1); }
+      const gm = new THREE.BufferGeometry(); gm.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); gm.setIndex(idx);
+      const m = new THREE.Mesh(gm, new THREE.MeshBasicMaterial({ color: "#3dff6a", transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(m); emB.push(m.material); }
+    frus(sq(rB, 0, 0), zTop + 2000, sq(rB, 0, 0), zF + 2500, emB);              // parallel above the objective, through the tube lens
+    frus(sq(rB, 0, 0), zF - 2500, sq(chip, 0, 0), zC + 10000, camB);           // after the filter: the image forming on the chip
+  }
   grp.userData.parts = { wheel, lasB, emB, camB };
   /* the stage under the chamber */
   box(30000, 30000, 6000, "#3a3f47", 0, 0, (BX.sz / 2 + 2000) + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, (BX.sz / 2 + 2000) + 12000); lab("XYZ stage", 26000, 0, (BX.sz / 2 + 2000) + 12000);
@@ -13551,9 +13584,9 @@ function lsFrame3d(){
     const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2;
     u.sheet.material.color.set(lc); for (const m of u.parts.lasB){ m.color.set(lc); m.opacity = lit ? 0.85 : 0.12; }
     const emc = k.g >= k.r ? "#3dff6a" : "#ff6a8a";
-    for (const m of u.parts.emB){ m.color.set(emc); m.opacity = lit ? 0.85 : 0.05; }
+    for (const m of u.parts.emB){ m.color.set(emc); m.opacity = lit ? 0.18 : 0.02; }
     const pass = k.leak > 0.01 ? lc : Math.max(k.g, k.r) < 0.02 ? "#333" : F.c || F.lp ? F.col : emc;
-    for (const m of u.parts.camB){ m.color.set(pass); m.opacity = !lit ? 0.05 : Math.max(k.g, k.r, k.leak * 20) < 0.02 ? 0.2 : 0.85; } }
+    for (const m of u.parts.camB){ m.color.set(pass); m.opacity = !lit ? 0.02 : Math.max(k.g, k.r, k.leak * 20) < 0.02 ? 0.04 : 0.18; } }
   const fr = TPM.cur;
   if (fr && fr.cv && fr.ls){
     if (!u.tex || u.tex.image !== fr.cv){ if (u.tex) u.tex.dispose(); u.tex = new THREE.CanvasTexture(fr.cv); u.tex.colorSpace = THREE.SRGBColorSpace; u.pic.material.map = u.tex; u.pic.material.needsUpdate = true; }
