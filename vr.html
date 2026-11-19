@@ -13579,7 +13579,8 @@ function setTpm(on){
      showing the 2p") -- and turning the window off puts the microscope away */
   /* ...and flies out to show them (2026-11-19, Søren: "It still does not turn on the mouse when I press 2p microscope"
      -- it did, but seen from among the cells the mouse is peeled away, so it looked as if nothing happened) */
-  if (TPM.on && TPM.mode !== "ls") (async () => { try { await winShow(true); } catch (e){ console.warn("[vr] microscope: window", e); } })();
+  if (TPM.on && TPM.mode !== "ls" && TPM.fromTimeline) (async () => { try { if (!MOUSE.on) await setMouse(true); if (!WIN.on) await setWindow(true); } catch (e){} })();
+  else if (TPM.on && TPM.mode !== "ls") (async () => { try { await winShow(true); } catch (e){ console.warn("[vr] microscope: window", e); } })();
   if (TPM.on){
     TPM.cur = TPM.prev = null; TPM.built = ""; tpm3dBuild();
     if (renderer.xr.isPresenting) vrpShow(TPP, true); else { vrpRender(TPP); const ov = tpmOverlay(); ov.style.display = ""; TPM.ovLayout && TPM.ovLayout(); }
@@ -16861,7 +16862,33 @@ function tlCaptureView(){
               when it was made; a key made before this holds none of them and leaves them as they are. */
            em: EM.centre && (EM.mesh || EM.loading) ? { c: EM.centre.map(x => +x.toFixed(3)), size: EM.size } : null,
            cut: CUT.mode === "desk" || CUT.mode === "em" || CUT.mode === "off" ? CUT.mode : undefined,
-           meas: MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]) };
+           meas: MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]),
+           /* THE MICROSCOPE (2026-11-19, Søren: "When I record for actions on the timeline and I have included the microscope
+              and scanning, it does not include it"): open or not, which kind, where it focuses, scanning or not, and its
+              settings -- so a take with the microscope plays it back. A key made before this holds none (left as it is). */
+           tpm: typeof TPM !== "undefined" ? tpmSnap() : undefined };
+}
+function tpmSnap(){
+  if (!TPM.on) return null;
+  return { mode: TPM.mode, depth: Math.round(TPM.depth * 10) / 10, live: !!TPM.live, laser: !!TPM.laserOn, rig: !!TPM.rig, zoom: TPM.zoom, cx: TPM.cx, cy: TPM.cy, px: TPM.px, avg: TPM.avg,
+    power: Object.assign({}, TPM.power), lam: Object.assign({}, TPM.lam), expr: TPM.expr, sample: TPM.sample, light: TPM.light,
+    pmt: TPM.pmt.map(p => ({ on: p.on, gain: p.gain, off: p.off, lo: p.lo, hi: p.hi })), obj: Object.assign({}, TPM.obj),
+    ls: TPM.mode === "ls" ? { w0: TPM.ls.w0, xw: TPM.ls.xw, dual: TPM.ls.dual, aslm: TPM.ls.aslm, clear: TPM.ls.clear, E: TPM.ls.E, exp: TPM.ls.exp, ch: TPM.ls.ch.map(c => Object.assign({}, c)) } : undefined };
+}
+function tpmApplySnap(t){
+  if (t === undefined) return;
+  if (!t){ if (TPM.on) setTpm(false); return; }
+  TPM.fromTimeline = true;
+  try {
+    if (!TPM.on) setTpm(true);
+    if (TPM.mode !== t.mode) tpmSetMode(t.mode);
+    Object.assign(TPM, { depth: t.depth, laserOn: t.laser, rig: t.rig || TPM.rig, zoom: t.zoom, cx: t.cx, cy: t.cy, px: t.px, avg: t.avg, expr: t.expr, sample: t.sample, light: t.light });
+    Object.assign(TPM.power, t.power); Object.assign(TPM.lam, t.lam); if (t.obj) TPM.obj = Object.assign({}, t.obj);
+    (t.pmt || []).forEach((q, i) => { if (TPM.pmt[i]) Object.assign(TPM.pmt[i], q); });
+    if (t.ls){ const L = TPM.ls; Object.assign(L, { w0: t.ls.w0, xw: t.ls.xw, dual: t.ls.dual, aslm: t.ls.aslm, clear: t.ls.clear, E: t.ls.E, exp: t.ls.exp }); if (t.ls.ch) L.ch = t.ls.ch.map(c => Object.assign({}, c)); }
+    if (t.live && !TPM.live){ TPM.live = true; TPM.cur = null; } else if (!t.live) TPM.live = false;
+    TPM.built = ""; TPM.dirty = true;
+  } finally { TPM.fromTimeline = false; }
 }
 /* …and applied, changing only what differs (each layer rebuild is not free). */
 function tlApplyView(v){
@@ -16873,6 +16900,7 @@ function tlApplyView(v){
       else if (EM.mesh || EM.loading) hideEM();
     }
     if (v.cut !== undefined && v.cut !== CUT.mode && CUT.mode !== "hand" && !(TL.cut && TL.playing)) setCut(v.cut);
+    if (v.tpm !== undefined){ const now = JSON.stringify(tpmSnap()); if (now !== JSON.stringify(v.tpm)) tpmApplySnap(v.tpm); }
     if (Array.isArray(v.meas)){
       const now = JSON.stringify(MEAS.items.map(g => [g.userData.a.toArray().map(x => +x.toFixed(3)), g.userData.b.toArray().map(x => +x.toFixed(3))]));
       if (now !== JSON.stringify(v.meas)){ clearMeasure(); v.meas.forEach(([a, b]) => { addMeasurePoint(new THREE.Vector3().fromArray(a)); addMeasurePoint(new THREE.Vector3().fromArray(b)); }); }
