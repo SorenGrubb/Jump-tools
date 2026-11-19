@@ -11601,7 +11601,7 @@ function tlvrFrame(){
      (the PSF stays small and bright at depth), not the scattering. */
 const TPM_MODES = {
   "1p": { label: "1P", name: "One-photon, 488 nm (blue)", lam: 0.488, lamEm: 0.515, nph: 1, ls: 150, pMax: 20,  pRef: 0.4,  heat: 0.004, pth: Infinity, beta: 0, col: "#3b8cff", laser: "Blue LED, 470/40 nm" },
-  "2p": { label: "2P", name: "Two-photon, 920 nm (infrared)", lam: 0.92, lamEm: 0.515, nph: 2, ls: 200, pMax: 400, pRef: 15, heat: 0.018, pth: 95, beta: 1e-3, col: "#d02a2a", laser: "Ti:sapphire, 920 nm, 80 MHz, ~100 fs" },
+  "2p": { label: "2P", name: "Two-photon, 920 nm (infrared)", lam: 0.92, lamEm: 0.515, nph: 2, ls: 200, pMax: 400, pRef: 15, heat: 0.018, pth: 95, beta: 1e-3, col: "#c2185b", laser: "Ti:sapphire, 920 nm, 80 MHz, ~100 fs" },
   "ls": { label: "LS", name: "Light sheet", lam: 0.488, lamEm: 0.515, nph: 1, ls: 2500, pMax: 100, pRef: 10, heat: 0, pth: Infinity, beta: 0, col: "#38c8ff", laser: "laser lines" },
   "3p": { label: "3P", name: "Three-photon, 1300 nm (infrared)", lam: 1.3, lamEm: 0.515, nph: 3, ls: 300, pMax: 150, pRef: 2.2, heat: 0.035, pth: 7, beta: 3e-6, col: "#9b2a6a", laser: "OPA, 1300 nm, 1 MHz, ~50 fs" }
 };
@@ -12233,6 +12233,47 @@ function tpmObjective(){
    dichroic, tube lens, scan lens, scan mirrors, then sideways the beam expander, Pockels cell and laser; from the
    dichroic the other way the collection lens, IR-block filter, 565 nm dichroic and the two PMTs. The red beam is the
    laser, the green and red the fluorescence. Generic boxes, no make. "View the rig" flies out to see it whole. */
+/* THE BEAM'S SHAPE THROUGH THE OPTICS (2026-11-19, Søren: "it would be cool if we showed the shape of the beam and the
+   effects of the different lenses and mirrors on the shape"). Paraxial ray optics, separately in the two directions
+   across the beam (a, b), so a cylindrical lens can act on one only: the edge ray (height h, slope u) moves h += u·d
+   between elements and bends u −= h/f at a lens of focal length f; mirrors fold the path and leave the shape alone.
+   Drawn as a tube of elliptical rings along the path, never thinner than a diffraction-limited waist (wmin).
+     path:   points (the beam turns at each: mirrors), in the group's frame
+     lenses: [{ s: distance along the path, f, ax: "a" | "b" | undefined (both) }]
+     h0:     [ha, hb] at the start; u0: [ua, ub] (0 = collimated)
+     ref:    a direction across the beam for the b axis (the a axis is beam × b)
+   Returns { mesh, at(s) → [ha, hb] }. */
+function beamEnvelope(path, lenses, h0, u0, col, opt){
+  opt = opt || {}; const P = path.map(q => new THREE.Vector3(...q)), segL = [], S = [0];
+  for (let i = 1; i < P.length; i++){ segL.push(P[i].distanceTo(P[i - 1])); S.push(S[i - 1] + segL[i - 1]); }
+  const total = Math.min(S[S.length - 1], opt.sEnd != null ? opt.sEnd : Infinity), wmin = opt.wmin || 60;
+  const L = lenses.filter(l => l.s >= 0 && l.s <= total).sort((x, y) => x.s - y.s);
+  /* the state just after each lens, per axis */
+  const st = [{ s: 0, h: [h0[0], h0[1]], u: [u0 ? u0[0] : 0, u0 ? u0[1] : 0] }];
+  for (const l of L){ const q = st[st.length - 1], d = l.s - q.s, h = [q.h[0] + q.u[0] * d, q.h[1] + q.u[1] * d], u = [q.u[0], q.u[1]];
+    for (const k of [0, 1]) if (!l.ax || l.ax === "ab"[k]) u[k] -= h[k] / l.f;
+    st.push({ s: l.s, h, u }); }
+  const at = sv => { let q = st[0]; for (const x of st) if (x.s <= sv) q = x; const d = sv - q.s; return [Math.max(wmin, Math.abs(q.h[0] + q.u[0] * d)), Math.max(wmin, Math.abs(q.h[1] + q.u[1] * d))]; };
+  const ref = new THREE.Vector3(...(opt.ref || [0, 0, 1])), M = 28, pos = [], idx = [];
+  for (let i = 0; i < segL.length; i++){
+    const a0 = S[i], a1 = Math.min(S[i + 1], total); if (a1 <= a0) break;
+    const d = P[i + 1].clone().sub(P[i]).normalize();
+    let b = ref.clone().addScaledVector(d, -ref.dot(d)); if (b.lengthSq() < 1e-6) b = new THREE.Vector3(1, 0, 0).addScaledVector(d, -d.x); b.normalize();
+    const a = new THREE.Vector3().crossVectors(d, b).normalize();
+    /* samples: evenly, plus just before and after every lens so its kink is sharp */
+    const ss = []; const n = Math.max(8, Math.ceil((a1 - a0) / ((total || 1) / 220)));
+    for (let k = 0; k <= n; k++) ss.push(a0 + (a1 - a0) * k / n);
+    for (const l of L) if (l.s > a0 && l.s < a1) ss.push(l.s - 1, l.s + 1);
+    ss.sort((x, y) => x - y);
+    const base = pos.length / 3;
+    ss.forEach(sv => { const [ha, hb] = at(sv), c = P[i].clone().addScaledVector(d, sv - a0);
+      for (let m = 0; m < M; m++){ const t = m / M * 2 * Math.PI; pos.push(c.x + a.x * ha * Math.cos(t) + b.x * hb * Math.sin(t), c.y + a.y * ha * Math.cos(t) + b.y * hb * Math.sin(t), c.z + a.z * ha * Math.cos(t) + b.z * hb * Math.sin(t)); } });
+    for (let r = 0; r < ss.length - 1; r++) for (let m = 0; m < M; m++){ const p0 = base + r * M + m, p1 = base + r * M + (m + 1) % M; idx.push(p0, p1, p1 + M, p0, p1 + M, p0 + M); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: opt.op || 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  return { mesh, at };
+}
 function tpmRigBuild(){
   const grp = new THREE.Group(), T = TPM.objTop || 40000, M = tpmM();
   const mat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, metalness: 0.4, roughness: 0.45 }, o || {}));
@@ -12269,22 +12310,44 @@ function tpmRigBuild(){
   /* the detection side */
   const xC = 70000, xI = 105000, xS = 150000;
   lens(18000, xC, yD, 0, "x"); lab("Collection lens", xC, yD - 32000, 0);
-  cyl(17000, 3000, "#8a3b2a", xI, yD, 0, "x", { transparent: true, opacity: 0.8 }); lab("IR-block filter", xI, yD + 30000, 0);
+  cyl(17000, 3000, "#8a3b2a", xI, yD, 0, "x", { transparent: true, opacity: 0.8 }); lab(M.nph > 1 ? "IR-block filter (stops the leaking laser)" : "Blocking filter (stops the leaking excitation)", xI, yD + 30000, 0);
   plate(30000, xS, yD, 0, Math.PI / 4, "#fff3a0"); lab("565 nm dichroic", xS + 10000, yD - 34000, 0);
   box(40000, 80000, 40000, "#1b1f24", xS, yD + 75000, 0); cyl(12000, 3000, "#3dff6a", xS, yD + 34000, 0, null, { emissive: "#1a6a2a" }); lab("Green PMT", xS, yD + 128000, 0);
   box(80000, 40000, 40000, "#1b1f24", xS + 75000, yD, 0); cyl(12000, 3000, "#ff4f6a", xS + 34000, yD, 0, "x", { emissive: "#6a1a2a" }); lab("Red PMT", xS + 75000, yD + 34000, 0);
   /* the light */
-  const ex = M.nph === 1 ? "#3b8cff" : "#ff2a2a";
+  /* infrared is invisible: drawn in the mode's magenta, not red, so it is not mistaken for the red fluorescence */
+  const ex = M.col;
   if (M.nph > 1){
-    beam([[-270000, yM, 0], [-170000, yM, 0]], ex, 1800);
     beam([[-170000, yM, 0], [-170000, yM, -51000]], ex, TPM.laserOn ? 700 : 1800);      // into the dump: everything when off
-    if (TPM.laserOn) beam([[-170000, yM, 0], [0, yM, 0], [0, 0, 0]], ex, 1800);
-  } else if (TPM.laserOn) beam([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], ex, 1800);
+  }
+  /* the excitation beam's shape: ~1 mm from the laser; the beam expander (two lenses, f 10 and 30 mm, 40 mm apart) makes
+     it 3× wider; the scan lens (f 30 mm) brings it to a focus and the tube lens (f 60 mm) makes it parallel again, 2×
+     wider still, to fill the objective's back aperture; the objective then narrows it onto its front lens (and below
+     that, the cone to the focus) */
+  { const sM = 270000, sS = sM + (yM - yS), sT = sM + (yM - yT), sB = sM + (yM - T), rF = Math.max(800, (TPM.obj.wd * 1000) * Math.tan(tpmTheta()) + 700) * 0.9;
+    const lz = [{ s: 140000, f: 10000 }, { s: 180000, f: 30000 }, { s: sS, f: 30000 }, { s: sT, f: 60000 }];
+    const pre = beamEnvelope([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], lz, [1000, 1000], null, ex, { sEnd: sB });
+    const hB = pre.at(sB)[0], obj = hB > rF ? [{ s: sB, f: T * hB / (hB - rF) }] : [];
+    const env = beamEnvelope([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], lz.concat(obj), [1000, 1000], null, ex, { sEnd: M.nph > 1 && !TPM.laserOn ? 100000 : undefined, op: 0.45 });
+    if (TPM.laserOn || M.nph > 1) grp.add(env.mesh); }
   /* the fluorescence: green (GCaMP) and red (the plasma dye) travel together up the objective and through the collection
      lens and IR-block filter, side by side here, until the 565 nm dichroic sends green up and lets red through */
+  /* as a bundle: from the front lens it widens through the objective to its back aperture, comes out parallel, and the
+     collection lens (f ≈ 115 mm) brings it down onto each PMT's window; red drawn a little wider so both show */
   if (TPM.laserOn){
-    beam([[1500, 0, 1300], [1500, yD, 1300], [xS, yD, 1300], [xS, yD + 35000, 1300]], "#3dff6a", 1000);
-    beam([[1500, 0, -1300], [1500, yD, -1300], [xS, yD, -1300], [xS + 35000, yD, -1300]], "#ff4f6a", 1000); }
+    const rF = Math.max(800, (TPM.obj.wd * 1000) * Math.tan(tpmTheta()) + 700) * 0.9, hB = 6000, u0 = (hB - rF) / T;
+    const lz = [{ s: T, f: hB / u0 }, { s: yD + (xC - 0), f: 118000 }];
+    for (const [c, k, end] of [["#ff4f6a", 1, [xS + 35000, yD, 0]], ["#3dff6a", 0.8, [xS, yD + 35000, 0]]])
+      grp.add(beamEnvelope([[0, 0, 0], [0, yD, 0], [xS, yD, 0], end], lz, [rF * k, rF * k], [u0 * k, u0 * k], c, { op: 0.3 }).mesh);
+    /* THE LASER THAT LEAKS (2026-11-19, Søren: "if there is an IR block filter, shouldn't some of the infrared light be
+       blocked by it?"): laser light scattered back from the brain is millions of times brighter than the fluorescence;
+       the primary dichroic passes a little of it towards the PMTs (how much: its edge vs the laser line), and the IR-block
+       filter stops it -- drawn up to the filter, and on to the PMTs only if the filters chosen let it through */
+    { const F = tpmFlt(), one = M.nph === 1, lam = TPM.lam[TPM.mode], pre = tpmToDet(lam, F, one), post = pre * tpmBlock(lam, F, one);
+      const opOf = t => Math.max(0, Math.min(0.5, 0.12 * (Math.log10(t) + 6)));
+      const lk = [{ s: xC, f: 118000 }];
+      if (opOf(pre) > 0.01) grp.add(beamEnvelope([[0, yD, 0], [xI, yD, 0]], lk, [hB * 1.15, hB * 1.15], null, ex, { op: opOf(pre) }).mesh);
+      if (opOf(post) > 0.01) for (const end of [[xS + 35000, yD, 0], [xS, yD + 35000, 0]]) grp.add(beamEnvelope([[xI, yD, 0], [xS, yD, 0], end], [{ s: xC - xI, f: 118000 - (xI - xC) }], [hB * 1.15 * (1 - (xI - xC) / 118000), hB * 1.15 * (1 - (xI - xC) / 118000)], [-hB * 1.15 / 118000, -hB * 1.15 / 118000], ex, { op: opOf(post) }).mesh); } }
   return grp;
 }
 /* fly out to see the rig (the mouse comes on with it), or back to the cells */
@@ -13500,7 +13563,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.rotation.y = Math.PI / 2; ring.position.set(x, y, z); grp.add(ring); };
   const lensZ = (r, x, y, z) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14), mat("#a9d8ff", { transparent: true, opacity: 0.55, metalness: 0.1, roughness: 0.05 })); m.scale.set(1, 1, 0.18); m.position.set(x, y, z); grp.add(m);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.position.set(x, y, z); grp.add(ring); };
-  const lasB = [], beam = (pts, c, r, into) => { for (let i = 1; i < pts.length; i++){ const a = new THREE.Vector3(...pts[i - 1]), b = new THREE.Vector3(...pts[i]), d = a.distanceTo(b); if (d < 1) continue;
+  const lasB = [], lasV = [], beam = (pts, c, r, into) => { for (let i = 1; i < pts.length; i++){ const a = new THREE.Vector3(...pts[i - 1]), b = new THREE.Vector3(...pts[i]), d = a.distanceTo(b); if (d < 1) continue;
     const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d, 10), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85 })); m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); grp.add(m); if (into) into.push(m.material); } };
   const lab = (t, x, y, z) => { if (!TPM.rigLabels) return; try { const sp = textSprite([t], { fit: true, border: "#8b949e" }); const h = 5000; sp.scale.set(h * sp.userData.aspect, h, 1); sp.position.set(x, y, z); grp.add(sp); } catch (e){} };
   const col = TPM_MODES.ls.col, tip = Bk / 2 + 3000, back = tip + 26000;
@@ -13513,7 +13576,14 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     const cyl = new THREE.Mesh(new THREE.CylinderGeometry(7000, 7000, 14000, 32, 1, false, 0, Math.PI), mat("#a9d8ff", { transparent: true, opacity: 0.6, metalness: 0.1, roughness: 0.05 }));
     cyl.position.set(xC, 0, 0); cyl.rotation.x = Math.PI / 2; grp.add(cyl); lab("Cylindrical lens", xC, 0, -14000);
     box(12000, 12000, 20000, "#59606b", xF, 0, 0); lab("Fibre collimator", xF, 0, -16000);
-    if (TPM.laserOn){ beam([[xF, 0, 0], [sgn * tip, 0, 0]], col, 800, lasB);
+    /* the beam's shape along the arm: 1 mm from the fibre's collimator; the cylindrical lens (f 23 mm) focuses it in
+       the sheet's height only, to a line on the galvo; the scan lens (f 22 mm) makes that direction parallel and
+       focuses the other; the tube lens (f 28 mm) makes both parallel and wider; the illumination objective focuses
+       the thickness direction into the sheet's waist at the block's middle while the height stays wide (the fan) */
+    if (TPM.laserOn){ const s0 = Math.abs(xF), sAt = x => s0 - Math.abs(x), sO = sAt(sgn * (tip + 19000)), sC = s0;
+      const env = beamEnvelope([[xF, 0, 0], [sgn * tip, 0, 0]], [{ s: sAt(xC), f: 23000, ax: "a" }, { s: sAt(xS), f: 22000 }, { s: sAt(xT), f: 28000 }, { s: sO, f: sC - sO }], [1000, 1000], null, col, { ref: [0, 0, 1], op: 0.4 });
+      grp.add(env.mesh); lasV.push(env.mesh.material); }
+    if (TPM.laserOn){
       beam([[xF, 0, 0], [xF, 0, 60000], [sgn * (back + 230000), 0, 60000]], col, 500, lasB); }   // the fibre, down and out to the lasers
   }
   /* the laser combiner: lines 405, 488, 561, 640 into fibres */
@@ -13568,7 +13638,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     frus(sq(rB, 0, 0), zTop + 2000, sq(rB, 0, 0), zF + 2500, emB);              // parallel above the objective, through the tube lens
     frus(sq(rB, 0, 0), zF - 2500, sq(chip, 0, 0), zC + 10000, camB);           // after the filter: the image forming on the chip
   }
-  grp.userData.parts = { wheel, lasB, emB, camB };
+  grp.userData.parts = { wheel, lasB, lasV, emB, camB };
   /* the stage under the chamber */
   box(30000, 30000, 6000, "#3a3f47", 0, 0, (BX.sz / 2 + 2000) + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, (BX.sz / 2 + 2000) + 12000); lab("XYZ stage", 26000, 0, (BX.sz / 2 + 2000) + 12000);
 }
@@ -13583,6 +13653,7 @@ function lsFrame3d(){
     u.sheet.material.opacity = lit ? 0.3 : 0; for (const m of u.fanM || []){ m.color.set(lc); m.opacity = lit ? 0.18 : 0; }
     const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2;
     u.sheet.material.color.set(lc); for (const m of u.parts.lasB){ m.color.set(lc); m.opacity = lit ? 0.85 : 0.12; }
+    for (const m of u.parts.lasV || []){ m.color.set(lc); m.opacity = lit ? 0.4 : 0.04; }
     const emc = k.g >= k.r ? "#3dff6a" : "#ff6a8a";
     for (const m of u.parts.emB){ m.color.set(emc); m.opacity = lit ? 0.18 : 0.02; }
     const pass = k.leak > 0.01 ? lc : Math.max(k.g, k.r) < 0.02 ? "#333" : F.c || F.lp ? F.col : emc;
