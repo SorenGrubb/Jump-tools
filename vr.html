@@ -5665,6 +5665,7 @@ function winBuild(){
 }
 async function setWindow(v){
   WIN.on = !!v; MENU.dirty = true;
+  if (!WIN.on && typeof TPM !== "undefined" && TPM.on) setTpm(false);
   const b = document.getElementById("winBtn"); if (b) b.classList.toggle("on", WIN.on);
   if (WIN.on){
     if (!MOUSE.on) await setMouse(true);
@@ -11883,7 +11884,7 @@ function tpmBeads(G, R, F, z, psf, off){
 }
 function tpmCompute(z){
   const M = tpmM(), R = TPM.px, B = tpmBasis(), F = tpmFov(), px = F / R;
-  const mo = tpmMotion(performance.now() / 1000), zz = z + mo.z, psf = tpmPsf(zz);
+  const mo = tpmMotion(tpmNow()), zz = z + mo.z, psf = tpmPsf(zz);
   const f = tpmFocus(zz).addScaledVector(B.e1, mo.x).addScaledVector(B.e2, mo.y);
   const list = [];
   const ok = TPM.rig && TPM.laserOn, beads = TPM.sample === "beads";
@@ -11991,7 +11992,7 @@ function tpmCompute(z){
   if (Math.abs(ph) > 0.05) for (const a of [lg, lr]){ const row = new Float32Array(R);
     for (let y = 0; y < R; y++){ if ((R - 1 - y) % 2 === 0) continue; const o = y * R; for (let x = 0; x < R; x++){ const xs = x - ph, x0 = Math.floor(xs), u = xs - x0; const v0 = x0 >= 0 && x0 < R ? a[o + x0] : 0, v1 = x0 + 1 >= 0 && x0 + 1 < R ? a[o + x0 + 1] : 0; row[x] = v0 * (1 - u) + v1 * u; } a.set(row, o); } }
   const ag = tpmDetect(lg, TPM.pmt[0], TPM.avg, R), ar = tpmDetect(lr, TPM.pmt[1], TPM.avg, R);
-  return { R, F, z, f: tpmFocus(z), G, ag, ar, S, Bg, sbr: Bg + auto > 0 ? (0.5 * S * e.gcamp) / (Bg + auto) : Infinity, psf, P0, Pf: P0 * att, Rd, leak: Math.max(Lg, Lr), t: performance.now() / 1000 };
+  return { R, F, z, f: tpmFocus(z), G, ag, ar, S, Bg, sbr: Bg + auto > 0 ? (0.5 * S * e.gcamp) / (Bg + auto) : Infinity, psf, P0, Pf: P0 * att, Rd, leak: Math.max(Lg, Lr), t: tpmNow() };
 }
 /* the 12-bit numbers through each PMT's look-up table, into a picture (row 0 at the top) */
 window.__tpmPaint = (fr, cv) => tpmPaint(fr, cv);
@@ -12112,7 +12113,7 @@ function tpmParkAblate(K){
       for (let yy = Math.floor(y - r); yy <= Math.ceil(y + r); yy++) for (let xx = Math.floor(x - r); xx <= Math.ceil(x + r); xx++) if (xx >= 0 && yy >= 0 && xx < R && yy < R) mx = Math.max(mx, fr.Rd[yy * R + xx]);
       if (mx > 0.3) kind = "leak"; }
     if (hit) hit.tpmDmg = 1;
-    if (kind === "dilate" || kind === "leak") TPM.vfx.push({ kind, p: p.clone(), z: TPM.depth, t0: performance.now() / 1000 });
+    if (kind === "dilate" || kind === "leak") TPM.vfx.push({ kind, p: p.clone(), z: TPM.depth, t0: tpmNow() });
     for (let k = 0; k < 3; k++) TPM.blebs.push({ p: p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4)), r: 2 + Math.random() * 3 });
     msgs.push(kind === "dilate" ? "a " + (/pericyte/i.test(lab) ? "pericyte" : "smooth muscle cell") + " — the vessel beside it loses its tone and dilates"
       : kind === "leak" ? (hit ? "an endothelial cell" : "the vessel wall") + " — the plasma dye leaks out into the brain"
@@ -12124,7 +12125,7 @@ function tpmParkAblate(K){
 /* the vessel changes in the picture: dilation (the lumen widens up to ~3 µm within 40 µm of the hit) and leakage (the dye
    spreads out of the vessel, by diffusion, over tens of seconds) */
 function tpmVfxApply(Rd, R, F, z, px, B){
-  const now = performance.now() / 1000, f = tpmFocus(z);
+  const now = tpmNow(), f = tpmFocus(z);
   for (const fx of TPM.vfx){
     const dz = Math.abs(fx.z - z); if (dz > (fx.kind === "leak" ? 80 : 40)) continue;
     const d = fx.p.clone().sub(f), cx = (d.dot(B.e1) + F / 2) / px, cy = (d.dot(B.e2.clone().negate()) + F / 2) / px, t = now - fx.t0;
@@ -12358,8 +12359,13 @@ function tpmStack3d(){
 function tpmFrame(dt){
   if (!TPM.on) return;
   dt = Math.min(0.1, dt || 0.016);
-  tpmCaStep(dt);
-  tpmDamageStep(dt);
+  /* BRAIN TIME (2026-11-19, Søren: "changing brain time does not change the scanning speed"): the microscope runs on the
+     clock at the bottom -- the calcium, the heating and damage, and the scanning itself. A frame takes its real time
+     (e.g. 17 ms at 256 lines bidirectional) in brain time, so at ×1/100 one frame takes 1.7 s and you see the raster;
+     at ×1 frames come as fast as the computer can make them (~3 a second). Paused: the scan stops. */
+  const k = typeof SIM !== "undefined" ? SIM.eff : 1, bdt = dt * k;
+  tpmCaStep(bdt);
+  tpmDamageStep(bdt);
   /* the look-up tables changed: paint the frames shown again (the data stay) */
   if (TPM.repaint){ TPM.repaint = false; for (const fr of [TPM.cur, TPM.prev]) if (fr && fr.ag) fr.cv = tpmPaint(fr, fr.cv); TPM.dirty = true; }
   if (TPM.depth > tpmMaxDepth()) TPM.depth = tpmMaxDepth();
@@ -12367,8 +12373,11 @@ function tpmFrame(dt){
   const now = performance.now() / 1000, VR = renderer.xr.isPresenting;
   const running = TPM.rig && (TPM.live || TPM.stack.run) && !TPM.park;
   if (running){
-    const T = TPM.slow ? 8 : Math.max(tpmRealFrame(), VR ? 0.5 : 0.3);
-    if (!TPM.cur || now - TPM.scanT0 >= TPM.scanT){
+    /* how long this frame takes on the wall clock: its real time stretched by the brain-time speed, but not quicker
+       than the computer can make frames (and never quicker than 8 s with slow motion on) */
+    const T = Math.max(k > 0 ? tpmRealFrame() / k : Infinity, TPM.slow ? 8 : VR ? 0.5 : 0.3);
+    TPM.scanP = (TPM.scanP || 0) + (isFinite(T) ? dt / T : 0);
+    if (!TPM.cur || TPM.scanP >= 1){
       /* a frame is done: keep it, and start the next */
       if (TPM.cur && TPM.stack.run) tpmStackKeep(TPM.cur);
       if (TPM.cur){ TPM.prev = TPM.cur; if (!TPM.stack.run) tpmRoiSample(TPM.cur); }
@@ -12377,10 +12386,10 @@ function tpmFrame(dt){
       if (TPM.stack.run || TPM.live){
         if (TPM.stack.run) TPM.depth = Math.min(tpmMaxDepth(), z);
         TPM.cur = tpmCompute(TPM.depth); TPM.cur.cv = tpmPaint(TPM.cur);
-        TPM.scanT0 = now; TPM.scanT = T;
+        TPM.scanP = 0; TPM.scanT = T;
       }
     }
-    const p = Math.min(0.999, (now - TPM.scanT0) / TPM.scanT), s = tpmScanPos(p);
+    const p = Math.min(0.999, TPM.scanP), s = tpmScanPos(p);
     if (TPM.beamMesh) TPM.beamMesh.position.copy(s.spot);
     TPM.scanLine.geometry.setFromPoints([s.a, s.b]); TPM.scanLine.visible = true;
     TPM.prog = p; TPM.dirty = true;
@@ -12390,6 +12399,7 @@ function tpmFrame(dt){
   else { const ov = tpmOverlay(); if (ov.style.display === "none"){ ov.style.display = ""; TPM.ovLayout && TPM.ovLayout(); } if ((TPM.dirty || TPP.dirty) && performance.now() - TPP.lastDraw > 80){ vrpRender(TPP); TPM.dirty = false; } }
 }
 /* resonant scanner at 8 kHz: one line per sweep one way (8,000 lines/s), or one each way (~15,000 lines/s, bidirectional) */
+function tpmNow(){ return typeof SIM !== "undefined" ? SIM.t : performance.now() / 1000; }   // brain seconds
 function tpmRealFrame(){ return TPM.scanner === "galvo" ? (TPM.px * TPM.px * 2e-6 + TPM.px * 3e-4) * TPM.avg : TPM.px / (TPM.bidir ? 15000 : 8000) * TPM.avg; }                         // resonant scanner: ~15,000 lines a second (8 kHz, both ways)
 function tpmStackKeep(fr){
   const S = TPM.stack, cv = document.createElement("canvas"); cv.width = fr.R; cv.height = fr.R; cv.getContext("2d").drawImage(fr.cv, 0, 0);
@@ -12498,7 +12508,7 @@ function tpmMonitor(P, g, x, y, s){
   /* the readout under the picture */
   const yy = y + s + 40, psf = tpmPsf(TPM.depth), M = tpmM();
   { const Po = tpmObjP(TPM.depth), Pf = tpmFocal(TPM.depth); tpmTxt(g, "Power: " + Po.toFixed(Po < 10 ? 1 : 0) + " mW at the objective → " + Pf.toFixed(Pf < 10 ? 2 : 0) + " mW at " + TPM.depth.toFixed(0) + " µm" + (TPM.bleachNow > 0.02 ? " · bleached " + Math.round(TPM.bleachNow * 100) + " %" : ""), x, yy, 27, "#fff", s + 40); }
-  tpmTxt(g, TPM.px + "×" + TPM.px + " px · " + (tpmFov() / TPM.px).toFixed(2) + " µm/px · " + (1 / tpmRealFrame()).toFixed(1) + " Hz" + (TPM.avg > 1 ? " (" + TPM.avg + " averaged)" : "") + (TPM.slow ? " · shown slowed" : ""), x, yy + 38, 25, "#e9d5ff", s + 40);
+  tpmTxt(g, TPM.px + "×" + TPM.px + " px · " + (tpmFov() / TPM.px).toFixed(2) + " µm/px · " + (1 / tpmRealFrame()).toFixed(1) + " Hz" + (TPM.avg > 1 ? " (" + TPM.avg + " averaged)" : "") + (TPM.slow ? " · slow motion" : typeof SIM !== "undefined" && SIM.eff < 1 ? " · brain time " + simFmt(SIM.eff) : ""), x, yy + 38, 25, "#e9d5ff", s + 40);
   tpmTxt(g, "PSF " + psf.xy.toFixed(2) + " × " + (isFinite(psf.z) ? psf.z.toFixed(1) : "∞ (no sectioning)") + " µm · ΔT " + (TPM.temp >= 0 ? "+" : "") + TPM.temp.toFixed(1) + " °C" + (fr && isFinite(fr.sbr) ? " · signal/background " + (fr.sbr > 99 ? ">99" : fr.sbr.toFixed(1)) : ""), x, yy + 74, 25, "#e9d5ff", s + 40);
   const w2 = TPM.warn || (fr && fr.leak > 1 ? "⚠ Laser light is leaking into the PMTs (" + fr.leak.toFixed(0) + " photons/pixel) — check the dichroic and the blocking filter (Filters tab)" : "") || (tpmOpt().TL < 0.5 ? "⚠ The primary dichroic sends most of the laser away from the brain (" + Math.round(tpmOpt().TL * 100) + " % gets through)" : "");
   if (w2) tpmLines(g, w2, x, yy + 112, s + 40, 25, "#ffb070", 3);
@@ -12971,6 +12981,10 @@ function tpmTabAna(P, g, X, Y, W){
 /* ── on and off; the PC's copy of the panel ── */
 function setTpm(on){
   TPM.on = !!on;
+  /* the microscope looks through the cranial window, so it brings the mouse and the window with it (2026-11-19, Søren:
+     "Having the mouse and 2p without a cranial window does not make sense. I think the mouse should also be shown when
+     showing the 2p") -- and turning the window off puts the microscope away */
+  if (TPM.on && (!WIN.on || !MOUSE.on)) (async () => { try { if (!MOUSE.on) await setMouse(true); if (!WIN.on) await setWindow(true); } catch (e){ console.warn("[vr] microscope: window", e); } })();
   if (TPM.on){
     TPM.cur = TPM.prev = null; TPM.built = ""; tpm3dBuild();
     if (renderer.xr.isPresenting) vrpShow(TPP, true); else { vrpRender(TPP); const ov = tpmOverlay(); ov.style.display = ""; TPM.ovLayout && TPM.ovLayout(); }
@@ -25013,7 +25027,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
