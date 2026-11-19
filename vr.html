@@ -12243,8 +12243,18 @@ function tpmRigBuild(){
   lens(20000, 0, yS, 0); lab("Scan lens", -55000, yS, 0);
   box(60000, 50000, 60000, "#2d333b", 0, yM, 0); plate(18000, 0, yM, 0, -Math.PI / 4, "#d8dde5"); lab("Scan mirrors (resonant + galvo)", 0, yM + 45000, 0);
   /* sideways to the laser */
-  cyl(14000, 110000, "#59606b", -110000, yM, 0, "x"); lab("Beam expander", -110000, yM + 26000, 0);
-  box(60000, 40000, 40000, "#1f6feb", -215000, yM, 0); lab("Pockels cell", -215000, yM + 34000, 0);
+  cyl(14000, 80000, "#59606b", -95000, yM, 0, "x"); lab("Beam expander", -95000, yM + 26000, 0);
+  /* WHERE THE LIGHT GOES WITH THE LASER OFF (2026-11-19, Søren: "If the laser is off, where is it dumped? Is there a
+     shutter somewhere?"): a Ti:sapphire (or OPA) runs all day; the Pockels cell turns the beam's polarisation and the
+     polarising beam splitter after it sends the unwanted part sideways into a beam dump -- all of it with the laser
+     "off", the unused power while imaging -- and a mechanical shutter closes the path as well. An LED is simply
+     switched off. */
+  if (M.nph > 1){
+    box(50000, 40000, 40000, "#1f6feb", -220000, yM, 0); lab("Pockels cell", -220000, yM + 34000, 0);
+    box(16000, 16000, 16000, "#d8e6ff", -170000, yM, 0, { transparent: true, opacity: 0.6, metalness: 0.1, roughness: 0.05 }); lab("Polarising beam splitter", -170000, yM - 30000, 0);
+    box(22000, 22000, 22000, "#0d0d0d", -170000, yM, -62000); lab("Beam dump", -170000, yM + 24000, -62000);
+    box(2500, 26000, 26000, "#c9a227", -140000, yM + (TPM.laserOn ? 24000 : 0), 0); lab(TPM.laserOn ? "Shutter (open)" : "Shutter (closed)", -140000, yM + 52000, 0);
+  }
   box(300000, 120000, 160000, "#2b3a55", -420000, yM, 0); lab(M.nph === 3 ? "OPA laser (" + TPM.lam["3p"] + " nm)" : M.nph === 2 ? "Ti:sapphire laser (" + TPM.lam["2p"] + " nm)" : "LED (" + TPM.lam["1p"] + " nm)", -420000, yM + 85000, 0);
   /* the detection side */
   const xC = 70000, xI = 105000, xS = 150000;
@@ -12255,11 +12265,16 @@ function tpmRigBuild(){
   box(80000, 40000, 40000, "#1b1f24", xS + 75000, yD, 0); cyl(12000, 3000, "#ff4f6a", xS + 34000, yD, 0, "x", { emissive: "#6a1a2a" }); lab("Red PMT", xS + 75000, yD + 34000, 0);
   /* the light */
   const ex = M.nph === 1 ? "#3b8cff" : "#ff2a2a";
-  beam([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], ex, 1800);
+  if (M.nph > 1){
+    beam([[-270000, yM, 0], [-170000, yM, 0]], ex, 1800);
+    beam([[-170000, yM, 0], [-170000, yM, -51000]], ex, TPM.laserOn ? 700 : 1800);      // into the dump: everything when off
+    if (TPM.laserOn) beam([[-170000, yM, 0], [0, yM, 0], [0, 0, 0]], ex, 1800);
+  } else if (TPM.laserOn) beam([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], ex, 1800);
   /* the fluorescence: green (GCaMP) and red (the plasma dye) travel together up the objective and through the collection
      lens and IR-block filter, side by side here, until the 565 nm dichroic sends green up and lets red through */
-  beam([[1500, 0, 1300], [1500, yD, 1300], [xS, yD, 1300], [xS, yD + 35000, 1300]], "#3dff6a", 1000);
-  beam([[1500, 0, -1300], [1500, yD, -1300], [xS, yD, -1300], [xS + 35000, yD, -1300]], "#ff4f6a", 1000);
+  if (TPM.laserOn){
+    beam([[1500, 0, 1300], [1500, yD, 1300], [xS, yD, 1300], [xS, yD + 35000, 1300]], "#3dff6a", 1000);
+    beam([[1500, 0, -1300], [1500, yD, -1300], [xS, yD, -1300], [xS + 35000, yD, -1300]], "#ff4f6a", 1000); }
   return grp;
 }
 /* fly out to see the rig (the mouse comes on with it), or back to the cells */
@@ -12522,7 +12537,7 @@ function tpmMonitor(P, g, x, y, s){
   /* the readout under the picture */
   const yy = y + s + 40, psf = tpmPsf(TPM.depth), M = tpmM();
   if (TPM.mode === "ls"){ const L = TPM.ls;
-    tpmTxt(g, "Sheet " + TPM.power.ls.toFixed(TPM.power.ls < 10 ? 1 : 0) + " mW at " + TPM.lam.ls + " nm · " + L.exp + " ms exposure · " + lsMedium().name + (L.E > 1 ? " · ×" + L.E : ""), x, yy, 26, "#fff", s + 40);
+    tpmTxt(g, "Sheet " + TPM.power.ls.toFixed(TPM.power.ls < 10 ? 1 : 0) + " mW · " + (lsChans().map(c => c.las + "→" + LS_WHEEL[c.f].name).join(", then ") || "no channel on") + " · " + L.exp + " ms exposure · " + lsMedium().name + (L.E > 1 ? " · ×" + L.E : ""), x, yy, 26, "#fff", s + 40);
     tpmTxt(g, TPM.px + "×" + TPM.px + " px · field " + lsFovPhys().toFixed(0) + " µm" + (L.E > 1 ? " (" + lsFov().toFixed(0) + " µm of the original)" : "") + " · " + (1 / lsCamFrame()).toFixed(0) + " planes/s", x, yy + 38, 24, "#e9d5ff", s + 40);
     tpmTxt(g, "Sheet " + lsW(TPM.cx * L.E).toFixed(1) + " µm here · bleached " + Math.round((TPM.bleachNow || 0) * 100) + " % · camera saturated " + (TPM.pmt[0].sat * 100).toFixed(1) + " %", x, yy + 74, 24, "#e9d5ff", s + 40);
   } else {
@@ -12543,8 +12558,8 @@ function tpmSetMode(k){
   /* into or out of the light sheet: its own objective, and its camera's 16-bit look-up tables */
   if ((was === "ls") !== (k === "ls")){
     const lut = TPM.pmt.map(p => ({ lo: p.lo, hi: p.hi }));
-    if (k === "ls"){ TPM.ls.obj2P = TPM.obj; TPM.obj = TPM.ls.objLS; TPM.lut2P = lut; const L = TPM.lutLS || [{ lo: 0.0016, hi: 0.009 }, { lo: 0.0016, hi: 0.009 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (["pmt", "scan", "stack", "ana", "obj", "flt", "laser", "rig"].indexOf(TPM.tab) < 0) TPM.tab = "rig"; }
-    else { TPM.ls.objLS = TPM.obj; TPM.obj = TPM.ls.obj2P || Object.assign({}, TPM_OBJ[0]); TPM.lutLS = lut; const L = TPM.lut2P || [{ lo: 0.01, hi: 0.08 }, { lo: 0.01, hi: 0.08 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (TPM.tab === "sample") TPM.tab = "laser";
+    if (k === "ls"){ TPM.ls.xy2P = [TPM.cx, TPM.cy]; TPM.ls.ctr = true; TPM.ls.obj2P = TPM.obj; TPM.obj = TPM.ls.objLS; TPM.lut2P = lut; const L = TPM.lutLS || [{ lo: 0.0016, hi: 0.009 }, { lo: 0.0016, hi: 0.009 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (["pmt", "scan", "stack", "ana", "obj", "flt", "laser", "rig"].indexOf(TPM.tab) < 0) TPM.tab = "rig"; }
+    else { if (TPM.ls.xy2P){ [TPM.cx, TPM.cy] = TPM.ls.xy2P; } TPM.ls.objLS = TPM.obj; TPM.obj = TPM.ls.obj2P || Object.assign({}, TPM_OBJ[0]); TPM.lutLS = lut; const L = TPM.lut2P || [{ lo: 0.01, hi: 0.08 }, { lo: 0.01, hi: 0.08 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (TPM.tab === "sample") TPM.tab = "laser";
       if (TPM.on) (async () => { try { if (!MOUSE.on) await setMouse(true); if (!WIN.on) await setWindow(true); } catch (e){} })(); }
     TPM.park = null; TPM.stack.planes = []; TPM.stack.run = null; try { tpmStack3d(); } catch (e){}
   }
@@ -12787,6 +12802,7 @@ function tpmTabStack(P, g, X, Y, W){
 /* ── the filters and their spectra ── */
 function tpmSpecX(l, X, W){ return X + (l - 380) / (1400 - 380) * W; }
 function tpmTabFlt(P, g, X, Y, W){
+  if (TPM.mode === "ls") return lsTabFlt(P, g, X, Y, W);
   const M = tpmM(), F = tpmFlt(), one = TPM.mode === "1p" || TPM.mode === "ls", n = M.nph, L = TPM.lam[TPM.mode], O = tpmOpt();
   const px = X, py = Y, pw = W, ph = 370, Yb = py + ph;
   g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(px, py, pw, ph);
@@ -12836,6 +12852,37 @@ function tpmTabFlt(P, g, X, Y, W){
   tpmTxt(g, "Red PMT: Texas Red " + pc(nn.r.tr * e.tr) + " · GCaMP " + pc(nn.r.gcamp * e.gcamp) + (nn.r.gcamp * e.gcamp > 0.05 ? " (bleed-through!)" : ""), X, y1 + 32, 24, "#ffc0cc", W);
   tpmTxt(g, "of the standard set-up · laser reaching the brain " + Math.round(O.TL * 100) + " % · laser leak " + (O.leak.g + O.leak.r < 1e-12 ? "none" : (O.leak.g + O.leak.r).toExponential(0)), X, y1 + 64, 22, "#e9d5ff", W);
   vrpBtn(P, g, X + W - 220, y1 - 40, 220, 50, "Standard set-up", () => { TPM.flt[TPM.mode] = Object.assign({}, TPM_FLT0[TPM.mode]); TPM.lam[TPM.mode] = TPM_LAM0[TPM.mode]; TPM.built = ""; }, { key: "fstd", size: 22 });
+}
+/* the light sheet's Filters tab: per channel, a laser line and a slot in the wheel; the spectra; what each catches */
+function lsTabFlt(P, g, X, Y, W){
+  const L = TPM.ls, px = X, py = Y, pw = W, ph = 330, Yb = py + ph, l0 = 380, l1 = 800;
+  const sx = l => px + (l - l0) / (l1 - l0) * pw, sy = v => Yb - Math.max(0, Math.min(1.05, v)) * (ph - 30);
+  g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(px, py, pw, ph);
+  for (let l = 400; l <= 800; l += 50){ g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(sx(l), py, 1, ph); g.fillStyle = "#bbb"; g.font = "20px system-ui"; g.fillText(String(l), sx(l) - 18, Yb + 22); }
+  for (let l = 380; l < 750; l += 5){ const h = l < 440 ? 270 : l < 490 ? 240 - (l - 440) * 1.2 : l < 580 ? 180 - (l - 490) * 1.4 : Math.max(0, 54 - (l - 580) * 0.35); g.fillStyle = "hsla(" + h + ",90%,55%,0.5)"; g.fillRect(sx(l), Yb - 8, sx(l + 5) - sx(l) + 1, 8); }
+  const curve = (fn, col, lw, dash, fill) => { g.beginPath(); for (let l = l0; l <= l1; l += 2){ const x = sx(l), y = sy(fn(l)); l === l0 ? g.moveTo(x, y) : g.lineTo(x, y); }
+    if (fill){ g.lineTo(sx(l1), Yb); g.lineTo(sx(l0), Yb); g.closePath(); g.fillStyle = fill; g.fill(); } else { g.strokeStyle = col; g.lineWidth = lw; g.setLineDash(dash || []); g.stroke(); g.setLineDash([]); } };
+  curve(l => TPM_FL.gcamp.em(l), null, 0, null, "rgba(61,255,106,0.22)");
+  curve(l => TPM_FL.tr.em(l), null, 0, null, "rgba(255,79,106,0.22)");
+  curve(l => TPM_FL.gcamp.ex[1](l), "#3dff6a", 2.5, [10, 6]);
+  curve(l => TPM_FL.tr.ex[1](l), "#ff4f6a", 2.5, [10, 6]);
+  L.ch.forEach((c, i) => { if (!TPM.pmt[i].on) return; const F = LS_WHEEL[c.f];
+    curve(l => lsFT(F, l), F.col, 3, i ? [4, 4] : null);
+    g.fillStyle = lsLasCol(c.las); g.fillRect(sx(c.las) - 3, py + 8, 6, ph - 8); tpmTxt(g, (i + 1) + ": " + c.las, Math.min(sx(c.las) + 8, px + pw - 90), py + 30 + i * 26, 20, "#fff"); });
+  tpmTxt(g, "pale fill = emission · dashed = excitation · lines = the filters in use (channel 2 dotted) · bars = the laser lines", px + 10, Yb + 52, 20, "#ccc", pw);
+  /* the controls: each channel's laser and filter */
+  const pc = v => v >= 0.1 ? Math.round(v * 100) + " %" : v >= 0.001 ? (v * 100).toFixed(1) + " %" : "≈0";
+  L.ch.forEach((c, i) => {
+    const y = Y + 410 + i * 245, k = lsChanK(c), pm = TPM.pmt[i];
+    vrpBtn(P, g, X, y, 230, 54, (pm.on ? "☑ " : "☐ ") + "Channel " + (i + 1), () => { pm.on = !pm.on; TPM.repaint = true; }, { on: pm.on, key: "lsch" + i, size: 24 });
+    LS_LASERS.forEach(([l, col], j) => vrpBtn(P, g, X + 245 + j * 194, y, 184, 54, l + " nm", () => { c.las = l; if (i === 0){ TPM.lam.ls = l; TPM.built = ""; } }, { on: c.las === l, key: "lslas" + i + "_" + j, size: 23 }));
+    LS_WHEEL.forEach((F, j) => vrpBtn(P, g, X + j * 172, y + 64, 164, 52, F.name, () => { c.f = j; }, { on: c.f === j, key: "lsfw" + i + "_" + j, size: 20 }));
+    const bad = k.leak > 1e-3, bleed = i === 0 ? k.r > 0.05 : k.g > 0.05;
+    tpmTxt(g, "GCaMP " + pc(k.g) + " · Texas Red " + pc(k.r) + " · laser through the filter " + (k.leak < 1e-4 ? "blocked" : pc(k.leak)), X, y + 150, 24, bad ? "#ffb070" : "#e6edf3", W);
+    tpmTxt(g, bad ? "⚠ The filter passes the " + c.las + " nm line: scattered laser floods the picture" : bleed ? "⚠ Both dyes in one channel: bleed-through" : Math.max(k.g, k.r) < 0.05 ? "⚠ Almost nothing gets through this filter with this line" : "✓ A clean channel", X, y + 182, 22, bad || bleed || Math.max(k.g, k.r) < 0.05 ? "#ffb070" : "#b9ffc8", W);
+  });
+  vrpBtn(P, g, X + W - 220, Y + 345, 220, 50, "Standard set-up", () => { L.ch = [{ las: 488, f: 0 }, { las: 561, f: 1 }]; TPM.lam.ls = 488; TPM.built = ""; }, { key: "lsfstd", size: 22 });
+  tpmLines(g, "One camera, so the channels are taken one after the other: the laser line switches and the wheel turns the next filter in (~50 ms). No primary dichroic here — the light comes in from the side — so the filter in the wheel alone keeps the scattered laser off the chip.", X, Y + 910, W, 22, "#e9d5ff", 3);
 }
 /* ── analysis: ROIs and their ΔF/F, line scans, the PSF from beads ── */
 const TPM_ROICOL = ["#ffd84a", "#5ff2ff", "#ff8ad8", "#a6ff5a", "#ffa04a", "#c9a0ff"];
@@ -13120,7 +13167,7 @@ function lsTabCam(P, g, X, Y, W){
   tpmSlider(P, g, X, Y, W - 20, "Exposure " + L.exp + " ms per plane", L.exp, 1, 500, v => { L.exp = Math.round(v); }, { log: true, key: "lsexp2" });
   TPM.pmt.forEach((pm, i) => {
     const y = Y + 100 + i * 330;
-    vrpBtn(P, g, X, y - 12, 520, 54, (pm.on ? "☑ " : "☐ ") + (i ? "561 nm channel · vessel dye" : "488 nm channel · GCaMP"), () => { pm.on = !pm.on; TPM.repaint = true; }, { on: pm.on, key: "pmon" + i, size: 24 });
+    vrpBtn(P, g, X, y - 12, 520, 54, (pm.on ? "☑ " : "☐ ") + ("Channel " + (i + 1) + ": " + TPM.ls.ch[i].las + " nm → " + LS_WHEEL[TPM.ls.ch[i].f].name), () => { pm.on = !pm.on; TPM.repaint = true; }, { on: pm.on, key: "pmon" + i, size: 24 });
     tpmTxt(g, "saturated " + (pm.sat * 100).toFixed(1) + " %", X + 540, y + 24, 24, pm.sat > 0.01 ? "#ffb070" : "#e9d5ff");
     tpmSlider(P, g, X, y + 70, 500, "Display min " + Math.round(pm.lo * 65535), pm.lo, 0, 0.2, v => { pm.lo = Math.min(v, pm.hi - 0.0002); TPM.repaint = true; }, { key: "lo" + i, col: "#888" });
     tpmSlider(P, g, X + 530, y + 70, 490, "Display max " + Math.round(pm.hi * 65535), pm.hi, 0.0005, 1, v => { pm.hi = Math.max(v, pm.lo + 0.0002); TPM.repaint = true; }, { key: "hi" + i, col: "#ddd", log: true });
@@ -13153,7 +13200,7 @@ function lsTabStage(P, g, X, Y, W){
   const st = lsFov() / 4, mv = (a, b) => { TPM.cx += a * st; TPM.cy += b * st; TPM.built = ""; };
   vrpBtn(P, g, X, Y + 320, 110, 56, "←", () => mv(-1, 0), { key: "mvl" }); vrpBtn(P, g, X + 120, Y + 320, 110, 56, "→", () => mv(1, 0), { key: "mvr" });
   vrpBtn(P, g, X + 240, Y + 320, 110, 56, "↑", () => mv(0, -1), { key: "mvu" }); vrpBtn(P, g, X + 360, Y + 320, 110, 56, "↓", () => mv(0, 1), { key: "mvd" });
-  vrpBtn(P, g, X + 480, Y + 320, 270, 56, "Centre on the cells", () => { TPM.cx = TPM.cy = 0; TPM.centre = null; TPM.built = ""; }, { key: "ctr", size: 24 });
+  vrpBtn(P, g, X + 480, Y + 320, 270, 56, "Centre on the block", () => { const c = lsBoxC(); TPM.cx = c.cx; TPM.cy = c.cy; TPM.built = ""; }, { key: "ctr", size: 24 });
   tpmTxt(g, "Sample", X, Y + 440, 28);
   vrpBtn(P, g, X + 120, Y + 410, 300, 54, "🧠 The block (loaded cells)", () => { TPM.sample = "brain"; TPM.built = ""; }, { on: TPM.sample === "brain", key: "smb", size: 22 });
   vrpBtn(P, g, X + 430, Y + 410, 300, 54, "● Beads in agarose", () => { TPM.sample = "beads"; TPM.built = ""; }, { on: TPM.sample === "beads", key: "smd", size: 22 });
@@ -13195,8 +13242,44 @@ const TPM_CLEAR = {
   cubic:  { name: "CUBIC", n: 1.52, ls: 2500, fp: 0.9 },
   idisco: { name: "iDISCO (DBE)", n: 1.56, ls: 4000, fp: 0.15 }
 };
-TPM.ls = { w0: 4, xw: 0, dual: true, pivot: false, aslm: false, clear: "cubic", E: 1, exp: 20, objLS: Object.assign({}, TPM_OBJ_LS[0]), obj2P: null };
+TPM.ls = { w0: 4, xw: 0, dual: true, pivot: false, aslm: false, clear: "cubic", E: 1, exp: 20, objLS: Object.assign({}, TPM_OBJ_LS[0]), obj2P: null,
+  ch: [{ las: 488, f: 0 }, { las: 561, f: 1 }] };
 function tpmIsLS(){ return TPM.mode === "ls"; }
+/* THE EMISSION FILTER WHEEL (2026-11-19, Søren: "Does the emission filter wheel change?" -- it did not: the wheel was a
+   prop and both channels were taken at once, as on the 2P's two PMTs). One sCMOS camera, so the channels are taken one
+   after the other: for each, its laser line switches on and the wheel turns its filter into the detection path (~50 ms).
+   There is no primary dichroic in a light sheet (the light comes in from the side), so the wheel's filter alone has to
+   keep the scattered laser off the camera: a good band-pass blocks it ~10⁵-fold; an empty slot lets it all through. */
+const LS_WHEEL = [
+  { name: "525/50", c: 525, w: 50, col: "#3dff6a" },
+  { name: "620/60", c: 620, w: 60, col: "#ff6a8a" },
+  { name: "700/75", c: 700, w: 75, col: "#c0304a" },
+  { name: "LP 500", lp: 500, col: "#ffd84a" },
+  { name: "Quad notch", notch: [405, 488, 561, 640], col: "#c9a0ff" },
+  { name: "Empty", col: "#59606b" }
+];
+const LS_LASERS = [[405, "#8a5cff"], [488, "#38c8ff"], [561, "#c8ff38"], [640, "#ff4040"]];
+function lsLasCol(l){ const q = LS_LASERS.find(a => a[0] === l); return q ? q[1] : "#38c8ff"; }
+function lsFT(f, l){
+  if (f.c) return 1e-5 + 0.93 * tpmLogi((l - (f.c - f.w / 2)) / 1.2) * tpmLogi(((f.c + f.w / 2) - l) / 1.2);   // hard-coated: steep edges
+  if (f.lp) return 1e-5 + 0.95 * tpmLogi((l - f.lp) / 1.5);
+  if (f.notch){ let t = 0.92; for (const n of f.notch) t *= 1 - (1 - 1e-5) * tpmLogi((11 - Math.abs(l - n)) / 1.5); return t; }
+  return 1;
+}
+function lsQE(l){ return 0.05 + 0.77 * Math.exp(-0.5 * Math.pow((l - 580) / (l < 580 ? 140 : 170), 2)); }   // a back-lit sCMOS, ~80 % at its peak
+/* what one channel collects, relative to the standard set-up (GCaMP: 488 + 525/50; Texas Red: 561 + 620/60): each dye's
+   excitation by the line × its emission through the filter; and the scattered laser that gets through the filter */
+function lsChanK(ch){
+  const f = LS_WHEEL[ch.f], col = (k, F) => { let a = 0, b = 0; for (let l = 400; l <= 800; l += 2){ const e = TPM_FL[k].em(l); a += e; b += e * lsFT(F, l) * lsQE(l); } return b / a; };
+  const ex = (k, l) => TPM_FL[k].ex[1](l);
+  return {
+    g: ex("gcamp", ch.las) / ex("gcamp", 488) * col("gcamp", f) / col("gcamp", LS_WHEEL[0]),
+    r: ex("tr", ch.las) / ex("tr", 561) * col("tr", f) / col("tr", LS_WHEEL[1]),
+    leak: lsFT(f, ch.las) * lsQE(ch.las)
+  };
+}
+function lsChans(){ return TPM.ls.ch.map((c, i) => Object.assign({ i, on: TPM.pmt[i].on }, c)).filter(c => c.on); }
+function lsActCh(){ const on = lsChans(); if (!on.length) return TPM.ls.ch[0]; return on[Math.floor(performance.now() / 900) % on.length]; }
 /* THE BLOCK IS THE WHOLE DATASET (2026-11-19, Søren: "why do we have a cube that only covers part of the MICrONS
    dataset?"): its box is the traced dataset box (Map → Borders → dataset box), from the glia limitans down; offsets in
    µm from the cells' centre along e1, e2 and depth along n. Until the borders file has loaded, a 1 mm cube. */
@@ -13226,7 +13309,7 @@ function lsXR(){ const L = TPM.ls; return Math.PI * L.w0 * L.w0 * lsMedium().n /
 /* camera: 2048 px of 6.5 µm → 13.3 mm of chip; the field in ORIGINAL tissue µm (÷ the expansion) */
 function lsFovPhys(){ return Math.min(13300 / TPM.obj.mag, 3000); }
 function lsFov(){ return lsFovPhys() / TPM.ls.E; }
-function lsCamFrame(){ return (TPM.ls.exp + 10) / 1000 * TPM.avg; }                   // exposure + ~10 ms read-out
+function lsCamFrame(){ const n = Math.max(1, lsChans().length); return ((TPM.ls.exp + 10) * n + (n > 1 ? 50 * n : 0)) / 1000 * TPM.avg; }   // exposure + ~10 ms read-out per channel, + ~50 ms for the wheel to turn
 
 function tpmComputeLS(z){
   const L = TPM.ls, M = tpmM(), R = TPM.px, B = tpmBasis(), F = lsFov(), px = F / R, E = L.E, med = lsMedium();
@@ -13284,12 +13367,16 @@ function tpmComputeLS(z){
   if (L.pivot) tpmBlur(T, R, 6 / px);
   /* photons: power × exposure, dye diluted by the expansion (÷E³), fluorescent proteins quenched by some clearings */
   const em = Math.exp(-zphys / med.ls), col = Math.pow(NA / 0.6, 2), P = tpmPower(z);
-  const S = !ok ? 0 : 2000 * (P / 10) * (L.exp / 20) * col * em * med.fp / Math.pow(E, 3) * (TPM.sample === "beads" ? 3 : 1) * tpmOpt().e.gcamp;
+  const S = !ok ? 0 : 2000 * (P / 10) * (L.exp / 20) * col * em * med.fp / Math.pow(E, 3) * (TPM.sample === "beads" ? 3 : 1);
   const haze = S * 0.25 * (1 - em) ;
   /* the tissue's own glow is lit by the sheet too, so the background shows the stripes */
   const lg = new Float32Array(R * R), lr = new Float32Array(R * R);
   let meanG = 0, meanR = 0; for (let i = 0; i < R * R; i++){ meanG += G[i]; meanR += Rd[i]; } meanG /= R * R; meanR /= R * R;
-  for (let i = 0; i < R * R; i++){ lg[i] = S * (G[i] + 0.012) * T[i] + haze * meanG * 4; lr[i] = 0.8 * S * tpmOpt().e.tr / Math.max(1e-3, tpmOpt().e.gcamp) * Rd[i] * T[i] + haze * meanR * 4; }
+  /* each channel: its laser line, its filter in the wheel; the laser scattered by everything in the sheet reaches the
+     camera as far as that filter lets it (×3000: scattered laser is far brighter than the fluorescence) */
+  const K = TPM.ls.ch.map(lsChanK), lc = [lg, lr];
+  for (let c = 0; c < 2; c++){ const k = K[c], o = lc[c];
+    for (let i = 0; i < R * R; i++) o[i] = S * (k.g * (G[i] + 0.012) + 0.8 * k.r * Rd[i]) * T[i] + haze * (k.g * meanG + k.r * meanR) * 4 + S * 3000 * k.leak * T[i] * (0.3 + G[i] + Rd[i]); }
   const ag = lsCamera(lg, TPM.pmt[0], R), ar = lsCamera(lr, TPM.pmt[1], R);
   return { R, F, z, f, G, Rd, ag, ar, S, Bg: haze, sbr: haze > 0 ? S * 0.2 / (haze * meanG * 4 + 1e-6) : Infinity, psf: tpmPsf(z), P0: P, Pf: P, max: 65535, t: tpmNow(), ls: true };
 }
@@ -13308,6 +13395,9 @@ function lsCamera(lam, pm, R){
 
 /* ── the bench in 3D: the block, the chamber, the illumination objectives, the sheet and the picture in it ── */
 function lsBuild(){
+  /* the camera's field starts on the middle of the block, not on the cells' centre (2026-11-19, Søren: "even though the
+     sample has changed from the cube to the MICrONS dataset, the imaged part is still the cube") */
+  if (TPM.ls.ctr && lsBox().real){ const c = lsBoxC(); TPM.cx = c.cx; TPM.cy = c.cy; TPM.ls.ctr = false; TPM.cur = TPM.prev = null; }
   const grp = new THREE.Group(), L = TPM.ls, med = lsMedium(), B = tpmBasis();
   const BX = lsBoxC(), c0 = tpmCentre().addScaledVector(B.e1, -TPM.cx).addScaledVector(B.e2, -TPM.cy);
   const bc = c0.addScaledVector(B.e1, BX.cx).addScaledVector(B.e2, BX.cy).addScaledVector(B.n, BX.sz / 2), Bk = BX.sx, By = BX.sy, Bz = BX.sz;
@@ -13319,10 +13409,15 @@ function lsBuild(){
   const Ch = 9000, chamber = new THREE.Mesh(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6), new THREE.MeshStandardMaterial({ color: "#7fb8ff", transparent: true, opacity: 0.08, depthWrite: false, side: THREE.BackSide }));
   chamber.position.z = 600; grp.add(chamber);
   { const ce = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6)), new THREE.LineBasicMaterial({ color: "#5c7ea6" })); ce.position.z = 600; grp.add(ce); }
+  /* named (2026-11-19, Søren: "What is this 10 mm box?"): the sample chamber, a glass cuvette full of the immersion
+     medium the block was cleared in; the illumination objectives dip into it from the sides, the detection objective
+     from above */
+  try { const lb = textSprite(["Sample chamber", "filled with " + (L.E > 1 ? "water (expanded gel)" : med.name + " medium") + ", RI " + med.n.toFixed(2)], { fit: true, border: "#5c7ea6" }); const h = 700; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, -Ch * 0.35 - 600, 600 + Ch * 0.3 - 400); grp.add(lb); } catch (e){}
   /* the illumination objectives, on both sides of the sheet (one if single-sided) */
   /* the ILLUMINATION objectives (2026-11-19, Søren: "what are those 2 cones?"): low-NA objectives that make the sheet,
      their narrow tips facing the block (they were drawn the wrong way round), with the light fanning out of each into
      the sheet; the detection objective above collects the fluorescence for the camera */
+  grp.userData.n0 = grp.children.length;
   const prof = [[1, 0], [1100, 0], [1300, 250], [3200, 5000], [3200, 22000], [2500, 22000], [2500, 26000], [1, 26000]].map(([r, y]) => new THREE.Vector2(r, y));
   for (const sgn of L.dual ? [-1, 1] : [-1]){
     const ob = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.6, roughness: 0.35 }));
@@ -13349,7 +13444,7 @@ function lsBuild(){
   sheet.name = "sheet"; grp.add(sheet);
   const pic = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
   pic.name = "pic"; pic.visible = false; grp.add(pic);
-  grp.userData = { sheet, pic, bc, BX };
+  grp.userData = Object.assign(grp.userData || {}, { sheet, pic, bc, BX });
   return grp;
 }
 /* THE REST OF THE BENCH (2026-11-19, Søren: "It also seems like a lot of the setup is missing"): on each illumination
@@ -13364,8 +13459,8 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.rotation.y = Math.PI / 2; ring.position.set(x, y, z); grp.add(ring); };
   const lensZ = (r, x, y, z) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14), mat("#a9d8ff", { transparent: true, opacity: 0.55, metalness: 0.1, roughness: 0.05 })); m.scale.set(1, 1, 0.18); m.position.set(x, y, z); grp.add(m);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.position.set(x, y, z); grp.add(ring); };
-  const beam = (pts, c, r) => { for (let i = 1; i < pts.length; i++){ const a = new THREE.Vector3(...pts[i - 1]), b = new THREE.Vector3(...pts[i]), d = a.distanceTo(b); if (d < 1) continue;
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d, 10), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85 })); m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); grp.add(m); } };
+  const lasB = [], beam = (pts, c, r, into) => { for (let i = 1; i < pts.length; i++){ const a = new THREE.Vector3(...pts[i - 1]), b = new THREE.Vector3(...pts[i]), d = a.distanceTo(b); if (d < 1) continue;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d, 10), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85 })); m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); grp.add(m); if (into) into.push(m.material); } };
   const lab = (t, x, y, z) => { if (!TPM.rigLabels) return; try { const sp = textSprite([t], { fit: true, border: "#8b949e" }); const h = 5000; sp.scale.set(h * sp.userData.aspect, h, 1); sp.position.set(x, y, z); grp.add(sp); } catch (e){} };
   const col = TPM_MODES.ls.col, tip = Bk / 2 + 3000, back = tip + 26000;
   /* the illumination arms */
@@ -13377,23 +13472,40 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     const cyl = new THREE.Mesh(new THREE.CylinderGeometry(7000, 7000, 14000, 32, 1, false, 0, Math.PI), mat("#a9d8ff", { transparent: true, opacity: 0.6, metalness: 0.1, roughness: 0.05 }));
     cyl.position.set(xC, 0, 0); cyl.rotation.x = Math.PI / 2; grp.add(cyl); lab("Cylindrical lens", xC, 0, -14000);
     box(12000, 12000, 20000, "#59606b", xF, 0, 0); lab("Fibre collimator", xF, 0, -16000);
-    beam([[xF, 0, 0], [sgn * tip, 0, 0]], col, 800);
-    beam([[xF, 0, 0], [xF, 0, 60000], [sgn * (back + 230000), 0, 60000]], col, 500);   // the fibre, down and out to the lasers
+    if (TPM.laserOn){ beam([[xF, 0, 0], [sgn * tip, 0, 0]], col, 800, lasB);
+      beam([[xF, 0, 0], [xF, 0, 60000], [sgn * (back + 230000), 0, 60000]], col, 500, lasB); }   // the fibre, down and out to the lasers
   }
   /* the laser combiner: lines 405, 488, 561, 640 into fibres */
   const xL = -(back + 230000) - 60000;
   box(120000, 60000, 50000, "#2b3a55", xL, 0, 60000); lab("Laser combiner 405 · 488 · 561 · 640 nm", xL, 0, 20000);
   [["#8a5cff", -36000], ["#38c8ff", -12000], ["#c8ff38", 12000], ["#ff4040", 36000]].forEach(([c, dx]) => { const d = new THREE.Mesh(new THREE.CylinderGeometry(2500, 2500, 1500, 16), new THREE.MeshBasicMaterial({ color: c })); d.position.set(xL + dx, 0, 34000); d.rotation.x = Math.PI / 2; grp.add(d); });
-  if (L.dual) beam([[xL + 60000, 0, 60000], [back + 230000, 0, 60000], [back + 165000, 0, 60000]], col, 500);
+  if (L.dual && TPM.laserOn) beam([[xL + 60000, 0, 60000], [back + 230000, 0, 60000], [back + 165000, 0, 60000]], col, 500, lasB);
+  /* the lasers stay on; an AOTF picks the line (its unused light goes to a dump inside) and a shutter at the fibre's
+     entrance closes the path, sending the beam into a beam dump (2026-11-19, Søren: "where is it dumped?") */
+  { const xSh = xL + 60000 + 5000;
+    box(4000, 24000, 24000, "#c9a227", xSh, TPM.laserOn ? 20000 : 0, 60000);
+    box(18000, 18000, 18000, "#0d0d0d", xSh - 4000, 0, 100000);
+    lab(TPM.laserOn ? "AOTF + shutter (open)" : "AOTF + shutter (closed)", xSh, 0, 30000 - 12000); lab("Beam dump", xSh - 4000, 0, 120000);
+    if (!TPM.laserOn) beam([[xL + 50000, 0, 60000], [xSh - 3000, 0, 60000], [xSh - 3000, 0, 92000]], col, 500); }
+  /* everything that makes the sheet -- the illumination objectives, their fans, the arms and the lasers -- rides at the
+     sheet's height (2026-11-19, Søren: "The light sheets from the objectives also do not seem to follow the imaging
+     plane": they sat at the block's middle whatever the depth) */
+  { const arms = new THREE.Group(); for (const o of grp.children.slice(grp.userData.n0)) arms.add(o); grp.add(arms); arms.position.z = TPM.depth - BX.sz / 2; grp.userData.arms = arms; }
   /* detection, up the axis (−z here) from the detection objective */
   const zTop = (TPM.depth - BX.sz / 2) - TPM.obj.wd * 1000 - (TPM.objTop || 40000);
   const zT = zTop - 40000, zF = zTop - 90000, zC = zTop - 140000;
   lensZ(14000, 0, 0, zT); lab("Tube lens", 22000, 0, zT);
-  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(26000, 26000, 4000, 48), mat("#2d333b")); wheel.rotation.x = Math.PI / 2; wheel.position.set(12000, 0, zF); grp.add(wheel);
-  ["#3dff6a", "#ff6a8a", "#8a5cff", "#ffd84a"].forEach((c, i) => { const a = i * Math.PI / 2 + Math.PI, f = new THREE.Mesh(new THREE.CylinderGeometry(6000, 6000, 4400, 24), new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.7 })); f.rotation.x = Math.PI / 2; f.position.set(12000 + Math.cos(a) * 12000, Math.sin(a) * 12000, zF); grp.add(f); });
-  lab("Emission filter wheel", 46000, 0, zF);
+  /* the wheel: six slots round its centre; it turns so the active channel's filter sits in the beam (at x = 0) */
+  const wheel = new THREE.Group(); wheel.position.set(14000, 0, zF); grp.add(wheel);
+  { const d = new THREE.Mesh(new THREE.CylinderGeometry(25000, 25000, 4000, 48), mat("#2d333b")); d.rotation.x = Math.PI / 2; wheel.add(d); }
+  LS_WHEEL.forEach((F, i) => { const a = i * Math.PI / 3, f = new THREE.Mesh(new THREE.CylinderGeometry(5600, 5600, 4400, 24), new THREE.MeshStandardMaterial({ color: F.col, transparent: true, opacity: F.c || F.lp || F.notch ? 0.8 : 0.15, emissive: F.col, emissiveIntensity: 0.25 }));
+    f.rotation.x = Math.PI / 2; f.position.set(Math.cos(a) * 14000, Math.sin(a) * 14000, 0); wheel.add(f); });
+  lab("Emission filter wheel", 48000, 0, zF);
   box(60000, 60000, 70000, "#1b1f24", 0, 0, zC - 25000); lab("sCMOS camera (2048 × 2048)", 0, 0, zC - 70000);
-  beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zC + 10000]], "#3dff6a", 900);
+  const emB = [], camB = [];
+  if (TPM.laserOn){ beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zF + 2500]], "#3dff6a", 300, emB);
+    beam([[0, 0, zF - 2500], [0, 0, zC + 10000]], "#3dff6a", 300, camB); }
+  grp.userData.parts = { wheel, lasB, emB, camB };
   /* the stage under the chamber */
   box(30000, 30000, 6000, "#3a3f47", 0, 0, 600 + 9000 * 0.3 + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, 600 + 9000 * 0.3 + 12000); lab("XYZ stage", 26000, 0, 600 + 9000 * 0.3 + 12000);
 }
@@ -13402,6 +13514,15 @@ function lsFrame3d(){
   const B = tpmBasis(), u = TPM.lsMesh.userData, z = TPM.depth;
   /* the sheet and the detection focus move together through the block (the block is the frame: x = e1, y = e2, z = n) */
   u.sheet.position.z = z - u.BX.sz / 2;
+  if (u.arms) u.arms.position.z = u.sheet.position.z;
+  /* the active channel: its laser colours the sheet and the illumination beams, the wheel turns its filter in */
+  if (u.parts){ const ch = lsActCh(), F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch);
+    const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2;
+    u.sheet.material.color.set(lc); for (const m of u.parts.lasB) m.color.set(lc);
+    const emc = k.g >= k.r ? "#3dff6a" : "#ff6a8a";
+    for (const m of u.parts.emB) m.color.set(emc);
+    const pass = k.leak > 0.01 ? lc : Math.max(k.g, k.r) < 0.02 ? "#333" : F.c || F.lp ? F.col : emc;
+    for (const m of u.parts.camB){ m.color.set(pass); m.opacity = Math.max(k.g, k.r, k.leak * 20) < 0.02 ? 0.2 : 0.85; } }
   const fr = TPM.cur;
   if (fr && fr.cv && fr.ls){
     if (!u.tex || u.tex.image !== fr.cv){ if (u.tex) u.tex.dispose(); u.tex = new THREE.CanvasTexture(fr.cv); u.tex.colorSpace = THREE.SRGBColorSpace; u.pic.material.map = u.tex; u.pic.material.needsUpdate = true; }
@@ -13440,9 +13561,9 @@ async function lsView(){
 }
 function lsTabLaser(P, g, X, Y, W){
   const L = TPM.ls, M = tpmM(), P0 = TPM.power.ls;
-  tpmTxt(g, "Light sheet — " + TPM.lam.ls + " nm laser line", X, Y + 10, 30, "#fff", W);
+  tpmTxt(g, "Light sheet — " + (lsChans().map(c => c.las + " nm").join(" then ") || "no channel on") + " (laser lines: Filters tab)", X, Y + 10, 30, "#fff", W);
   tpmSlider(P, g, X, Y + 70, W - 20, "Laser power " + P0.toFixed(P0 < 10 ? 1 : 0) + " mW", P0, 0.1, 100, v => { TPM.power.ls = v; }, { log: true, key: "lspow", col: M.col });
-  tpmSlider(P, g, X, Y + 165, 500, "Wavelength " + TPM.lam.ls + " nm", TPM.lam.ls, 405, 640, v => { TPM.lam.ls = Math.round(v); TPM.built = ""; }, { step: 1, key: "lslam", col: M.col });
+  tpmTxt(g, "Sheet thickness computed at " + TPM.lam.ls + " nm (channel 1's line)", X, Y + 200, 22, "#8b949e", 500);
   tpmSlider(P, g, X + 530, Y + 165, 490, "Sheet waist " + L.w0.toFixed(1) + " µm (FWHM)", L.w0, 0.5, 30, v => { L.w0 = v; TPM.built = ""; }, { log: true, key: "lsw0" });
   tpmSlider(P, g, X, Y + 260, 500, "Waist position " + L.xw.toFixed(0) + " µm", L.xw, -500, 500, v => { L.xw = v; TPM.built = ""; }, { step: 5, key: "lsxw" });
   vrpBtn(P, g, X + 530, Y + 265, 240, 56, (L.dual ? "☑" : "☐") + " Both sides", () => { L.dual = !L.dual; TPM.built = ""; }, { on: L.dual, key: "lsdual", size: 23 });
@@ -13474,9 +13595,9 @@ function lsTabSample(P, g, X, Y, W){
   if (L.E === 1 && L.clear === "idisco") { tpmTxt(g, "⚠ iDISCO's solvents quench GCaMP (a fluorescent protein): ~15 % left — usually stained with antibodies instead", X, y, 22, "#ffb070", W); y += 34; }
   if (L.E > 1){ tpmLines(g, "×" + L.E + " in every direction: features " + L.E + "× bigger for the same optics (" + (0.61 * 0.515 / TPM.obj.na).toFixed(2) + " µm resolution ≈ " + (0.61 * 0.515 / TPM.obj.na / L.E).toFixed(2) + " µm of the original), the dye " + Math.pow(L.E, 3) + "× more dilute, the gel clear as water (use a water objective).", X, y, W, 23, "#e9d5ff", 3); y += 96; }
   /* tiles and time for the whole block */
-  const Fp = lsFovPhys(), side = 1000 * L.E, tiles = Math.ceil(side / (Fp * 0.9)) ** 2, planes = Math.ceil(side / Math.max(0.5, TPM.stack.dz * L.E)), t = tiles * planes * (L.exp + 10) / 1000;
+  const Fp = lsFovPhys(), side = 1000 * L.E, tiles = Math.ceil(side / (Fp * 0.9)) ** 2, planes = Math.ceil(side / Math.max(0.5, TPM.stack.dz * L.E)), nch = Math.max(1, lsChans().length), t = tiles * planes * ((L.exp + 10) * nch + (nch > 1 ? 50 * nch : 0)) / 1000;
   const tt = t < 120 ? t.toFixed(0) + " s" : t < 7200 ? (t / 60).toFixed(0) + " min" : (t / 3600).toFixed(1) + " h";
-  tpmLines(g, "The whole block (" + (side / 1000).toFixed(0) + " mm)³: " + tiles + " tile" + (tiles > 1 ? "s" : "") + " × " + planes + " planes (z-step " + TPM.stack.dz.toFixed(1) + " µm of the original) at " + L.exp + " ms → " + tt + " of imaging, " + (tiles * planes * 8 / 1024).toFixed(0) + " GB at 2048² × 16 bit.", X, y + 10, W, 24, "#e6edf3", 3);
+  tpmLines(g, "The whole block (" + (side / 1000).toFixed(0) + " mm)³: " + tiles + " tile" + (tiles > 1 ? "s" : "") + " × " + planes + " planes (z-step " + TPM.stack.dz.toFixed(1) + " µm of the original) at " + L.exp + " ms × " + nch + " channel" + (nch > 1 ? "s (one after the other, the wheel turning between)" : "") + " → " + tt + " of imaging, " + (tiles * planes * 8 * nch / 1024).toFixed(0) + " GB at 2048² × 16 bit.", X, y + 10, W, 24, "#e6edf3", 3);
   tpmLines(g, "Fixed tissue: no activity, no blood flow. The vessels carry a perfused dye (red channel).", X, y + 120, W, 22, "#8b949e", 2);
   tpmSlider(P, g, X, Y + 780, 500, "Camera exposure " + L.exp + " ms", L.exp, 1, 500, v => { L.exp = Math.round(v); }, { log: true, key: "lsexp" });
 }
