@@ -11813,7 +11813,7 @@ function tpmGL(R){
     const st = mask => new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
       stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, stencilRef: 0, stencilWriteMask: mask,
       stencilFail: THREE.InvertStencilOp, stencilZFail: THREE.InvertStencilOp, stencilZPass: THREE.InvertStencilOp });
-    TPM.stMat = st(1); TPM.stNuc = st(2);
+    TPM.stMat = st(1); TPM.stNuc = st(2); TPM.stUp = st(4);
     TPM.fillMat = new THREE.ShaderMaterial({ uniforms: { col: { value: new THREE.Vector3() } },
       vertexShader: "void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }",
       fragmentShader: "uniform vec3 col; void main(){ gl_FragColor = vec4(col, 1.0); }",
@@ -11889,9 +11889,18 @@ function tpmPass(B, f, F, R, list){
     r.xr.enabled = false; r.autoClear = false; r.setRenderTarget(TPM.rt); r.setClearColor(0x000000, 0); r.clear(true, true, true);
     for (const it of list){
       const ms = it.mesh; r.clearStencil();
-      const was = ms.material, vis = ms.visible; ms.material = TPM.stMat; ms.visible = true; r.render(ms, cam); ms.material = was; ms.visible = vis;
+      const was = ms.material, vis = ms.visible; ms.material = TPM.stMat; ms.visible = true; r.render(ms, cam);
+      /* INSIDE FROM BOTH SIDES (2026-11-19, Søren: "Why is it then long stripes in the z-axis that terminates at astrocyte
+         processes?"): the parity counted only the surfaces BELOW the plane -- and a MICrONS mesh is not closed (thin
+         processes have holes and open ends), so above every such open piece the count came out odd and the plane was
+         "inside" the cell: a column of false signal standing on the process, up to the top of its box. Now the surfaces
+         ABOVE the plane are counted too (the same view, from far above down to the plane), and a pixel is inside only
+         when both counts are odd -- as for any point inside a closed surface; an open piece gives odd on one side only */
+      cam.position.copy(f).addScaledVector(B.n, -200000); cam.near = 0; cam.far = 200000; cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+      ms.material = TPM.stUp; r.render(ms, cam); ms.material = was; ms.visible = vis;
+      cam.position.copy(f).addScaledVector(B.n, -10); cam.near = 10; cam.far = 200000; cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
       if (it.nuc){ const nw = it.nuc.material, nv = it.nuc.visible; it.nuc.material = TPM.stNuc; it.nuc.visible = true; r.render(it.nuc, cam); it.nuc.material = nw; it.nuc.visible = nv; }
-      TPM.fillMat.stencilFuncMask = it.fillNuc ? 1 : 3;
+      TPM.fillMat.stencilFuncMask = it.fillNuc ? 5 : 7; TPM.fillMat.stencilRef = 5;
       TPM.fillMat.uniforms.col.value.set(it.c[0], it.c[1], it.c[2]); r.render(TPM.quad, cam);
     }
     r.readRenderTargetPixels(TPM.rt, 0, 0, R, R, TPM.buf);
@@ -11903,14 +11912,18 @@ function tpmPass(B, f, F, R, list){
    wherever a vessel lies between the surface and the focus, part of the light cone is lost. Seen from above, the vessels
    between the glia limitans and 25 µm over the focal plane (a vessel cut by the plane keeps its bright lumen), blurred by the cone's width at half the depth: the fraction
    of the cone each pixel loses. The excitation is lost before the focus, so the signal drops as (1 − loss)^n. */
-function tpmShadow(B, f, F, R, z, vess){
-  if (!vess.length || z < 30) return null;
+/* ONLY THE VESSELS NEAR ABOVE CAST A SHADOW (2026-11-19, Søren: "the shadow should inhibit signal up to around 100-200
+   µm below the vessel, but not all the way down"): deeper, the cone is so much wider than the vessel that it hardly
+   dims it -- so the vessels 25-100 µm above the focus count fully, 100-200 µm above count half, and anything higher not
+   at all; each band blurred by the cone's width at its own distance. */
+function tpmShadowBand(B, f, F, R, z, vess, d0, d1){
+  if (z < d0 + 5) return null;
   tpmGL(R);
   if (!TPM.shMat) TPM.shMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
-  const cam = TPM.cam;
-  cam.left = -F / 2; cam.right = F / 2; cam.top = F / 2; cam.bottom = -F / 2; cam.near = 1; cam.far = z + 20 - 25; cam.updateProjectionMatrix();
+  const cam = TPM.cam, top = Math.min(z + 20, d1 + 20);           // the camera sits d1 (or the surface) above the focus
+  cam.left = -F / 2; cam.right = F / 2; cam.top = F / 2; cam.bottom = -F / 2; cam.near = 1; cam.far = Math.max(2, top - d0); cam.updateProjectionMatrix();
   const m = new THREE.Matrix4().makeBasis(B.e1, B.e2.clone().negate(), B.n.clone().negate());
-  cam.quaternion.setFromRotationMatrix(m); cam.position.copy(f).addScaledVector(B.n, -(z + 20)); cam.updateMatrixWorld(true);
+  cam.quaternion.setFromRotationMatrix(m); cam.position.copy(f).addScaledVector(B.n, -top); cam.updateMatrixWorld(true);
   const r = renderer, prevT = r.getRenderTarget(), prevAuto = r.autoClear, xrOn = r.xr.enabled, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha();
   try {
     r.xr.enabled = false; r.autoClear = false; r.setRenderTarget(TPM.rt); r.setClearColor(0x000000, 0); r.clear(true, true, true);
@@ -11918,7 +11931,15 @@ function tpmShadow(B, f, F, R, z, vess){
     r.readRenderTargetPixels(TPM.rt, 0, 0, R, R, TPM.buf);
   } finally { r.setRenderTarget(prevT); r.autoClear = prevAuto; r.xr.enabled = xrOn; r.setClearColor(cc, ca); }
   const a = new Float32Array(R * R); for (let i = 0; i < R * R; i++) a[i] = TPM.buf[i * 4] / 255;
-  tpmBlur(a, R, Math.max(0.5, 0.5 * z * Math.tan(tpmTheta()) / 2.355) / (F / R));
+  tpmBlur(a, R, Math.max(0.5, 0.5 * ((d0 + Math.min(z, d1)) / 2) * Math.tan(tpmTheta()) / 2.355) / (F / R));
+  return a;
+}
+function tpmShadow(B, f, F, R, z, vess){
+  if (!vess.length || z < 30) return null;
+  const near = tpmShadowBand(B, f, F, R, z, vess, 25, 100), far = tpmShadowBand(B, f, F, R, z, vess, 100, 200);
+  if (!near && !far) return null;
+  const a = new Float32Array(R * R);
+  for (let i = 0; i < R * R; i++) a[i] = Math.max(near ? near[i] : 0, far ? 0.5 * far[i] : 0);
   return a;
 }
 function tpmBlur(a, R, s){
@@ -12139,7 +12160,7 @@ function tpmCompute(z){
     }
   }
   const lg = new Float32Array(R * R), lr = new Float32Array(R * R);
-  const sh = ok && !beads ? tpmShadow(B, f, F, R, zz, tpmVesselMeshes()) : null, nph = M.nph;
+  const sh = ok && !beads ? tpmShadow(B, f, F, R, zz, tpmVesselMeshes()) : null, nph = M.nph; TPM.lastSh = sh;
   const gG = S * e.gcamp, gR = 0.7 * S * e.tr, gA = auto * e.auto;
   for (let i = 0; i < R * R; i++){
     const k = sh ? Math.pow(Math.max(0.03, 1 - 0.9 * Math.min(1, sh[i])), nph) : 1;
@@ -16873,7 +16894,12 @@ function tpmSnap(){
   return { mode: TPM.mode, depth: Math.round(TPM.depth * 10) / 10, live: !!TPM.live, laser: !!TPM.laserOn, rig: !!TPM.rig, zoom: TPM.zoom, cx: TPM.cx, cy: TPM.cy, px: TPM.px, avg: TPM.avg,
     power: Object.assign({}, TPM.power), lam: Object.assign({}, TPM.lam), expr: TPM.expr, sample: TPM.sample, light: TPM.light,
     pmt: TPM.pmt.map(p => ({ on: p.on, gain: p.gain, off: p.off, lo: p.lo, hi: p.hi })), obj: Object.assign({}, TPM.obj),
-    ls: TPM.mode === "ls" ? { w0: TPM.ls.w0, xw: TPM.ls.xw, dual: TPM.ls.dual, aslm: TPM.ls.aslm, clear: TPM.ls.clear, E: TPM.ls.E, exp: TPM.ls.exp, ch: TPM.ls.ch.map(c => Object.assign({}, c)) } : undefined };
+    ls: TPM.mode === "ls" ? { w0: TPM.ls.w0, xw: TPM.ls.xw, dual: TPM.ls.dual, aslm: TPM.ls.aslm, clear: TPM.ls.clear, E: TPM.ls.E, exp: TPM.ls.exp, ch: TPM.ls.ch.map(c => Object.assign({}, c)) } : undefined,
+    /* THE STACK AND THE TAB TOO (2026-11-19, Søren: "If the menu is open in the recording, why don't we show the recording
+       there also?"): which tab was open, the stack's settings, and whether a stack was being taken (from where, and how
+       far it had got) -- so the film takes the same stack again and the picture shows its planes as they come in */
+    tab: TPM.tab, stack: { n: TPM.stack.n, dz: TPM.stack.dz, from: TPM.stack.from, show: TPM.stack.show, v3: TPM.stack.v3,
+      run: TPM.stack.run ? { z0: TPM.stack.run.z0, n: TPM.stack.run.n, back: TPM.stack.run.back } : null } };
 }
 function tpmApplySnap(t){
   if (t === undefined) return;
@@ -16887,6 +16913,18 @@ function tpmApplySnap(t){
     (t.pmt || []).forEach((q, i) => { if (TPM.pmt[i]) Object.assign(TPM.pmt[i], q); });
     if (t.ls){ const L = TPM.ls; Object.assign(L, { w0: t.ls.w0, xw: t.ls.xw, dual: t.ls.dual, aslm: t.ls.aslm, clear: t.ls.clear, E: t.ls.E, exp: t.ls.exp }); if (t.ls.ch) L.ch = t.ls.ch.map(c => Object.assign({}, c)); }
     if (t.live && !TPM.live){ TPM.live = true; TPM.cur = null; } else if (!t.live) TPM.live = false;
+    if (t.tab) TPM.tab = t.tab;
+    if (t.stack){ const S = TPM.stack, q = t.stack, v3 = S.v3, show = S.show;
+      Object.assign(S, { n: q.n, dz: q.dz, from: q.from, show: q.show, v3: q.v3 });
+      /* a stack under way in the film and not here: take it again, from the same start (scrubbed into the middle of it,
+         the planes before are not there, as on a real rig) -- one that runs here and not in the film finishes by itself */
+      if (q.run && !S.run && TPM.rig){
+        S.planes = []; TPM.xz = null; TPM.cur = null;
+        S.run = { i: 0, n: q.run.n, z0: q.run.z0, back: q.run.back, gains: TPM.pmt.map(pm => pm.gain) };
+        S.run.i = Math.max(0, Math.min(q.run.n - 1, Math.round((t.depth - q.run.z0) / Math.max(0.1, q.dz))));
+        tpmStack3d();
+      } else if (!q.run && !S.run && (v3 !== S.v3 || show !== S.show)) tpmStack3d();
+    }
     TPM.built = ""; TPM.dirty = true;
   } finally { TPM.fromTimeline = false; }
 }
@@ -26211,7 +26249,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { CSFT, tpmStack3d, lsView, tpmSetMode, tpmStackTiff, tpmPower, caStartCell, CA, AP_UNI, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { tpmSnap, tpmApplySnap, CSFT, tpmStack3d, lsView, tpmSetMode, tpmStackTiff, tpmPower, caStartCell, CA, AP_UNI, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
