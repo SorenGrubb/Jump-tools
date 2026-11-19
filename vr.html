@@ -12214,7 +12214,7 @@ function tpmObjective(){
      at the glass, its rim higher up) -- 2026-11-19, Søren: "The water under the objective should not be wider than the
      rim of the lens or the rim of the dental cement." Dry objectives have none. */
   const gap = WDu - TPM.depth - 210;
-  if (o.imm === "water" && gap > 0){ const w = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(rFront - 150, WIN_CEM - 650), Math.min(rFront - 150, WIN_OPEN), gap, 48, 1, false), new THREE.MeshStandardMaterial({ color: "#9fd3ff", transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.05 }));
+  if (o.imm === "water" && gap > 0 && TPM.mode !== "ls"){ const w = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(rFront - 150, WIN_CEM - 650), Math.min(rFront - 150, WIN_OPEN), gap, 48, 1, false), new THREE.MeshStandardMaterial({ color: "#9fd3ff", transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.05 }));
     w.position.y = -gap / 2; grp.add(w); }
   return grp;
 }
@@ -13406,13 +13406,26 @@ function lsBuild(){
   const block = new THREE.Mesh(new THREE.BoxGeometry(Bk, By, Bz), new THREE.MeshStandardMaterial({ color: L.clear === "none" && L.E === 1 ? "#f2ead8" : "#dfefff", transparent: true, opacity: op, depthWrite: false, roughness: 0.4 }));
   grp.add(block);
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Bk, By, Bz)), new THREE.LineBasicMaterial({ color: "#9fd3ff" })); grp.add(edges);
-  const Ch = 9000, chamber = new THREE.Mesh(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6), new THREE.MeshStandardMaterial({ color: "#7fb8ff", transparent: true, opacity: 0.08, depthWrite: false, side: THREE.BackSide }));
-  chamber.position.z = 600; grp.add(chamber);
-  { const ce = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6)), new THREE.LineBasicMaterial({ color: "#5c7ea6" })); ce.position.z = 600; grp.add(ce); }
-  /* named (2026-11-19, Søren: "What is this 10 mm box?"): the sample chamber, a glass cuvette full of the immersion
-     medium the block was cleared in; the illumination objectives dip into it from the sides, the detection objective
-     from above */
-  try { const lb = textSprite(["Sample chamber", "filled with " + (L.E > 1 ? "water (expanded gel)" : med.name + " medium") + ", RI " + med.n.toFixed(2)], { fit: true, border: "#5c7ea6" }); const h = 700; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, -Ch * 0.35 - 600, 600 + Ch * 0.3 - 400); grp.add(lb); } catch (e){}
+  /* THE CHAMBER AND ITS MEDIUM (2026-11-19, Søren: "the water in the water objective is just hanging in the air. Do light
+     sheet microscopes use a coverslip? Is there a medium around the sample?"): no coverslip -- the block sits in a
+     cuvette FILLED with the medium it was cleared in (RI-matched; water for an expanded gel), and the objectives are
+     dipping objectives: the illumination ones through sealed ports in the side walls, the detection one from above,
+     its front lens under the surface even with the focus at the top of the block. A dry objective instead looks down
+     through a glass window on top of the cuvette. */
+  const WDu = TPM.obj.wd * 1000, dry = TPM.obj.imm === "air";
+  const Cx = Math.max(9000, Bk + 8000), Cy = Math.max(6300, By + 4000);
+  const zBot = Bz / 2 + 2000, zSurf = dry ? -Bz / 2 - 4000 : -Bz / 2 - WDu - 2000, zTopW = zSurf - (dry ? 0 : 1500), Cz = zBot - zTopW;
+  const medCol = L.E > 1 ? "#9fd3ff" : L.clear === "none" ? "#b8d8ff" : L.clear === "idisco" ? "#ffe9b0" : "#d8ecff";
+  const fill = new THREE.Mesh(new THREE.BoxGeometry(Cx - 200, Cy - 200, zBot - zSurf), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.16, depthWrite: false, roughness: 0.05 }));
+  fill.position.z = (zBot + zSurf) / 2; grp.add(fill);
+  const surf = new THREE.Mesh(new THREE.PlaneGeometry(Cx - 200, Cy - 200), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, roughness: 0.02, metalness: 0.2 }));
+  surf.position.z = zSurf; grp.add(surf);
+  { const ce = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Cx, Cy, Cz)), new THREE.LineBasicMaterial({ color: "#5c7ea6" })); ce.position.z = (zBot + zTopW) / 2; grp.add(ce);
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(Cx, Cy, Cz), new THREE.MeshStandardMaterial({ color: "#7fb8ff", transparent: true, opacity: 0.05, depthWrite: false, side: THREE.BackSide })); walls.position.z = ce.position.z; grp.add(walls); }
+  if (dry){ const lid = new THREE.Mesh(new THREE.BoxGeometry(Cx, Cy, 170), new THREE.MeshStandardMaterial({ color: "#cfe8ff", transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.02 })); lid.position.z = zSurf - 85; grp.add(lid); }
+  try { const lb = textSprite(["Sample chamber, no coverslip: filled with " + (L.E > 1 ? "water (the expanded gel)" : med.name + " medium") + ", RI " + med.n.toFixed(2),
+      dry ? "the dry objective looks down through a glass window on top" : "the objectives dip into the medium (sealed ports in the sides)"], { fit: true, border: "#5c7ea6" });
+    const h = 600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, -Cy / 2 - 500, zBot - 500); grp.add(lb); } catch (e){}
   /* the illumination objectives, on both sides of the sheet (one if single-sided) */
   /* the ILLUMINATION objectives (2026-11-19, Søren: "what are those 2 cones?"): low-NA objectives that make the sheet,
      their narrow tips facing the block (they were drawn the wrong way round), with the light fanning out of each into
@@ -13507,7 +13520,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
     beam([[0, 0, zF - 2500], [0, 0, zC + 10000]], "#3dff6a", 300, camB); }
   grp.userData.parts = { wheel, lasB, emB, camB };
   /* the stage under the chamber */
-  box(30000, 30000, 6000, "#3a3f47", 0, 0, 600 + 9000 * 0.3 + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, 600 + 9000 * 0.3 + 12000); lab("XYZ stage", 26000, 0, 600 + 9000 * 0.3 + 12000);
+  box(30000, 30000, 6000, "#3a3f47", 0, 0, (BX.sz / 2 + 2000) + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, (BX.sz / 2 + 2000) + 12000); lab("XYZ stage", 26000, 0, (BX.sz / 2 + 2000) + 12000);
 }
 function lsFrame3d(){
   if (!TPM.lsMesh) return;
