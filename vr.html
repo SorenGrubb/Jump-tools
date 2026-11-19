@@ -11719,6 +11719,12 @@ function tpmFov(){ if (TPM.mode === "ls") return lsFov(); return Math.min(5000, 
    seems it is limited to around the glia limitans and below"): in vivo the focus can be anywhere between the glass and
    the depth limit -- the pia, the subarachnoid space with its pial vessels and macrophages, the arachnoid lie between the
    glia limitans and the window's glass, which sits 60 µm above it here. Depths there are negative (µm above). */
+/* THE SHUTTER (2026-11-19, Søren: "When you are not live, the laser should not light in the tissue, it should be shut
+   off. I guess instead of Laser on, it should be Shutter off"): on a real rig the laser runs all day and a shutter
+   (with the Pockels cell / AOTF) lets light onto the tissue only while something is being acquired. So the light
+   reaches the brain or the block only during ▶ Live, a z-stack or a parked beam; otherwise the shutter is closed and
+   the beam ends in the dump. "Laser ON/off" is the laser itself (and its key, which stays on all session). */
+function tpmShutter(){ return !!(TPM.laserOn && TPM.rig && (TPM.live || TPM.stack.run || TPM.park)); }
 function tpmMinDepth(){ return TPM.mode === "ls" ? 0 : -55; }
 function tpmMaxDepth(){ if (TPM.mode === "ls") return Math.round(lsBox().z1); return Math.max(0, TPM.obj.wd * 1000 - 260); }              // the objective's tip must stay over the glass (150 µm + 60 µm + water)
 function tpmPsf(z){
@@ -12383,7 +12389,7 @@ function tpmRigBuild(){
     box(50000, 40000, 40000, "#1f6feb", -220000, yM, 0); lab("Pockels cell", -220000, yM + 34000, 0);
     box(16000, 16000, 16000, "#d8e6ff", -170000, yM, 0, { transparent: true, opacity: 0.6, metalness: 0.1, roughness: 0.05 }); lab("Polarising beam splitter", -170000, yM - 30000, 0);
     box(22000, 22000, 22000, "#0d0d0d", -170000, yM, -62000); lab("Beam dump", -170000, yM + 24000, -62000);
-    box(2500, 26000, 26000, "#c9a227", -140000, yM + (TPM.laserOn ? 24000 : 0), 0); lab(TPM.laserOn ? "Shutter (open)" : "Shutter (closed)", -140000, yM + 52000, 0);
+    box(2500, 26000, 26000, "#c9a227", -140000, yM + (tpmShutter() ? 24000 : 0), 0); lab(tpmShutter() ? "Shutter (open)" : TPM.laserOn ? "Shutter (closed: not acquiring)" : "Shutter (closed)", -140000, yM + 52000, 0);
   }
   box(300000, 120000, 160000, "#2b3a55", -420000, yM, 0); lab(M.nph === 3 ? "OPA laser (" + TPM.lam["3p"] + " nm)" : M.nph === 2 ? "Ti:sapphire laser (" + TPM.lam["2p"] + " nm)" : "LED (" + TPM.lam["1p"] + " nm)", -420000, yM + 85000, 0);
   /* the detection side */
@@ -12397,7 +12403,7 @@ function tpmRigBuild(){
   /* infrared is invisible: drawn in the mode's magenta, not red, so it is not mistaken for the red fluorescence */
   const ex = M.col;
   if (M.nph > 1){
-    beam([[-170000, yM, 0], [-170000, yM, -51000]], ex, TPM.laserOn ? 700 : 1800);      // into the dump: everything when off
+    beam([[-170000, yM, 0], [-170000, yM, -51000]], ex, tpmShutter() ? 700 : 1800);      // into the dump: everything when off
   }
   /* the excitation beam's shape: ~1 mm from the laser; the beam expander (two lenses, f 10 and 30 mm, 40 mm apart) makes
      it 3× wider; the scan lens (f 30 mm) brings it to a focus and the tube lens (f 60 mm) makes it parallel again, 2×
@@ -12407,13 +12413,13 @@ function tpmRigBuild(){
     const lz = [{ s: 140000, f: 10000 }, { s: 180000, f: 30000 }, { s: sS, f: 30000 }, { s: sT, f: 60000 }];
     const pre = beamEnvelope([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], lz, [1000, 1000], null, ex, { sEnd: sB });
     const hB = pre.at(sB)[0], obj = hB > rF ? [{ s: sB, f: T * hB / (hB - rF) }] : [];
-    const env = beamEnvelope([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], lz.concat(obj), [1000, 1000], null, ex, { sEnd: M.nph > 1 && !TPM.laserOn ? 100000 : undefined, op: 0.45 });
-    if (TPM.laserOn || M.nph > 1) grp.add(env.mesh); }
+    const env = beamEnvelope([[-270000, yM, 0], [0, yM, 0], [0, 0, 0]], lz.concat(obj), [1000, 1000], null, ex, { sEnd: M.nph > 1 && !tpmShutter() ? 100000 : undefined, op: 0.45 });
+    if ((M.nph > 1 && TPM.laserOn) || tpmShutter()) grp.add(env.mesh); }
   /* the fluorescence: green (GCaMP) and red (the plasma dye) travel together up the objective and through the collection
      lens and IR-block filter, side by side here, until the 565 nm dichroic sends green up and lets red through */
   /* as a bundle: from the front lens it widens through the objective to its back aperture, comes out parallel, and the
      collection lens (f ≈ 115 mm) brings it down onto each PMT's window; red drawn a little wider so both show */
-  if (TPM.laserOn){
+  if (tpmShutter()){
     const rF = Math.max(800, (TPM.obj.wd * 1000) * Math.tan(tpmTheta()) + 700) * 0.9, hB = 6000, u0 = (hB - rF) / T;
     const lz = [{ s: T, f: hB / u0 }, { s: yD + (xC - 0), f: 118000 }];
     for (const [c, k, end] of [["#ff4f6a", 1, [xS + 35000, yD, 0]], ["#3dff6a", 0.8, [xS, yD + 35000, 0]]])
@@ -12472,7 +12478,7 @@ function tpm3dBuild(){
   if (!TPM.grp){ TPM.grp = new THREE.Group(); TPM.grp.name = "two-photon microscope"; }
   if (!TPM.grp.parent) content.add(TPM.grp);
   const B = tpmBasis(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.n.clone().negate());
-  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn, TPM.sample]) + TPM.lam.ls : ""].join("|");
+  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, tpmShutter(), TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn, TPM.sample]) + TPM.lam.ls : ""].join("|");
   if (sig !== TPM.built){
     TPM.built = sig;
     for (const k of ["objMesh", "beamMesh"]) if (TPM[k]){ TPM.grp.remove(TPM[k]); TPM[k].traverse(o => { if (o.geometry) o.geometry.dispose(); }); TPM[k] = null; }
@@ -12482,7 +12488,7 @@ function tpm3dBuild(){
     if (TPM.lsMesh){ TPM.grp.remove(TPM.lsMesh); TPM.lsMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); }); TPM.lsMesh = null; }
     if (TPM.mode === "ls"){ TPM.lsMesh = lsBuild(); TPM.grp.add(TPM.lsMesh); lsPial(); }
     else if (TPM.lsPial && TPM.lsPial.parent) TPM.lsPial.parent.remove(TPM.lsPial);
-    else if (TPM.light && TPM.laserOn && TPM.rig){ TPM.beamMesh = tpmBeam(); TPM.beamMesh.quaternion.copy(q); TPM.grp.add(TPM.beamMesh); }
+    else if (TPM.light && tpmShutter()){ TPM.beamMesh = tpmBeam(); TPM.beamMesh.quaternion.copy(q); TPM.grp.add(TPM.beamMesh); }
     if (!TPM.fovLine){
       TPM.fovLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([0, 1, 2, 3].map(() => new THREE.Vector3())), new THREE.LineBasicMaterial({ color: "#5ff2ff", transparent: true, opacity: 0.85 }));
       TPM.scanLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 }));
@@ -12792,7 +12798,7 @@ function tpmMonitor(P, g, x, y, s){
     if (pv && pv.cv && pv.R === R && rows < R) g.drawImage(pv.cv, 0, rows, R, R - rows, x, y + rows * s / R, s, (R - rows) * s / R);
     if (rows > 0) g.drawImage(fr.cv, 0, 0, R, rows, x, y, s, rows * s / R);
     if ((TPM.live || TPM.stack.run) && !glob){ g.fillStyle = "rgba(255,255,255,0.55)"; g.fillRect(x, y + rows * s / R, s, Math.max(1, s / R)); }
-  } else tpmTxt(g, TPM.laserOn ? "Press ▶ Live" : "The laser is off", x + 30, y + s / 2, 32, "#aaa");
+  } else tpmTxt(g, TPM.laserOn ? "Shutter closed \u2014 press \u25b6 Live to open it and scan" : "The laser is off", x + 30, y + s / 2, 28, "#aaa", s - 60);
   g.imageSmoothingEnabled = true;
   /* the ROIs and the line scan's line; on the Analysis tab a press on the picture adds one */
   TPM.rois.forEach((r, i) => { g.strokeStyle = TPM_ROICOL[i % TPM_ROICOL.length]; g.lineWidth = 3; g.beginPath(); g.arc(x + r.u * s, y + r.v * s, Math.max(4, r.r / tpmFov() * s), 0, 7); g.stroke();
@@ -13931,7 +13937,7 @@ function lsBuild(){
     const band = new THREE.Mesh(new THREE.CylinderGeometry(3260, 3260, 900, 48, 1, true), new THREE.MeshStandardMaterial({ color: "#e8d020" }));
     band.rotation.z = Math.PI / 2; band.position.set(sgn * (Bk / 2 + 3000 + 7000), 0, 0); grp.add(band);
     /* the light leaving its tip: a fan as tall as the sheet, as thin as the sheet's edge */
-    if (TPM.laserOn){ const fan = new THREE.BufferGeometry(), x0 = sgn * (Bk / 2 + 3000), x1 = sgn * Bk / 2, w = lsW(x1) / 2;
+    if (tpmShutter()){ const fan = new THREE.BufferGeometry(), x0 = sgn * (Bk / 2 + 3000), x1 = sgn * Bk / 2, w = lsW(x1) / 2;
       fan.setAttribute("position", new THREE.Float32BufferAttribute([x0, -150, 0, x1, -By / 2, -w, x1, By / 2, -w, x0, 150, 0, x1, -By / 2, w, x1, By / 2, w], 3)); fan.setIndex([0, 1, 2, 0, 2, 3, 3, 5, 4, 0, 3, 4, 0, 4, 1]); fan.computeVertexNormals();
       const fm = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(fm);
       (grp.userData.fanM = grp.userData.fanM || []).push(fm.material); }
@@ -13946,7 +13952,7 @@ function lsBuild(){
     pos.push(x, -hgt / 2, -w, x, hgt / 2, -w, x, -hgt / 2, w, x, hgt / 2, w); }
   for (let i = 0; i < N; i++){ const a = i * 4, b = (i + 1) * 4; idx.push(a, b, a + 1, b, b + 1, a + 1, a + 2, a + 3, b + 2, b + 2, a + 3, b + 3); }
   const sg = new THREE.BufferGeometry(); sg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); sg.setIndex(idx); sg.computeVertexNormals();
-  const sheet = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: TPM.laserOn ? 0.3 : 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  const sheet = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: tpmShutter() ? 0.3 : 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
   sheet.name = "sheet"; grp.add(sheet);
   const pic = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
   pic.name = "pic"; pic.visible = false; grp.add(pic);
@@ -13982,7 +13988,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
        the sheet's height only, to a line on the galvo; the scan lens (f 22 mm) makes that direction parallel and
        focuses the other; the tube lens (f 28 mm) makes both parallel and wider; the illumination objective focuses
        the thickness direction into the sheet's waist at the block's middle while the height stays wide (the fan) */
-    if (TPM.laserOn){ const s0 = Math.abs(xF), sAt = x => s0 - Math.abs(x), sO = sAt(sgn * (tip + 19000)), sC = s0;
+    if (tpmShutter()){ const s0 = Math.abs(xF), sAt = x => s0 - Math.abs(x), sO = sAt(sgn * (tip + 19000)), sC = s0;
       const env = beamEnvelope([[xF, 0, 0], [sgn * tip, 0, 0]], [{ s: sAt(xC), f: 23000, ax: "a" }, { s: sAt(xS), f: 22000 }, { s: sAt(xT), f: 28000 }, { s: sO, f: sC - sO }], [1000, 1000], null, col, { ref: [0, 0, 1], op: 0.4 });
       grp.add(env.mesh); lasV.push(env.mesh.material);
       /* the 90° turn is real (2026-11-19, Søren: "Does the objective turn the laser sheet 90 degrees? or is this a
@@ -13997,14 +14003,14 @@ function lsRigParts(grp, Bk, By, Bz, BX){
   const xL = -(back + 230000) - 60000;
   box(120000, 60000, 50000, "#2b3a55", xL, 0, 60000); lab("Laser combiner 405 · 488 · 561 · 640 nm", xL, 0, 20000);
   [["#8a5cff", -36000], ["#38c8ff", -12000], ["#c8ff38", 12000], ["#ff4040", 36000]].forEach(([c, dx]) => { const d = new THREE.Mesh(new THREE.CylinderGeometry(2500, 2500, 1500, 16), new THREE.MeshBasicMaterial({ color: c })); d.position.set(xL + dx, 0, 34000); d.rotation.x = Math.PI / 2; grp.add(d); });
-  if (L.dual && TPM.laserOn) beam([[xL + 60000, 0, 60000], [back + 230000, 0, 60000], [back + 165000, 0, 60000]], col, 500, lasB);
+  if (L.dual && tpmShutter()) beam([[xL + 60000, 0, 60000], [back + 230000, 0, 60000], [back + 165000, 0, 60000]], col, 500, lasB);
   /* the lasers stay on; an AOTF picks the line (its unused light goes to a dump inside) and a shutter at the fibre's
      entrance closes the path, sending the beam into a beam dump (2026-11-19, Søren: "where is it dumped?") */
   { const xSh = xL + 60000 + 5000;
-    box(4000, 24000, 24000, "#c9a227", xSh, TPM.laserOn ? 20000 : 0, 60000);
+    box(4000, 24000, 24000, "#c9a227", xSh, tpmShutter() ? 20000 : 0, 60000);
     box(18000, 18000, 18000, "#0d0d0d", xSh - 4000, 0, 100000);
-    lab(TPM.laserOn ? "AOTF + shutter (open)" : "AOTF + shutter (closed)", xSh, 0, 30000 - 12000); lab("Beam dump", xSh - 4000, 0, 120000);
-    if (!TPM.laserOn) beam([[xL + 50000, 0, 60000], [xSh - 3000, 0, 60000], [xSh - 3000, 0, 92000]], col, 500); }
+    lab(tpmShutter() ? "AOTF + shutter (open)" : "AOTF + shutter (closed)", xSh, 0, 30000 - 12000); lab("Beam dump", xSh - 4000, 0, 120000);
+    if (!tpmShutter() && TPM.laserOn) beam([[xL + 50000, 0, 60000], [xSh - 3000, 0, 60000], [xSh - 3000, 0, 92000]], col, 500); }
   /* everything that makes the sheet -- the illumination objectives, their fans, the arms and the lasers -- rides at the
      sheet's height (2026-11-19, Søren: "The light sheets from the objectives also do not seem to follow the imaging
      plane": they sat at the block's middle whatever the depth) */
@@ -14028,7 +14034,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
      light up, so it leaves as a frustum from the field (clipped to the block) to the objective's front lens; the
      objective makes it parallel (infinity space, ~the back aperture wide) through the tube lens; the tube lens brings
      it together as an image as big as the chip (13.3 mm) on the camera. Pale: it is a volume of light. */
-  if (TPM.laserOn){
+  if (tpmShutter()){
     const zf = TPM.depth - BX.sz / 2, tip = zf - TPM.obj.wd * 1000, ox = TPM.cx - BX.cx, oy = TPM.cy - BX.cy, Fh = lsFov() / 2;
     const x0 = Math.max(-Bk / 2, ox - Fh), x1 = Math.min(Bk / 2, ox + Fh), y0 = Math.max(-By / 2, oy - Fh), y1 = Math.min(By / 2, oy + Fh);
     const rB = Math.min(10000, (TPM.objR || 12000) * 0.6), chip = 6650;
@@ -14062,7 +14068,7 @@ function lsFrame3d(){
   u.sheet.position.z = z - u.BX.sz / 2;
   if (u.arms) u.arms.position.z = u.sheet.position.z;
   /* the active channel: its laser colours the sheet and the illumination beams, the wheel turns its filter in */
-  if (u.parts){ const ph = lsPhase(), ch = ph.ch, F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch), lit = TPM.laserOn && ph.lit;
+  if (u.parts){ const ph = lsPhase(), ch = ph.ch, F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch), lit = tpmShutter() && ph.lit;
     u.sheet.material.opacity = lit ? 0.3 : 0; for (const m of u.fanM || []){ m.color.set(lc); m.opacity = lit ? 0.18 : 0; }
     const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2; TPM.ls.wheelRot = w.rotation.z;
     u.sheet.material.color.set(lc); for (const m of u.parts.lasB){ m.color.set(lc); m.opacity = lit ? 0.85 : 0.12; }
