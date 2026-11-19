@@ -12595,10 +12595,15 @@ function tpmMonitor(P, g, x, y, s){
   g.imageSmoothingEnabled = false;
   if (!TPM.rig){ tpmLines(g, "Set up the rig first: Rig tab → put the parts in the light path (or let it assemble itself).", x + 30, y + s / 2 - 30, s - 60, 30, "#ffd27a"); return; }
   if (fr && fr.cv){
-    const R = fr.R, rows = Math.max(0, Math.min(R, Math.floor((TPM.prog || 1) * R)));
+    /* a light sheet's camera takes the whole plane at once: no raster line (2026-11-19, Søren: "If light sheet scans one
+       whole image at the time, why is there a scan line running through the picture?") -- except with the axially
+       swept sheet (ASLM), where the camera's rolling shutter reads the rows in step with the moving waist, so a line
+       does sweep down each exposure */
+    const glob = TPM.mode === "ls" && !TPM.ls.aslm;
+    const R = fr.R, rows = glob ? R : Math.max(0, Math.min(R, Math.floor((TPM.prog || 1) * R)));
     if (pv && pv.cv && pv.R === R && rows < R) g.drawImage(pv.cv, 0, rows, R, R - rows, x, y + rows * s / R, s, (R - rows) * s / R);
     if (rows > 0) g.drawImage(fr.cv, 0, 0, R, rows, x, y, s, rows * s / R);
-    if (TPM.live || TPM.stack.run){ g.fillStyle = "rgba(255,255,255,0.55)"; g.fillRect(x, y + rows * s / R, s, Math.max(1, s / R)); }
+    if ((TPM.live || TPM.stack.run) && !glob){ g.fillStyle = "rgba(255,255,255,0.55)"; g.fillRect(x, y + rows * s / R, s, Math.max(1, s / R)); }
   } else tpmTxt(g, TPM.laserOn ? "Press ▶ Live" : "The laser is off", x + 30, y + s / 2, 32, "#aaa");
   g.imageSmoothingEnabled = true;
   /* the ROIs and the line scan's line; on the Analysis tab a press on the picture adds one */

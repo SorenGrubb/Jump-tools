@@ -7530,7 +7530,7 @@ var SAVE_LABEL={
   cell_contacts_batch:"The contacts run",
   mesh_proximity_batch:"The astrocyte–synapse run"
 };
-function postAndRead(payload){
+function postAndReadOnce(payload){
   return fetch(REPORT_ENDPOINT,{method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
     /* WHERE IT ENDED UP, not only what it said.  2026-09-18
@@ -7598,17 +7598,118 @@ function postAndRead(payload){
          has lapsed or was never sent, and it is not a sentence anybody can act on. */
       if(/^unauthenticated$/i.test(err))
         err="your Google sign-in has expired — sign in again and try once more; nothing was recorded";
-      return {ok:false,error:err};
+      return {ok:false,error:err,busy:!!(d&&d.busy)};
     })
     .catch(function(e){ return {ok:false,offline:true,
       error:"could not reach the server ("+((e&&e.message)||e)+")"}; });
 }
+/* ── THE OUTBOX ─────────────────────────────────────────────────────────────────────  2026-11-19
+   A reviewer asked what happens under "simultaneous classroom or community use". The backend now writes one
+   report at a time (doPost holds the script lock), so in a burst some requests wait and a few may be told
+   "busy"; on a train or a headset's Wi-Fi some never arrive at all. Neither may lose a report.
+
+   Every report gets a clientId the first time it is sent. If it could not be delivered -- no connection, the
+   server busy, Apps Script out of time -- it is kept in this browser (localStorage, per site), WITHOUT the
+   Google token, and sent again later: every 20 s while due, at once when the connection comes back, with a
+   growing pause between attempts (15 s, 30 s, ... up to 30 min). It is re-signed with the token of whoever is
+   signed in when it goes, and only sent when that is the same person who made it. The server answers a
+   clientId it has already written with {ok:true, duplicate:true}, so a report that did arrive but whose
+   answer was lost is not counted twice. A report the server REFUSES (an unknown type, a broken cell id) is
+   not retried -- it is dropped with a toast saying why, as it would have been said at once.
+   Kept: up to 300 reports of up to 256 kB each (a large tracing is sent as before, not kept). */
+var OUTBOX_KEY="jump_outbox_v1", OUTBOX_MAX_ITEM=262144, OUTBOX_MAX_N=300, OUTBOX_RUNNING=false, OUTBOX_SENT=0;
+function outboxId(){
+  try{ if(window.crypto&&crypto.randomUUID) return crypto.randomUUID().replace(/-/g,""); }catch(_e){}
+  return (Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/g,"").slice(0,32);
+}
+function outboxRead(){ try{ var a=JSON.parse(localStorage.getItem(OUTBOX_KEY)||"[]"); return Array.isArray(a)?a:[]; }catch(_e){ return []; } }
+function outboxWrite(a){ try{ localStorage.setItem(OUTBOX_KEY,JSON.stringify(a)); return true; }catch(_e){ return false; } }
+function outboxRetryable(res){
+  return !!(res&&!res.ok&&(res.offline||res.busy||res.needsAuth
+    ||/busy|exceeded maximum execution time|too many times|lock|timed out|timeout/i.test(String(res.error||""))));
+}
+function outboxAdd(payload){
+  var p=Object.assign({},payload); delete p.credential;
+  var str=""; try{ str=JSON.stringify(p); }catch(_s){ return false; }
+  if(str.length>OUTBOX_MAX_ITEM) return false;
+  var a=outboxRead();
+  if(a.some(function(x){ return x&&x.p&&x.p.clientId===p.clientId; })) return true;
+  if(a.length>=OUTBOX_MAX_N) return false;
+  a.push({p:p,ep:REPORT_ENDPOINT,who:String(REPORTER_EMAIL||"").toLowerCase(),t:Date.now(),n:0,next:Date.now()+5000+Math.random()*5000});
+  if(!outboxWrite(a)) return false;
+  outboxBadge(); return true;
+}
+function postAndRead(payload){
+  if(payload&&typeof payload==="object"&&!payload.clientId) payload.clientId=outboxId();
+  return postAndReadOnce(payload).then(function(res){
+    if(outboxRetryable(res)&&outboxAdd(payload)){
+      var n=outboxRead().length;
+      return Object.assign({},res,{queued:true,
+        error:"kept on this device and will be sent automatically ("+n+" waiting) \u2014 "+res.error});
+    }
+    return res;
+  });
+}
+function outboxDrain(){
+  if(OUTBOX_RUNNING) return;
+  var a=outboxRead(); outboxBadge();
+  if(!a.length||!REPORT_ENDPOINT) return;
+  if(navigator.onLine===false) return;
+  if(!GOOGLE_VERIFIED||!GOOGLE_CREDENTIAL||(GOOGLE_EXP&&Date.now()/1000>GOOGLE_EXP-90)) return;
+  var me=String(REPORTER_EMAIL||"").toLowerCase(), now=Date.now();
+  var it=a.find(function(x){ return x&&x.p&&x.ep===REPORT_ENDPOINT&&x.who===me&&x.next<=now; });
+  if(!it) return;
+  OUTBOX_RUNNING=true;
+  var p=Object.assign({},it.p,{credential:GOOGLE_CREDENTIAL,reporterName:REPORTER_NAME||"",reporterEmail:REPORTER_EMAIL||""});
+  postAndReadOnce(p).then(function(res){
+    var b=outboxRead(), i=b.findIndex(function(x){ return x&&x.p&&x.p.clientId===it.p.clientId; }), more=false;
+    if(res.ok){ if(i>=0) b.splice(i,1); OUTBOX_SENT++; more=true; }
+    else if(outboxRetryable(res)||/unauthenticated|sign-in has expired/i.test(String(res.error||""))){
+      if(i>=0){ var n=(b[i].n||0)+1; b[i].n=n; b[i].next=Date.now()+Math.min(1800000,15000*Math.pow(2,n-1))*(0.75+0.5*Math.random()); b[i].last=String(res.error||"").slice(0,200); }
+    } else {
+      if(i>=0) b.splice(i,1);
+      if(typeof showSubmitToast==="function") showSubmitToast(false,"A report kept on this device was refused by the server and dropped \u2014 "+res.error+".");
+      more=true;
+    }
+    outboxWrite(b); OUTBOX_RUNNING=false; outboxBadge();
+    var mine=b.filter(function(x){ return x&&x.ep===REPORT_ENDPOINT&&x.who===me; });
+    if(more&&mine.length) setTimeout(outboxDrain,800);
+    else if(res.ok&&!mine.length&&OUTBOX_SENT){
+      if(typeof showSubmitToast==="function") showSubmitToast(true,(OUTBOX_SENT===1?"The report":"All "+OUTBOX_SENT+" reports")+" kept on this device "+(OUTBOX_SENT===1?"has":"have")+" now been sent.");
+      OUTBOX_SENT=0;
+      if(window.refreshUnclassifiedCounts) setTimeout(function(){ window.refreshUnclassifiedCounts(true); },2500);
+    }
+  },function(){ OUTBOX_RUNNING=false; });
+}
+/* the pill that says something is waiting; a press sends now */
+function outboxBadge(){
+  var a=outboxRead().filter(function(x){ return x&&x.ep===REPORT_ENDPOINT; });
+  var el=document.getElementById("outboxPill");
+  if(!a.length){ if(el) el.remove(); return; }
+  if(!el){
+    el=document.createElement("button"); el.id="outboxPill"; el.type="button";
+    el.style.cssText="position:fixed;left:14px;bottom:14px;z-index:99999;padding:7px 12px;border-radius:999px;border:1px solid #f0a742;background:#1d1a12;color:#ffd9a0;font:13px/1.3 system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.4)";
+    el.addEventListener("click",function(){ var b=outboxRead(); b.forEach(function(x){ x.next=0; }); outboxWrite(b); outboxDrain(); });
+    (document.body||document.documentElement).appendChild(el);
+  }
+  var me=String(REPORTER_EMAIL||"").toLowerCase(), mine=a.filter(function(x){ return x.who===me; }).length;
+  var signed=GOOGLE_VERIFIED&&GOOGLE_CREDENTIAL&&!(GOOGLE_EXP&&Date.now()/1000>GOOGLE_EXP-90);
+  el.textContent="\u23f3 "+a.length+" report"+(a.length===1?"":"s")+" waiting to be sent"
+    +(!signed?" \u2014 sign in to send":mine<a.length?" ("+(a.length-mine)+" from another account)":navigator.onLine===false?" \u2014 offline":"");
+  el.title="Kept on this device because the server was busy or could not be reached. They are sent automatically; press to try now."
+    +(a[0]&&a[0].last?"\nLast answer: "+a[0].last:"");
+}
+setInterval(outboxDrain,20000);
+setTimeout(outboxDrain,6000);
+window.addEventListener("online",function(){ var b=outboxRead(); b.forEach(function(x){ x.next=0; }); outboxWrite(b); outboxDrain(); });
+document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") outboxDrain(); });
+window.addEventListener("storage",function(e){ if(e.key===OUTBOX_KEY) outboxBadge(); });
 /* The best-effort savers' shared ending: silent when it worked, a toast when it did not. Their
    own return value was decided and printed long before this resolves (see saveGateNote), so this
    is the only place a SERVER refusal can be said at all. */
 function noteSaveResult(payload){
   return postAndRead(payload).then(function(res){
-    if(res.ok)return;
+    if(res.ok||res.queued)return;   // kept in the outbox: the pill says so
     var what=SAVE_LABEL[payload&&payload.type]||"That measurement";
     if(typeof showSubmitToast==="function")
       showSubmitToast(false,what+" was not saved — "+res.error+".");
@@ -7673,6 +7774,7 @@ function postReport(payload,okMsg){
   const answer=postAndRead(payload);
   answer.then(function(res){
     if(res.ok){showSubmitToast(true,okMsg||"Submitted — thank you. Your identification was sent.");return;}
+    if(res.queued){showSubmitToast(true,"Kept on this device \u2014 the server "+(res.offline?"could not be reached":"was busy")+", so it will be sent automatically. Nothing to do; the pill at the bottom left shows what is waiting.");return;}
     if(res.offline){showSubmitToast(false,"Could not reach the server — your report was NOT submitted. Check your connection and try again.");return;}
     /* THE CASE THIS PAGE COULD NOT SEE UNTIL TODAY: the request arrived and the backend said no.
        The server's own sentence is passed through because it is the actionable half -- an unknown
