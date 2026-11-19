@@ -13279,7 +13279,19 @@ function lsChanK(ch){
   };
 }
 function lsChans(){ return TPM.ls.ch.map((c, i) => Object.assign({ i, on: TPM.pmt[i].on }, c)).filter(c => c.on); }
-function lsActCh(){ const on = lsChans(); if (!on.length) return TPM.ls.ch[0]; return on[Math.floor(performance.now() / 900) % on.length]; }
+/* which channel is being taken, and is its laser on (2026-11-19, Søren: "The LS light does not slow down when I slow
+   down brain time"): it went by the wall clock. Now by the frame's own progress, which runs in brain time: each channel
+   gets its slot -- the exposure with the line on, then the read-out and the wheel turning with the line blanked by the
+   AOTF -- so at ×1/100 you watch the lines take turns and the wheel move between them. Not acquiring: channel 1, lit. */
+function lsPhase(){
+  const on = lsChans(); if (!on.length) return { ch: TPM.ls.ch[0], lit: false };
+  const running = TPM.rig && (TPM.live || TPM.stack.run) && !TPM.park;
+  if (!running) return { ch: on[0], lit: true };
+  const n = on.length, p = Math.min(0.9999, TPM.prog || 0) * n, i = Math.floor(p) % n, L = TPM.ls;
+  const slot = L.exp + 10 + (n > 1 ? 50 : 0), u = (p - Math.floor(p)) * slot;
+  return { ch: on[i], lit: u < L.exp };
+}
+function lsActCh(){ return lsPhase().ch; }
 /* THE BLOCK IS THE WHOLE DATASET (2026-11-19, Søren: "why do we have a cube that only covers part of the MICrONS
    dataset?"): its box is the traced dataset box (Map → Borders → dataset box), from the glia limitans down; offsets in
    µm from the cells' centre along e1, e2 and depth along n. Until the borders file has loaded, a 1 mm cube. */
@@ -13416,7 +13428,7 @@ function lsBuild(){
   const Cx = Math.max(9000, Bk + 8000), Cy = Math.max(6300, By + 4000);
   const zBot = Bz / 2 + 2000, zSurf = dry ? -Bz / 2 - 4000 : -Bz / 2 - WDu - 2000, zTopW = zSurf - (dry ? 0 : 1500), Cz = zBot - zTopW;
   const medCol = L.E > 1 ? "#9fd3ff" : L.clear === "none" ? "#b8d8ff" : L.clear === "idisco" ? "#ffe9b0" : "#d8ecff";
-  const fill = new THREE.Mesh(new THREE.BoxGeometry(Cx - 200, Cy - 200, zBot - zSurf), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.16, depthWrite: false, roughness: 0.05 }));
+  const fill = new THREE.Mesh(new THREE.BoxGeometry(Cx - 200, Cy - 200, zBot - zSurf), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.05 }));
   fill.position.z = (zBot + zSurf) / 2; grp.add(fill);
   const surf = new THREE.Mesh(new THREE.PlaneGeometry(Cx - 200, Cy - 200), new THREE.MeshStandardMaterial({ color: medCol, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, roughness: 0.02, metalness: 0.2 }));
   surf.position.z = zSurf; grp.add(surf);
@@ -13425,7 +13437,11 @@ function lsBuild(){
   if (dry){ const lid = new THREE.Mesh(new THREE.BoxGeometry(Cx, Cy, 170), new THREE.MeshStandardMaterial({ color: "#cfe8ff", transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.02 })); lid.position.z = zSurf - 85; grp.add(lid); }
   try { const lb = textSprite(["Sample chamber, no coverslip: filled with " + (L.E > 1 ? "water (the expanded gel)" : med.name + " medium") + ", RI " + med.n.toFixed(2),
       dry ? "the dry objective looks down through a glass window on top" : "the objectives dip into the medium (sealed ports in the sides)"], { fit: true, border: "#5c7ea6" });
-    const h = 600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, -Cy / 2 - 500, zBot - 500); grp.add(lb); } catch (e){}
+    const h = 1100; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, -Cy / 2 - 300, zSurf + 1200); grp.add(lb); } catch (e){}
+  /* what holds the block: a holder from the chamber's floor, the block glued on top (the stage moves the chamber) */
+  { const ped = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(Bk, By) * 0.25, Math.min(Bk, By) * 0.3, zBot - Bz / 2, 24), new THREE.MeshStandardMaterial({ color: "#8b949e", metalness: 0.5, roughness: 0.4 }));
+    ped.rotation.x = Math.PI / 2; ped.position.z = (zBot + Bz / 2) / 2; grp.add(ped);
+    try { const lb = textSprite(["Sample holder"], { fit: true, border: "#8b949e" }); const h = 500; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(Bk / 2 + 600, 0, (zBot + Bz / 2) / 2); grp.add(lb); } catch (e){} }
   /* the illumination objectives, on both sides of the sheet (one if single-sided) */
   /* the ILLUMINATION objectives (2026-11-19, Søren: "what are those 2 cones?"): low-NA objectives that make the sheet,
      their narrow tips facing the block (they were drawn the wrong way round), with the light fanning out of each into
@@ -13441,7 +13457,8 @@ function lsBuild(){
     /* the light leaving its tip: a fan as tall as the sheet, as thin as the sheet's edge */
     if (TPM.laserOn){ const fan = new THREE.BufferGeometry(), x0 = sgn * (Bk / 2 + 3000), x1 = sgn * Bk / 2, w = lsW(x1) / 2;
       fan.setAttribute("position", new THREE.Float32BufferAttribute([x0, -150, 0, x1, -By / 2, -w, x1, By / 2, -w, x0, 150, 0, x1, -By / 2, w, x1, By / 2, w], 3)); fan.setIndex([0, 1, 2, 0, 2, 3, 3, 5, 4, 0, 3, 4, 0, 4, 1]); fan.computeVertexNormals();
-      const fm = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(fm); }
+      const fm = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(fm);
+      (grp.userData.fanM = grp.userData.fanM || []).push(fm.material); }
     try { const lb = textSprite(["Illumination objective", "makes the sheet"], { fit: true, border: "#9aa4b2" }); const h = 1600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(sgn * 12000, 0, -4000); grp.add(lb); } catch (e){}
   }
   lsRigParts(grp, Bk, By, Bz, BX);
@@ -13516,8 +13533,8 @@ function lsRigParts(grp, Bk, By, Bz, BX){
   lab("Emission filter wheel", 48000, 0, zF);
   box(60000, 60000, 70000, "#1b1f24", 0, 0, zC - 25000); lab("sCMOS camera (2048 × 2048)", 0, 0, zC - 70000);
   const emB = [], camB = [];
-  if (TPM.laserOn){ beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zF + 2500]], "#3dff6a", 300, emB);
-    beam([[0, 0, zF - 2500], [0, 0, zC + 10000]], "#3dff6a", 300, camB); }
+  if (TPM.laserOn){ beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zF + 2500]], "#3dff6a", 150, emB);
+    beam([[0, 0, zF - 2500], [0, 0, zC + 10000]], "#3dff6a", 150, camB); }
   grp.userData.parts = { wheel, lasB, emB, camB };
   /* the stage under the chamber */
   box(30000, 30000, 6000, "#3a3f47", 0, 0, (BX.sz / 2 + 2000) + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, (BX.sz / 2 + 2000) + 12000); lab("XYZ stage", 26000, 0, (BX.sz / 2 + 2000) + 12000);
@@ -13529,13 +13546,14 @@ function lsFrame3d(){
   u.sheet.position.z = z - u.BX.sz / 2;
   if (u.arms) u.arms.position.z = u.sheet.position.z;
   /* the active channel: its laser colours the sheet and the illumination beams, the wheel turns its filter in */
-  if (u.parts){ const ch = lsActCh(), F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch);
+  if (u.parts){ const ph = lsPhase(), ch = ph.ch, F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch), lit = TPM.laserOn && ph.lit;
+    u.sheet.material.opacity = lit ? 0.3 : 0; for (const m of u.fanM || []){ m.color.set(lc); m.opacity = lit ? 0.18 : 0; }
     const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2;
-    u.sheet.material.color.set(lc); for (const m of u.parts.lasB) m.color.set(lc);
+    u.sheet.material.color.set(lc); for (const m of u.parts.lasB){ m.color.set(lc); m.opacity = lit ? 0.85 : 0.12; }
     const emc = k.g >= k.r ? "#3dff6a" : "#ff6a8a";
-    for (const m of u.parts.emB) m.color.set(emc);
+    for (const m of u.parts.emB){ m.color.set(emc); m.opacity = lit ? 0.85 : 0.05; }
     const pass = k.leak > 0.01 ? lc : Math.max(k.g, k.r) < 0.02 ? "#333" : F.c || F.lp ? F.col : emc;
-    for (const m of u.parts.camB){ m.color.set(pass); m.opacity = Math.max(k.g, k.r, k.leak * 20) < 0.02 ? 0.2 : 0.85; } }
+    for (const m of u.parts.camB){ m.color.set(pass); m.opacity = !lit ? 0.05 : Math.max(k.g, k.r, k.leak * 20) < 0.02 ? 0.2 : 0.85; } }
   const fr = TPM.cur;
   if (fr && fr.cv && fr.ls){
     if (!u.tex || u.tex.image !== fr.cv){ if (u.tex) u.tex.dispose(); u.tex = new THREE.CanvasTexture(fr.cv); u.tex.colorSpace = THREE.SRGBColorSpace; u.pic.material.map = u.tex; u.pic.material.needsUpdate = true; }
