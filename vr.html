@@ -13015,7 +13015,9 @@ function setTpm(on){
   /* the microscope looks through the cranial window, so it brings the mouse and the window with it (2026-11-19, Søren:
      "Having the mouse and 2p without a cranial window does not make sense. I think the mouse should also be shown when
      showing the 2p") -- and turning the window off puts the microscope away */
-  if (TPM.on && TPM.mode !== "ls" && (!WIN.on || !MOUSE.on)) (async () => { try { if (!MOUSE.on) await setMouse(true); if (!WIN.on) await setWindow(true); } catch (e){ console.warn("[vr] microscope: window", e); } })();
+  /* ...and flies out to show them (2026-11-19, Søren: "It still does not turn on the mouse when I press 2p microscope"
+     -- it did, but seen from among the cells the mouse is peeled away, so it looked as if nothing happened) */
+  if (TPM.on && TPM.mode !== "ls") (async () => { try { await winShow(true); } catch (e){ console.warn("[vr] microscope: window", e); } })();
   if (TPM.on){
     TPM.cur = TPM.prev = null; TPM.built = ""; tpm3dBuild();
     if (renderer.xr.isPresenting) vrpShow(TPP, true); else { vrpRender(TPP); const ov = tpmOverlay(); ov.style.display = ""; TPM.ovLayout && TPM.ovLayout(); }
