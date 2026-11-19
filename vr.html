@@ -390,7 +390,7 @@
     <button id="mouseBtn" title="The whole mouse around the volume: its body, skull and brain, with the volume where it was taken (right visual cortex, V1 / LM border, ~1.2 mm in front of lambda, 3.3 mm lateral). Zoom out to see it; zooming in peels the fur, the skull and the brain away. 3D models: mouse by YahooJAPAN (Thingiverse thing:182233); skull and brain by smcinturff (Thingiverse thing:3079327); Creative Commons">Mouse</button>
     <button id="winBtn" title="The cranial window the Ca²⁺ imaging was done through: a 4 mm craniotomy centred on the V1/LM border, 3.5 mm lateral and ~1 mm in front of lambda, closed with glass and a ring of dental cement (MICrONS Consortium, bioRxiv 2021.07.28.454025, Methods). Shows the glia limitans and the pial vessels under the glass">Window</button>
     <button id="mouseFly" title="Fly out to the whole mouse, or back in to the cells">Fly out</button>
-    <button id="tpmBtn" title="A two-photon microscope at the cranial window (teaching model): set up the light path, then image the loaded cells in 1P, 2P or 3P — laser power, objective NA / magnification / working distance, PMT gain and histograms, noise, photodamage and heating, z-stacks with the PSF in 3D">2P microscope</button>
+    <button id="tpmBtn" title="Microscopes (teaching models): a two-photon microscope at the cranial window (1P, 2P or 3P) and a light-sheet microscope for a cleared or expanded block of the dataset">Microscope</button>
     <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
   </div>
   <div id="menRow" class="ctl" style="flex-wrap:wrap;gap:4px 10px;font-size:12px;align-items:center" title="Søren's own Neuroglancer outlines of the brain's borders (2026-11-06), drawn section by section and joined into sheets the way the visual-area walls are. The outlines themselves are drawn too: they are the data, the skin between them is interpolation.">
@@ -1035,7 +1035,7 @@
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
     sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], aisBtn: ["trace", "AIS"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
-    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], winBtn: ["eye", "Window"], mouseFly: ["brain", "Fly out"], tpmBtn: ["em", "2P microscope"],
+    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], winBtn: ["eye", "Window"], mouseFly: ["brain", "Fly out"], tpmBtn: ["em", "Microscope"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"], emSeg: ["areas", "Segmentation"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
@@ -11704,7 +11704,7 @@ function tpmN(){ return TPM.obj.imm === "air" ? 1.0 : 1.33; }
 function tpmNA(){ return Math.min(TPM.obj.na, tpmN() * 0.98) * (TPM.fill ? 1 : 0.8); }   // an underfilled back aperture: ~0.8 of the NA, as usual in vivo
 function tpmTheta(){ return Math.asin(Math.min(0.98, TPM.obj.na / tpmN())); }
 function tpmFov(){ if (TPM.mode === "ls") return lsFov(); return Math.min(5000, 18000 / TPM.obj.mag / TPM.zoom); }          // µm: field number 18 mm / magnification / zoom
-function tpmMaxDepth(){ if (TPM.mode === "ls") return 1000; return Math.max(0, TPM.obj.wd * 1000 - 260); }              // the objective's tip must stay over the glass (150 µm + 60 µm + water)
+function tpmMaxDepth(){ if (TPM.mode === "ls") return Math.round(lsBox().z1); return Math.max(0, TPM.obj.wd * 1000 - 260); }              // the objective's tip must stay over the glass (150 µm + 60 µm + water)
 function tpmPsf(z){
   const M = tpmM(), NA = tpmNA(), n = 1.33, ab = TPM.ao || TPM.sample === "beads" ? 1 : 1 + Math.max(0, z) / 700;
   if (TPM.mode === "ls") return { xy: 0.61 * M.lamEm / Math.max(0.05, TPM.obj.na) / TPM.ls.E, z: lsW(0) / TPM.ls.E };
@@ -12324,7 +12324,7 @@ function tpm3dBuild(){
   const f = tpmFocus(TPM.depth), F = tpmFov(), e1 = B.e1, e2 = B.e2.clone().negate();
   TPM.objMesh.position.copy(f).addScaledVector(B.n, -TPM.obj.wd * 1000);
   if (TPM.rigMesh){ TPM.rigMesh.position.copy(TPM.objMesh.position); TPM.rigMesh.visible = TPM.showRig && TPM.mode !== "ls"; }
-  if (TPM.mode === "ls"){ lsFrame3d(); if (TPM.lsMesh) TPM.lsMesh.userData.sheet.position.z = TPM.depth - 500; }
+  if (TPM.mode === "ls") lsFrame3d();
   const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => f.clone().addScaledVector(e1, a * F / 2).addScaledVector(e2, b * F / 2));
   TPM.fovLine.geometry.setFromPoints(corners);
 }
@@ -13140,9 +13140,9 @@ function tpmAutoLS(pm){
   TPM.repaint = true;
 }
 function lsTabStage(P, g, X, Y, W){
-  tpmSlider(P, g, X, Y, W - 260, "Sheet and focus: " + TPM.depth.toFixed(0) + " µm into the block", TPM.depth, 0, 1000, v => { TPM.depth = v; TPM.built = ""; }, { step: 1, key: "depth" });
+  tpmSlider(P, g, X, Y, W - 260, "Sheet and focus: " + TPM.depth.toFixed(0) + " µm into the block", TPM.depth, 0, tpmMaxDepth(), v => { TPM.depth = v; TPM.built = ""; }, { step: 1, key: "depth" });
   vrpBtn(P, g, X + W - 240, Y + 10, 110, 56, "−10", () => { TPM.depth = Math.max(0, TPM.depth - 10); }, { key: "zm" });
-  vrpBtn(P, g, X + W - 120, Y + 10, 110, 56, "+10", () => { TPM.depth = Math.min(1000, TPM.depth + 10); }, { key: "zp" });
+  vrpBtn(P, g, X + W - 120, Y + 10, 110, 56, "+10", () => { TPM.depth = Math.min(tpmMaxDepth(), TPM.depth + 10); }, { key: "zp" });
   tpmTxt(g, "Pixels per line (camera binned)", X, Y + 115, 28);
   [128, 256, 512].forEach((n, i) => vrpBtn(P, g, X + 430 + i * 124, Y + 85, 116, 54, String(n), () => { TPM.px = n; TPM.cur = TPM.prev = null; }, { on: TPM.px === n, key: "px" + n, size: 26 }));
   tpmTxt(g, "Planes averaged", X, Y + 200, 28);
@@ -13195,6 +13195,25 @@ const TPM_CLEAR = {
 };
 TPM.ls = { w0: 4, xw: 0, dual: true, pivot: false, aslm: false, clear: "cubic", E: 1, exp: 20, objLS: Object.assign({}, TPM_OBJ_LS[0]), obj2P: null };
 function tpmIsLS(){ return TPM.mode === "ls"; }
+/* THE BLOCK IS THE WHOLE DATASET (2026-11-19, Søren: "why do we have a cube that only covers part of the MICrONS
+   dataset?"): its box is the traced dataset box (Map → Borders → dataset box), from the glia limitans down; offsets in
+   µm from the cells' centre along e1, e2 and depth along n. Until the borders file has loaded, a 1 mm cube. */
+function lsBox(){
+  if (TPM._lsBox) return TPM._lsBox;
+  const fb = { x0: -500, x1: 500, y0: -500, y1: 500, z1: 1000, real: false };
+  try {
+    if (!MEN.data){ if (!TPM._lsBoxLoading){ TPM._lsBoxLoading = true; loadMeninges().then(() => { TPM._lsBox = null; TPM.built = ""; }).catch(() => {}); } return fb; }
+    const l = MEN.data.layers.find(q => q.key === "bbox"); if (!l) return (TPM._lsBox = fb);
+    const G = UJ.meninges.rings(l, UJ.traceloft && UJ.traceloft.loft), P = G.positions, B = tpmBasis();
+    const c0 = tpmCentre().addScaledVector(B.e1, -TPM.cx).addScaledVector(B.e2, -TPM.cy), v = new THREE.Vector3();
+    const b = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, z1: 0, real: true };
+    for (let i = 0; i < P.length; i += 3){ v.set(P[i], P[i + 1], P[i + 2]).sub(c0); const a = v.dot(B.e1), c = v.dot(B.e2), d = v.dot(B.n);
+      b.x0 = Math.min(b.x0, a); b.x1 = Math.max(b.x1, a); b.y0 = Math.min(b.y0, c); b.y1 = Math.max(b.y1, c); b.z1 = Math.max(b.z1, d); }
+    if (!isFinite(b.x0)) return (TPM._lsBox = fb);
+    return (TPM._lsBox = b);
+  } catch (e){ return fb; }
+}
+function lsBoxC(){ const b = lsBox(); return { cx: (b.x0 + b.x1) / 2, cy: (b.y0 + b.y1) / 2, sx: b.x1 - b.x0, sy: b.y1 - b.y0, sz: b.z1 }; }
 /* the medium: an expanded gel is water; otherwise the clearing */
 function lsMedium(){ return TPM.ls.E > 1 ? { name: "expanded gel (water)", n: 1.33, ls: 10000, fp: 0.9 } : TPM_CLEAR[TPM.ls.clear]; }
 function lsObjN(){ const o = TPM.obj; return o.nd === 0 ? lsMedium().n : o.nd; }        // a multi-immersion objective takes any index
@@ -13213,7 +13232,8 @@ function tpmComputeLS(z){
   const th = Math.asin(Math.min(0.98, NA / (TPM.obj.imm === "air" ? 1 : lsObjN())));
   /* the sheet across the field (physical µm along e1 = image x) */
   const xs = new Float32Array(R), ws = new Float32Array(R); let wmax = 0;
-  for (let x = 0; x < R; x++){ xs[x] = ((x + 0.5) / R - 0.5) * F * E + TPM.cx * E; ws[x] = lsW(xs[x]); wmax = Math.max(wmax, ws[x]); }
+  const BX = lsBoxC();
+  for (let x = 0; x < R; x++){ xs[x] = (((x + 0.5) / R - 0.5) * F + TPM.cx - BX.cx) * E; ws[x] = lsW(xs[x]); wmax = Math.max(wmax, ws[x]); }
   /* sub-planes through the sheet (in original µm), each blurred by the detection's defocus */
   const nsub = 7, span = Math.min(80, wmax) / E, subs = [];
   for (let j = -3; j <= 3; j++) subs.push({ o: j * span / 3 * 0.85, s: Math.abs(j * span / 3 * 0.85) * E * Math.tan(th) / 2 / E });
@@ -13251,12 +13271,12 @@ function tpmComputeLS(z){
   /* stripes: what absorbs in the sheet's path (cells, vessels, debris that clearing did not remove) dims everything
      behind it along the sheet; light from both sides fills them in, pivoting blurs them */
   const T = new Float32Array(R * R), dirt = L.clear === "none" && L.E === 1 ? 1 : L.E > 1 ? 0.15 : 0.35;
-  const xin = x => (x + 0.5) / R * F * E + 500 * E - F * E / 2;           // µm the sheet travelled from the block's left edge
+  const xin = x => xs[x] + BX.sx * E / 2;                                  // µm the sheet travelled from the block's left edge
   for (let y = 0; y < R; y++){
     let cl = 0; const left = new Float32Array(R);
     for (let x = 0; x < R; x++){ const i = y * R + x; cl += lsAbs(G[i], Rd[i], x, y, z, px, E, dirt) * px * E; left[x] = Math.exp(-cl - xin(x) / med.ls); }
     let cr = 0;
-    for (let x = R - 1; x >= 0; x--){ const i = y * R + x; cr += lsAbs(G[i], Rd[i], x, y, z, px, E, dirt) * px * E; const right = Math.exp(-cr - (1000 * E - xin(x)) / med.ls);
+    for (let x = R - 1; x >= 0; x--){ const i = y * R + x; cr += lsAbs(G[i], Rd[i], x, y, z, px, E, dirt) * px * E; const right = Math.exp(-cr - (BX.sx * E - xin(x)) / med.ls);
       T[i] = L.dual ? 0.5 * (left[x] + right) : left[x]; }
   }
   if (L.pivot) tpmBlur(T, R, 6 / px);
@@ -13287,23 +13307,38 @@ function lsCamera(lam, pm, R){
 /* ── the bench in 3D: the block, the chamber, the illumination objectives, the sheet and the picture in it ── */
 function lsBuild(){
   const grp = new THREE.Group(), L = TPM.ls, med = lsMedium(), B = tpmBasis();
-  const bc = tpmCentre().addScaledVector(B.n, 500), Bk = 1000;
+  const BX = lsBoxC(), c0 = tpmCentre().addScaledVector(B.e1, -TPM.cx).addScaledVector(B.e2, -TPM.cy);
+  const bc = c0.addScaledVector(B.e1, BX.cx).addScaledVector(B.e2, BX.cy).addScaledVector(B.n, BX.sz / 2), Bk = BX.sx, By = BX.sy, Bz = BX.sz;
   const m4 = new THREE.Matrix4().makeBasis(B.e1, B.e2, B.n); grp.quaternion.setFromRotationMatrix(m4); grp.position.copy(bc);
   const op = L.E > 1 ? 0.05 : L.clear === "none" ? 0.8 : 0.1;
-  const block = new THREE.Mesh(new THREE.BoxGeometry(Bk, Bk, Bk), new THREE.MeshStandardMaterial({ color: L.clear === "none" && L.E === 1 ? "#f2ead8" : "#dfefff", transparent: true, opacity: op, depthWrite: false, roughness: 0.4 }));
+  const block = new THREE.Mesh(new THREE.BoxGeometry(Bk, By, Bz), new THREE.MeshStandardMaterial({ color: L.clear === "none" && L.E === 1 ? "#f2ead8" : "#dfefff", transparent: true, opacity: op, depthWrite: false, roughness: 0.4 }));
   grp.add(block);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Bk, Bk, Bk)), new THREE.LineBasicMaterial({ color: "#9fd3ff" })); grp.add(edges);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Bk, By, Bz)), new THREE.LineBasicMaterial({ color: "#9fd3ff" })); grp.add(edges);
   const Ch = 9000, chamber = new THREE.Mesh(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6), new THREE.MeshStandardMaterial({ color: "#7fb8ff", transparent: true, opacity: 0.08, depthWrite: false, side: THREE.BackSide }));
   chamber.position.z = 600; grp.add(chamber);
   { const ce = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Ch, Ch * 0.7, Ch * 0.6)), new THREE.LineBasicMaterial({ color: "#5c7ea6" })); ce.position.z = 600; grp.add(ce); }
   /* the illumination objectives, on both sides of the sheet (one if single-sided) */
+  /* the ILLUMINATION objectives (2026-11-19, Søren: "what are those 2 cones?"): low-NA objectives that make the sheet,
+     their narrow tips facing the block (they were drawn the wrong way round), with the light fanning out of each into
+     the sheet; the detection objective above collects the fluorescence for the camera */
+  const prof = [[1, 0], [1100, 0], [1300, 250], [3200, 5000], [3200, 22000], [2500, 22000], [2500, 26000], [1, 26000]].map(([r, y]) => new THREE.Vector2(r, y));
   for (const sgn of L.dual ? [-1, 1] : [-1]){
-    const ob = new THREE.Mesh(new THREE.CylinderGeometry(2500, 900, 9000, 40), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.6, roughness: 0.35 }));
-    ob.rotation.z = sgn < 0 ? -Math.PI / 2 : Math.PI / 2; ob.position.set(sgn * (Bk / 2 + 2500 + 4500), 0, 0); grp.add(ob);
+    const ob = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.6, roughness: 0.35 }));
+    ob.rotation.z = sgn < 0 ? Math.PI / 2 : -Math.PI / 2;           // its y axis (tip → back) points away from the block
+    ob.position.set(sgn * (Bk / 2 + 3000), 0, 0); grp.add(ob);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(3260, 3260, 900, 48, 1, true), new THREE.MeshStandardMaterial({ color: "#e8d020" }));
+    band.rotation.z = Math.PI / 2; band.position.set(sgn * (Bk / 2 + 3000 + 7000), 0, 0); grp.add(band);
+    /* the light leaving its tip: a fan as tall as the sheet, as thin as the sheet's edge */
+    if (TPM.laserOn){ const fan = new THREE.BufferGeometry(), x0 = sgn * (Bk / 2 + 3000), x1 = sgn * Bk / 2, w = lsW(x1) / 2;
+      fan.setAttribute("position", new THREE.Float32BufferAttribute([x0, -150, 0, x1, -By / 2, -w, x1, By / 2, -w, x0, 150, 0, x1, -By / 2, w, x1, By / 2, w], 3)); fan.setIndex([0, 1, 2, 0, 2, 3, 3, 5, 4, 0, 3, 4, 0, 4, 1]); fan.computeVertexNormals();
+      const fm = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: TPM_MODES.ls.col, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(fm); }
+    try { const lb = textSprite(["Illumination objective", "makes the sheet"], { fit: true, border: "#9aa4b2" }); const h = 1600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(sgn * 12000, 0, -4000); grp.add(lb); } catch (e){}
   }
-  try { const lab = textSprite([L.E > 1 ? "Expanded ×" + L.E + " — really " + (L.E).toFixed(0) + " mm wide" : "Block, 1 mm · " + med.name], { fit: true, border: "#9aa4b2" }); const h = 120; lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(0, -Bk / 2 - 150, -Bk / 2); grp.add(lab); } catch (e){}
+  lsRigParts(grp, Bk, By, Bz, BX);
+  try { const lb = textSprite(["Detection objective", "→ tube lens → filter → camera"], { fit: true, border: "#9aa4b2" }); const h = 1600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, 0, -(TPM.obj.wd * 1000 + 500 + 4000)); grp.add(lb); } catch (e){}
+  try { const lab = textSprite([L.E > 1 ? "Expanded ×" + L.E + " — really " + (Bk * L.E / 1000).toFixed(1) + " × " + (By * L.E / 1000).toFixed(1) + " × " + (Bz * L.E / 1000).toFixed(1) + " mm" : "The whole dataset, " + (Bk / 1000).toFixed(2) + " × " + (By / 1000).toFixed(2) + " × " + (Bz / 1000).toFixed(2) + " mm · " + med.name], { fit: true, border: "#9aa4b2" }); const h = 120; lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(0, -By / 2 - 150, -Bz / 2); grp.add(lab); } catch (e){}
   /* the sheet: an hourglass of light across the block, at the focal plane */
-  const N = 80, pos = [], idx = [], hgt = Bk;
+  const N = 80, pos = [], idx = [], hgt = By;
   for (let i = 0; i <= N; i++){ const x = -Bk / 2 + i / N * Bk, w = lsW(x) / 2;
     pos.push(x, -hgt / 2, -w, x, hgt / 2, -w, x, -hgt / 2, w, x, hgt / 2, w); }
   for (let i = 0; i < N; i++){ const a = i * 4, b = (i + 1) * 4; idx.push(a, b, a + 1, b, b + 1, a + 1, a + 2, a + 3, b + 2, b + 2, a + 3, b + 3); }
@@ -13312,19 +13347,64 @@ function lsBuild(){
   sheet.name = "sheet"; grp.add(sheet);
   const pic = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
   pic.name = "pic"; pic.visible = false; grp.add(pic);
-  grp.userData = { sheet, pic, bc };
+  grp.userData = { sheet, pic, bc, BX };
   return grp;
+}
+/* THE REST OF THE BENCH (2026-11-19, Søren: "It also seems like a lot of the setup is missing"): on each illumination
+   arm, from the laser outwards in: the laser combiner, a fibre's collimator, the cylindrical lens that flattens the beam
+   into a sheet (or a galvo that sweeps it), the scan and tube lenses, then the illumination objective; above, from the
+   detection objective up: the tube lens, the emission filter wheel and the sCMOS camera; under the chamber, the
+   motorised XYZ stage. Generic shapes at plausible sizes; blue = laser light, green = fluorescence. */
+function lsRigParts(grp, Bk, By, Bz, BX){
+  const L = TPM.ls, mat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, metalness: 0.4, roughness: 0.45 }, o || {}));
+  const box = (w, h, d, c, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); grp.add(m); return m; };
+  const lensX = (r, x, y, z) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14), mat("#a9d8ff", { transparent: true, opacity: 0.55, metalness: 0.1, roughness: 0.05 })); m.scale.set(0.18, 1, 1); m.position.set(x, y, z); grp.add(m);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.rotation.y = Math.PI / 2; ring.position.set(x, y, z); grp.add(ring); };
+  const lensZ = (r, x, y, z) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14), mat("#a9d8ff", { transparent: true, opacity: 0.55, metalness: 0.1, roughness: 0.05 })); m.scale.set(1, 1, 0.18); m.position.set(x, y, z); grp.add(m);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.08, 8, 32), mat("#2a2f37")); ring.position.set(x, y, z); grp.add(ring); };
+  const beam = (pts, c, r) => { for (let i = 1; i < pts.length; i++){ const a = new THREE.Vector3(...pts[i - 1]), b = new THREE.Vector3(...pts[i]), d = a.distanceTo(b); if (d < 1) continue;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d, 10), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85 })); m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); grp.add(m); } };
+  const lab = (t, x, y, z) => { if (!TPM.rigLabels) return; try { const sp = textSprite([t], { fit: true, border: "#8b949e" }); const h = 5000; sp.scale.set(h * sp.userData.aspect, h, 1); sp.position.set(x, y, z); grp.add(sp); } catch (e){} };
+  const col = TPM_MODES.ls.col, tip = Bk / 2 + 3000, back = tip + 26000;
+  /* the illumination arms */
+  for (const sgn of L.dual ? [-1, 1] : [-1]){
+    const xT = sgn * (back + 30000), xS = sgn * (back + 80000), xC = sgn * (back + 125000), xF = sgn * (back + 165000);
+    lensX(11000, xT, 0, 0); lab("Tube lens", xT, 0, -16000);
+    lensX(9000, xS, 0, 0); lab("Scan lens", xS, 0, -14000);
+    box(16000, 16000, 16000, "#2d333b", sgn * (back + 102000), 0, 0); lab(L.aslm ? "Galvo + remote focus (ASLM)" : "Galvo (pivot / sheet height)", sgn * (back + 102000), 0, -14000);
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(7000, 7000, 14000, 32, 1, false, 0, Math.PI), mat("#a9d8ff", { transparent: true, opacity: 0.6, metalness: 0.1, roughness: 0.05 }));
+    cyl.position.set(xC, 0, 0); cyl.rotation.x = Math.PI / 2; grp.add(cyl); lab("Cylindrical lens", xC, 0, -14000);
+    box(12000, 12000, 20000, "#59606b", xF, 0, 0); lab("Fibre collimator", xF, 0, -16000);
+    beam([[xF, 0, 0], [sgn * tip, 0, 0]], col, 800);
+    beam([[xF, 0, 0], [xF, 0, 60000], [sgn * (back + 230000), 0, 60000]], col, 500);   // the fibre, down and out to the lasers
+  }
+  /* the laser combiner: lines 405, 488, 561, 640 into fibres */
+  const xL = -(back + 230000) - 60000;
+  box(120000, 60000, 50000, "#2b3a55", xL, 0, 60000); lab("Laser combiner 405 · 488 · 561 · 640 nm", xL, 0, 20000);
+  [["#8a5cff", -36000], ["#38c8ff", -12000], ["#c8ff38", 12000], ["#ff4040", 36000]].forEach(([c, dx]) => { const d = new THREE.Mesh(new THREE.CylinderGeometry(2500, 2500, 1500, 16), new THREE.MeshBasicMaterial({ color: c })); d.position.set(xL + dx, 0, 34000); d.rotation.x = Math.PI / 2; grp.add(d); });
+  if (L.dual) beam([[xL + 60000, 0, 60000], [back + 230000, 0, 60000], [back + 165000, 0, 60000]], col, 500);
+  /* detection, up the axis (−z here) from the detection objective */
+  const zTop = (TPM.depth - BX.sz / 2) - TPM.obj.wd * 1000 - (TPM.objTop || 40000);
+  const zT = zTop - 40000, zF = zTop - 90000, zC = zTop - 140000;
+  lensZ(14000, 0, 0, zT); lab("Tube lens", 22000, 0, zT);
+  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(26000, 26000, 4000, 48), mat("#2d333b")); wheel.rotation.x = Math.PI / 2; wheel.position.set(12000, 0, zF); grp.add(wheel);
+  ["#3dff6a", "#ff6a8a", "#8a5cff", "#ffd84a"].forEach((c, i) => { const a = i * Math.PI / 2 + Math.PI, f = new THREE.Mesh(new THREE.CylinderGeometry(6000, 6000, 4400, 24), new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.7 })); f.rotation.x = Math.PI / 2; f.position.set(12000 + Math.cos(a) * 12000, Math.sin(a) * 12000, zF); grp.add(f); });
+  lab("Emission filter wheel", 46000, 0, zF);
+  box(60000, 60000, 70000, "#1b1f24", 0, 0, zC - 25000); lab("sCMOS camera (2048 × 2048)", 0, 0, zC - 70000);
+  beam([[0, 0, (TPM.depth - BX.sz / 2)], [0, 0, zC + 10000]], "#3dff6a", 900);
+  /* the stage under the chamber */
+  box(30000, 30000, 6000, "#3a3f47", 0, 0, 600 + 9000 * 0.3 + 4000); box(22000, 22000, 10000, "#2d333b", 0, 0, 600 + 9000 * 0.3 + 12000); lab("XYZ stage", 26000, 0, 600 + 9000 * 0.3 + 12000);
 }
 function lsFrame3d(){
   if (!TPM.lsMesh) return;
   const B = tpmBasis(), u = TPM.lsMesh.userData, z = TPM.depth;
   /* the sheet and the detection focus move together through the block (the block is the frame: x = e1, y = e2, z = n) */
-  u.sheet.position.z = z - 500;
+  u.sheet.position.z = z - u.BX.sz / 2;
   const fr = TPM.cur;
   if (fr && fr.cv && fr.ls){
     if (!u.tex || u.tex.image !== fr.cv){ if (u.tex) u.tex.dispose(); u.tex = new THREE.CanvasTexture(fr.cv); u.tex.colorSpace = THREE.SRGBColorSpace; u.pic.material.map = u.tex; u.pic.material.needsUpdate = true; }
     else u.tex.needsUpdate = true;
-    u.pic.visible = true; u.pic.scale.set(fr.F, fr.F, 1); u.pic.position.set(TPM.cx, TPM.cy, fr.z - 500); u.pic.rotation.x = Math.PI;
+    u.pic.visible = true; u.pic.scale.set(fr.F, fr.F, 1); u.pic.position.set(TPM.cx - u.BX.cx, TPM.cy - u.BX.cy, fr.z - u.BX.sz / 2); u.pic.rotation.x = Math.PI;
   } else u.pic.visible = false;
 }
 /* the light path, for the Rig tab */
@@ -13346,10 +13426,15 @@ function lsTabRig(P, g, X, Y, W){
   const ty = Y + 800;
   vrpBtn(P, g, X, ty, 300, 58, "🔭 View the bench in 3D", () => lsView(), { key: "lsview", size: 24 });
 }
-function lsView(){
+async function lsView(){
   if (!TPM.lsMesh) return;
-  const B = tpmBasis(), bc = TPM.lsMesh.userData.bc, vc = mouseShownCentre(), s0 = stage.scale.x;
-  MOUSE.fly = { t: 0, dur: 3, s0, s1: Math.max(stageMinScale(), 1.2 / 14000), f0: vc, f1: bc.clone().addScaledVector(B.n, -2000), anchor: HOME.clone() };
+  if (!MOUSE.on){ try { await setMouse(true); } catch (e){} }      // the fly runs with the mouse's (hidden here) machinery
+  /* the whole bench (both arms, the lasers, the camera) filling ~1.4 m of the room */
+  stage.updateMatrixWorld(true);
+  const bx = new THREE.Box3().setFromObject(TPM.lsMesh); if (TPM.objMesh) bx.union(new THREE.Box3().setFromObject(TPM.objMesh));
+  const rc = content.worldToLocal(bx.getCenter(new THREE.Vector3())), ext = bx.getSize(new THREE.Vector3()).length() / stage.scale.x;
+  const vc = mouseShownCentre(), s0 = stage.scale.x;
+  MOUSE.fly = { t: 0, dur: 3, s0, s1: Math.max(stageMinScale(), 1.4 / ext), f0: vc, f1: rc, anchor: HOME.clone() };
 }
 function lsTabLaser(P, g, X, Y, W){
   const L = TPM.ls, M = tpmM(), P0 = TPM.power.ls;
@@ -14032,7 +14117,7 @@ function menuRowsRaw(t){
     if (DS_HAS.mouse){
       rows.push({ label: "Cranial window", on: WIN.on, act: () => winShow(!WIN.on) });
       rows.push({ label: "Mouse, skull & brain", on: MOUSE.on, act: () => mouseShow(!MOUSE.on) });
-      rows.push({ label: "🔬 Two-photon microscope", on: TPM.on, act: () => setTpm(!TPM.on) });
+      rows.push({ label: "🔬 Microscope (2P · light sheet)", on: TPM.on, act: () => setTpm(!TPM.on) });
       rows.push({ label: MOUSE.fly ? "Flying…" : mouseOut() ? "Fly in" : "Fly out", icon: "brain", act: () => mouseFly() });
     }
     S("Meninges");
@@ -25342,7 +25427,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { tpmSetMode, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { lsView, tpmSetMode, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
