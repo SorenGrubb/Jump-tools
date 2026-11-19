@@ -9767,7 +9767,9 @@ function takeFrame(force){
   const now = performance.now(), t = (now - TAKE.t0) / 1000;
   if (force || now - TAKE.lastS >= 100){
     TAKE.lastS = now; const h = vrHeadPose();
-    TAKE.samples.push({ t, p: h.p, f: h.f, sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.x });
+    TAKE.samples.push({ t, p: h.p, f: h.f, sp: stage.position.clone(), sq: stage.quaternion.clone(), ss: stage.scale.x,
+      /* on the PC the orbit's own target is kept, so the keys look where the view looked (2026-11-19) */
+      tg: renderer.xr.isPresenting ? null : controls.target.clone() });
     try { const hs = handsSnap(); if (hs) TAKE.hands.push(Object.assign({ t: +t.toFixed(2) }, hs)); } catch (e){}
     try { TAKE.cut.push(cutSnap(+t.toFixed(2))); } catch (e){}
   }
@@ -9780,7 +9782,7 @@ function takeFrame(force){
     try { const v = tlCaptureView(), j = JSON.stringify(v); if (j !== TAKE.lastVJ){ TAKE.lastVJ = j; TAKE.views.push({ t: TAKE.views.length ? t : 0, v }); } } catch (e){}
   }
   if (t > 600 && !force) takeStop();               // the timeline's own limit: 10 minutes
-  if (Math.floor(t) !== TAKE.shownS){ TAKE.shownS = Math.floor(t); MENU.dirty = true; }
+  if (Math.floor(t) !== TAKE.shownS){ TAKE.shownS = Math.floor(t); MENU.dirty = true; try { tlTakeBtn(); } catch (e){} }
 }
 function takeStop(){
   if (!TAKE.on) return;
@@ -9789,16 +9791,18 @@ function takeStop(){
   if (S.length < 5 || T < 2){ ctxNote.textContent = "That take was too short to make a timeline (under 2 s)."; MENU.dirty = true; return; }
   /* smoothing: a Gaussian over ±0.8 s (σ 0.4 s) of position, gaze and where the room stands */
   const SIG = 0.4, smooth = t => {
-    const p = new THREE.Vector3(), f = new THREE.Vector3(), sp = new THREE.Vector3(); let w = 0, ssl = 0, best = S[0];
+    const p = new THREE.Vector3(), f = new THREE.Vector3(), sp = new THREE.Vector3(), tg = new THREE.Vector3(); let w = 0, ssl = 0, best = S[0], hasTg = true;
     for (const x of S){ const d = x.t - t; if (Math.abs(d) > 3 * SIG) continue; const k = Math.exp(-d * d / (2 * SIG * SIG));
       p.addScaledVector(x.p, k); f.addScaledVector(x.f, k); sp.addScaledVector(x.sp, k); ssl += Math.log(x.ss) * k; w += k;
+      if (x.tg) tg.addScaledVector(x.tg, k); else hasTg = false;
       if (Math.abs(d) < Math.abs(best.t - t)) best = x; }
-    return { p: p.multiplyScalar(1 / w), f: f.normalize(), sp: sp.multiplyScalar(1 / w), sq: best.sq, ss: Math.exp(ssl / w) };
+    return { p: p.multiplyScalar(1 / w), f: f.normalize(), sp: sp.multiplyScalar(1 / w), sq: best.sq, ss: Math.exp(ssl / w), tg: hasTg ? tg.multiplyScalar(1 / w) : null };
   };
   const dur = Math.max(2, Math.min(600, Math.round(T * 10) / 10)), cam = [];
   const step = dur > 40 ? 3 : 2;
-  for (let t = 0; t <= dur + 1e-6; t += step){ const m = smooth(Math.min(t, T)); cam.push({ t: Math.round(Math.min(t, dur) * 10) / 10, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
-  if (cam[cam.length - 1].t < dur - 0.5){ const m = smooth(T); cam.push({ t: dur, ...vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss) }); }
+  const keyOf = m => m.tg ? { p: m.p.toArray(), tg: m.tg.toArray(), sp: m.sp.toArray(), sq: m.sq.toArray(), ss: m.ss } : vrCamKeyFrom(m.p, m.f, m.sp.toArray(), m.sq.toArray(), m.ss);
+  for (let t = 0; t <= dur + 1e-6; t += step){ const m = smooth(Math.min(t, T)); cam.push({ t: Math.round(Math.min(t, dur) * 10) / 10, ...keyOf(m) }); }
+  if (cam[cam.length - 1].t < dur - 0.5){ const m = smooth(T); cam.push({ t: dur, ...keyOf(m) }); }
   tlSave();                                         // what was there, for Ctrl+Z
   const APP = !!TAKE.append, A = APP ? Math.round((tlEnd() + 0.1) * 10) / 10 : 0, sh = t => Math.round((t + A) * 10) / 10;
   const oldVoice = APP && VOICE.data ? { data: VOICE.data, offset: VOICE.offset } : null;
@@ -11640,7 +11644,7 @@ const TPM = {
   obj: Object.assign({}, TPM_OBJ[0]), fill: false,
   pmt: [{ key: "g", name: "Green PMT · GCaMP6s", gain: 0.5, off: 0.02, lo: 0.004, hi: 0.08, on: true, hist: null, sat: 0 },
         { key: "r", name: "Red PMT · plasma dye", gain: 0.5, off: 0.02, lo: 0.004, hi: 0.08, on: true, hist: null, sat: 0 }],
-  hilo: false, expr: "exc", light: true, psfMag: 10,
+  hilo: false, expr: (() => { try { return localStorage.getItem("jump_tpm_expr") || "exc"; } catch (e){ return "exc"; } })(), light: true, psfMag: 10,
   stack: { n: 20, dz: 5, from: "top", planes: [], run: null, show: true, v3: "mip", psf: false, grp: null },   // PSF markers off by default (2026-11-19, Søren: they were confusing)
   game: { placed: new Set(["laser"]), pick: null, wrong: 0, t0: 0, msg: "", done: false },
   rig: false, showRig: true, rigLabels: true, temp: 0, heatDose: 0, dose: new Map(), blebs: [], warn: "",
@@ -11820,7 +11824,61 @@ function tpmGL(R){
   }
 }
 function tpmVesselMeshes(){ const v = []; try { if (VASC.mesh && VASC.mesh.parent) v.push(VASC.mesh); } catch (e){} try { if (WIN.light && WIN.light.parent && WIN.on) v.push(WIN.light); } catch (e){} try { if (TPM.mode === "ls" && TPM.lsPial && TPM.lsPial.parent && TPM.lsPial.visible) v.push(TPM.lsPial); } catch (e){} return v; }
+/* THE CROSS-SECTIONS ON THE CPU, IN THE HEADSET (2026-11-19, Søren: "I have tried a different astrocyte in the headset.
+   There is not GCaMP6 signal. I have no problem seeing them in the PC, but in the headset, it does not work"): the
+   GPU pass draws each mesh into a stencil off-screen and reads it back, and inside an immersive session that read-back
+   comes back empty on the headset. So in the headset the same picture is made here instead: every triangle the plane
+   cuts gives a segment, and each row of the image is filled between the crossings (even-odd -- the stencil's parity
+   rule), the nucleus cut out of the cell, the colours added as the GPU pass adds them. */
+function tpmSliceMask(mesh, B, f, F, R){
+  const g = mesh && mesh.geometry; if (!g || !g.attributes.position) return null;
+  /* the vertices in the content's frame, once per mesh (and again only if it moves) */
+  const me = mesh.matrix.elements, key = g.uuid + ":" + me.join(",");
+  if (!mesh.userData.tpmW || mesh.userData.tpmWk !== key){
+    const P = g.attributes.position.array, W = new Float32Array(P.length);
+    for (let k = 0; k < P.length; k += 3){ W[k] = me[0] * P[k] + me[4] * P[k + 1] + me[8] * P[k + 2] + me[12]; W[k + 1] = me[1] * P[k] + me[5] * P[k + 1] + me[9] * P[k + 2] + me[13]; W[k + 2] = me[2] * P[k] + me[6] * P[k + 1] + me[10] * P[k + 2] + me[14]; }
+    mesh.userData.tpmW = W; mesh.userData.tpmWk = key;
+  }
+  const W = mesh.userData.tpmW, nv = W.length / 3, I = g.index ? g.index.array : null, nT = I ? I.length / 3 : nv / 3, px = F / R;
+  const n = B.n, e1 = B.e1, e2 = B.e2, D = new Float32Array(nv);
+  let lo = Infinity, hi = -Infinity;
+  for (let v = 0, k = 0; v < nv; v++, k += 3){ const d = (W[k] - f.x) * n.x + (W[k + 1] - f.y) * n.y + (W[k + 2] - f.z) * n.z; D[v] = d; if (d < lo) lo = d; if (d > hi) hi = d; }
+  if (lo > 0 || hi <= 0) return null;
+  const rows = Array.from({ length: R }, () => []), uv = (a, b, u, o) => {
+    const x = W[a * 3] + u * (W[b * 3] - W[a * 3]) - f.x, y = W[a * 3 + 1] + u * (W[b * 3 + 1] - W[a * 3 + 1]) - f.y, z = W[a * 3 + 2] + u * (W[b * 3 + 2] - W[a * 3 + 2]) - f.z;
+    o.push((x * e1.x + y * e1.y + z * e1.z + F / 2) / px, (-(x * e2.x + y * e2.y + z * e2.z) + F / 2) / px); };
+  const pts = [];
+  for (let t = 0; t < nT; t++){
+    const a = I ? I[t * 3] : t * 3, b = I ? I[t * 3 + 1] : t * 3 + 1, c = I ? I[t * 3 + 2] : t * 3 + 2, da = D[a] > 0, db = D[b] > 0, dc = D[c] > 0;
+    if (da === db && db === dc) continue;
+    pts.length = 0;
+    if (da !== db) uv(a, b, D[a] / (D[a] - D[b]), pts);
+    if (db !== dc) uv(b, c, D[b] / (D[b] - D[c]), pts);
+    if (dc !== da) uv(c, a, D[c] / (D[c] - D[a]), pts);
+    if (pts.length < 4) continue;
+    const x0 = pts[0], y0 = pts[1], x1 = pts[2], y1 = pts[3]; if (y0 === y1) continue;
+    const ya = Math.min(y0, y1), yb = Math.max(y0, y1);
+    for (let r = Math.max(0, Math.ceil(ya - 0.5)); r <= Math.min(R - 1, Math.floor(yb - 0.5)); r++){ const yc = r + 0.5; if (yc < ya || yc >= yb) continue; rows[r].push(x0 + (yc - y0) / (y1 - y0) * (x1 - x0)); }
+  }
+  const M = new Uint8Array(R * R); let any = false;
+  for (let r = 0; r < R; r++){ const xs = rows[r]; if (xs.length < 2) continue; xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2){ const a = Math.max(0, Math.ceil(xs[i] - 0.5)), b = Math.min(R - 1, Math.floor(xs[i + 1] - 0.5)); for (let x = a; x <= b; x++){ M[r * R + x] = 1; any = true; } } }
+  return any ? M : null;
+}
+function tpmPassCPU(B, f, F, R, list){
+  if (!TPM.cbuf || TPM.cbuf.length !== R * R * 4) TPM.cbuf = new Uint8Array(R * R * 4);
+  const out = TPM.cbuf; out.fill(0);
+  for (const it of list){
+    const M = tpmSliceMask(it.mesh, B, f, F, R); if (!M) continue;
+    const N = it.nuc ? tpmSliceMask(it.nuc, B, f, F, R) : null;
+    const c0 = Math.round(it.c[0] * 255), c1 = Math.round(it.c[1] * 255), c2 = Math.round(it.c[2] * 255);
+    for (let i = 0; i < R * R; i++){ if (!M[i] || (N && N[i] && !it.fillNuc)) continue; const o = i * 4;
+      out[o] = Math.min(255, out[o] + c0); out[o + 1] = Math.min(255, out[o + 1] + c1); out[o + 2] = Math.min(255, out[o + 2] + c2); }
+  }
+  return out;
+}
 function tpmPass(B, f, F, R, list){
+  if (renderer.xr.isPresenting || TPM.cpuSlice) return tpmPassCPU(B, f, F, R, list);
   tpmGL(R);
   const cam = TPM.cam;
   cam.left = -F / 2; cam.right = F / 2; cam.top = F / 2; cam.bottom = -F / 2; cam.near = 10; cam.far = 200000; cam.updateProjectionMatrix();
@@ -13088,7 +13146,7 @@ function tpmTabScan(P, g, X, Y, W){
   vrpBtn(P, g, X + 240, Y + 350, 110, 56, "↑", () => mv(0, -1), { key: "mvu" }); vrpBtn(P, g, X + 360, Y + 350, 110, 56, "↓", () => mv(0, 1), { key: "mvd" });
   vrpBtn(P, g, X + 480, Y + 350, 270, 56, "Centre on the cells", () => { TPM.cx = TPM.cy = 0; TPM.centre = null; TPM.built = ""; }, { key: "ctr", size: 24 });
   tpmTxt(g, "GCaMP6s in", X, Y + 455, 28);
-  [["exc", "excitatory neurons (MICrONS)"], ["neurons", "all neurons"], ["all", "all cells"]].forEach(([k, l], i) => vrpBtn(P, g, X + [160, 560, 800][i], Y + 420, [390, 230, 220][i], 54, l, () => { TPM.expr = k; }, { on: TPM.expr === k, key: "ex" + k, size: 23 }));
+  [["exc", "excitatory neurons (MICrONS)"], ["neurons", "all neurons"], ["all", "all cells"]].forEach(([k, l], i) => vrpBtn(P, g, X + [160, 560, 800][i], Y + 420, [390, 230, 220][i], 54, l, () => { TPM.expr = k; try { localStorage.setItem("jump_tpm_expr", k); } catch (e){} }, { on: TPM.expr === k, key: "ex" + k, size: 23 }));
   tpmTxt(g, "Sample", X, Y + 565, 28);
   vrpBtn(P, g, X + 120, Y + 535, 300, 54, "🐭 Brain (the loaded cells)", () => { TPM.sample = "brain"; TPM.built = ""; }, { on: TPM.sample === "brain", key: "smb", size: 22 });
   vrpBtn(P, g, X + 430, Y + 535, 300, 54, "● 0.2 µm beads in agarose", () => { TPM.sample = "beads"; TPM.built = ""; }, { on: TPM.sample === "beads", key: "smd", size: 22 });
@@ -17438,6 +17496,8 @@ function tlBuild(){
       <button id="tlAddCap" title="Add a caption here: a text card that fades in and out, drawn into the movie">+ T Caption</button><button id="tlAddTitle" title="Insert a title slide at the playhead: the picture goes dark and the words show large in the middle; everything after it moves later, and the film pauses under it">+ 🎬 Title slide</button>
       <button id="tlAddFx" title="Add an effect here: highlight a cell, freeze the spikes, follow the spike, or set the recording electrodes">+ ✦ Effect</button>
       <span class="tlSep"></span>
+      <button id="tlTake" title="Record what you do as timeline keys (not a video): how you move the view, what you switch on and off, the cells you stimulate or start a Ca²⁺ wave in, the paint. Press again to stop: the path is smoothed into camera keys. The same as the headset's ⏺ take.">⏺ Record actions</button><select id="tlTakeMode" title="Where the recorded actions go"><option value="add">add to the end</option><option value="new">replace the timeline</option></select>
+      <span class="tlSep"></span>
       <button id="tlUndo" title="Undo (Ctrl+Z)">↶</button><button id="tlRedo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
       <button id="tlZout" title="Draw the time in (see more of the film)">🔍−</button><button id="tlZin" title="Spread the time out around the playhead (also: mouse wheel on the lanes)">🔍+</button><button id="tlPl" title="Move the window left (also: Shift + wheel)">◀</button><button id="tlPr" title="Move the window right (also: Shift + wheel)">▶</button><button id="tlFitB" title="Show the whole film">Fit</button><span id="tlZoomLbl" class="help" style="margin:0 6px">whole film</span>
       <button id="tlSnap" class="on" title="🧲 Snap: a dragged key jumps to the time of other keys (any lane) and to the playhead when it comes close">🧲 Snap</button>
@@ -17505,6 +17565,11 @@ function tlBuild(){
   bar.querySelector("#tlFout").onchange = e => { TL.fadeOut = Math.max(0, Math.min(10, +e.target.value || 0)); tlSave(); };
   bar.querySelector("#tlDur").onchange = e => { TL.dur = Math.max(2, Math.min(600, +e.target.value || 20)); TL.t = Math.min(TL.t, TL.dur); tlSave(); tlSync(); };
   bar.querySelector("#tlRec").onclick = () => tlRecord();
+  /* RECORD ACTIONS ON THE PC (2026-11-19, Søren: "you can't record your actions for the timeline on PC the same way you
+     can on headset. We need to build that, but it should be a different record button than the one that builds an MP4
+     file"): the headset's take, driven from here -- the view's camera and its orbit target sampled ten times a second,
+     smoothed into camera keys; views, stimuli, Ca²⁺ waves and paint as they happen. "⏺ Film it" stays the movie. */
+  bar.querySelector("#tlTake").onclick = () => { if (TAKE.on) takeStop(); else takeStart(bar.querySelector("#tlTakeMode").value === "add"); tlTakeBtn(); tlSync(); };
   bar.querySelector("#tlSubs").onclick = () => voiceTranscribe();
   bar.querySelector("#tlSubs").disabled = !VOICE.data;
   { const ls = bar.querySelector("#tlSubsLang"); ls.value = VOICE.lang; ls.onchange = () => { VOICE.lang = ls.value; voiceOpts(); }; }
@@ -17933,12 +17998,19 @@ function tlDraw(){
   if (TLD.now && document.activeElement !== TLD.now) TLD.now.value = TL.t.toFixed(1);
   if (TLD.len && document.activeElement !== TLD.len) TLD.len.value = TL.dur;
 }
+function tlTakeBtn(){
+  if (!TLD.bar) return; const b = TLD.bar.querySelector("#tlTake"), m = TLD.bar.querySelector("#tlTakeMode"); if (!b) return;
+  b.textContent = TAKE.on ? "⏹ Stop recording (" + Math.floor((performance.now() - TAKE.t0) / 1000) + " s)" : "⏺ Record actions";
+  b.classList.toggle("on", TAKE.on); b.style.color = TAKE.on ? "#ff7b72" : "";
+  if (m){ m.disabled = TAKE.on; m.style.display = tlCount() ? "" : "none"; }
+}
 function tlSync(){
   if (!TLD.bar) return;
   TLD.play.textContent = TL.playing ? "⏸" : "▶";
   TLD.bar.querySelector("#tlDur").value = TL.dur;
   TLD.bar.querySelector("#tlFin").value = TL.fadeIn || 0; TLD.bar.querySelector("#tlFout").value = TL.fadeOut || 0;
   TLD.bar.querySelector("#tlRec").classList.toggle("on", TL.rec);
+  tlTakeBtn();
   tlPlace(); tlEditor(); tlDraw();
 }
 /* The strip sits right of the panel, along the bottom; the edge plots keep clear of it. */
