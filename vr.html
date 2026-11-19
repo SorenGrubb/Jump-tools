@@ -12393,7 +12393,7 @@ function tpm3dBuild(){
   if (!TPM.grp){ TPM.grp = new THREE.Group(); TPM.grp.name = "two-photon microscope"; }
   if (!TPM.grp.parent) content.add(TPM.grp);
   const B = tpmBasis(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.n.clone().negate());
-  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn]) + TPM.lam.ls : ""].join("|");
+  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn, TPM.sample]) + TPM.lam.ls : ""].join("|");
   if (sig !== TPM.built){
     TPM.built = sig;
     for (const k of ["objMesh", "beamMesh"]) if (TPM[k]){ TPM.grp.remove(TPM[k]); TPM[k].traverse(o => { if (o.geometry) o.geometry.dispose(); }); TPM[k] = null; }
@@ -12631,6 +12631,12 @@ function tpmSetMode(k){
   /* into or out of the light sheet: its own objective, and its camera's 16-bit look-up tables */
   if ((was === "ls") !== (k === "ls")){
     const lut = TPM.pmt.map(p => ({ lo: p.lo, hi: p.hi }));
+    /* the block's vessels (2026-11-19, Søren: "The vessels are missing in the LS"): the cleared block's whole
+       vasculature, perfused with dye, is what the red channel images -- so the vessels come on (whole volume; in the
+       headset around the cells) and go back to what they were on leaving */
+    if (k === "ls"){ try { const v = document.getElementById("vascSel").value; if (v === "off" || v === "cell"){ TPM.ls.vascPrev = v; setVessels("whole"); } } catch (e){}
+    }
+    else if (TPM.ls.vascPrev != null){ try { setVessels(TPM.ls.vascPrev); } catch (e){} TPM.ls.vascPrev = null; }
     if (k === "ls"){ TPM.ls.xy2P = [TPM.cx, TPM.cy]; TPM.ls.ctr = true; TPM.ls.obj2P = TPM.obj; TPM.obj = TPM.ls.objLS; TPM.lut2P = lut; const L = TPM.lutLS || [{ lo: 0.0016, hi: 0.009 }, { lo: 0.0016, hi: 0.009 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (["pmt", "scan", "stack", "ana", "obj", "flt", "laser", "rig"].indexOf(TPM.tab) < 0) TPM.tab = "rig"; }
     else { if (TPM.ls.xy2P){ [TPM.cx, TPM.cy] = TPM.ls.xy2P; } TPM.ls.objLS = TPM.obj; TPM.obj = TPM.ls.obj2P || Object.assign({}, TPM_OBJ[0]); TPM.lutLS = lut; const L = TPM.lut2P || [{ lo: 0.01, hi: 0.08 }, { lo: 0.01, hi: 0.08 }]; TPM.pmt.forEach((p, i) => Object.assign(p, L[i])); if (TPM.tab === "sample") TPM.tab = "laser";
       if (TPM.on) (async () => { try { if (!MOUSE.on) await setMouse(true); if (!WIN.on) await setWindow(true); } catch (e){} })(); }
@@ -13132,6 +13138,7 @@ function tpmTabAna(P, g, X, Y, W){
 /* ── on and off; the PC's copy of the panel ── */
 function setTpm(on){
   TPM.on = !!on;
+  if (!TPM.on && TPM.ls.vascPrev != null){ try { setVessels(TPM.ls.vascPrev); } catch (e){} TPM.ls.vascPrev = null; }   // the light sheet's vessels go back off
   /* the microscope looks through the cranial window, so it brings the mouse and the window with it (2026-11-19, Søren:
      "Having the mouse and 2p without a cranial window does not make sense. I think the mouse should also be shown when
      showing the 2p") -- and turning the window off puts the microscope away */
@@ -13479,6 +13486,13 @@ function lsCamera(lam, pm, R){
 }
 
 /* ── the bench in 3D: the block, the chamber, the illumination objectives, the sheet and the picture in it ── */
+/* with the beads as the sample, the tissue is hidden -- only while drawing, so nothing else's own visibility is touched */
+(function lsHideTissue(){
+  const hid = [], pb = scene.onBeforeRender, pa = scene.onAfterRender;
+  scene.onBeforeRender = function (...a){ if (typeof pb === "function") pb.apply(this, a);
+    if (TPM.on && TPM.mode === "ls" && TPM.sample === "beads") for (const o of content.children) if (o !== TPM.grp && o.visible){ o.visible = false; hid.push(o); } };
+  scene.onAfterRender = function (...a){ for (const o of hid) o.visible = true; hid.length = 0; if (typeof pa === "function") pa.apply(this, a); };
+})();
 function lsBuild(){
   /* the camera's field starts on the middle of the block, not on the cells' centre (2026-11-19, Søren: "even though the
      sample has changed from the cube to the MICrONS dataset, the imaged part is still the cube") */
@@ -13487,9 +13501,17 @@ function lsBuild(){
   const BX = lsBoxC(), c0 = tpmCentre().addScaledVector(B.e1, -TPM.cx).addScaledVector(B.e2, -TPM.cy);
   const bc = c0.addScaledVector(B.e1, BX.cx).addScaledVector(B.e2, BX.cy).addScaledVector(B.n, BX.sz / 2), Bk = BX.sx, By = BX.sy, Bz = BX.sz;
   const m4 = new THREE.Matrix4().makeBasis(B.e1, B.e2, B.n); grp.quaternion.setFromRotationMatrix(m4); grp.position.copy(bc);
-  const op = L.E > 1 ? 0.05 : L.clear === "none" ? 0.8 : 0.1;
-  const block = new THREE.Mesh(new THREE.BoxGeometry(Bk, By, Bz), new THREE.MeshStandardMaterial({ color: L.clear === "none" && L.E === 1 ? "#f2ead8" : "#dfefff", transparent: true, opacity: op, depthWrite: false, roughness: 0.4 }));
+  /* BEADS IN AGAROSE (2026-11-19, Søren: "When changing to beads in agarose, the sample should also change"): a clear
+     agarose block of the same size with 0.2 µm fluorescent beads scattered through it (drawn ~30 µm so they show);
+     the tissue -- cells, layers, vessels -- is hidden while it is the sample (lsHideTissue) */
+  const beads = TPM.sample === "beads";
+  const op = beads ? 0.12 : L.E > 1 ? 0.05 : L.clear === "none" ? 0.8 : 0.1;
+  const block = new THREE.Mesh(new THREE.BoxGeometry(Bk, By, Bz), new THREE.MeshStandardMaterial({ color: beads ? "#eef6ff" : L.clear === "none" && L.E === 1 ? "#f2ead8" : "#dfefff", transparent: true, opacity: op, depthWrite: false, roughness: 0.4 }));
   grp.add(block);
+  if (beads){ const n = 2500, im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(14, 1), new THREE.MeshBasicMaterial({ color: "#7dff9a" }), n), m4 = new THREE.Matrix4();
+    let sd = 7; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < n; i++){ m4.makeTranslation((rnd() - 0.5) * Bk, (rnd() - 0.5) * By, (rnd() - 0.5) * Bz); im.setMatrixAt(i, m4); }
+    grp.add(im); }
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Bk, By, Bz)), new THREE.LineBasicMaterial({ color: "#9fd3ff" })); grp.add(edges);
   /* THE CHAMBER AND ITS MEDIUM (2026-11-19, Søren: "the water in the water objective is just hanging in the air. Do light
      sheet microscopes use a coverslip? Is there a medium around the sample?"): no coverslip -- the block sits in a
@@ -13526,6 +13548,10 @@ function lsBuild(){
     const ob = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.6, roughness: 0.35 }));
     ob.rotation.z = sgn < 0 ? Math.PI / 2 : -Math.PI / 2;           // its y axis (tip → back) points away from the block
     ob.position.set(sgn * (Bk / 2 + 3000), 0, 0); grp.add(ob);
+    /* its front lens (2026-11-19, Søren: "Would be cool if the objectives had a lens"): a glass dome in the tip */
+    { const gl = new THREE.MeshStandardMaterial({ color: "#8fc8ff", metalness: 0.2, roughness: 0.04, transparent: true, opacity: 0.75, emissive: "#1d4a7a", emissiveIntensity: 0.35, side: THREE.DoubleSide });
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(1050, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), gl); dome.scale.y = 0.35; dome.position.y = 40; ob.add(dome);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(1080, 70, 8, 40), new THREE.MeshStandardMaterial({ color: "#2a2f37", metalness: 0.6, roughness: 0.4 })); rim.rotation.x = Math.PI / 2; rim.position.y = 30; ob.add(rim); }
     const band = new THREE.Mesh(new THREE.CylinderGeometry(3260, 3260, 900, 48, 1, true), new THREE.MeshStandardMaterial({ color: "#e8d020" }));
     band.rotation.z = Math.PI / 2; band.position.set(sgn * (Bk / 2 + 3000 + 7000), 0, 0); grp.add(band);
     /* the light leaving its tip: a fan as tall as the sheet, as thin as the sheet's edge */
@@ -13537,7 +13563,7 @@ function lsBuild(){
   }
   lsRigParts(grp, Bk, By, Bz, BX);
   try { const lb = textSprite(["Detection objective", "→ tube lens → filter → camera"], { fit: true, border: "#9aa4b2" }); const h = 1600; lb.scale.set(h * lb.userData.aspect, h, 1); lb.position.set(0, 0, -(TPM.obj.wd * 1000 + 500 + 4000)); grp.add(lb); } catch (e){}
-  try { const lab = textSprite([L.E > 1 ? "Expanded ×" + L.E + " — really " + (Bk * L.E / 1000).toFixed(1) + " × " + (By * L.E / 1000).toFixed(1) + " × " + (Bz * L.E / 1000).toFixed(1) + " mm" : "The whole dataset, " + (Bk / 1000).toFixed(2) + " × " + (By / 1000).toFixed(2) + " × " + (Bz / 1000).toFixed(2) + " mm · " + med.name], { fit: true, border: "#9aa4b2" }); const h = 120; lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(0, -By / 2 - 150, -Bz / 2); grp.add(lab); } catch (e){}
+  try { const lab = textSprite([beads ? "Agarose block (1 %) with 0.2 µm fluorescent beads — drawn larger, " + (Bk / 1000).toFixed(2) + " × " + (By / 1000).toFixed(2) + " × " + (Bz / 1000).toFixed(2) + " mm" : L.E > 1 ? "Expanded ×" + L.E + " — really " + (Bk * L.E / 1000).toFixed(1) + " × " + (By * L.E / 1000).toFixed(1) + " × " + (Bz * L.E / 1000).toFixed(1) + " mm" : "The whole dataset, " + (Bk / 1000).toFixed(2) + " × " + (By / 1000).toFixed(2) + " × " + (Bz / 1000).toFixed(2) + " mm · " + med.name], { fit: true, border: "#9aa4b2" }); const h = 120; lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(0, -By / 2 - 150, -Bz / 2); grp.add(lab); } catch (e){}
   /* the sheet: an hourglass of light across the block, at the focal plane */
   const N = 80, pos = [], idx = [], hgt = By;
   for (let i = 0; i <= N; i++){ const x = -Bk / 2 + i / N * Bk, w = lsW(x) / 2;
@@ -13607,11 +13633,13 @@ function lsRigParts(grp, Bk, By, Bz, BX){
   const zT = zTop - 40000, zF = zTop - 90000, zC = zTop - 140000;
   lensZ(14000, 0, 0, zT); lab("Tube lens", 22000, 0, zT);
   /* the wheel: six slots round its centre; it turns so the active channel's filter sits in the beam (at x = 0) */
-  const wheel = new THREE.Group(); wheel.position.set(14000, 0, zF); grp.add(wheel);
-  { const d = new THREE.Mesh(new THREE.CylinderGeometry(25000, 25000, 4000, 48), mat("#2d333b")); d.rotation.x = Math.PI / 2; wheel.add(d); }
-  LS_WHEEL.forEach((F, i) => { const a = i * Math.PI / 3, f = new THREE.Mesh(new THREE.CylinderGeometry(5600, 5600, 4400, 24), new THREE.MeshStandardMaterial({ color: F.col, transparent: true, opacity: F.c || F.lp || F.notch ? 0.8 : 0.15, emissive: F.col, emissiveIntensity: 0.25 }));
-    f.rotation.x = Math.PI / 2; f.position.set(Math.cos(a) * 14000, Math.sin(a) * 14000, 0); wheel.add(f); });
-  lab("Emission filter wheel", 48000, 0, zF);
+  /* 25 mm filters (2026-11-19, Søren: "The emitted light is larger than the filter... We need larger filters or a
+     smaller cone"): the parallel light behind a 10×–20× objective is ~15–20 mm wide, so the wheel holds 25 mm filters */
+  const wheel = new THREE.Group(); wheel.position.set(28000, 0, zF); wheel.rotation.z = TPM.ls.wheelRot != null ? TPM.ls.wheelRot : Math.PI; grp.add(wheel);   // where it was: a rebuild must not spin it back
+  { const d = new THREE.Mesh(new THREE.CylinderGeometry(43000, 43000, 4000, 64), mat("#2d333b")); d.rotation.x = Math.PI / 2; wheel.add(d); }
+  LS_WHEEL.forEach((F, i) => { const a = i * Math.PI / 3, f = new THREE.Mesh(new THREE.CylinderGeometry(12500, 12500, 4400, 40), new THREE.MeshStandardMaterial({ color: F.col, transparent: true, opacity: F.c || F.lp || F.notch ? 0.8 : 0.15, emissive: F.col, emissiveIntensity: 0.25 }));
+    f.rotation.x = Math.PI / 2; f.position.set(Math.cos(a) * 28000, Math.sin(a) * 28000, 0); wheel.add(f); });
+  lab("Emission filter wheel (25 mm filters)", 80000, 0, zF);
   box(60000, 60000, 70000, "#1b1f24", 0, 0, zC - 25000); lab("sCMOS camera (2048 × 2048)", 0, 0, zC - 70000);
   const emB = [], camB = [];
   /* THE FLUORESCENCE AS A BUNDLE, NOT A RAY (2026-11-19, Søren: "If it can acquire light from the whole sample at once,
@@ -13622,7 +13650,7 @@ function lsRigParts(grp, Bk, By, Bz, BX){
   if (TPM.laserOn){
     const zf = TPM.depth - BX.sz / 2, tip = zf - TPM.obj.wd * 1000, ox = TPM.cx - BX.cx, oy = TPM.cy - BX.cy, Fh = lsFov() / 2;
     const x0 = Math.max(-Bk / 2, ox - Fh), x1 = Math.min(Bk / 2, ox + Fh), y0 = Math.max(-By / 2, oy - Fh), y1 = Math.min(By / 2, oy + Fh);
-    const rB = Math.min(9000, (TPM.objR || 12000) * 0.6), chip = 6650;
+    const rB = Math.min(10000, (TPM.objR || 12000) * 0.6), chip = 6650;
     const frus = (a, za, b, zb, into) => {            // a, b: [x0, x1, y0, y1] rectangles at za and zb
       const v = [a[0], a[2], za, a[1], a[2], za, a[1], a[3], za, a[0], a[3], za, b[0], b[2], zb, b[1], b[2], zb, b[1], b[3], zb, b[0], b[3], zb];
       const gm = new THREE.BufferGeometry(); gm.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); gm.setIndex([0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7, 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
@@ -13635,8 +13663,12 @@ function lsRigParts(grp, Bk, By, Bz, BX){
         v.push(cx + c * t, cy + sn * t, zf, ox + c * rL, oy + sn * rL, tip); const j = (i + 1) % N; idx.push(2 * i, 2 * j, 2 * j + 1, 2 * i, 2 * j + 1, 2 * i + 1); }
       const gm = new THREE.BufferGeometry(); gm.setAttribute("position", new THREE.Float32BufferAttribute(v, 3)); gm.setIndex(idx);
       const m = new THREE.Mesh(gm, new THREE.MeshBasicMaterial({ color: "#3dff6a", transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); grp.add(m); emB.push(m.material); }
-    frus(sq(rB, 0, 0), zTop + 2000, sq(rB, 0, 0), zF + 2500, emB);              // parallel above the objective, through the tube lens
-    frus(sq(rB, 0, 0), zF - 2500, sq(chip, 0, 0), zC + 10000, camB);           // after the filter: the image forming on the chip
+    /* round, as the optics are: parallel above the objective through the tube lens and the filter (narrower than both),
+       then narrowing to the image on the chip */
+    const tube = (r0, z0, r1, z1, into) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, Math.abs(z1 - z0), 48, 1, true), new THREE.MeshBasicMaterial({ color: "#3dff6a", transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      m.rotation.x = z1 < z0 ? -Math.PI / 2 : Math.PI / 2; m.position.z = (z0 + z1) / 2; grp.add(m); into.push(m.material); };
+    tube(rB, zTop + 2000, rB, zF + 2500, emB);
+    tube(rB, zF - 2500, chip, zC + 10000, camB);
   }
   grp.userData.parts = { wheel, lasB, lasV, emB, camB };
   /* the stage under the chamber */
@@ -13651,7 +13683,7 @@ function lsFrame3d(){
   /* the active channel: its laser colours the sheet and the illumination beams, the wheel turns its filter in */
   if (u.parts){ const ph = lsPhase(), ch = ph.ch, F = LS_WHEEL[ch.f], lc = lsLasCol(ch.las), k = lsChanK(ch), lit = TPM.laserOn && ph.lit;
     u.sheet.material.opacity = lit ? 0.3 : 0; for (const m of u.fanM || []){ m.color.set(lc); m.opacity = lit ? 0.18 : 0; }
-    const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2;
+    const tgt = Math.PI - ch.f * Math.PI / 3, w = u.parts.wheel; let d = tgt - w.rotation.z; d = Math.atan2(Math.sin(d), Math.cos(d)); w.rotation.z += d * 0.2; TPM.ls.wheelRot = w.rotation.z;
     u.sheet.material.color.set(lc); for (const m of u.parts.lasB){ m.color.set(lc); m.opacity = lit ? 0.85 : 0.12; }
     for (const m of u.parts.lasV || []){ m.color.set(lc); m.opacity = lit ? 0.4 : 0.04; }
     const emc = k.g >= k.r ? "#3dff6a" : "#ff6a8a";
