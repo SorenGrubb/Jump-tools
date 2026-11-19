@@ -12079,6 +12079,11 @@ function tpmCompute(z){
   if (ok && !beads && typeof CSFT !== "undefined" && CSFT.on) tpmCsfSplat(G, B, f, F, R, psf);
   if (ok && !beads){ const W = tpmCaMap(cells.filter(tpmExpressing), B, f, F, R, psf);
     if (W) for (let i = 0; i < R * R; i++) if (G[i] > 0.01) G[i] *= 1 + 4 * W[i]; }
+  /* WHAT WENT INTO THIS PICTURE, shown under it (2026-11-19, Søren, in the headset: "Still no signal at all") -- how
+     many loaded cells, how many the plane cuts, how many of those carry GCaMP, how many pixels they fill, and which
+     way the cross-sections were made -- so a picture without cells says why */
+  { let gp = 0; for (let i = 0; i < R * R; i++) if (G[i] > 0.01) gp++;
+    TPM.diag = { n: CELLS.filter(c => c.mesh).length, cut: cells.length, lab: cells.filter(tpmExpressing).length, px: gp, path: renderer.xr.isPresenting || TPM.cpuSlice ? "CPU" : "GPU", ok, xr: renderer.xr.isPresenting }; }
   /* ablated cells: swollen (the cross-section grows by a few µm), bright and filled, the nucleus too */
   if (ok){ tpmBlur(Sw, R, 1.6 / px); for (let i = 0; i < R * R; i++) G[i] += Math.min(1, Sw[i] * 2.6) * 0.95; }
   /* blebs: big round vesicles where the laser burned -- a bright rim, a dark lumen */
@@ -12884,7 +12889,9 @@ function tpmMonitor(P, g, x, y, s){
   tpmTxt(g, TPM.px + "×" + TPM.px + " px · " + (tpmFov() / TPM.px).toFixed(2) + " µm/px · " + (1 / tpmRealFrame()).toFixed(1) + " Hz" + (TPM.avg > 1 ? " (" + TPM.avg + " averaged)" : "") + (TPM.slow ? " · slow motion" : typeof SIM !== "undefined" && SIM.eff < 1 ? " · brain time " + simFmt(SIM.eff) : ""), x, yy + 38, 25, "#e9d5ff", s + 40);
   tpmTxt(g, "PSF " + psf.xy.toFixed(2) + " × " + (isFinite(psf.z) ? psf.z.toFixed(1) : "∞ (no sectioning)") + " µm · ΔT " + (TPM.temp >= 0 ? "+" : "") + TPM.temp.toFixed(1) + " °C" + (fr && isFinite(fr.sbr) ? " · signal/background " + (fr.sbr > 99 ? ">99" : fr.sbr.toFixed(1)) : ""), x, yy + 74, 25, "#e9d5ff", s + 40); }
   const w2 = TPM.mode === "ls" ? (TPM.pmt[0].sat > 0.01 ? "⚠ The camera saturates — shorter exposure or less power" : "") : TPM.warn || (fr && fr.leak > 1 ? "⚠ Laser light is leaking into the PMTs (" + fr.leak.toFixed(0) + " photons/pixel) — check the dichroic and the blocking filter (Filters tab)" : "") || (tpmOpt().TL < 0.5 ? "⚠ The primary dichroic sends most of the laser away from the brain (" + Math.round(tpmOpt().TL * 100) + " % gets through)" : "");
-  if (w2) tpmLines(g, w2, x, yy + 112, s + 40, 25, "#ffb070", 3);
+  if (TPM.mode !== "ls" && TPM.diag){ const D = TPM.diag;
+    tpmTxt(g, "In this plane: " + D.cut + " of " + D.n + " loaded cell" + (D.n === 1 ? "" : "s") + " cut, " + D.lab + " with GCaMP, " + D.px + " px lit · slices: " + D.path + (D.ok ? "" : " · laser/rig off"), x, yy + 106, 20, "#8b949e", s + 40); }
+  if (w2) tpmLines(g, w2, x, yy + 136, s + 40, 25, "#ffb070", 3);
   try { tpmMonitorHint(P, g, x, y, s); } catch (e){}
   /* FOCUS: the objective up or down (2026-11-19, Søren: "We need a way to move the objective up or down to scan."); on the
      PC the mouse wheel over the picture does the same (Shift: ×10) */
