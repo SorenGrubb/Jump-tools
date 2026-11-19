@@ -11628,7 +11628,7 @@ const TPM = {
   pmt: [{ key: "g", name: "Green PMT · GCaMP6s", gain: 0.5, off: 0.02, lo: 0.01, hi: 0.08, on: true, hist: null, sat: 0 },
         { key: "r", name: "Red PMT · plasma dye", gain: 0.5, off: 0.02, lo: 0.01, hi: 0.08, on: true, hist: null, sat: 0 }],
   hilo: false, expr: "exc", light: true, psfMag: 10,
-  stack: { n: 20, dz: 5, planes: [], run: null, show: true, psf: true, grp: null },
+  stack: { n: 20, dz: 5, from: "top", planes: [], run: null, show: true, psf: true, grp: null },
   game: { placed: new Set(["laser"]), pick: null, wrong: 0, t0: 0, msg: "", done: false },
   rig: false, showRig: true, rigLabels: true, temp: 0, heatDose: 0, dose: new Map(), blebs: [], warn: "",
   lam: { "1p": 470, "2p": 920, "3p": 1300 },
@@ -12397,11 +12397,14 @@ function tpmStackKeep(fr){
   S.run.i++; TPM.xz = null;
 }
 /* done or stopped: the objective goes back to where the stack started (2026-11-19, Søren) */
-function tpmStackEnd(){ const S = TPM.stack; if (S.run){ TPM.depth = S.run.z0; TPM.built = ""; } S.run = null; TPM.cur = null; tpmStack3d(); TPM.dirty = true; }
+/* where the stack starts (2026-11-19, Søren: "an option to center the z-stack on the current focus"): from the focus down,
+   centred on it (half above, half below), or ending at it */
+function tpmStackTop(){ const S = TPM.stack, span = (S.n - 1) * S.dz; return Math.max(0, S.from === "centre" ? TPM.depth - span / 2 : S.from === "bottom" ? TPM.depth - span : TPM.depth); }
+function tpmStackEnd(){ const S = TPM.stack; if (S.run){ TPM.depth = S.run.back; TPM.built = ""; } S.run = null; TPM.cur = null; tpmStack3d(); TPM.dirty = true; }
 function tpmStackStart(){
   if (!TPM.rig){ flashWarn("Set up the rig first (Rig tab)", 2500, "#ffb070"); return; }
   const S = TPM.stack; S.planes = []; TPM.xz = null; TPM.cur = null;
-  S.run = { i: 0, n: S.n, z0: TPM.depth };
+  S.run = { i: 0, n: S.n, z0: tpmStackTop(), back: TPM.depth };
   if (TPM.ramp) TPM.rampZ0 = TPM.rampZ0 || TPM.depth;
   tpmStack3d();
 }
@@ -12717,26 +12720,28 @@ function tpmTabStack(P, g, X, Y, W){
   const S = TPM.stack, p = tpmPsf(TPM.depth);
   tpmSlider(P, g, X, Y, 500, "Planes: " + S.n, S.n, 2, 100, v => { S.n = Math.round(v); }, { step: 1, key: "sn" });
   tpmSlider(P, g, X + 530, Y, 490, "Z-step " + S.dz.toFixed(S.dz < 2 ? 1 : 0) + " µm", S.dz, 0.5, 25, v => { S.dz = v; }, { log: true, key: "sdz", step: 0.1 });
-  const depthEnd = TPM.depth + (S.n - 1) * S.dz, t = S.n * (tpmRealFrame() + 0.02);
-  tpmTxt(g, "From " + TPM.depth.toFixed(0) + " to " + Math.min(tpmMaxDepth(), depthEnd).toFixed(0) + " µm · ≈ " + (t < 1 ? (t * 1000).toFixed(0) + " ms" : t.toFixed(1) + " s") + " on a real rig · " + TPM.px + " px", X, Y + 105, 26, "#fff", W);
+  const z0 = S.run ? S.run.z0 : tpmStackTop(), depthEnd = z0 + (S.n - 1) * S.dz, t = S.n * (tpmRealFrame() + 0.02);
+  tpmTxt(g, "From " + z0.toFixed(0) + " to " + Math.min(tpmMaxDepth(), depthEnd).toFixed(0) + " µm · ≈ " + (t < 1 ? (t * 1000).toFixed(0) + " ms" : t.toFixed(1) + " s") + " on a real rig · " + TPM.px + " px", X, Y + 105, 26, "#fff", W);
   const ny = isFinite(p.z) ? p.z / 2.3 : null;
   tpmTxt(g, ny ? (S.dz > p.z ? "⚠ The z-step is bigger than the focus is tall (" + p.z.toFixed(1) + " µm): gaps between the planes" : S.dz > ny ? "Z-step between the focus height and half of it: sampled, not quite Nyquist (≤ " + ny.toFixed(1) + " µm)" : "✓ Z-step ≤ " + ny.toFixed(1) + " µm: Nyquist-sampled in depth")
     : "1P has no sectioning: every plane carries the haze of all the others", X, Y + 145, 25, ny && S.dz > p.z ? "#ffb070" : "#b9ffc8", W);
   const lat = tpmFov() / TPM.px, nyx = p.xy / 2.3;
   tpmTxt(g, lat > nyx ? "Pixels " + lat.toFixed(2) + " µm > " + nyx.toFixed(2) + " µm: under-sampled laterally (zoom in or more pixels)" : "✓ Pixels " + lat.toFixed(2) + " µm: Nyquist-sampled laterally", X, Y + 180, 25, lat > nyx ? "#ffb070" : "#b9ffc8", W);
-  vrpBtn(P, g, X, Y + 210, 330, 60, S.run ? "■ Stop (" + S.run.i + "/" + S.run.n + ")" : "▶ Acquire the stack", () => { if (S.run) tpmStackEnd(); else tpmStackStart(); }, { on: !!S.run, key: "acq", size: 28 });
-  vrpBtn(P, g, X + 345, Y + 210, 230, 60, (S.show ? "☑" : "☐") + " In 3D", () => { S.show = !S.show; tpmStack3d(); }, { on: S.show, key: "s3d", size: 26 });
-  vrpBtn(P, g, X + 590, Y + 210, 230, 60, (S.psf ? "☑" : "☐") + " PSF in 3D", () => { S.psf = !S.psf; tpmStack3d(); }, { on: S.psf, key: "spsf", size: 26 });
-  vrpBtn(P, g, X + 835, Y + 210, 185, 60, "Clear", () => { S.planes = []; S.run = null; TPM.xz = null; tpmStack3d(); }, { key: "sclr", size: 26 });
+  tpmTxt(g, "Planes", X, Y + 246, 24, "#e9d5ff");
+  [["top", "↓ from the focus down"], ["centre", "↕ centred on the focus"], ["bottom", "↑ up to the focus"]].forEach(([k, l], i) => vrpBtn(P, g, X + 100 + i * 307, Y + 212, 297, 54, l, () => { S.from = k; }, { on: S.from === k, key: "sfrom" + k, size: 22, off: !!S.run }));
+  vrpBtn(P, g, X, Y + 276, 330, 60, S.run ? "■ Stop (" + S.run.i + "/" + S.run.n + ")" : "▶ Acquire the stack", () => { if (S.run) tpmStackEnd(); else tpmStackStart(); }, { on: !!S.run, key: "acq", size: 28 });
+  vrpBtn(P, g, X + 345, Y + 276, 230, 60, (S.show ? "☑" : "☐") + " In 3D", () => { S.show = !S.show; tpmStack3d(); }, { on: S.show, key: "s3d", size: 26 });
+  vrpBtn(P, g, X + 590, Y + 276, 230, 60, (S.psf ? "☑" : "☐") + " PSF in 3D", () => { S.psf = !S.psf; tpmStack3d(); }, { on: S.psf, key: "spsf", size: 26 });
+  vrpBtn(P, g, X + 835, Y + 276, 185, 60, "Clear", () => { S.planes = []; S.run = null; TPM.xz = null; tpmStack3d(); }, { key: "sclr", size: 26 });
   const xz = tpmXZ();
   if (xz){
-    tpmTxt(g, "Side view (x against depth, true aspect)", X, Y + 315, 23, "#fff", 620);
+    tpmTxt(g, "Side view (x against depth, true aspect)", X, Y + 381, 23, "#fff", 620);
     const bw = 620, sc = Math.min(bw / xz.cv.width, 400 / xz.cv.height), w = xz.cv.width * sc, h = xz.cv.height * sc;
-    g.fillStyle = "#000"; g.fillRect(X, Y + 330, bw, 420); g.imageSmoothingEnabled = false; g.drawImage(xz.cv, X + (bw - w) / 2, Y + 330, w, h);
-    tpmTxt(g, "Max projection", X + 650, Y + 315, 23, "#fff");
-    g.drawImage(xz.mx, X + 650, Y + 330, 370, 370); g.imageSmoothingEnabled = true;
-    tpmTxt(g, S.planes.length + " planes, " + S.planes[0].z.toFixed(0) + "–" + S.planes[S.planes.length - 1].z.toFixed(0) + " µm", X + 650, Y + 730, 24, "#e9d5ff");
-  } else tpmLines(g, "Acquire a stack: the focus steps down plane by plane and each raster scan is kept. In 3D the planes sit where they were taken, with the PSF in each (yellow: true height, width × " + TPM.psfMag + ") — when the z-step is bigger than the PSF is tall, you see the gaps.", X, Y + 340, W - 10, 25, "#e9d5ff", 5);
+    g.fillStyle = "#000"; g.fillRect(X, Y + 396, bw, 420); g.imageSmoothingEnabled = false; g.drawImage(xz.cv, X + (bw - w) / 2, Y + 396, w, h);
+    tpmTxt(g, "Max projection", X + 650, Y + 381, 23, "#fff");
+    g.drawImage(xz.mx, X + 650, Y + 396, 370, 370); g.imageSmoothingEnabled = true;
+    tpmTxt(g, S.planes.length + " planes, " + S.planes[0].z.toFixed(0) + "–" + S.planes[S.planes.length - 1].z.toFixed(0) + " µm", X + 650, Y + 796, 24, "#e9d5ff");
+  } else tpmLines(g, "Acquire a stack: the focus steps down plane by plane, each raster scan is kept, and the objective goes back to where it was. In 3D the planes sit where they were taken, with the PSF in each (yellow: true height, width × " + TPM.psfMag + ") — when the z-step is bigger than the PSF is tall, you see the gaps.", X, Y + 406, W - 10, 25, "#e9d5ff", 5);
 }
 
 /* ── the filters and their spectra ── */
