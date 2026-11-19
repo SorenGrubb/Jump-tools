@@ -391,6 +391,7 @@
     <button id="winBtn" title="The cranial window the Ca²⁺ imaging was done through: a 4 mm craniotomy centred on the V1/LM border, 3.5 mm lateral and ~1 mm in front of lambda, closed with glass and a ring of dental cement (MICrONS Consortium, bioRxiv 2021.07.28.454025, Methods). Shows the glia limitans and the pial vessels under the glass">Window</button>
     <button id="winExport" title="Once, on a PC: with the window on and the red and blue vessels shown, save only the pial and penetrating vessels as a small file (window_vessels.bin) to put in models/mouse/ — the headset then reads that instead of the whole 80 MB vessel set">Save window vessels</button>
     <button id="mouseFly" title="Fly out to the whole mouse, or back in to the cells">Fly out</button>
+    <button id="tpmBtn" title="A two-photon microscope at the cranial window (teaching model): set up the light path, then image the loaded cells in 1P, 2P or 3P — laser power, objective NA / magnification / working distance, PMT gain and histograms, noise, photodamage and heating, z-stacks with the PSF in 3D">2P microscope</button>
     <button id="areaBtn" title="The four visual areas the volume straddles — V1, RL, AL, LM — and the walls between them (Allen, gs://allen-minnie-phase3/areameshes), the same walls Filter-and-show's &quot;Which visual area&quot; filter tests against">Visual areas</button>
   </div>
   <div id="menRow" class="ctl" style="flex-wrap:wrap;gap:4px 10px;font-size:12px;align-items:center" title="Søren's own Neuroglancer outlines of the brain's borders (2026-11-06), drawn section by section and joined into sheets the way the visual-area walls are. The outlines themselves are drawn too: they are the data, the skin between them is interpolation.">
@@ -1035,7 +1036,7 @@
   /* Buttons: icon + short label; `live` is text that always shows (−5 / +5, C / Ci, a running timer). */
   const BTN = {
     sceneSave: ["save", "Save scene"], nucBtn: ["nucleus", "Nuclei"], skelBtn: ["trace", "Skeletons"], aisBtn: ["trace", "AIS"], glassBtn: ["glass", "See-through"], glassOthers: ["glass", "Others see-through"], glassClear: ["x", "All solid"], resetBtn: ["reset", "Reset view"],
-    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], winBtn: ["eye", "Window"], winExport: ["save", "Save window vessels"], mouseFly: ["brain", "Fly out"],
+    layerBtn: ["layers", "Layers"], rboxBtn: ["rbox", "Region box"], areaBtn: ["areas", "Areas"], mouseBtn: ["brain", "Mouse"], winBtn: ["eye", "Window"], winExport: ["save", "Save window vessels"], mouseFly: ["brain", "Fly out"], tpmBtn: ["em", "2P microscope"],
     emBtn: ["em", "EM section"], emDn: ["down", "", "−5 µm"], emUp: ["up", "", "+5 µm"], emSeg: ["areas", "Segmentation"],
     measBtn: ["ruler", "Measure"], measClr: ["x", "Clear"], scaleBtn: ["scalebar", "Scale bar"], nbBtn: ["neighbours", "", "+3"],
     trcBtn: ["pen", "Traced"], trcAdd: ["plus", "their cells"], orgBtn: ["organelle", "Organelles"], ptsBtn: ["synapse", "Synapses & contacts"],
@@ -1103,7 +1104,7 @@
   /* The tabs: rows of ids; "#id" moves that whole element as one row. */
   const TABS = [
     ["view", "eye", "View", [["detail"], ["nucBtn", "skelBtn", "aisBtn", "glassBtn", "scaleBtn", "resetBtn"], ["glassOthers", "glassClear", "glassLvl"], ["colourSel"], ["#lookRow"]]],
-    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["mouseBtn", "winBtn", "mouseFly"], ["winExport"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
+    ["map", "map", "Map", [["layerBtn", "areaBtn", "rboxBtn"], ["mouseBtn", "winBtn", "mouseFly"], ["tpmBtn"], ["winExport"], ["#menRow"], ["layerScope"], ["v1Sel"], ["vascSel"], ["#vpartRow"], ["#mapRbcRow"], ["#mapWbcRow"], ["pvsSel"], ["#pvsWRow"], ["#mapCsfRow"], ["vcolSel"], ["#vcolKey"], ["skelSel"], ["capSel"], ["#skelGroups"]]],
     ["struct", "cube", "Objects", [["trcBtn", "trcType", "trcKind", "trcAdd"], ["orgBtn", "orgKind"], ["#ctRow"], ["#cnBox"], ["#ptsRow"], ["cvecBtn", "lvecBtn", "vecType", "vecCol"], ["nbBtn"]]],
     ["act", "bolt", "Activity", [["stimBtn", "stimMode"], ["stimGain"], ["stimHid"], ["plotBtn", "elecBtn", "elecClr", "stimReset"], ["#plShow"], ["synClr", "traceCsv"], ["patchBtn", "puffBtn"], ["#patchBox"], ["#puffBox"], ["caBtn", "caReset"], ["#caBox"], ["raBtn", "raPlay"], ["#raBox"], ["nvBtn"], ["#nvBox"], ["slBtn"], ["#slBox"], ["lfpBtn", "lfpPlace"], ["#lfpBox"], ["csdBtn", "csdDir"], ["#csdBox"], ["stkBtn", "stkPlace"], ["#stkBox"], ["#physBox"], ["#imgBox"], ["sndBtn", "hapBtn"], ["#sndBodyRow"], ["#drugRow"], ["#caveRow"]]],
     ["tools", "wrench", "Tools", [["#gameBox"], ["#fixBox"], ["#trwBox"], ["emBtn", "emSize", "emDn", "emUp", "emSeg"], ["#blockBox"], ["cutSel", "cutDepth"], ["measBtn", "measClr"]]],
@@ -5688,6 +5689,7 @@ async function setWindow(v){
   }
 }
 document.getElementById("winBtn").addEventListener("click", () => setWindow(!WIN.on));
+document.getElementById("tpmBtn").addEventListener("click", () => setTpm(!TPM.on));
 const WIN_VCOL = ["#d9302b", "#d9302b", "#c9a227", "#5b3fd0", "#5b3fd0"];    /* pa, pen, (cap), av, pv */
 async function winVesselsLoad(){
   if (WIN.light) return WIN.light;
@@ -11503,6 +11505,867 @@ function tlvrFrame(){
   /* while playing the playhead moves: ten redraws a second is smooth enough and cheap enough for a Quest */
   if (TLVR.dirty || (TL.playing && performance.now() - TLVR.lastDraw > 100)) tlvrDraw();
 }
+/* ── 57. A TWO-PHOTON MICROSCOPE AT THE CRANIAL WINDOW (teaching model) ───────────────────────────  2026-11-19
+   Søren: "Now that we have the cranial window, we should also demonstrate how a two photon microscope works." Then:
+   "I want realistic noise on the images and an ability to turn up the laser with a risk of ablating tissue, but to
+   increase the signal in the lower layers. You should also be able to change the PMT gain and change the histogram for
+   each PMT to increase the intensity with the risk of increasing noise. The noise level increases no matter what below
+   500 um, but turning it into a 3-photon rig increases that. I also want a comparison between the visible light in a 2p
+   and a 1p and 3p, where the cone is visible in the 1p and only the point spread in the focal plane is visible in the
+   others. I would like if the lightpath game could be a mini game when setting up the rig. The raster scanning could show
+   in the layer, visualising the cells that you have determined in that layer, building a z-stack. The PSF should be
+   visible when showing the zstack in 3D, and you should be able to change the amount of layers and the z-step and the
+   resolution to experiment with the stack quality. Finally, you should be able to change the objectives NA and
+   magnification and working distance, which should be reflected in the objective dimensions." And: "The ablation should
+   show as cell swellings, perhaps like large vesicles if the laser is extremely high for too long on the focal point
+   surface of the brain, when focused deep, it does not ablate even with very high laser power. The power should be shown
+   and be realistic."
+
+   WHAT IS REAL AND WHAT IS MODELLED
+   · REAL: the cells and vessels the microscope images. Each image is a true optical section through the loaded meshes:
+     for every cell the GPU counts how often a ray from the focal plane crosses its surface (odd = inside), so the image
+     shows each cell's cross-section where the plane cuts it, with the nucleus dark (GCaMP stays in the cytosol). With
+     Activity → Recorded activity on, an imaged neuron's brightness is its measured GCaMP6s response; otherwise each
+     neuron fires at random (~0.3 Hz) with GCaMP6s kinetics (decay ~1 s; Chen et al. 2013, Nature 499:295).
+     The vessels (if loaded) are filled with a red plasma dye on the red PMT.
+   · MODELLED with textbook numbers, for teaching:
+     – PSF: Zipfel, Williams & Webb 2003 (Nat Biotechnol 21:1369) -- lateral 0.325λ/(√2·NA^0.91), axial
+       0.532λ/√2 · 1/(n − √(n²−NA²)) (√3 for three photons); it widens with depth (aberrations).
+     – Light lost on the way in: e^(−z/ℓ), ℓ ≈ 200 µm at 920 nm, ≈ 300 µm at 1300 nm (Kobat et al. 2009, Opt Express
+       17:13354; Horton et al. 2013, Nat Photonics 7:205). The signal goes as (power at the focus)^n, n = photons.
+     – Out-of-focus background near the surface grows with depth and limits 2P to ~600–800 µm; with three photons it
+       is far smaller (Theer & Denk 2006, JOSA A 23:3139; Ouzounov et al. 2017, Nat Methods 14:388).
+     – Heating: ~1.8 °C per 100 mW at 920 nm averaged over the brain (Podgorski & Ranganathan 2016, J Neurophysiol
+       116:1012); more at 1300 nm (water absorbs).
+     – Photodamage at the focus rises steeply with power (~P^2.5; Hopt & Neher 2001, Biophys J 80:2029). It needs high
+       power AT THE FOCUS: near the surface ~100 mW there for a few seconds (2P) blebs and swells the cells; focused deep,
+       the same laser power is mostly scattered away before the focus and does not ablate -- it heats instead.
+     – Detection: Poisson photon counts, PMT gain with excess noise and dark counts that grow with the gain, amplifier
+       noise, a 12-bit digitizer that saturates at 4095.
+   · NOT REAL: the 1P comparison uses a focused blue beam (as in the classic fluorescein-cuvette pictures) for the
+     light show; the 1P image is wide-field (every plane adds blurred haze). The mini-game rig is a schematic. */
+const TPM_MODES = {
+  "1p": { label: "1P", name: "One-photon, 488 nm (blue)", lam: 0.488, lamEm: 0.515, nph: 1, ls: 150, pMax: 20,  pRef: 0.4,  heat: 0.004, pth: Infinity, beta: 0, col: "#3b8cff", laser: "Blue LED, 470/40 nm" },
+  "2p": { label: "2P", name: "Two-photon, 920 nm (infrared)", lam: 0.92, lamEm: 0.515, nph: 2, ls: 200, pMax: 400, pRef: 15, heat: 0.018, pth: 95, beta: 1e-3, col: "#d02a2a", laser: "Ti:sapphire, 920 nm, 80 MHz, ~100 fs" },
+  "3p": { label: "3P", name: "Three-photon, 1300 nm (infrared)", lam: 1.3, lamEm: 0.515, nph: 3, ls: 300, pMax: 150, pRef: 2.2, heat: 0.035, pth: 7, beta: 3e-6, col: "#9b2a6a", laser: "OPA, 1300 nm, 1 MHz, ~50 fs" }
+};
+/* objectives: name, NA, magnification, working distance (mm), immersion */
+const TPM_OBJ = [
+  { name: "Nikon 16×/0.80 W", na: 0.8, mag: 16, wd: 3.0, imm: "water" },
+  { name: "Olympus 25×/1.05 W", na: 1.05, mag: 25, wd: 2.0, imm: "water" },
+  { name: "Zeiss 20×/1.0 W", na: 1.0, mag: 20, wd: 1.7, imm: "water" },
+  { name: "Olympus 10×/0.6 W (8 mm)", na: 0.6, mag: 10, wd: 8.0, imm: "water" },
+  { name: "Nikon 40×/0.80 W", na: 0.8, mag: 40, wd: 3.5, imm: "water" },
+  { name: "Mesoscope 0.6 NA (MICrONS)", na: 0.6, mag: 3.6, wd: 2.7, imm: "water" }
+];
+const TPM_PARTS = [
+  { id: "laser", name: "Laser", x: 20, y: 230, fixed: true, why: "Short, intense pulses: two photons only add up where the light is crowded in time and space." },
+  { id: "pockels", name: "Pockels cell", x: 175, y: 230, why: "sets the laser power within microseconds, and blanks the beam where the scan turns round" },
+  { id: "expander", name: "Beam expander", x: 330, y: 230, why: "widens the beam so it fills the objective's back aperture -- a full aperture gives the full NA and the smallest focus" },
+  { id: "scanners", name: "Scan mirrors", x: 500, y: 230, why: "tilt the beam: a resonant mirror sweeps each line (8 kHz), a galvo steps from line to line" },
+  { id: "scanlens", name: "Scan lens", x: 500, y: 340, why: "turns the mirrors' tilt into a sideways shift of the beam" },
+  { id: "tubelens", name: "Tube lens", x: 500, y: 450, why: "with the scan lens, images the mirrors onto the objective's back aperture, so tilting the beam moves the focus without the beam walking off the objective" },
+  { id: "dichroic", name: "Primary dichroic", x: 500, y: 560, why: "lets the infrared laser pass down to the brain and reflects the green and red light coming back up towards the detectors" },
+  { id: "objective", name: "Objective", x: 500, y: 670, why: "focuses the light into the brain -- its NA sets how small the focus is" },
+  { id: "collect", name: "Collection lens", x: 660, y: 560, why: "gathers the light from the back of the objective onto the detectors -- also the scattered photons (non-descanned detection)" },
+  { id: "irblock", name: "IR-block filter", x: 820, y: 560, why: "stops stray laser light, a million times brighter than the fluorescence" },
+  { id: "splitter", name: "565 nm dichroic", x: 820, y: 450, why: "splits green from red, so each detector sees one colour" },
+  { id: "pmtg", name: "Green PMT", x: 820, y: 340, why: "counts the GCaMP photons (GaAsP photomultiplier)" },
+  { id: "pmtr", name: "Red PMT", x: 660, y: 450, why: "counts the photons from the red dye in the blood plasma" }
+];
+const TPM = {
+  on: false, tab: "rig", mode: "2p", laserOn: true, live: true,
+  power: { "1p": 2, "2p": 40, "3p": 5 }, ramp: false, rampZ0: 0,
+  depth: 150, cx: 0, cy: 0, zoom: 1, px: 256, avg: 1, slow: false,
+  obj: Object.assign({}, TPM_OBJ[0]), fill: false,
+  pmt: [{ key: "g", name: "Green PMT · GCaMP6s", gain: 0.5, off: 0.02, lo: 0.01, hi: 0.08, on: true, hist: null, sat: 0 },
+        { key: "r", name: "Red PMT · plasma dye", gain: 0.5, off: 0.02, lo: 0.01, hi: 0.08, on: true, hist: null, sat: 0 }],
+  hilo: false, expr: "exc", light: true, psfMag: 10,
+  stack: { n: 20, dz: 5, planes: [], run: null, show: true, psf: true, grp: null },
+  game: { placed: new Set(["laser"]), pick: null, wrong: 0, t0: 0, msg: "", done: false },
+  rig: false, temp: 0, heatDose: 0, dose: new Map(), blebs: [], warn: "",
+  ca: new Map(), sl: {}, cur: null, prev: null, scanT0: 0, scanT: 0.3, grp: null, built: "", centre: null, centreSig: "",
+  ov: null, drag: null
+};
+try { TPM.rig = localStorage.getItem("jump_tpm_rig") === "1"; } catch (e){}
+if (TPM.rig) TPM_PARTS.forEach(p => TPM.game.placed.add(p.id));
+TPM.game.done = TPM.rig;
+
+/* ── the physics ── */
+function tpmM(){ return TPM_MODES[TPM.mode]; }
+function tpmN(){ return TPM.obj.imm === "air" ? 1.0 : 1.33; }
+function tpmNA(){ return Math.min(TPM.obj.na, tpmN() * 0.98) * (TPM.fill ? 1 : 0.8); }   // an underfilled back aperture: ~0.8 of the NA, as usual in vivo
+function tpmTheta(){ return Math.asin(Math.min(0.98, TPM.obj.na / tpmN())); }
+function tpmFov(){ return Math.min(5000, 18000 / TPM.obj.mag / TPM.zoom); }          // µm: field number 18 mm / magnification / zoom
+function tpmMaxDepth(){ return Math.max(0, TPM.obj.wd * 1000 - 260); }              // the objective's tip must stay over the glass (150 µm + 60 µm + water)
+function tpmPsf(z){
+  const M = tpmM(), NA = tpmNA(), n = 1.33, ab = 1 + Math.max(0, z) / 700;
+  if (M.nph === 1) return { xy: 0.61 * M.lamEm / NA * ab, z: Infinity };
+  const k = Math.sqrt(M.nph);
+  const wxy = NA > 0.7 ? 0.325 * M.lam / (k * Math.pow(NA, 0.91)) : 0.320 * M.lam / (k * NA);
+  const wz = 0.532 * M.lam / k / (n - Math.sqrt(Math.max(1e-6, n * n - NA * NA)));
+  return { xy: 1.177 * wxy * ab, z: 1.177 * wz * ab };
+}
+/* the power at the objective (= the brain's surface) at depth z: with the ramp, more the deeper, so the signal stays */
+function tpmPower(z){
+  const M = tpmM(); let P = TPM.power[TPM.mode];
+  if (TPM.ramp && M.nph > 1) P *= Math.exp((z - TPM.rampZ0) / M.ls);
+  return Math.max(0, Math.min(M.pMax, P));
+}
+function tpmFocal(z){ return tpmPower(z) * Math.exp(-Math.max(0, z) / tpmM().ls); }
+function tpmLayer(z){ return z < 0 ? "above the brain" : z < 100 ? "L1" : z < 300 ? "L2/3" : z < 420 ? "L4" : z < 620 ? "L5" : z < 900 ? "L6" : "white matter"; }
+/* the cone of light reaching the glass: wider than the window's opening = light lost (vignetting) */
+function tpmVignette(z){ const r = (Math.max(0, z) + 60) * Math.tan(tpmTheta()) + tpmFov() / 2; return r > WIN_OPEN ? Math.pow(WIN_OPEN / r, 2) : 1; }
+
+function tpmBasis(){ const { c, n } = winGeom(), { e1, e2 } = winAxes(); return { c, n, e1, e2 }; }
+/* the field's centre on the glia limitans: over the loaded cells (or the window's centre), moved by the stage */
+function tpmCentre(){
+  const B = tpmBasis(), sig = CELLS.filter(c => c.mesh).map(c => c.i).join(",");
+  if (!TPM.centre || TPM.centreSig !== sig){
+    let p = null, k = 0;
+    for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry) continue; const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+      const q = g.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(c.mesh.matrix); p = p ? p.add(q) : q; k++; }
+    p = p ? p.divideScalar(k) : B.c.clone();
+    p.addScaledVector(B.n, -p.clone().sub(B.c).dot(B.n));
+    TPM.centre = p; TPM.centreSig = sig;
+  }
+  return TPM.centre.clone().addScaledVector(B.e1, TPM.cx).addScaledVector(B.e2, TPM.cy);
+}
+function tpmFocus(z){ return tpmCentre().addScaledVector(tpmBasis().n, z); }
+function tpmExpressing(c){
+  const k = cellClass(c);
+  return TPM.expr === "all" ? true : TPM.expr === "neurons" ? k !== "glia" : k === "exc";
+}
+/* GCaMP6s in each cell, 0..1: the recorded response if there is one, else a modelled one */
+function tpmActivity(c){
+  try { if (RA.on && RA.meta && raEntry(c)){ const v = raValue(c, RA.t); return Math.max(0, Math.min(1, v / 6)); } } catch (e){}
+  const s = TPM.ca.get(c.i); return s ? s.f : 0;
+}
+function tpmCaStep(dt){
+  for (const c of CELLS){
+    let s = TPM.ca.get(c.i); if (!s){ s = { f: Math.random() * 0.2 }; TPM.ca.set(c.i, s); }
+    s.f *= Math.exp(-dt / 1.0);                                          // GCaMP6s decay ~1 s
+    const rate = cellClass(c) === "exc" ? 0.3 : 0.8;                     // spikes per second (a burst lifts it more)
+    if (Math.random() < rate * dt) s.f = Math.min(1, s.f + 0.35 + Math.random() * 0.3);
+  }
+}
+
+/* ── one optical section: the cells' cross-sections (red channel of the target) and the vessels' (green) ── */
+function tpmGL(R){
+  if (!TPM.rt || TPM.rt.width !== R){ if (TPM.rt) TPM.rt.dispose(); TPM.rt = new THREE.WebGLRenderTarget(R, R, { depthBuffer: true, stencilBuffer: true }); TPM.buf = new Uint8Array(R * R * 4); }
+  if (!TPM.cam){ TPM.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 10, 200000); content.add(TPM.cam); }
+  if (!TPM.stMat){
+    const st = mask => new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+      stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, stencilRef: 0, stencilWriteMask: mask,
+      stencilFail: THREE.InvertStencilOp, stencilZFail: THREE.InvertStencilOp, stencilZPass: THREE.InvertStencilOp });
+    TPM.stMat = st(1); TPM.stNuc = st(2);
+    TPM.fillMat = new THREE.ShaderMaterial({ uniforms: { col: { value: new THREE.Vector3() } },
+      vertexShader: "void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: "uniform vec3 col; void main(){ gl_FragColor = vec4(col, 1.0); }",
+      depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending,
+      stencilWrite: true, stencilWriteMask: 0, stencilFunc: THREE.EqualStencilFunc, stencilRef: 1, stencilFuncMask: 3,
+      stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
+    TPM.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), TPM.fillMat); TPM.quad.frustumCulled = false;
+  }
+}
+function tpmVesselMeshes(){ const v = []; try { if (VASC.mesh && VASC.mesh.parent) v.push(VASC.mesh); } catch (e){} try { if (WIN.light && WIN.light.parent && WIN.on) v.push(WIN.light); } catch (e){} return v; }
+function tpmPass(B, f, F, R, list){
+  tpmGL(R);
+  const cam = TPM.cam;
+  cam.left = -F / 2; cam.right = F / 2; cam.top = F / 2; cam.bottom = -F / 2; cam.near = 10; cam.far = 200000; cam.updateProjectionMatrix();
+  const m = new THREE.Matrix4().makeBasis(B.e1, B.e2.clone().negate(), B.n.clone().negate());
+  cam.quaternion.setFromRotationMatrix(m); cam.position.copy(f).addScaledVector(B.n, -10); cam.updateMatrixWorld(true);
+  const r = renderer, prevT = r.getRenderTarget(), prevAuto = r.autoClear, xrOn = r.xr.enabled, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha();
+  try {
+    r.xr.enabled = false; r.autoClear = false; r.setRenderTarget(TPM.rt); r.setClearColor(0x000000, 0); r.clear(true, true, true);
+    for (const it of list){
+      const ms = it.mesh; r.clearStencil();
+      const was = ms.material, vis = ms.visible; ms.material = TPM.stMat; ms.visible = true; r.render(ms, cam); ms.material = was; ms.visible = vis;
+      if (it.nuc){ const nw = it.nuc.material, nv = it.nuc.visible; it.nuc.material = TPM.stNuc; it.nuc.visible = true; r.render(it.nuc, cam); it.nuc.material = nw; it.nuc.visible = nv; }
+      TPM.fillMat.stencilFuncMask = it.fillNuc ? 1 : 3;
+      TPM.fillMat.uniforms.col.value.set(it.c[0], it.c[1], it.c[2]); r.render(TPM.quad, cam);
+    }
+    r.readRenderTargetPixels(TPM.rt, 0, 0, R, R, TPM.buf);
+  } finally { r.setRenderTarget(prevT); r.autoClear = prevAuto; r.xr.enabled = xrOn; r.setClearColor(cc, ca); }
+  return TPM.buf;
+}
+/* SHADOWS OF THE VESSELS ABOVE (2026-11-19, Søren: "With 2 and 3 photon, the large pial vessels cast a shade
+   underneath them. It could be great if we include that in the simulation."): blood absorbs and scatters the laser, so
+   wherever a vessel lies between the surface and the focus, part of the light cone is lost. Seen from above, the vessels
+   between the glia limitans and 25 µm over the focal plane (a vessel cut by the plane keeps its bright lumen), blurred by the cone's width at half the depth: the fraction
+   of the cone each pixel loses. The excitation is lost before the focus, so the signal drops as (1 − loss)^n. */
+function tpmShadow(B, f, F, R, z, vess){
+  if (!vess.length || z < 30) return null;
+  tpmGL(R);
+  if (!TPM.shMat) TPM.shMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+  const cam = TPM.cam;
+  cam.left = -F / 2; cam.right = F / 2; cam.top = F / 2; cam.bottom = -F / 2; cam.near = 1; cam.far = z + 20 - 25; cam.updateProjectionMatrix();
+  const m = new THREE.Matrix4().makeBasis(B.e1, B.e2.clone().negate(), B.n.clone().negate());
+  cam.quaternion.setFromRotationMatrix(m); cam.position.copy(f).addScaledVector(B.n, -(z + 20)); cam.updateMatrixWorld(true);
+  const r = renderer, prevT = r.getRenderTarget(), prevAuto = r.autoClear, xrOn = r.xr.enabled, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha();
+  try {
+    r.xr.enabled = false; r.autoClear = false; r.setRenderTarget(TPM.rt); r.setClearColor(0x000000, 0); r.clear(true, true, true);
+    for (const ms of vess){ const was = ms.material, vis = ms.visible; ms.material = TPM.shMat; ms.visible = true; r.render(ms, cam); ms.material = was; ms.visible = vis; }
+    r.readRenderTargetPixels(TPM.rt, 0, 0, R, R, TPM.buf);
+  } finally { r.setRenderTarget(prevT); r.autoClear = prevAuto; r.xr.enabled = xrOn; r.setClearColor(cc, ca); }
+  const a = new Float32Array(R * R); for (let i = 0; i < R * R; i++) a[i] = TPM.buf[i * 4] / 255;
+  tpmBlur(a, R, Math.max(0.5, 0.5 * z * Math.tan(tpmTheta()) / 2.355) / (F / R));
+  return a;
+}
+function tpmBlur(a, R, s){
+  if (s < 0.4) return a;
+  const k = Math.min(30, Math.ceil(s * 3)), w = new Float32Array(2 * k + 1); let sum = 0;
+  for (let i = -k; i <= k; i++){ w[i + k] = Math.exp(-i * i / (2 * s * s)); sum += w[i + k]; }
+  for (let i = 0; i < w.length; i++) w[i] /= sum;
+  const t = new Float32Array(R * R);
+  for (let y = 0; y < R; y++){ const o = y * R; for (let x = 0; x < R; x++){ let v = 0; for (let i = -k; i <= k; i++){ const xx = x + i < 0 ? 0 : x + i >= R ? R - 1 : x + i; v += a[o + xx] * w[i + k]; } t[o + x] = v; } }
+  for (let x = 0; x < R; x++) for (let y = 0; y < R; y++){ let v = 0; for (let i = -k; i <= k; i++){ const yy = y + i < 0 ? 0 : y + i >= R ? R - 1 : y + i; v += t[yy * R + x] * w[i + k]; } a[y * R + x] = v; }
+  return a;
+}
+function tpmDilate(a, R, rad){
+  if (rad < 1) return a; rad = Math.min(12, Math.round(rad));
+  const t = new Float32Array(R * R);
+  for (let y = 0; y < R; y++) for (let x = 0; x < R; x++){ let v = 0; for (let i = -rad; i <= rad; i++){ const xx = x + i; if (xx >= 0 && xx < R && a[y * R + xx] > v) v = a[y * R + xx]; } t[y * R + x] = v; }
+  for (let x = 0; x < R; x++) for (let y = 0; y < R; y++){ let v = 0; for (let i = -rad; i <= rad; i++){ const yy = y + i; if (yy >= 0 && yy < R && t[yy * R + x] > v) v = t[yy * R + x]; } a[y * R + x] = v; }
+  return a;
+}
+let _tpmG = null;
+function tpmGauss(){ if (_tpmG !== null){ const v = _tpmG; _tpmG = null; return v; } let u = 0, v = 0; while (u === 0) u = Math.random(); v = Math.random(); const r = Math.sqrt(-2 * Math.log(u)); _tpmG = r * Math.sin(2 * Math.PI * v); return r * Math.cos(2 * Math.PI * v); }
+function tpmPoisson(L){ if (L <= 0) return 0; if (L > 25) return Math.max(0, Math.round(L + Math.sqrt(L) * tpmGauss())); const e = Math.exp(-L); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > e); return k - 1; }
+/* a PMT: photons → electrons (with the multiplication's excess noise) → volts → 12-bit numbers */
+function tpmGpp(pm){ return 30 * Math.pow(10, 3 * (pm.gain - 0.5)); }               // digitizer units per photon
+function tpmDetect(lam, pm, avg, R){
+  const gpp = tpmGpp(pm), dark = 0.004 * Math.pow(10, 2.2 * (pm.gain - 0.5)), off = pm.off * 400, out = new Uint16Array(R * R), ra = 2.5 / Math.sqrt(avg);
+  let sat = 0;
+  for (let i = 0; i < R * R; i++){
+    const k = tpmPoisson((lam[i] + dark) * avg);
+    const s = k > 0 ? k * gpp * (1 + tpmGauss() * 0.5 / Math.sqrt(k)) / avg : 0;
+    let v = Math.round(off + s + tpmGauss() * ra);
+    if (v >= 4095){ v = 4095; sat++; } else if (v < 0) v = 0;
+    out[i] = v;
+  }
+  pm.sat = sat / (R * R);
+  return out;
+}
+/* ── a whole frame at depth z ── */
+function tpmCompute(z){
+  const M = tpmM(), R = TPM.px, B = tpmBasis(), F = tpmFov(), psf = tpmPsf(z), f = tpmFocus(z), px = F / R;
+  const list = [];
+  const ok = TPM.rig && TPM.laserOn;
+  /* who is cut by this plane (bounding boxes against the plane, ±100 µm for the haze of 1P) */
+  const reach = M.nph === 1 ? 100 : 10 + psf.z;
+  const cells = [];
+  for (const c of CELLS){
+    if (!c.mesh || !c.mesh.geometry) continue;
+    const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox.clone().applyMatrix4(c.mesh.matrix), ctr = bb.getCenter(new THREE.Vector3()), half = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const d = ctr.clone().sub(f), ext = Math.abs(half.x * B.n.x) + Math.abs(half.y * B.n.y) + Math.abs(half.z * B.n.z);
+    if (Math.abs(d.dot(B.n)) > ext + reach) continue;
+    const late = Math.max(Math.abs(d.dot(B.e1)) - (Math.abs(half.x * B.e1.x) + Math.abs(half.y * B.e1.y) + Math.abs(half.z * B.e1.z)), Math.abs(d.dot(B.e2)) - (Math.abs(half.x * B.e2.x) + Math.abs(half.y * B.e2.y) + Math.abs(half.z * B.e2.z)));
+    if (late > F / 2 + 20) continue;
+    cells.push(c);
+  }
+  const subs = M.nph === 1
+    ? [[0, 1], [-8, 0.7], [8, 0.7], [-20, 0.5], [20, 0.5], [-45, 0.4], [45, 0.4], [-90, 0.3], [90, 0.3]].map(([o, w]) => ({ o, w: w / 1.6, s: Math.abs(o) * Math.tan(tpmTheta()) * 0.5 }))
+    : [{ o: -0.45 * psf.z, w: 0.25, s: 0 }, { o: 0, w: 0.5, s: 0 }, { o: 0.45 * psf.z, w: 0.25, s: 0 }];
+  const G = new Float32Array(R * R), Rd = new Float32Array(R * R), Sw = new Float32Array(R * R);
+  const vess = TPM.pmt[1].on ? tpmVesselMeshes() : [];
+  if (ok) for (const sp of subs){
+    if (z + sp.o < -2) continue;                                   // over the brain: water and glass do not fluoresce
+    const items = [];
+    for (const c of cells){
+      if (!tpmExpressing(c)) continue;
+      const dmg = c.tpmDmg || 0;
+      const b = dmg > 0 ? 0 : 0.22 + 0.8 * tpmActivity(c);
+      items.push({ mesh: c.mesh, nuc: dmg > 0 ? null : c.nucMesh || null, fillNuc: dmg > 0, c: [b * sp.w, 0, dmg > 0 ? sp.w : 0] });
+    }
+    for (const v of vess) items.push({ mesh: v, nuc: null, fillNuc: true, c: [0, sp.w, 0] });
+    const buf = tpmPass(B, f.clone().addScaledVector(B.n, sp.o), F, R, items);
+    const g = new Float32Array(R * R), r = new Float32Array(R * R), w = new Float32Array(R * R);
+    for (let i = 0; i < R * R; i++){ g[i] = buf[i * 4] / 255; r[i] = buf[i * 4 + 1] / 255; w[i] = buf[i * 4 + 2] / 255; }
+    const s = sp.s / px; if (s > 0.4){ tpmBlur(g, R, s); tpmBlur(r, R, s); tpmBlur(w, R, s); }
+    for (let i = 0; i < R * R; i++){ G[i] += g[i]; Rd[i] += r[i]; Sw[i] += w[i]; }
+  }
+  /* ablated cells: swollen (the cross-section grows by a few µm), bright and filled, the nucleus too */
+  if (ok){ tpmBlur(Sw, R, 1.6 / px); for (let i = 0; i < R * R; i++) G[i] += Math.min(1, Sw[i] * 2.6) * 0.95; }
+  /* blebs: big round vesicles where the laser burned -- a bright rim, a dark lumen */
+  if (ok) for (const bl of TPM.blebs){
+    const d = bl.p.clone().sub(f), dz = d.dot(B.n); if (Math.abs(dz) > bl.r + 3) continue;
+    const rr = Math.sqrt(Math.max(0, bl.r * bl.r - dz * dz)); if (rr < 0.5) continue;
+    const cx = (d.dot(B.e1) + F / 2) / px, cy = (d.dot(B.e2.clone().negate()) + F / 2) / px, rp = rr / px, wr = Math.max(1, 1.2 / px);
+    const x0 = Math.max(0, Math.floor(cx - rp - 3 * wr)), x1 = Math.min(R - 1, Math.ceil(cx + rp + 3 * wr)), y0 = Math.max(0, Math.floor(cy - rp - 3 * wr)), y1 = Math.min(R - 1, Math.ceil(cy + rp + 3 * wr));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++){
+      const q = Math.hypot(x - cx, y - cy), i = y * R + x;
+      if (q < rp - wr){ G[i] *= 0.15; Rd[i] *= 0.15; }
+      G[i] += 0.9 * Math.exp(-Math.pow((q - rp) / wr, 2)); Rd[i] += 0.35 * Math.exp(-Math.pow((q - rp) / wr, 2));
+    }
+  }
+  /* the lateral PSF, and for 1P the blur of scattered light, more the deeper */
+  let sl = psf.xy / 2.355; if (M.nph === 1) sl = Math.hypot(sl, 0.12 * Math.max(0, z));
+  tpmBlur(G, R, sl / px); tpmBlur(Rd, R, sl / px);
+  /* photons per pixel per frame: (power at the focus)^n, collection ∝ NA², dwell ∝ 1/pixels per line */
+  const P0 = tpmPower(z), att = Math.exp(-Math.max(0, z) / M.ls), col = Math.pow(tpmNA() / 0.64, 2), dwell = 256 / R, vig = tpmVignette(z);
+  const Q = 6 * col * dwell * vig;
+  const S = !ok ? 0 : M.nph === 1 ? Q * (P0 / M.pRef) * att : Q * Math.pow(P0 * att / M.pRef, M.nph);
+  const Bg = !ok || M.nph === 1 ? 0 : Q * Math.pow(P0 / M.pRef, M.nph) * M.beta * Math.max(0, z) / M.ls;
+  const auto = 0.04 * S;
+  const lg = new Float32Array(R * R), lr = new Float32Array(R * R);
+  const sh = ok ? tpmShadow(B, f, F, R, z, tpmVesselMeshes()) : null, nph = M.nph;
+  for (let i = 0; i < R * R; i++){
+    const k = sh ? Math.pow(Math.max(0.03, 1 - 0.9 * Math.min(1, sh[i])), nph) : 1;
+    lg[i] = (S * G[i] + auto) * k + Bg; lr[i] = (0.7 * S * Rd[i] + 0.6 * auto) * k + 0.5 * Bg; }
+  const ag = tpmDetect(lg, TPM.pmt[0], TPM.avg, R), ar = tpmDetect(lr, TPM.pmt[1], TPM.avg, R);
+  return { R, F, z, f, ag, ar, S, Bg, sbr: Bg + auto > 0 ? (0.5 * S) / (Bg + auto) : Infinity, psf, P0, Pf: P0 * att };
+}
+/* the 12-bit numbers through each PMT's look-up table, into a picture (row 0 at the top) */
+window.__tpmPaint = (fr, cv) => tpmPaint(fr, cv);
+function tpmPaint(fr, cv){
+  const R = fr.R; cv = cv || document.createElement("canvas"); if (cv.width !== R){ cv.width = R; cv.height = R; }
+  const g = cv.getContext("2d"), im = g.createImageData(R, R), d = im.data;
+  const G = TPM.pmt[0], Rp = TPM.pmt[1];
+  const hg = new Uint32Array(128), hr = new Uint32Array(128);
+  for (let y = 0; y < R; y++) for (let x = 0; x < R; x++){
+    const i = (R - 1 - y) * R + x, o = (y * R + x) * 4, a = fr.ag[i], b = fr.ar[i];
+    hg[a >> 5]++; hr[b >> 5]++;
+    const vg = G.on ? Math.max(0, Math.min(1, (a / 4095 - G.lo) / Math.max(0.002, G.hi - G.lo))) : 0;
+    const vr = Rp.on ? Math.max(0, Math.min(1, (b / 4095 - Rp.lo) / Math.max(0.002, Rp.hi - Rp.lo))) : 0;
+    d[o] = vr * 255; d[o + 1] = vg * 255; d[o + 2] = vr * 120; d[o + 3] = 255;
+    if (TPM.hilo){ if ((G.on && a >= 4095) || (Rp.on && b >= 4095)){ d[o] = 40; d[o + 1] = 90; d[o + 2] = 255; } else if ((G.on && a <= 0) && (!Rp.on || b <= 0)){ d[o] = 0; d[o + 1] = 0; d[o + 2] = 0; } }
+  }
+  g.putImageData(im, 0, 0);
+  TPM.pmt[0].hist = hg; TPM.pmt[1].hist = hr;
+  return cv;
+}
+
+/* ── damage: heating everywhere under the beam, photodamage only where the focus is intense ── */
+function tpmDamageStep(dt){
+  const M = tpmM(), scanning = TPM.on && TPM.rig && TPM.laserOn && (TPM.live || TPM.stack.run);
+  const P0 = scanning ? tpmPower(TPM.depth) : 0;
+  const Tss = P0 * M.heat;                                                  // °C over the brain's own
+  TPM.temp += (Tss - TPM.temp) * (1 - Math.exp(-dt / 8));
+  TPM.warn = "";
+  if (TPM.temp > 4.5){ TPM.heatDose += dt * (TPM.temp - 4.5) / 60; TPM.warn = "🌡 The brain under the window is " + TPM.temp.toFixed(1) + " °C warmer — heat damage builds up above ~4–5 °C (keep 2P under ~250 mW)"; }
+  else if (TPM.temp > 2.5) TPM.warn = "🌡 Warming the brain by " + TPM.temp.toFixed(1) + " °C";
+  if (TPM.heatDose > 1){ TPM.heatDose = 0; tpmHeatDamage(); }
+  if (!scanning || M.nph === 1) return;
+  const Pf = tpmFocal(TPM.depth), r = Pf / M.pth;
+  /* the dose per area grows with zoom (the same power on a smaller square) */
+  const rate = Math.max(0, Math.pow(r, 2.5) - 0.35) * (0.5 + 0.5 * TPM.zoom) / 20;
+  const key = Math.round(TPM.depth / 4) + ":" + Math.round(TPM.cx / 50) + ":" + Math.round(TPM.cy / 50) + ":" + Math.round(TPM.zoom * 4);
+  const d = (TPM.dose.get(key) || 0) + rate * dt; TPM.dose.set(key, d);
+  TPM.doseNow = d;
+  if (r > 0.75 && !TPM.warn) TPM.warn = "⚠ " + Pf.toFixed(0) + " mW at the focus — close to photodamage (cells bleb and swell)";
+  if (d > 1){ TPM.dose.set(key, 0); tpmAblate(); }
+}
+function tpmAblate(){
+  const B = tpmBasis(), F = tpmFov(), f = tpmFocus(TPM.depth), z = TPM.depth;
+  /* blebs: 3-12 µm vesicles in the scanned square, near the focal plane */
+  const n = Math.round(4 + 8 * Math.min(2, F / 300));
+  for (let i = 0; i < n; i++){
+    const p = f.clone().addScaledVector(B.e1, (Math.random() - 0.5) * F * 0.9).addScaledVector(B.e2, (Math.random() - 0.5) * F * 0.9).addScaledVector(B.n, (Math.random() - 0.5) * 6);
+    TPM.blebs.push({ p, r: 3 + Math.random() * 9 });
+  }
+  if (TPM.blebs.length > 400) TPM.blebs.splice(0, TPM.blebs.length - 400);
+  /* the cells the plane cuts in that square swell */
+  let k = 0;
+  for (const c of CELLS){ if (!c.mesh || c.tpmDmg) continue; if (tpmCuts(c, f, B, F, 4)){ c.tpmDmg = 1; k++; } }
+  tpmBlebMeshes();
+  flashWarn(["💥 Photodamage at " + z.toFixed(0) + " µm: " + tpmFocal(z).toFixed(0) + " mW at the focus for too long.", "The scanned square blebs (big round vesicles)" + (k ? " and " + k + " cell" + (k > 1 ? "s" : "") + " swell and fill with GCaMP — nucleus too, a sign of a dying cell" : "") + ". Focused deeper, the same laser power is scattered away before the focus and does not ablate."], 7000, "#ff7050");
+  TPM.dirty = true;
+}
+function tpmHeatDamage(){
+  const B = tpmBasis(), F = tpmFov(); let k = 0;
+  for (const c of CELLS){ if (!c.mesh || c.tpmDmg) continue; const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+    const p = g.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(c.mesh.matrix), d = p.sub(tpmCentre());
+    if (Math.abs(d.dot(B.e1)) < F && Math.abs(d.dot(B.e2)) < F && Math.random() < 0.5){ c.tpmDmg = 1; k++; } }
+  flashWarn(["🌡 Heat damage: the brain was kept > 4.5 °C warmer for too long.", k + " cell" + (k === 1 ? "" : "s") + " under the window are damaged. Real labs keep 2P at 920 nm under ~250 mW."], 6000, "#ff7050");
+}
+function tpmCuts(c, f, B, F, slab){
+  const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox.clone().applyMatrix4(c.mesh.matrix), ctr = bb.getCenter(new THREE.Vector3()), half = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5), d = ctr.sub(f);
+  const ext = v => Math.abs(half.x * v.x) + Math.abs(half.y * v.y) + Math.abs(half.z * v.z);
+  return Math.abs(d.dot(B.n)) < ext(B.n) + slab && Math.abs(d.dot(B.e1)) < ext(B.e1) + F / 2 && Math.abs(d.dot(B.e2)) < ext(B.e2) + F / 2;
+}
+function tpmBlebMeshes(){
+  if (!TPM.blebGrp){ TPM.blebGrp = new THREE.Group(); TPM.blebGrp.name = "tpm blebs"; }
+  if (!TPM.blebGrp.parent) content.add(TPM.blebGrp);
+  while (TPM.blebGrp.children.length){ const m = TPM.blebGrp.children.pop(); m.geometry.dispose(); }
+  if (!TPM.blebs.length) return;
+  const geo = new THREE.SphereGeometry(1, 16, 12), mat = new THREE.MeshStandardMaterial({ color: "#f3e2c0", transparent: true, opacity: 0.45, roughness: 0.3, depthWrite: false });
+  const im = new THREE.InstancedMesh(geo, mat, TPM.blebs.length), m = new THREE.Matrix4();
+  TPM.blebs.forEach((b, i) => { m.makeScale(b.r, b.r, b.r).setPosition(b.p); im.setMatrixAt(i, m); });
+  TPM.blebGrp.add(im);
+}
+function tpmHeal(){ for (const c of CELLS) c.tpmDmg = 0; TPM.blebs = []; TPM.dose.clear(); TPM.heatDose = 0; tpmBlebMeshes(); TPM.dirty = true; }
+
+/* ── the microscope in 3D: the objective (to its real size), the light, the scanned square, the stack ── */
+const TPM_MAGCOL = m => m < 1.6 ? "#202020" : m < 3 ? "#7a4a20" : m < 6 ? "#d03030" : m < 12 ? "#e8d020" : m < 22 ? "#30a040" : m < 35 ? "#40d0c0" : m < 55 ? "#70b8ff" : m < 80 ? "#2040c0" : "#f0f0f0";
+function tpmObjective(){
+  const o = TPM.obj, th = tpmTheta(), WDu = o.wd * 1000;
+  const rFront = WDu * Math.tan(th) + 700;                             // the front lens: as wide as the light cone at the tip, plus a rim
+  const rBody = Math.max(rFront + 1500, 9000 + 9000 * Math.min(1.1, o.na) + (o.mag < 6 ? 8000 : 0));
+  const L = 45000 + (o.mag < 6 ? 30000 : 0);                           // parfocal 45 mm (the mesoscope's objective is far bigger)
+  const nose = Math.max(th + 0.1, 0.32), noseLen = Math.min((rBody - rFront) / Math.tan(nose), L - WDu - 12000);
+  const top = L - WDu, thr = rBody > 16500 ? 16000 : 10160;
+  const pts = [[1, 0], [rFront, 0], [rFront + 250, 250], [rBody, noseLen], [rBody, top - 7000], [thr, top - 7000], [thr, top], [1, top]].map(([r, y]) => new THREE.Vector2(r, y));
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 64), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.65, roughness: 0.32, transparent: true, opacity: 0.9 }));
+  grp.add(body);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(rFront - 150, 48), new THREE.MeshStandardMaterial({ color: "#8fc8ff", metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+  lens.rotation.x = Math.PI / 2; lens.position.y = 1; grp.add(lens);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(rBody + 60, rBody + 60, 2600, 64, 1, true), new THREE.MeshStandardMaterial({ color: TPM_MAGCOL(o.mag), roughness: 0.5 }));
+  band.position.y = Math.min(top - 9000, noseLen + 3000); grp.add(band);
+  if (o.imm === "water"){ const ring = new THREE.Mesh(new THREE.CylinderGeometry(rBody + 70, rBody + 70, 900, 64, 1, true), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.6 })); ring.position.y = band.position.y - 2200; grp.add(ring); }
+  try { const lab = textSprite([o.name, "NA " + o.na.toFixed(2) + " · " + o.mag.toFixed(o.mag < 10 ? 1 : 0) + "× · WD " + o.wd.toFixed(1) + " mm"], { fit: true, border: "#9aa4b2" });
+    const h = 5000; lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(rBody + h * lab.userData.aspect * 0.5 + 1500, top * 0.55, 0); grp.add(lab); } catch (e){}
+  /* the water between the front lens and the glass */
+  const gap = WDu - TPM.depth - 210;
+  if (o.imm === "water" && gap > 0){ const w = new THREE.Mesh(new THREE.CylinderGeometry(rFront + 900, rFront + 1500, gap, 48, 1, false), new THREE.MeshStandardMaterial({ color: "#9fd3ff", transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.05 }));
+    w.position.y = -gap / 2; grp.add(w); }
+  return grp;
+}
+function tpmBeam(){
+  const M = tpmM(), th = tpmTheta(), WDu = TPM.obj.wd * 1000, grp = new THREE.Group(), z = TPM.depth;
+  const add = (r0, r1, h, y, col, op) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 64, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    m.position.y = y; grp.add(m); return m; };
+  const t = Math.tan(th), below = 260, w0 = 0.4;
+  /* the excitation: blue and seen for 1P; infrared for 2P/3P -- drawn faintly, you would not see it */
+  add(WDu * t, w0, WDu, WDu / 2, M.col, M.nph === 1 ? 0.12 : 0.05);
+  add(w0, below * t, below, -below / 2, M.col, M.nph === 1 ? 0.10 : 0.035);
+  if (M.nph === 1){
+    /* 1P: every bit of tissue the cone passes through glows green -- the whole double cone, from the surface down */
+    const up = Math.max(0, z);
+    if (up > 1){ add(up * t, w0, up, up / 2, "#3dff6a", 0.22); add(up * t * 0.45, w0, up, up / 2, "#3dff6a", 0.2); }
+    add(w0, below * t, below, -below / 2, "#3dff6a", 0.18); add(w0, below * t * 0.45, below, -below / 2, "#3dff6a", 0.16);
+  } else {
+    /* 2P/3P: only the focus glows, the size of the PSF (magnified to be seen) */
+    const p = tpmPsf(z), k = TPM.psfMag;
+    [[0.55, 0.7], [1, 0.32], [1.6, 0.12]].forEach(([s, op]) => {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: "#3dff6a", transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+      e.scale.set(p.xy * k * s / 2, p.z * k * s / 2, p.xy * k * s / 2); grp.add(e); });
+  }
+  return grp;
+}
+function tpm3dBuild(){
+  if (!TPM.grp){ TPM.grp = new THREE.Group(); TPM.grp.name = "two-photon microscope"; }
+  if (!TPM.grp.parent) content.add(TPM.grp);
+  const B = tpmBasis(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.n.clone().negate());
+  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, TPM.psfMag, TPM.fill, TPM.zoom].join("|");
+  if (sig !== TPM.built){
+    TPM.built = sig;
+    for (const k of ["objMesh", "beamMesh"]) if (TPM[k]){ TPM.grp.remove(TPM[k]); TPM[k].traverse(o => { if (o.geometry) o.geometry.dispose(); }); TPM[k] = null; }
+    TPM.objMesh = tpmObjective(); TPM.objMesh.quaternion.copy(q); TPM.grp.add(TPM.objMesh);
+    if (TPM.light && TPM.laserOn && TPM.rig){ TPM.beamMesh = tpmBeam(); TPM.beamMesh.quaternion.copy(q); TPM.grp.add(TPM.beamMesh); }
+    if (!TPM.fovLine){
+      TPM.fovLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([0, 1, 2, 3].map(() => new THREE.Vector3())), new THREE.LineBasicMaterial({ color: "#5ff2ff", transparent: true, opacity: 0.85 }));
+      TPM.scanLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 }));
+      TPM.grp.add(TPM.fovLine, TPM.scanLine);
+    }
+  }
+  const f = tpmFocus(TPM.depth), F = tpmFov(), e1 = B.e1, e2 = B.e2.clone().negate();
+  TPM.objMesh.position.copy(f).addScaledVector(B.n, -TPM.obj.wd * 1000);
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => f.clone().addScaledVector(e1, a * F / 2).addScaledVector(e2, b * F / 2));
+  TPM.fovLine.geometry.setFromPoints(corners);
+}
+/* the beam follows the scan: p = how far through the frame, 0..1 (bidirectional lines) */
+function tpmScanPos(p){
+  const R = TPM.px, row = Math.min(R - 1, Math.floor(p * R)), u = p * R - row, xf = row % 2 ? 1 - u : u;
+  const B = tpmBasis(), F = tpmFov(), f = tpmFocus(TPM.cur && TPM.stack.run ? TPM.cur.z : TPM.depth), e1 = B.e1, e2 = B.e2.clone().negate();
+  const yy = F / 2 - (row + 0.5) * F / R;
+  const a = f.clone().addScaledVector(e1, -F / 2).addScaledVector(e2, yy), b = f.clone().addScaledVector(e1, F / 2).addScaledVector(e2, yy);
+  return { spot: a.clone().lerp(b, xf), a, b, row };
+}
+function tpmStack3d(){
+  const S = TPM.stack;
+  if (!S.grp){ S.grp = new THREE.Group(); S.grp.name = "z-stack"; }
+  while (S.grp.children.length){ const m = S.grp.children.pop(); if (m.geometry) m.geometry.dispose(); if (m.material){ if (m.material.map) m.material.map.dispose(); m.material.dispose(); } }
+  if (!S.show || !S.planes.length || !TPM.on){ if (S.grp.parent) S.grp.parent.remove(S.grp); return; }
+  if (!S.grp.parent) content.add(S.grp);
+  const B = tpmBasis(), rot = new THREE.Matrix4().makeBasis(B.e1, B.e2.clone().negate(), B.n.clone().negate()), q = new THREE.Quaternion().setFromRotationMatrix(rot);
+  for (const pl of S.planes){
+    const tex = new THREE.CanvasTexture(pl.cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(pl.F, pl.F), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    m.position.copy(pl.f); m.quaternion.copy(q); S.grp.add(m);
+  }
+  if (S.psf){
+    /* the PSF in every plane (a grid of nine): its true height, so you see whether the planes' PSFs touch (z-step ≤ the
+       axial FWHM) or leave gaps; its width × the magnification chosen for the light */
+    const n = S.planes.length * 9, im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: "#ffe05a", transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }), n);
+    const m4 = new THREE.Matrix4(), rq = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(B.e1, B.n, B.e2)); let k = 0;
+    /* its height is true (so the gaps between planes are real); only its width is magnified, to be seen */
+    for (const pl of S.planes){ const sx = pl.psf.xy * TPM.psfMag / 2, sz = (isFinite(pl.psf.z) ? pl.psf.z : Math.min(60, pl.F / 4)) / 2;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++){
+        const p = pl.f.clone().addScaledVector(B.e1, a * pl.F / 3).addScaledVector(B.e2, b * pl.F / 3);
+        m4.compose(p, rq, new THREE.Vector3(sx, sz, sx)); im.setMatrixAt(k++, m4); } }
+    S.grp.add(im);
+  }
+}
+/* ── the per-frame loop: scanning (slowed down to be seen), the stack, the damage, the panel ── */
+function tpmFrame(dt){
+  if (!TPM.on) return;
+  dt = Math.min(0.1, dt || 0.016);
+  tpmCaStep(dt);
+  tpmDamageStep(dt);
+  if (TPM.depth > tpmMaxDepth()) TPM.depth = tpmMaxDepth();
+  tpm3dBuild();
+  const now = performance.now() / 1000, VR = renderer.xr.isPresenting;
+  const running = TPM.rig && (TPM.live || TPM.stack.run);
+  if (running){
+    const T = TPM.slow ? 8 : Math.max(tpmRealFrame(), VR ? 0.5 : 0.3);
+    if (!TPM.cur || now - TPM.scanT0 >= TPM.scanT){
+      /* a frame is done: keep it, and start the next */
+      if (TPM.cur && TPM.stack.run) tpmStackKeep(TPM.cur);
+      if (TPM.cur) TPM.prev = TPM.cur;
+      if (TPM.stack.run && TPM.stack.run.i >= TPM.stack.run.n){ TPM.stack.run = null; flashWarn("✓ Z-stack done: " + TPM.stack.planes.length + " planes", 2500, "#5ff2ff"); tpmStack3d(); }
+      const z = TPM.stack.run ? TPM.stack.run.z0 + TPM.stack.run.i * TPM.stack.dz : TPM.depth;
+      if (TPM.stack.run || TPM.live){
+        if (TPM.stack.run) TPM.depth = Math.min(tpmMaxDepth(), z);
+        TPM.cur = tpmCompute(TPM.depth); TPM.cur.cv = tpmPaint(TPM.cur);
+        TPM.scanT0 = now; TPM.scanT = T;
+      }
+    }
+    const p = Math.min(0.999, (now - TPM.scanT0) / TPM.scanT), s = tpmScanPos(p);
+    if (TPM.beamMesh) TPM.beamMesh.position.copy(s.spot);
+    TPM.scanLine.geometry.setFromPoints([s.a, s.b]); TPM.scanLine.visible = true;
+    TPM.prog = p; TPM.dirty = true;
+  } else { if (TPM.scanLine) TPM.scanLine.visible = false; if (TPM.beamMesh) TPM.beamMesh.position.copy(tpmFocus(TPM.depth)); }
+  /* the panel: in the headset among the panels, on the PC over the page */
+  if (VR){ if (!TPP.on) vrpShow(TPP, true); if (TPM.dirty){ TPP.dirty = true; TPM.dirty = false; } if (TPM.ov) TPM.ov.style.display = "none"; }
+  else { tpmOverlay().style.display = ""; if ((TPM.dirty || TPP.dirty) && performance.now() - TPP.lastDraw > 80){ vrpRender(TPP); TPM.dirty = false; } }
+}
+function tpmRealFrame(){ return TPM.px / 15000 * TPM.avg; }                         // resonant scanner: ~15,000 lines a second (8 kHz, both ways)
+function tpmStackKeep(fr){
+  const S = TPM.stack, cv = document.createElement("canvas"); cv.width = fr.R; cv.height = fr.R; cv.getContext("2d").drawImage(fr.cv, 0, 0);
+  S.planes.push({ z: fr.z, f: fr.f, F: fr.F, R: fr.R, cv, psf: fr.psf });
+  S.run.i++; TPM.xz = null;
+}
+function tpmStackStart(){
+  if (!TPM.rig){ flashWarn("Set up the rig first (Rig tab)", 2500, "#ffb070"); return; }
+  const S = TPM.stack; S.planes = []; TPM.xz = null; TPM.cur = null;
+  S.run = { i: 0, n: S.n, z0: TPM.depth };
+  if (TPM.ramp) TPM.rampZ0 = TPM.rampZ0 || TPM.depth;
+  tpmStack3d();
+}
+/* side view through the stack (x against depth, at the true aspect) and the maximum projection */
+function tpmXZ(){
+  const S = TPM.stack; if (!S.planes.length) return null;
+  if (TPM.xz && TPM.xz.n === S.planes.length) return TPM.xz;
+  const R = S.planes[0].R, n = S.planes.length, px = S.planes[0].F / R;
+  const h = Math.max(1, Math.round(n * S.dz / px));
+  const cv = document.createElement("canvas"); cv.width = R; cv.height = Math.min(4096, h);
+  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+  for (let i = 0; i < n; i++){ const y0 = Math.round(i * S.dz / px), y1 = Math.max(y0 + 1, Math.round((i + 1) * S.dz / px));
+    g.drawImage(S.planes[i].cv, 0, Math.floor(R / 2), R, 1, 0, y0, R, Math.min(y1, y0 + Math.max(1, Math.round(tpmPsf(S.planes[i].z).z / px))) - y0); }
+  const mx = document.createElement("canvas"); mx.width = R; mx.height = R; const mg = mx.getContext("2d"); mg.globalCompositeOperation = "lighten";
+  for (const p of S.planes) mg.drawImage(p.cv, 0, 0);
+  TPM.xz = { n, cv, mx }; return TPM.xz;
+}
+
+/* ── the panel ── */
+const TPP = vrPanel("tpm", 1800, 1240, 1.05, -1, tpmDraw);
+TPP.tick = () => {
+  const h = TPP.hold, s = h && TPM.sl[h.key];
+  if (s){ const x = vrpHit(TPP, h.h); if (x){ tpmSlideTo(s, x.x); return true; } }
+  return false;
+};
+function tpmSlideTo(s, x){
+  let u = Math.max(0, Math.min(1, (x - s.x) / s.w));
+  const v = s.log ? s.lo * Math.pow(s.hi / s.lo, u) : s.lo + u * (s.hi - s.lo);
+  s.set(s.step ? Math.round(v / s.step) * s.step : v); TPM.dirty = true; TPP.dirty = true;
+}
+function tpmSlider(P, g, x, y, w, label, v, lo, hi, set, o){
+  o = o || {};
+  const key = P.id + ":sl-" + (o.key || label) + ":" + Math.round(x) + ":" + Math.round(y), hv = P.hover === key || (TPM.drag && TPM.drag.key === key) || (P.hold && P.hold.key === key);
+  g.fillStyle = "#f6ecff"; g.font = "28px system-ui, sans-serif"; g.fillText(label, x, y + 2);
+  const ty = y + 30, u = o.log ? Math.log(Math.max(lo, v) / lo) / Math.log(hi / lo) : (v - lo) / (hi - lo), uu = Math.max(0, Math.min(1, u));
+  g.fillStyle = "rgba(255,255,255,0.14)"; g.beginPath(); g.roundRect(x, ty, w, 16, 8); g.fill();
+  g.fillStyle = o.col || "#c98bff"; g.beginPath(); g.roundRect(x, ty, w * uu, 16, 8); g.fill();
+  if (o.mark != null){ const um = o.log ? Math.log(o.mark / lo) / Math.log(hi / lo) : (o.mark - lo) / (hi - lo); if (um > 0 && um < 1){ g.fillStyle = "#ff6a50"; g.fillRect(x + w * um - 2, ty - 8, 4, 32); } }
+  g.fillStyle = hv ? "#ffffff" : "#efe2ff"; g.beginPath(); g.arc(x + w * uu, ty + 8, hv ? 20 : 16, 0, 7); g.fill();
+  P.btns.push({ x: x - 10, y: ty - 22, w: w + 20, h: 60, key, act: null, hold: { start(){}, end(){} } });
+  TPM.sl[key] = { x, w, lo, hi, log: !!o.log, step: o.step || 0, set };
+}
+function tpmTxt(g, s, x, y, size, col, maxW){ g.fillStyle = col || "#f6ecff"; g.font = (size || 28) + "px system-ui, sans-serif"; g.fillText(maxW ? vrpFit(g, s, maxW) : s, x, y); }
+function tpmLines(g, s, x, y, w, size, col, max){ g.font = (size || 26) + "px system-ui, sans-serif"; const L = vrpWrap(g, s, w, max || 6); L.forEach((l, i) => { g.fillStyle = col || "#e9d5ff"; g.fillText(l, x, y + i * (size || 26) * 1.3); }); return y + L.length * (size || 26) * 1.3; }
+function tpmDraw(P, g){
+  TPM.sl = {};
+  const W = P.W, M = tpmM();
+  g.fillStyle = "#f6ecff"; g.font = "700 46px system-ui, sans-serif"; g.fillText("🔬 Two-photon microscope", 40, 74);
+  /* the modes: 1P · 2P · 3P */
+  ["1p", "2p", "3p"].forEach((k, i) => vrpBtn(P, g, 700 + i * 96, 30, 88, 64, TPM_MODES[k].label, () => tpmSetMode(k), { on: TPM.mode === k, key: "mode" + k, size: 32 }));
+  vrpBtn(P, g, 1000, 30, 180, 64, TPM.laserOn ? "Laser ON" : "Laser off", () => { TPM.laserOn = !TPM.laserOn; TPM.built = ""; }, { on: TPM.laserOn, warn: TPM.laserOn && tpmFocal(TPM.depth) > M.pth * 0.75, key: "laser" });
+  vrpBtn(P, g, 1180, 30, 170, 64, TPM.live ? "■ Stop" : "▶ Live", () => { TPM.live = !TPM.live; }, { on: TPM.live, key: "live" });
+  if (renderer.xr.isPresenting) vrpBtn(P, g, 1360, 30, 170, 64, "⤢ Here", () => { vrpPlace(TPP, true); TPP.follow = performance.now() + 2500; }, { key: "here" });
+  vrpBtn(P, g, W - 110, 30, 74, 64, "✕", () => setTpm(false), { key: "close" });
+  const tabs = [["rig", "Rig"], ["laser", "Laser"], ["obj", "Objective"], ["pmt", "Detectors"], ["scan", "Scan"], ["stack", "Z-stack"]];
+  tabs.forEach(([k, l], i) => vrpBtn(P, g, 40 + i * 172, 112, 162, 62, l, () => { TPM.tab = k; }, { on: TPM.tab === k, key: "tab" + k, size: 30 }));
+  const X = 40, Y = 200, LW = 1040;
+  ({ rig: tpmTabRig, laser: tpmTabLaser, obj: tpmTabObj, pmt: tpmTabPmt, scan: tpmTabScan, stack: tpmTabStack })[TPM.tab](P, g, X, Y, LW);
+  tpmMonitor(P, g, 1110, 112, 650);
+}
+function tpmMonitor(P, g, x, y, s){
+  g.fillStyle = "#000"; g.fillRect(x, y, s, s);
+  const fr = TPM.cur, pv = TPM.prev;
+  g.imageSmoothingEnabled = false;
+  if (!TPM.rig){ tpmLines(g, "Set up the rig first: Rig tab → put the parts in the light path (or let it assemble itself).", x + 30, y + s / 2 - 30, s - 60, 30, "#ffd27a"); return; }
+  if (fr && fr.cv){
+    const R = fr.R, rows = Math.max(0, Math.min(R, Math.floor((TPM.prog || 1) * R)));
+    if (pv && pv.cv && pv.R === R && rows < R) g.drawImage(pv.cv, 0, rows, R, R - rows, x, y + rows * s / R, s, (R - rows) * s / R);
+    if (rows > 0) g.drawImage(fr.cv, 0, 0, R, rows, x, y, s, rows * s / R);
+    if (TPM.live || TPM.stack.run){ g.fillStyle = "rgba(255,255,255,0.55)"; g.fillRect(x, y + rows * s / R, s, Math.max(1, s / R)); }
+  } else tpmTxt(g, TPM.laserOn ? "Press ▶ Live" : "The laser is off", x + 30, y + s / 2, 32, "#aaa");
+  g.imageSmoothingEnabled = true;
+  /* scale bar: 50 µm (or 500 for big fields) */
+  const F = fr ? fr.F : tpmFov(), sb = F > 1500 ? 500 : F > 300 ? 100 : F > 60 ? 20 : 5, L = sb / F * s;
+  g.fillStyle = "#fff"; g.fillRect(x + s - L - 24, y + s - 34, L, 8); tpmTxt(g, sb + " µm", x + s - L - 24, y + s - 44, 24, "#fff");
+  const z = fr ? fr.z : TPM.depth;
+  tpmTxt(g, z.toFixed(0) + " µm · " + tpmLayer(z), x + 16, y + 36, 28, "#fff");
+  /* the readout under the picture */
+  const yy = y + s + 40, psf = tpmPsf(TPM.depth), M = tpmM();
+  tpmTxt(g, "Power: " + tpmPower(TPM.depth).toFixed(tpmPower(TPM.depth) < 10 ? 1 : 0) + " mW at the objective → " + (M.nph === 1 ? (tpmPower(TPM.depth) * Math.exp(-TPM.depth / M.ls)).toFixed(2) : tpmFocal(TPM.depth).toFixed(tpmFocal(TPM.depth) < 10 ? 2 : 0)) + " mW at " + TPM.depth.toFixed(0) + " µm", x, yy, 27, "#fff", s + 40);
+  tpmTxt(g, TPM.px + "×" + TPM.px + " px · " + (tpmFov() / TPM.px).toFixed(2) + " µm/px · " + (1 / tpmRealFrame()).toFixed(1) + " Hz" + (TPM.avg > 1 ? " (" + TPM.avg + " averaged)" : "") + (TPM.slow ? " · shown slowed" : ""), x, yy + 38, 25, "#e9d5ff", s + 40);
+  tpmTxt(g, "PSF " + psf.xy.toFixed(2) + " × " + (isFinite(psf.z) ? psf.z.toFixed(1) : "∞ (no sectioning)") + " µm · ΔT " + (TPM.temp >= 0 ? "+" : "") + TPM.temp.toFixed(1) + " °C" + (fr && isFinite(fr.sbr) ? " · signal/background " + (fr.sbr > 99 ? ">99" : fr.sbr.toFixed(1)) : ""), x, yy + 74, 25, "#e9d5ff", s + 40);
+  if (TPM.warn) tpmLines(g, TPM.warn, x, yy + 112, s + 40, 25, "#ffb070", 3);
+}
+function tpmSetMode(k){
+  TPM.mode = k; TPM.built = ""; TPM.cur = null; TPM.prev = null;
+  /* the detectors were set for the other mode's signal: keep them, the student re-tunes -- but a fresh power */
+  TPM.dirty = true;
+}
+function tpmTabRig(P, g, X, Y, W){
+  const G = TPM.game, BW = 142, BH = 84;
+  tpmLines(g, TPM.rig ? "The rig is assembled. Follow the light: laser → mouse (red), mouse → detectors (green)." : "Build the light path: pick a part below, then the place where it belongs. Wrong places tell you what they need.", X, Y + 10, TPM.rig ? W : 760, 26, "#f6ecff", 2);
+  const pos = id => { const p = TPM_PARTS.find(q => q.id === id); return [X + p.x + BW / 2, Y + p.y - 40 + BH / 2]; };
+  /* the beams through the placed parts */
+  const exc = ["laser", "pockels", "expander", "scanners", "scanlens", "tubelens", "dichroic", "objective"];
+  g.lineWidth = 10; g.strokeStyle = "#ff3030"; g.beginPath();
+  for (let i = 0; i < exc.length; i++){ if (!G.placed.has(exc[i])) break; const [a, b] = pos(exc[i]); i ? g.lineTo(a, b) : g.moveTo(a, b); }
+  if (exc.every(id => G.placed.has(id))){ const [a, b] = pos("objective"); g.lineTo(a, b + 90); }
+  g.stroke();
+  const det = [["dichroic", "collect", "irblock", "splitter", "pmtg"], ["splitter", "pmtr"]];
+  g.strokeStyle = "#3dff6a"; g.lineWidth = 7;
+  for (const path of det){ g.beginPath(); for (let i = 0; i < path.length; i++){ if (!G.placed.has(path[i]) || (i === 0 && !G.placed.has("objective"))) break; const [a, b] = pos(path[i]); i ? g.lineTo(a, b) : g.moveTo(a, b); } g.stroke(); }
+  /* the mouse under the objective */
+  { const [a, b] = pos("objective"); g.fillStyle = "rgba(255,190,200,0.5)"; g.beginPath(); g.ellipse(a, b + 78, 100, 20, 0, 0, 7); g.fill(); tpmTxt(g, "mouse under the window", a + 112, b + 86, 22, "#ffd6e0"); }
+  for (const p of TPM_PARTS){
+    const x = X + p.x, y = Y + p.y - 40, on = G.placed.has(p.id);
+    if (on){ g.fillStyle = p.fixed ? "rgba(255,90,90,0.55)" : "rgba(130,90,230,0.85)"; g.beginPath(); g.roundRect(x, y, BW, BH, 14); g.fill(); g.strokeStyle = "#f3e2ff"; g.lineWidth = 2; g.stroke();
+      tpmLines(g, p.name, x + 10, y + 34, BW - 20, 23, "#fff", 2); }
+    else vrpBtn(P, g, x, y, BW, BH, "?", () => tpmPlace(p), { key: "slot" + p.id, size: 40 });
+  }
+  /* the tray */
+  const left = TPM_PARTS.filter(p => !G.placed.has(p.id)), ty = Y + 800;
+  if (left.length){
+    if (!G.t0) G.t0 = performance.now();
+    left.forEach((p, i) => vrpBtn(P, g, X + (i % 6) * 173, ty + Math.floor(i / 6) * 64, 166, 56, p.name, () => { G.pick = p.id; G.msg = ""; }, { on: G.pick === p.id, key: "tray" + p.id, size: 22 }));
+    vrpBtn(P, g, X + 800, Y + 40, 238, 52, "⚡ Assemble for me", () => { TPM_PARTS.forEach(p => G.placed.add(p.id)); tpmRigDone(true); }, { key: "auto", size: 24 });
+  } else vrpBtn(P, g, X, ty, 300, 58, "↺ Play the set-up again", () => { G.placed = new Set(["laser"]); G.wrong = 0; G.t0 = 0; G.msg = ""; G.done = false; TPM.rig = false; try { localStorage.setItem("jump_tpm_rig", "0"); } catch (e){} }, { key: "again", size: 26 });
+  if (G.msg) tpmLines(g, G.msg, X, ty + (left.length ? 64 * Math.ceil(left.length / 6) + 32 : 100), W, 25, G.msg.startsWith("✓") || G.msg.startsWith("🎉") ? "#b9ffc8" : "#ffc29a", 3);
+  if (!left.length){
+    vrpBtn(P, g, X + 320, ty, 250, 58, WIN.on ? "Window on" : "Show window", () => setWindow(!WIN.on), { on: WIN.on, key: "win", size: 26 });
+    vrpBtn(P, g, X + 590, ty, 250, 58, MOUSE.on ? "Mouse on" : "Show mouse", () => setMouse(!MOUSE.on), { on: MOUSE.on, key: "mouse", size: 26 });
+  }
+}
+function tpmPlace(p){
+  const G = TPM.game;
+  if (!G.pick){ G.msg = "This place needs the part that " + p.why + ". Pick one from the parts below."; return; }
+  if (G.pick === p.id){
+    G.placed.add(p.id); G.msg = "✓ " + p.name + ": " + p.why + "."; G.pick = null;
+    if (TPM_PARTS.every(q => G.placed.has(q.id))) tpmRigDone(false);
+  } else {
+    G.wrong++; const q = TPM_PARTS.find(x => x.id === G.pick);
+    G.msg = "✗ Not the " + q.name + " here. This place needs the part that " + p.why + ".";
+  }
+}
+function tpmRigDone(auto){
+  const G = TPM.game; G.done = true; TPM.rig = true; G.pick = null;
+  try { localStorage.setItem("jump_tpm_rig", "1"); } catch (e){}
+  const s = G.t0 ? (performance.now() - G.t0) / 1000 : 0;
+  G.msg = auto ? "✓ Assembled. Try the game another time: ↺ Play the set-up again." : "🎉 The rig works! " + s.toFixed(0) + " s, " + G.wrong + " mistake" + (G.wrong === 1 ? "" : "s") + ". Now: Laser → Scan → ▶ Live.";
+  TPM.built = ""; TPM.live = true;
+}
+function tpmTabLaser(P, g, X, Y, W){
+  const M = tpmM(), P0 = TPM.power[TPM.mode];
+  tpmTxt(g, M.name + " — " + M.laser, X, Y + 10, 30, "#fff", W);
+  tpmSlider(P, g, X, Y + 70, W - 20, "Power at the objective: " + P0.toFixed(P0 < 10 ? 1 : 0) + " mW" + (TPM.ramp && M.nph > 1 ? "  (at " + TPM.rampZ0.toFixed(0) + " µm; now " + tpmPower(TPM.depth).toFixed(0) + " mW)" : ""),
+    P0, M.nph === 1 ? 0.05 : 0.5, M.pMax, v => { TPM.power[TPM.mode] = v; }, { log: true, key: "power", col: M.col, mark: M.nph > 1 ? M.pth : null });
+  const Pf = M.nph === 1 ? tpmPower(TPM.depth) * Math.exp(-TPM.depth / M.ls) : tpmFocal(TPM.depth);
+  tpmTxt(g, "At the focus (" + TPM.depth.toFixed(0) + " µm): " + Pf.toFixed(Pf < 10 ? 2 : 0) + " mW — the rest is scattered on the way (e^−z/" + M.ls + " µm)", X, Y + 165, 26, "#e9d5ff", W);
+  if (M.nph > 1){
+    /* how close the focus is to photodamage */
+    const r = Math.min(1.5, Pf / M.pth), bw = W - 20;
+    g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(X, Y + 190, bw, 22);
+    g.fillStyle = r > 0.75 ? "#ff6a50" : r > 0.5 ? "#ffb070" : "#7fe08a"; g.fillRect(X, Y + 190, bw * Math.min(1, r / 1.5), 22);
+    g.fillStyle = "#fff"; g.fillRect(X + bw / 1.5 - 2, Y + 184, 4, 34);
+    tpmTxt(g, "photodamage at the focus ≈ " + M.pth + " mW", X + bw / 1.5 + 8, Y + 210, 22, "#ffd0c0");
+    vrpBtn(P, g, X, Y + 240, 470, 58, (TPM.ramp ? "☑" : "☐") + " Ramp the power with depth", () => { TPM.ramp = !TPM.ramp; TPM.rampZ0 = TPM.depth; }, { on: TPM.ramp, key: "ramp", size: 26 });
+    tpmLines(g, "×e per " + M.ls + " µm deeper keeps the signal the same — as labs do for deep stacks.", X + 490, Y + 262, W - 500, 22, "#e9d5ff", 2);
+  }
+  /* heating */
+  const T = TPM.temp, tw = W - 20;
+  tpmTxt(g, "Brain temperature under the window: +" + T.toFixed(1) + " °C  (≈ " + (M.heat * 100).toFixed(1) + " °C per 100 mW at " + (M.lam * 1000).toFixed(0) + " nm)", X, Y + 345, 26, "#fff", W);
+  g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(X, Y + 362, tw, 18); g.fillStyle = T > 4.5 ? "#ff6a50" : T > 2.5 ? "#ffb070" : "#7fe08a"; g.fillRect(X, Y + 362, tw * Math.min(1, T / 8), 18);
+  /* the light: see it */
+  tpmTxt(g, "The light in the brain", X, Y + 435, 32, "#fff");
+  vrpBtn(P, g, X, Y + 455, 300, 58, (TPM.light ? "☑" : "☐") + " Show the light", () => { TPM.light = !TPM.light; TPM.built = ""; }, { on: TPM.light, key: "light", size: 26 });
+  vrpBtn(P, g, X + 320, Y + 455, 330, 58, "Focus glow × " + TPM.psfMag, () => { TPM.psfMag = ({ 1: 10, 10: 30, 30: 1 })[TPM.psfMag] || 10; TPM.built = ""; tpmStack3d(); }, { key: "mag", size: 26 });
+  vrpBtn(P, g, X + 670, Y + 455, 350, 58, "Heal the tissue", () => tpmHeal(), { key: "heal", size: 26, off: !TPM.blebs.length && !CELLS.some(c => c.tpmDmg) });
+  const txt = M.nph === 1
+    ? "1P: every molecule in the blue cone can absorb one photon, so the whole double cone glows green from the surface down — light from above and below the focus blurs the image and nothing confines it to one plane."
+    : M.nph === 2
+    ? "2P: two infrared photons must arrive together, so the glow goes with the intensity squared — only the focus lights up (the faint red cone is the laser, invisible to the eye). Optical sectioning comes free; scattering still limits depth to ~600–800 µm."
+    : "3P: three photons at 1300 nm — intensity cubed, an even tighter glow, and longer light scatters less (ℓ ≈ 300 µm), so background stays low below 800 µm. The pulses are strong and sparse (1 MHz), so the focus is damaged at far lower average power.";
+  tpmLines(g, txt, X, Y + 560, W - 10, 26, "#e9d5ff", 6);
+  tpmLines(g, "Ablation needs a strong focus: near the surface too much power for too long blebs and swells the cells. Focused deep, the same power is mostly scattered before the focus — no ablation, but it heats the whole brain.", X, Y + 760, W - 10, 24, "#ffd0c0", 4);
+}
+function tpmTabObj(P, g, X, Y, W){
+  const o = TPM.obj;
+  TPM_OBJ.forEach((p, i) => vrpBtn(P, g, X + (i % 3) * 346, Y + Math.floor(i / 3) * 66, 336, 58, p.name, () => { TPM.obj = Object.assign({}, p); TPM.built = ""; }, { on: o.name === p.name, key: "obj" + i, size: 24 }));
+  const set = (k, v) => { TPM.obj[k] = v; TPM.obj.name = "Custom " + TPM.obj.mag.toFixed(TPM.obj.mag < 10 ? 1 : 0) + "×/" + TPM.obj.na.toFixed(2) + " W"; TPM.built = ""; };
+  tpmSlider(P, g, X, Y + 170, 500, "NA " + o.na.toFixed(2), o.na, 0.1, 1.1, v => set("na", v), { step: 0.01, key: "na" });
+  tpmSlider(P, g, X + 530, Y + 170, 500, "Magnification " + o.mag.toFixed(o.mag < 10 ? 1 : 0) + "×", o.mag, 2, 60, v => set("mag", v), { log: true, key: "magn" });
+  tpmSlider(P, g, X, Y + 265, 500, "Working distance " + o.wd.toFixed(1) + " mm", o.wd, 0.3, 10, v => set("wd", v), { log: true, key: "wd" });
+  vrpBtn(P, g, X + 530, Y + 285, 500, 58, (TPM.fill ? "☑ Back aperture filled" : "☐ Back aperture underfilled (×0.8 NA)"), () => { TPM.fill = !TPM.fill; TPM.built = ""; }, { on: TPM.fill, key: "fill", size: 24 });
+  const p2 = tpmPsf(0), th = tpmTheta(), F = tpmFov();
+  let y = Y + 390;
+  tpmTxt(g, "Field of view " + F.toFixed(0) + " µm (18 mm field ÷ " + o.mag.toFixed(1) + "× ÷ zoom " + TPM.zoom.toFixed(1) + ")", X, y, 27, "#fff", W); y += 38;
+  tpmTxt(g, "Focus (" + tpmM().label + ", at the surface): " + p2.xy.toFixed(2) + " µm wide × " + (isFinite(p2.z) ? p2.z.toFixed(1) + " µm tall" : "no sectioning") + " (FWHM)", X, y, 27, "#fff", W); y += 38;
+  tpmTxt(g, "Light cone half-angle " + (th * 180 / Math.PI).toFixed(0) + "° · deepest focus " + (tpmMaxDepth() / 1000).toFixed(2) + " mm (the tip must stay over the glass)", X, y, 25, "#e9d5ff", W); y += 36;
+  const vg = tpmVignette(TPM.depth);
+  if (vg < 0.98) { tpmTxt(g, "⚠ At " + TPM.depth.toFixed(0) + " µm the cone is wider than the window's 3 mm opening: " + Math.round((1 - vg) * 100) + " % of the light is lost", X, y, 25, "#ffb070", W); y += 36; }
+  /* the objective's side, to scale: its body, the front lens, the cone to the focus */
+  const ox = X + 520, oy = Y + 900, sc = 330 / 45000;
+  const WDu = o.wd * 1000, rFront = WDu * Math.tan(th) + 700, rBody = Math.max(rFront + 1500, 9000 + 9000 * Math.min(1.1, o.na) + (o.mag < 6 ? 8000 : 0)), nose = Math.max(th + 0.1, 0.32), noseLen = Math.min((rBody - rFront) / Math.tan(nose), 45000 - WDu - 12000);
+  const tipY = oy - WDu * sc;
+  g.fillStyle = "rgba(210,215,225,0.85)"; g.beginPath(); g.moveTo(ox - rFront * sc, tipY); g.lineTo(ox - rBody * sc, tipY - noseLen * sc); g.lineTo(ox - rBody * sc, Math.max(Y + 470, tipY - (45000 - WDu - 7000) * sc)); g.lineTo(ox + rBody * sc, Math.max(Y + 470, tipY - (45000 - WDu - 7000) * sc)); g.lineTo(ox + rBody * sc, tipY - noseLen * sc); g.lineTo(ox + rFront * sc, tipY); g.closePath(); g.fill();
+  g.fillStyle = TPM_MAGCOL(o.mag); g.fillRect(ox - rBody * sc, tipY - (noseLen + 4300) * sc, 2 * rBody * sc, 2600 * sc);
+  g.fillStyle = "rgba(255,60,60,0.35)"; g.beginPath(); g.moveTo(ox - (rFront - 700) * sc, tipY); g.lineTo(ox, oy); g.lineTo(ox + (rFront - 700) * sc, tipY); g.fill();
+  g.fillStyle = "rgba(160,210,255,0.35)"; g.fillRect(ox - 260, oy - 210 * sc, 520, 150 * sc + 2);
+  g.strokeStyle = "#ffd6e0"; g.beginPath(); g.moveTo(ox - 300, oy - TPM.depth * sc); g.lineTo(ox + 300, oy - TPM.depth * sc); g.stroke();
+  tpmTxt(g, "WD " + o.wd.toFixed(1) + " mm", ox + rFront * sc + 14, (tipY + oy) / 2, 24, "#fff");
+  tpmTxt(g, "to scale: 45 mm tall", ox - 330, Y + 465, 22, "#e9d5ff");
+}
+function tpmTabPmt(P, g, X, Y, W){
+  TPM.pmt.forEach((pm, i) => {
+    const y = Y + i * 430, gpp = tpmGpp(pm);
+    vrpBtn(P, g, X, y - 12, 440, 54, (pm.on ? "☑ " : "☐ ") + pm.name, () => { pm.on = !pm.on; }, { on: pm.on, key: "pmon" + i, size: 26 });
+    tpmTxt(g, "≈ " + (450 + 450 * pm.gain).toFixed(0) + " V · " + gpp.toFixed(gpp < 10 ? 1 : 0) + " units/photon · saturated " + (pm.sat * 100).toFixed(1) + " %", X + 460, y + 24, 24, pm.sat > 0.01 ? "#ffb070" : "#e9d5ff", W - 460);
+    tpmSlider(P, g, X, y + 70, 500, "Gain (HV)", pm.gain, 0, 1, v => { pm.gain = v; }, { key: "gain" + i, col: i ? "#ff6080" : "#3dff6a" });
+    tpmSlider(P, g, X + 530, y + 70, 490, "Offset (black level)", pm.off, 0, 1, v => { pm.off = v; }, { key: "off" + i, col: i ? "#ff6080" : "#3dff6a" });
+    tpmSlider(P, g, X, y + 160, 500, "Display min " + Math.round(pm.lo * 4095), pm.lo, 0, 1, v => { pm.lo = Math.min(v, pm.hi - 0.005); }, { key: "lo" + i, col: "#888" });
+    tpmSlider(P, g, X + 530, y + 160, 490, "Display max " + Math.round(pm.hi * 4095), pm.hi, 0.005, 1, v => { pm.hi = Math.max(v, pm.lo + 0.005); }, { key: "hi" + i, col: "#ddd" });
+    /* the histogram: 0..4095, log counts, and the display window over it */
+    const hx = X, hy = y + 240, hw = W - 180, hh = 140;
+    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(hx, hy, hw, hh);
+    g.fillStyle = "rgba(255,255,255,0.10)"; g.fillRect(hx + hw * pm.lo, hy, hw * (pm.hi - pm.lo), hh);
+    if (pm.hist){ let mx = 1; for (const v of pm.hist) mx = Math.max(mx, v);
+      g.fillStyle = i ? "#ff6080" : "#3dff6a";
+      for (let b = 0; b < 128; b++){ const v = pm.hist[b]; if (!v) continue; const h = Math.log(1 + v) / Math.log(1 + mx) * hh; g.fillRect(hx + b * hw / 128, hy + hh - h, Math.max(1, hw / 128 - 1), h); } }
+    tpmTxt(g, "0", hx, hy + hh + 26, 20, "#ccc"); tpmTxt(g, "4095", hx + hw - 44, hy + hh + 26, 20, "#ccc");
+    vrpBtn(P, g, hx + hw + 20, hy, 150, 60, "Auto", () => tpmAuto(pm), { key: "auto" + i, size: 26 });
+  });
+  vrpBtn(P, g, X + W - 160, Y + 840, 150, 56, TPM.hilo ? "HiLo ☑" : "HiLo ☐", () => { TPM.hilo = !TPM.hilo; }, { on: TPM.hilo, key: "hilo", size: 24 });
+  tpmLines(g, "Gain multiplies the signal and the noise; too little and the amplifier's own noise shows, too much and bright cells saturate at 4095 (blue in HiLo). Lowering the display max brightens the picture without changing the data — the noise comes up with it.", X, Y + 880, W - 180, 22, "#e9d5ff", 3);
+}
+function tpmAuto(pm){
+  if (!pm.hist) return; let n = 0; for (const v of pm.hist) n += v;
+  let a = 0, lo = 0, hi = 127; for (let b = 0; b < 128; b++){ a += pm.hist[b]; if (a > n * 0.01){ lo = b; break; } }
+  a = 0; for (let b = 127; b >= 0; b--){ a += pm.hist[b]; if (a > n * 0.003){ hi = b; break; } }
+  pm.lo = lo / 128; pm.hi = Math.max(pm.lo + 0.01, (hi + 1) / 128);
+}
+function tpmTabScan(P, g, X, Y, W){
+  const mx = tpmMaxDepth();
+  tpmSlider(P, g, X, Y, W - 260, "Focus: " + TPM.depth.toFixed(0) + " µm under the glia limitans (" + tpmLayer(TPM.depth) + ")", TPM.depth, 0, 1100, v => { TPM.depth = Math.min(mx, v); TPM.built = ""; }, { step: 1, key: "depth", mark: mx < 1100 ? mx : null });
+  vrpBtn(P, g, X + W - 240, Y + 10, 110, 56, "−10", () => { TPM.depth = Math.max(0, TPM.depth - 10); }, { key: "zm" });
+  vrpBtn(P, g, X + W - 120, Y + 10, 110, 56, "+10", () => { TPM.depth = Math.min(mx, TPM.depth + 10); }, { key: "zp" });
+  tpmSlider(P, g, X, Y + 95, 500, "Zoom " + TPM.zoom.toFixed(1) + "× → field " + tpmFov().toFixed(0) + " µm", TPM.zoom, 1, 16, v => { TPM.zoom = v; TPM.built = ""; }, { log: true, key: "zoom" });
+  tpmTxt(g, "Pixels per line", X + 530, Y + 97, 28);
+  [64, 128, 256, 512].forEach((n, i) => vrpBtn(P, g, X + 530 + i * 124, Y + 115, 116, 54, String(n), () => { TPM.px = n; TPM.cur = TPM.prev = null; }, { on: TPM.px === n, key: "px" + n, size: 26 }));
+  tpmTxt(g, "Frames averaged", X, Y + 210, 28);
+  [1, 2, 4, 8, 16].forEach((n, i) => vrpBtn(P, g, X + i * 100, Y + 228, 92, 54, String(n), () => { TPM.avg = n; }, { on: TPM.avg === n, key: "avg" + n, size: 26 }));
+  vrpBtn(P, g, X + 530, Y + 228, 490, 54, (TPM.slow ? "☑" : "☐") + " Slow motion: watch the raster", () => { TPM.slow = !TPM.slow; }, { on: TPM.slow, key: "slow", size: 25 });
+  /* move the stage */
+  tpmTxt(g, "Move the field (stage)", X, Y + 330, 28);
+  const st = tpmFov() / 4, mv = (a, b) => { TPM.cx += a * st; TPM.cy += b * st; TPM.built = ""; };
+  vrpBtn(P, g, X, Y + 350, 110, 56, "←", () => mv(-1, 0), { key: "mvl" }); vrpBtn(P, g, X + 120, Y + 350, 110, 56, "→", () => mv(1, 0), { key: "mvr" });
+  vrpBtn(P, g, X + 240, Y + 350, 110, 56, "↑", () => mv(0, -1), { key: "mvu" }); vrpBtn(P, g, X + 360, Y + 350, 110, 56, "↓", () => mv(0, 1), { key: "mvd" });
+  vrpBtn(P, g, X + 480, Y + 350, 270, 56, "Centre on the cells", () => { TPM.cx = TPM.cy = 0; TPM.centre = null; TPM.built = ""; }, { key: "ctr", size: 24 });
+  tpmTxt(g, "GCaMP6s in", X, Y + 455, 28);
+  [["exc", "excitatory neurons (MICrONS)"], ["neurons", "all neurons"], ["all", "all cells"]].forEach(([k, l], i) => vrpBtn(P, g, X + [0, 400, 640][i], Y + 475, [390, 230, 200][i], 54, l, () => { TPM.expr = k; }, { on: TPM.expr === k, key: "ex" + k, size: 23 }));
+  const nC = CELLS.filter(c => c.mesh).length, nV = tpmVesselMeshes().length;
+  tpmLines(g, nC ? nC + " cell" + (nC > 1 ? "s" : "") + " loaded — the image is a section through them where the focal plane cuts. " + (nV ? "The red PMT sees the vessels' plasma dye." : "Load vessels (Map → Vessels) to see them on the red PMT.") + " In MICrONS only excitatory neurons carried GCaMP6s (Slc17a7-Cre × Ai162)." : "No cells loaded: the image will only show noise. Load some cells (and vessels) first.", X, Y + 580, W - 10, 24, "#e9d5ff", 4);
+  tpmLines(g, "Resonant scanning: ~15,000 lines a second, so more pixels per line = fewer photons per pixel (noisier) and a slower frame. Averaging frames lowers the noise by √n.", X, Y + 720, W - 10, 24, "#e9d5ff", 3);
+}
+function tpmTabStack(P, g, X, Y, W){
+  const S = TPM.stack, p = tpmPsf(TPM.depth);
+  tpmSlider(P, g, X, Y, 500, "Planes: " + S.n, S.n, 2, 100, v => { S.n = Math.round(v); }, { step: 1, key: "sn" });
+  tpmSlider(P, g, X + 530, Y, 490, "Z-step " + S.dz.toFixed(S.dz < 2 ? 1 : 0) + " µm", S.dz, 0.5, 25, v => { S.dz = v; }, { log: true, key: "sdz", step: 0.1 });
+  const depthEnd = TPM.depth + (S.n - 1) * S.dz, t = S.n * (tpmRealFrame() + 0.02);
+  tpmTxt(g, "From " + TPM.depth.toFixed(0) + " to " + Math.min(tpmMaxDepth(), depthEnd).toFixed(0) + " µm · ≈ " + (t < 1 ? (t * 1000).toFixed(0) + " ms" : t.toFixed(1) + " s") + " on a real rig · " + TPM.px + " px", X, Y + 105, 26, "#fff", W);
+  const ny = isFinite(p.z) ? p.z / 2.3 : null;
+  tpmTxt(g, ny ? (S.dz > p.z ? "⚠ The z-step is bigger than the focus is tall (" + p.z.toFixed(1) + " µm): gaps between the planes" : S.dz > ny ? "Z-step between the focus height and half of it: sampled, not quite Nyquist (≤ " + ny.toFixed(1) + " µm)" : "✓ Z-step ≤ " + ny.toFixed(1) + " µm: Nyquist-sampled in depth")
+    : "1P has no sectioning: every plane carries the haze of all the others", X, Y + 145, 25, ny && S.dz > p.z ? "#ffb070" : "#b9ffc8", W);
+  const lat = tpmFov() / TPM.px, nyx = p.xy / 2.3;
+  tpmTxt(g, lat > nyx ? "Pixels " + lat.toFixed(2) + " µm > " + nyx.toFixed(2) + " µm: under-sampled laterally (zoom in or more pixels)" : "✓ Pixels " + lat.toFixed(2) + " µm: Nyquist-sampled laterally", X, Y + 180, 25, lat > nyx ? "#ffb070" : "#b9ffc8", W);
+  vrpBtn(P, g, X, Y + 210, 330, 60, S.run ? "■ Stop (" + S.run.i + "/" + S.run.n + ")" : "▶ Acquire the stack", () => { if (S.run){ S.run = null; tpmStack3d(); } else tpmStackStart(); }, { on: !!S.run, key: "acq", size: 28 });
+  vrpBtn(P, g, X + 345, Y + 210, 230, 60, (S.show ? "☑" : "☐") + " In 3D", () => { S.show = !S.show; tpmStack3d(); }, { on: S.show, key: "s3d", size: 26 });
+  vrpBtn(P, g, X + 590, Y + 210, 230, 60, (S.psf ? "☑" : "☐") + " PSF in 3D", () => { S.psf = !S.psf; tpmStack3d(); }, { on: S.psf, key: "spsf", size: 26 });
+  vrpBtn(P, g, X + 835, Y + 210, 185, 60, "Clear", () => { S.planes = []; S.run = null; TPM.xz = null; tpmStack3d(); }, { key: "sclr", size: 26 });
+  const xz = tpmXZ();
+  if (xz){
+    tpmTxt(g, "Side view (x against depth, true aspect)", X, Y + 315, 23, "#fff", 620);
+    const bw = 620, sc = Math.min(bw / xz.cv.width, 400 / xz.cv.height), w = xz.cv.width * sc, h = xz.cv.height * sc;
+    g.fillStyle = "#000"; g.fillRect(X, Y + 330, bw, 420); g.imageSmoothingEnabled = false; g.drawImage(xz.cv, X + (bw - w) / 2, Y + 330, w, h);
+    tpmTxt(g, "Max projection", X + 650, Y + 315, 23, "#fff");
+    g.drawImage(xz.mx, X + 650, Y + 330, 370, 370); g.imageSmoothingEnabled = true;
+    tpmTxt(g, S.planes.length + " planes, " + S.planes[0].z.toFixed(0) + "–" + S.planes[S.planes.length - 1].z.toFixed(0) + " µm", X + 650, Y + 730, 24, "#e9d5ff");
+  } else tpmLines(g, "Acquire a stack: the focus steps down plane by plane and each raster scan is kept. In 3D the planes sit where they were taken, with the PSF in each (yellow: true height, width × " + TPM.psfMag + ") — when the z-step is bigger than the PSF is tall, you see the gaps.", X, Y + 340, W - 10, 25, "#e9d5ff", 5);
+}
+
+/* ── on and off; the PC's copy of the panel ── */
+function setTpm(on){
+  TPM.on = !!on;
+  if (TPM.on){
+    TPM.cur = TPM.prev = null; TPM.built = ""; tpm3dBuild();
+    if (renderer.xr.isPresenting) vrpShow(TPP, true); else { vrpRender(TPP); tpmOverlay().style.display = ""; }
+    if (!TPM.rig) TPM.tab = "rig";
+    tpmStack3d(); tpmBlebMeshes();
+  } else {
+    if (TPM.grp && TPM.grp.parent) TPM.grp.parent.remove(TPM.grp);
+    if (TPM.stack.grp && TPM.stack.grp.parent) TPM.stack.grp.parent.remove(TPM.stack.grp);
+    if (TPP.on) vrpShow(TPP, false);
+    if (TPM.ov) TPM.ov.style.display = "none";
+    TPM.stack.run = null;
+  }
+  const b = document.getElementById("tpmBtn"); if (b) b.classList.toggle("on", TPM.on);
+  try { MENU.dirty = true; } catch (e){}
+}
+function tpmOverlay(){
+  if (TPM.ov) return TPM.ov;
+  if (!TPP.cv) vrpRender(TPP);
+  const d = document.createElement("div"); d.id = "tpmOv";
+  d.style.cssText = "position:fixed;left:390px;bottom:12px;z-index:60;width:min(900px,calc(100vw - 410px));border-radius:22px;overflow:hidden;background:#20103f;box-shadow:0 8px 30px rgba(0,0,0,.5);user-select:none;display:none";
+  TPP.cv.style.cssText = "width:100%;height:auto;display:block;cursor:pointer";
+  d.appendChild(TPP.cv); document.body.appendChild(d);
+  const at = e => { const r = TPP.cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * TPP.W, y: (e.clientY - r.top) / r.height * TPP.H }; };
+  const find = p => TPP.btns.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h);
+  d.addEventListener("pointerdown", e => {
+    e.stopPropagation(); e.preventDefault(); const p = at(e), b = find(p); if (!b) return;
+    const s = TPM.sl[b.key];
+    if (s){ TPM.drag = { key: b.key, s }; tpmSlideTo(s, p.x); d.setPointerCapture(e.pointerId); }
+    else if (b.act){ try { b.act(); } catch (x){ console.warn("[vr] microscope", x); } }
+    TPP.dirty = true; TPM.dirty = true;
+  });
+  d.addEventListener("pointermove", e => {
+    e.stopPropagation(); const p = at(e);
+    if (TPM.drag){ tpmSlideTo(TPM.drag.s, p.x); return; }
+    const b = find(p), k = b ? b.key : null; if (k !== TPP.hover){ TPP.hover = k; TPP.dirty = true; }
+  });
+  d.addEventListener("pointerup", e => { e.stopPropagation(); TPM.drag = null; TPP.dirty = true; });
+  ["wheel", "contextmenu", "dblclick", "click", "mousedown", "mouseup"].forEach(ev => d.addEventListener(ev, e => e.stopPropagation()));
+  TPM.ov = d; return d;
+}
+
 /* ── 46. GLOVED HANDS ─────────────────────────────────────────────────────────  2026-11-14
    Søren: "I want to explore the possibility of having hands instead of the black squares that are the controllers
    now. I imagine a couple of hands with light blue lab gloves on, and the menu being a purple see-through panel
@@ -12141,6 +13004,7 @@ function menuRowsRaw(t){
     if (DS_HAS.mouse){
       rows.push({ label: "Cranial window", on: WIN.on, act: () => setWindow(!WIN.on) });
       rows.push({ label: "Mouse, skull & brain", on: MOUSE.on, act: () => setMouse(!MOUSE.on) });
+      rows.push({ label: "🔬 Two-photon microscope", on: TPM.on, act: () => setTpm(!TPM.on) });
       rows.push({ label: MOUSE.fly ? "Flying…" : mouseOut() ? "Fly in" : "Fly out", icon: "brain", act: () => mouseFly() });
     }
     S("Meninges");
@@ -22326,6 +23190,7 @@ renderer.setAnimationLoop(() => {
   try { rideFrame(dt); } catch (e){ console.warn("[vr] ride:", e); }
   try { csfFrame(sdt); } catch (e){ console.warn("[vr] CSF tracer:", e); }
   try { lfpFrame(); lfpPlace(); psdFrame(); } catch (e){ console.warn("[vr] LFP:", e); }
+  try { tpmFrame(dt); } catch (e){ if (!window.__tpmWarned){ window.__tpmWarned = true; console.warn("[vr] two-photon microscope:", e); } }
   try { patchFrame(sdt); } catch (e){ if (!window.__patchWarned){ window.__patchWarned = true; console.warn("[vr] patch clamp:", e); } }
   try { pvsFrame(sdt); } catch (e){ console.warn("[vr] perivascular space:", e); }
   try { mcFrame(); } catch (e){ console.warn("[vr] modelled Ca:", e); }   // …and the vessels move (section 22)
@@ -22950,7 +23815,7 @@ const DS_HAS = { pvs: !!DSX.pvsMesh, layers: !!DSX.layers, v1: !!DSX.v1areas, va
                  nb: !!DSX.nuclei, vec: !!DSX.vectors, em: !!DSX.em, syn: !!DSX.syn, seg: !!DSX.seg, mesh: !!DSX.mesh, ra: !!DSX.activity, flow: !!DSX.flowNet, men: !!DSX.meninges, mouse: !!DSX.mouse };
 if (DSX.jsonApi && UJ.segread && UJ.segread.useJsonApi) UJ.segread.useJsonApi(DSX.jsonApi);
 (function hideMissing(){
-  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", mouseBtn: "mouse", winBtn: "mouse", winExport: "mouse", mouseFly: "mouse", menRow: "men", vascSel: "vasc", skelSel: "skel", capSel: "skel",
+  const gone = { layerBtn: "layers", layerScope: "layers", v1Sel: "v1", areaBtn: "v1", mouseBtn: "mouse", winBtn: "mouse", tpmBtn: "mouse", winExport: "mouse", mouseFly: "mouse", menRow: "men", vascSel: "vasc", skelSel: "skel", capSel: "skel",
                  skelGroups: "skel", nbBtn: "nb", cvecBtn: "vec", lvecBtn: "vec", vecType: "vec", vecCol: "vec",
                  emBtn: "em", emSize: "em", emDn: "em", emUp: "em", emSeg: "seg", detail: "mesh", raBtn: "ra", raPlay: "ra", raBox: "ra", nvBtn: "vasc", nvBox: "vasc", stkBtn: "flow", stkPlace: "flow", stkBox: "flow", rideBtn: "flow", csfBtn: "flow", mapRbcRow: "flow", mapWbcRow: "flow", mapCsfRow: "flow", gameBox: "vec", trwBox: "em", cnBox: "syn", tsBtn: "seg", tsR: "seg", tsTop: "seg", tsList: "seg" };
   for (const id in gone){
@@ -23449,7 +24314,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
