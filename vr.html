@@ -12750,11 +12750,13 @@ function tpmStackKeep(fr){
 /* where the stack starts (2026-11-19, Søren: "an option to center the z-stack on the current focus"): from the focus down,
    centred on it (half above, half below), or ending at it */
 function tpmStackTop(){ const S = TPM.stack, span = (S.n - 1) * S.dz; return Math.max(tpmMinDepth(), S.from === "centre" ? TPM.depth - span / 2 : S.from === "bottom" ? TPM.depth - span : TPM.depth); }
-function tpmStackEnd(){ const S = TPM.stack; if (S.run){ TPM.depth = S.run.back; TPM.built = ""; if (S.run.gains) TPM.pmt.forEach((pm, i) => { pm.gain = S.run.gains[i]; }); } S.run = null; TPM.cur = null; tpmStack3d(); TPM.dirty = true; }
+/* the scan stops with the stack (2026-11-20, Søren: "after obtaining a z-stack, the scan should not be live") */
+function tpmStackEnd(){ const S = TPM.stack; if (S.run) TPM.live = false; if (S.run){ TPM.depth = S.run.back; TPM.built = ""; if (S.run.gains) TPM.pmt.forEach((pm, i) => { pm.gain = S.run.gains[i]; }); } S.run = null; TPM.cur = null; tpmStack3d(); TPM.dirty = true; }
 function tpmStackStart(){
   if (!TPM.rig){ flashWarn("Set up the rig first (Rig tab)", 2500, "#ffb070"); return; }
   const S = TPM.stack; S.planes = []; TPM.xz = null; TPM.cur = null;
   S.run = { i: 0, n: S.n, z0: tpmStackTop(), back: TPM.depth, gains: TPM.pmt.map(pm => pm.gain) };
+  S.srcId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);   // which stack this is (for the timeline)
   /* NOT PAST THE LIMIT (2026-11-19, Søren: "If you set the values to larger than the sample, it should just stop when the
      sample is done imaging and not keep going. Give a warning that you reached the limits of the microscope"): the
      stack takes only the planes that fit -- to the bottom of the block (light sheet) or as deep as the objective's
@@ -16899,7 +16901,8 @@ function tpmSnap(){
        there also?"): which tab was open, the stack's settings, and whether a stack was being taken (from where, and how
        far it had got) -- so the film takes the same stack again and the picture shows its planes as they come in */
     tab: TPM.tab, stack: { n: TPM.stack.n, dz: TPM.stack.dz, from: TPM.stack.from, show: TPM.stack.show, v3: TPM.stack.v3,
-      run: TPM.stack.run ? { z0: TPM.stack.run.z0, n: TPM.stack.run.n, back: TPM.stack.run.back, i: TPM.stack.run.i } : null } };
+      run: TPM.stack.run ? { z0: TPM.stack.run.z0, n: TPM.stack.run.n, back: TPM.stack.run.back, i: TPM.stack.run.i } : null,
+      id: TPM.stack.run || TPM.stack.planes.length ? TPM.stack.srcId || null : null } };
 }
 function tpmApplySnap(t){
   if (t === undefined) return;
@@ -16919,13 +16922,20 @@ function tpmApplySnap(t){
       /* a stack under way in the film and not here: take it again, from the same start (scrubbed into the middle of it,
          the planes before are not there, as on a real rig) -- one that runs here and not in the film finishes by itself */
       if (q.run && !S.run && TPM.rig){
-        S.planes = []; TPM.xz = null; TPM.cur = null;
+        S.planes = []; TPM.xz = null; TPM.cur = null; S.srcId = q.id || null;
         S.run = { i: 0, n: q.run.n, z0: q.run.z0, back: q.run.back, gains: TPM.pmt.map(pm => pm.gain) };
         /* the plane it had got to, as recorded (2026-11-19, Søren: played back, a stack centred on the focus started half
            way down -- the depth was the focus, not the first plane, at the moment the stack was started) */
         S.run.i = Math.max(0, Math.min(q.run.n - 1, q.run.i != null ? q.run.i : Math.abs(t.depth - q.run.back) < 0.05 ? 0 : Math.round((t.depth - q.run.z0) / Math.max(0.1, q.dz))));
         tpmStack3d();
-      } else if (!q.run && !S.run && (v3 !== S.v3 || show !== S.show)) tpmStack3d();
+      }
+      /* NOT ANOTHER STACK THAN THE FILM'S (2026-11-20, Søren: "When playing a recording of aquiring a z-stack, it should
+         delete the previous z-stack before showing the recording of the new one"): the stack on show here is not the one
+         the film showed at this moment (one taken before, or none yet in the film) -- it goes */
+      else if (!q.run && !S.run && q.id !== undefined && (q.id || null) !== (S.planes.length ? S.srcId || null : null)){
+        S.planes = []; TPM.xz = null; S.srcId = null; tpmStack3d();
+      }
+      else if (!q.run && !S.run && (v3 !== S.v3 || show !== S.show)) tpmStack3d();
     }
     TPM.built = ""; TPM.dirty = true;
   } finally { TPM.fromTimeline = false; }
