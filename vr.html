@@ -12055,8 +12055,10 @@ function tpmCompute(z){
   /* who is cut by this plane (bounding boxes against the plane, ±100 µm for the haze of 1P) */
   const reach = M.nph === 1 ? 100 : 10 + psf.z;
   const cells = [];
+  /* ONLY THE CELLS ON SHOW (2026-11-20, Søren: "If the cell is turned off, it should not record the signal from it. Only
+     from cells that are visible"): a cell switched off in the list (or set aside by Isolate) is not in the tissue imaged */
   for (const c of CELLS){
-    if (!c.mesh || !c.mesh.geometry) continue;
+    if (!c.mesh || !c.mesh.geometry || !lodShown(c)) continue;
     const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
     const bb = g.boundingBox.clone().applyMatrix4(c.mesh.matrix), ctr = bb.getCenter(new THREE.Vector3()), half = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
     const d = ctr.clone().sub(f), ext = Math.abs(half.x * B.n.x) + Math.abs(half.y * B.n.y) + Math.abs(half.z * B.n.z);
@@ -12104,7 +12106,7 @@ function tpmCompute(z){
      many loaded cells, how many the plane cuts, how many of those carry GCaMP, how many pixels they fill, and which
      way the cross-sections were made -- so a picture without cells says why */
   { let gp = 0; for (let i = 0; i < R * R; i++) if (G[i] > 0.01) gp++;
-    TPM.diag = { n: CELLS.filter(c => c.mesh).length, cut: cells.length, lab: cells.filter(tpmExpressing).length, px: gp, path: renderer.xr.isPresenting || TPM.cpuSlice ? "CPU" : "GPU", ok, xr: renderer.xr.isPresenting }; }
+    TPM.diag = { n: CELLS.filter(c => c.mesh && lodShown(c)).length, cut: cells.length, lab: cells.filter(tpmExpressing).length, px: gp, path: renderer.xr.isPresenting || TPM.cpuSlice ? "CPU" : "GPU", ok, xr: renderer.xr.isPresenting }; }
   /* ablated cells: swollen (the cross-section grows by a few µm), bright and filled, the nucleus too */
   if (ok){ tpmBlur(Sw, R, 1.6 / px); for (let i = 0; i < R * R; i++) G[i] += Math.min(1, Sw[i] * 2.6) * 0.95; }
   /* blebs: big round vesicles where the laser burned -- a bright rim, a dark lumen */
@@ -12839,7 +12841,7 @@ function tpmDraw(P, g){
    is not labelled by the expression chosen. */
 function tpmCellRanges(){
   const B = tpmBasis(), out = [];
-  for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry) continue; const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
+  for (const c of CELLS){ if (!c.mesh || !c.mesh.geometry || !lodShown(c)) continue; const g = c.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox();
     const bb = g.boundingBox.clone().applyMatrix4(c.mesh.matrix), ctr = bb.getCenter(new THREE.Vector3()), half = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
     const d = ctr.clone().sub(B.c).dot(B.n), ext = Math.abs(half.x * B.n.x) + Math.abs(half.y * B.n.y) + Math.abs(half.z * B.n.z);
     out.push({ c, z0: d - ext, z1: d + ext, zc: d, expr: tpmExpressing(c) }); }
@@ -13876,7 +13878,7 @@ function tpmComputeLS(z){
   const G = new Float32Array(R * R), Rd = new Float32Array(R * R), Gs = subs.map(() => null), Rs = subs.map(() => null);
   const beads = TPM.sample === "beads", vess = TPM.pmt[1].on ? tpmVesselMeshes() : [];
   if (ok){
-    const cells = CELLS.filter(c => c.mesh && c.mesh.geometry && tpmExpressing(c));
+    const cells = CELLS.filter(c => c.mesh && c.mesh.geometry && lodShown(c) && tpmExpressing(c));   // only the cells on show
     subs.forEach((sp, j) => {
       const g = new Float32Array(R * R), r = new Float32Array(R * R);
       if (beads) tpmBeads(g, R, F, z + sp.o, { xy: 0.61 * M.lamEm / NA / E, z: 1 }, { x: TPM.cx, y: -TPM.cy });

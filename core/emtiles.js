@@ -369,6 +369,17 @@ UJ.emtiles = (function(){
     for (var iy = cy0; iy <= cy1; iy++)
       for (var ix = cx0; ix <= cx1; ix++)
         want.push([ix, iy, cz]);
+    /* ── FROM THE MIDDLE OUT, AND SHOWN AS THEY COME ───────────────────────────────  2026-11-20
+       Søren: "If this EM image could be read from the images closest to the center and outwards and
+       they could display as they load, that would make my work faster." The chunks are read nearest
+       the centre first (the cell you jumped to is there), and the picture is drawn again after each
+       one, so the middle is there to look at while the edges are still on their way. */
+    var mcx = c[0] - off[0], mcy = c[1] - off[1];
+    want.sort(function(a, b){
+      var ax = (a[0] + 0.5) * ch[0] - mcx, ay = (a[1] + 0.5) * ch[1] - mcy,
+          bx = (b[0] + 0.5) * ch[0] - mcx, by = (b[1] + 0.5) * ch[1] - mcy;
+      return (ax * ax + ay * ay) - (bx * bx + by * by);
+    });
 
     var lo = opts.lo == null ? 86 : opts.lo, hi = opts.hi == null ? 172 : opts.hi;
     /* Read first, window second. The raw plane and its histogram are kept so the window can be
@@ -423,8 +434,10 @@ UJ.emtiles = (function(){
         }
       }
       done++;
+      if (opts.progressive !== false && done < want.length) try { render(); } catch (_e){}
       if (opts.onProgress) try { opts.onProgress(done, want.length); } catch (_e){}
     });
+    render();
 
     /* ── THE WINDOW MAY TIGHTEN ONTO THE DATA ───────────────────────────────────────  2026-09-18
        Søren: "The EM section and the trace a cell EM should have a similar contrast as for the
@@ -445,7 +458,9 @@ UJ.emtiles = (function(){
        min/max because one fold artefact or one lumen at 255 would otherwise undo the whole thing.
 
        Opt-in: a caller that wants the literal window it asked for still gets it. */
-    var loUsed = lo, hiUsed = hi;
+    var loUsed, hiUsed;          /* set by render(), which runs (hoisted) once per chunk and once at the end */
+    function render(){
+    loUsed = lo; hiUsed = hi;
     if (opts.tighten && nSeen > 0){
       var want1 = Math.floor(nSeen * 0.005), want2 = Math.floor(nSeen * 0.995);
       var acc = 0, pLo = 0, pHi = 255, i1;
@@ -505,6 +520,7 @@ UJ.emtiles = (function(){
     }
 
     ctx.putImageData(img, 0, 0);
+    }
     /* The mapping, returned rather than remembered: canvas pixel -> tool voxel, and the reverse,
        both anchored on the same x0/y0 this call actually drew from. */
     var view = {

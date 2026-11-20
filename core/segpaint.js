@@ -111,6 +111,14 @@ UJ.segpaint = (function(){
       for (var ix = cx0; ix <= cx1; ix++)
         if (ix >= 0 && iy >= 0 && cz >= 0 && ix < grid[0] && iy < grid[1] && cz < grid[2])
           want.push([ix, iy, cz]);
+    /* FROM THE MIDDLE OUT (2026-11-20, Søren: "read from the images closest to the center and outwards
+       and they could display as they load") -- the chunks nearest the centre of the picture first */
+    var mx = (sx0 + sx1) / 2 - off[0], my = (sy0 + sy1) / 2 - off[1];
+    want.sort(function(a, b){
+      var ax = (a[0] + 0.5) * ch[0] - mx, ay = (a[1] + 0.5) * ch[1] - my,
+          bx = (b[0] + 0.5) * ch[0] - mx, by = (b[1] + 0.5) * ch[1] - my;
+      return (ax * ax + ay * ay) - (bx * bx + by * by);
+    });
 
     /* How many screen pixels one voxel of THIS scale covers. At the pad's default (16 nm data,
        zoom 1) and an 8 nm segmentation this is 0.5 and several voxels share a pixel; magnified, it
@@ -118,13 +126,15 @@ UJ.segpaint = (function(){
     var stepX = res[0] / perPx, stepY = res[1] / perPx;
     var painted = 0;
     await UJ.segread.mapPool(want, 6, async function(cc){
+      try { await one(cc); } finally { if (onChunk) try { onChunk(); } catch (_e){} }
+    });
+    async function one(cc){
       var start = [off[0] + cc[0] * ch[0], off[1] + cc[1] * ch[1], off[2] + cc[2] * ch[2]];
       var end = [0, 1, 2].map(function(i){ return Math.min(start[i] + ch[i], off[i] + scale.size[i]); });
       var buf = await UJ.segread._chunkBuf(base, scale, {
         c: cc, grid: grid, start: start, end: end,
         local: [0, 0, 0], shape: ch
       });
-      if (onChunk) try { onChunk(); } catch (_e){}
       /* A chunk that was never written is background, not a failure — cloud-volume does not write
          the blocks that are entirely empty. See segread's header. */
       if (!buf) return;
@@ -157,7 +167,7 @@ UJ.segpaint = (function(){
           }
         }
       }
-    });
+    }
     return { chunks: want.length, painted: painted, nmPerVoxel: res[0],
              stepX: stepX, stepY: stepY };
   }
@@ -183,14 +193,21 @@ UJ.segpaint = (function(){
     var img = ctx.getImageData(0, 0, view.w, view.h);
     var out = { ok: true, cell: null, nucleus: null };
     var chunks = 0, total = 0;
-    var tick = function(){ chunks++; if (o.onProgress) try { o.onProgress(chunks, total); } catch (_e){} };
+    /* SHOWN AS THEY COME (2026-11-20, Søren): the canvas is updated after every chunk, at most once a
+       frame, so the overlay grows outward from the middle instead of appearing all at once at the end */
+    var queued = false, fin = false, flush = function(){ queued = false; if (fin) return; try { ctx.putImageData(img, 0, 0); } catch (_e){} };
+    var tick = function(){ chunks++;
+      if (o.progressive !== false && !queued){ queued = true; (window.requestAnimationFrame || setTimeout)(flush); }
+      if (o.onProgress) try { o.onProgress(chunks, total); } catch (_e){} };
     /* o.rootAlso: the cell's OTHER segments, same colour -- χJump, where a cell is 100-300
        fragments and the root box holds one. 2026-09-21. */
     var cellIds = root ? [root].concat((o.rootAlso || []).map(idPair).filter(Boolean)) : [];
-    if (root)
-      out.cell = await layer(img.data, view, SEG, cellIds, [CELL_COLOR], alpha, tick);
-    if (nuc)
-      out.nucleus = await layer(img.data, view, CFG.nuc, [nuc], [NUC_COLOR], alpha, tick);
+    /* the cell and its nucleus read side by side, not one after the other (2026-11-20) */
+    var got2 = await Promise.all([
+      root ? layer(img.data, view, SEG, cellIds, [CELL_COLOR], alpha, tick) : null,
+      nuc ? layer(img.data, view, CFG.nuc, [nuc], [NUC_COLOR], alpha, tick) : null]);
+    out.cell = got2[0]; out.nucleus = got2[1];
+    fin = true;                                      // a frame still pending draws nothing over the final one
     ctx.putImageData(img, 0, 0);
     out.painted = ((out.cell && out.cell.painted) || 0) + ((out.nucleus && out.nucleus.painted) || 0);
     return out;
