@@ -207,6 +207,7 @@
     var visitedCount=stepVisited.length;
     if(stepCounterEl)stepCounterEl.textContent="Cell "+(stepIndex+1).toLocaleString()+" of "+total.toLocaleString()+" — "+visitedCount.toLocaleString()+" checked so far";
     if(stepPrevBtn)stepPrevBtn.disabled=stepIndex<=0;
+    var gn=document.getElementById("stepGoNum"); if(gn)gn.max=String(total);
     if(stepNextBtn)stepNextBtn.textContent=stepIndex>=total-1?"Done — restart from #1":"Next →";
   }
   function stepGoTo(i){
@@ -238,6 +239,18 @@
       stepPrevBtn=document.getElementById("stepPrev");
       stepNextBtn=document.getElementById("stepNext");
       stepResetBtn=document.getElementById("stepReset");
+      /* JUMP TO A NUMBER (2026-11-20, Søren: "There should be a 'jump to number XX' cell, so I don't have to click 50
+         times to get to the cell I want to look at"): built here, under the counter, so every tool gets it */
+      if(stepCounterEl&&!document.getElementById("stepGoNum")){
+        var gr=document.createElement("div");
+        gr.style.cssText="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px";
+        gr.innerHTML="<span class='hint' style='margin:0'>Go to cell #</span><input type='number' id='stepGoNum' min='1' placeholder='#' style='width:90px'>"
+          +"<button type='button' class='idbtn' id='stepGoBtn' style='width:auto;padding:4px 12px'>Go</button>";
+        stepCounterEl.parentNode.insertBefore(gr,stepCounterEl.nextSibling);
+        var numEl=gr.querySelector("#stepGoNum"),goN=function(){ if(!stepMatches)return; var v=parseInt(numEl.value,10); if(!(v>=1))return; stepGoTo(Math.min(stepMatches.length,v)-1); };
+        gr.querySelector("#stepGoBtn").addEventListener("click",goN);
+        numEl.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); goN(); } });
+      }
       if(stepPrevBtn)stepPrevBtn.addEventListener("click",function(){if(stepMatches)stepGoTo(Math.max(0,stepIndex-1));});
       if(stepNextBtn)stepNextBtn.addEventListener("click",function(){
         if(!stepMatches)return;

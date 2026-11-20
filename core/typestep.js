@@ -141,14 +141,35 @@ var UJ = UJ || {};
       + "<span class='tscount' style='flex:1 1 auto;text-align:center'><b>" + esc(label) + "</b> &middot; "
       + (at + 1).toLocaleString() + " of " + n.toLocaleString()
       + (one ? " <span class='hint'>&mdash; the only one identified here</span>" : "") + "</span>"
+      /* JUMP TO A NUMBER (2026-11-20, Søren: "There should be a 'jump to number XX' cell, so I don't have to click 50
+         times to get to the cell I want to look at") -- type it, Enter or Go */
+      + (one ? "" : "<span style='display:inline-flex;gap:4px;align-items:center'><input type='number' class='tsnum' min='1' max='" + n
+        + "' placeholder='#' title='Go to this number in the list (1–" + n.toLocaleString() + ")' style='width:72px;padding:3px 6px;font-size:12px'>"
+        + "<button type='button' class='idbtn tsgo' style='width:auto;padding:4px 10px;font-size:12px'>Go</button></span>")
       + "<button type='button' class='idbtn tsnext' style='width:auto;padding:4px 10px;font-size:12px'"
       + (one ? " disabled" : "") + " title='The next " + esc(label) + " in this dataset"
       + " (goes round to the first from the last)'>Next &rarr;</button>";
     host.insertBefore(div, host.firstChild);
     div.querySelector(".tsprev").addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); stepBy(-1); });
     div.querySelector(".tsnext").addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); stepBy(1); });
+    var num = div.querySelector(".tsnum");
+    if (num){
+      var go = function(e){ if (e){ e.preventDefault(); e.stopPropagation(); } var v = parseInt(num.value, 10); if (v >= 1) stepTo(v); };
+      div.querySelector(".tsgo").addEventListener("click", go);
+      num.addEventListener("keydown", function(e){ if (e.key === "Enter") go(e); e.stopPropagation(); });
+    }
   }
 
+  /* number n (1-based) of the type on the card; past the end goes to the last */
+  function stepTo(n){
+    var rows = rowsNow(); if (!rows) return;
+    var i = currentOf(rows); if (i < 0) return;
+    var g = index(rows).groups[rows[i].key]; if (!g.length) return;
+    var j = g[Math.max(0, Math.min(g.length, n) - 1)];
+    LAST = { i: j, key: rows[j].key };
+    goNow(rows[j]);
+    render();
+  }
   /* Wraps at both ends: a fixed list you can walk round, as chosen. */
   function stepBy(d){
     var rows = rowsNow(); if (!rows) return;
@@ -189,6 +210,6 @@ var UJ = UJ || {};
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
   else start();
 
-  UJ.typestep = { refresh: schedule, step: stepBy, _rows: rowsNow, _current: function(){
+  UJ.typestep = { refresh: schedule, step: stepBy, stepTo: stepTo, _rows: rowsNow, _current: function(){
     var r = rowsNow(); return r ? currentOf(r) : -1; } };
 })();
