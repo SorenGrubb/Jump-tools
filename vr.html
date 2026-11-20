@@ -530,6 +530,7 @@
   <div id="patchBox" style="display:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
     <div class="ctl" style="margin:0 0 6px">
       <select id="pcMode" title="Current clamp: inject current, record the voltage. Voltage clamp: hold the voltage, record the current"><option value="cc">Current clamp</option><option value="vc">Voltage clamp</option></select>
+      <label title="Temperature of the recording. In vivo the cell is at the brain's temperature (the brain-temperature slider, plus any warming by the microscope laser); slices are recorded at 32–34 °C or at room temperature. The channels open and close faster when warm (Q10 ≈ 3, Hodgkin &amp; Huxley 1952): spikes are narrower, refractory periods shorter.">🌡 <select id="pcTemp"><option value="brain">in vivo (brain)</option><option value="34">slice 34 °C</option><option value="22">slice 22 °C (room)</option></select></label>
       <label title="Access (series) resistance between pipette and cell: low is good (5–15 MΩ); high slows the clamp, adds an I×Rs error and blunts recorded spikes, and slows dye filling">Rs <input type="range" id="pcRs" min="2" max="100" step="1" value="15" style="width:90px;vertical-align:middle"> <span id="pcRsV">15 MΩ</span></label>
       <label id="pcCompL" title="Series-resistance compensation (voltage clamp): the amplifier corrects this fraction of Rs">comp <input type="range" id="pcComp" min="0" max="80" step="5" value="0" style="width:70px;vertical-align:middle"> <span id="pcCompV">0 %</span></label>
     </div>
@@ -12022,6 +12023,78 @@ function tpmCsfSplat(G, B, f, F, R, psf){
     }
   }
 }
+/* ── THE PATCH DYE IN THE PICTURE (2026-11-20, Søren: "It looks like the dye loading and the pipette containing dye is
+   not visible in the fluorescence microscope. They should be to make it realistic.") ──
+   · The fluorescent dyes are seen: Lucifer yellow (emission ~530 nm) in the green channel, Alexa Fluor 594 (~617 nm) and
+     sulforhodamine 101 (the puffed astrocyte stain, ~605 nm) in the red. Neurobiotin and biocytin are not fluorescent --
+     they are found after fixation with streptavidin -- so with them the picture shows nothing of the fill, as on a real
+     rig (which is why they are usually loaded together with an Alexa dye).
+   · A filled cell: the same front as the scene draws (conc × e^−(d/L)², d the path distance from the pipette), read where
+     the membrane crosses the plane and spread into the cell's own cross-section; SR101 fills the whole astrocyte.
+   · The pipette: its solution is the dye at full strength, so the tip shows as a bright tapering shape wherever the
+     plane cuts it (0.5 µm at the opening widening by ~1 µm per 30 µm) -- the "shadow"/"bright pipette" a patcher steers
+     by under the two-photon microscope. The glass itself is not fluorescent.
+   · Brightness: a filled cell ~1.5 × a GCaMP cell at its peak (the dyes are loaded at tens of µM, far brighter than a
+     resting indicator) -- an assumption, set so the fill is seen next to GCaMP without hiding it. */
+const DYE_FL = { ly: "g", alexa: "r" };
+function tpmDyeAdd(G, Rd, B, f, F, R, psf, cut){
+  const flP = DYE_FL[PATCH.dye], flD = DYE_FL[DYE.kind], px = F / R, band = Math.max(1.5, (isFinite(psf.z) ? psf.z : 10) / 2 + 1), K = 1.5;
+  const n = B.n, e1 = B.e1, e2 = B.e2, cutS = new Set(cut);
+  if ((DYE.cells.size || PATCH.on) && !flD && !flP && DYES[PATCH.dye]) TPM.dyeNote = DYES[PATCH.dye].name + " is not fluorescent (seen after fixation)";
+  /* 1. the cells: a front map per channel from the membrane, gated by the cells' cross-sections */
+  const Wg = new Float32Array(R * R), Wr = new Float32Array(R * R), items = []; let anyG = false, anyR = false;
+  const paint = (c, W, val) => {
+    const g = c.mesh.geometry, Pp = g.attributes.position.array, Dd = g.attributes.dyD ? g.attributes.dyD.array : null, m = c.mesh.matrix.elements; let any = false;
+    for (let v = 0, k = 0; v < Pp.length / 3; v++, k += 3){
+      const w = val(Dd ? Dd[v] : 0); if (w < 0.01) continue;
+      const x = m[0] * Pp[k] + m[4] * Pp[k + 1] + m[8] * Pp[k + 2] + m[12] - f.x, y = m[1] * Pp[k] + m[5] * Pp[k + 1] + m[9] * Pp[k + 2] + m[13] - f.y, z = m[2] * Pp[k] + m[6] * Pp[k + 1] + m[10] * Pp[k + 2] + m[14] - f.z;
+      if (Math.abs(x * n.x + y * n.y + z * n.z) > band) continue;
+      const cx = Math.floor((x * e1.x + y * e1.y + z * e1.z + F / 2) / px), cy = Math.floor((-(x * e2.x + y * e2.y + z * e2.z) + F / 2) / px);
+      if (cx < 0 || cy < 0 || cx >= R || cy >= R) continue;
+      const i = cy * R + cx; if (w > W[i]){ W[i] = w; any = true; }
+    }
+    return any;
+  };
+  for (const [c, st] of DYE.cells){
+    if (!flD || !cutS.has(c) || !(st.conc > 0.003)) continue;
+    const A = Math.min(1, st.conc * 1.4), L = Math.max(0.5, st.L || 2);
+    if (paint(c, flD === "g" ? Wg : Wr, d => d < 1e8 ? A * Math.exp(-(d / L) * (d / L)) : 0)){ flD === "g" ? anyG = true : anyR = true; items.push({ mesh: c.mesh, nuc: null, fillNuc: true, c: flD === "g" ? [1, 0, 0] : [0, 1, 0] }); }
+  }
+  for (const [c, sr] of DYE.sr){
+    if (!cutS.has(c) || !(sr > 0.003)) continue;
+    if (paint(c, Wr, () => Math.min(1, sr))){ anyR = true; items.push({ mesh: c.mesh, nuc: null, fillNuc: true, c: [0, 1, 0] }); }
+  }
+  if (items.length){
+    const buf = tpmPass(B, f, F, R, items), sp = 12 / px;
+    if (anyG){ tpmDilate(Wg, R, sp); tpmBlur(Wg, R, 2 / px); }
+    if (anyR){ tpmDilate(Wr, R, sp); tpmBlur(Wr, R, 2 / px); }
+    for (let i = 0; i < R * R; i++){
+      if (anyG && buf[i * 4] > 8) G[i] += K * Wg[i] * buf[i * 4] / 255;
+      if (anyR && buf[i * 4 + 1] > 8) Rd[i] += K * Wr[i] * buf[i * 4 + 1] / 255;
+    }
+  }
+  /* 2. the pipettes, full of the solution: where the plane cuts the cone of liquid inside the glass */
+  const pip = [];
+  if (PATCH.on && PATCH.group && flP) pip.push([PATCH.group, flP]);
+  if (PUFF.group && PUFF.ag === "sr101") pip.push([PUFF.group, "r"]);
+  for (const [grp, ch] of pip){
+    const fill = grp.userData.fill; if (!fill) continue;
+    const tip = grp.position, ax = new THREE.Vector3(0, 1, 0).applyQuaternion(grp.quaternion), FL = fill.geometry.parameters.height, r0 = fill.geometry.parameters.radiusBottom, r1 = fill.geometry.parameters.radiusTop;
+    const T = tip.clone().sub(f), dst = ch === "g" ? G : Rd;
+    /* quick reject: the cone's nearest point to the plane */
+    const tz0 = T.dot(n), tz1 = tz0 + FL * ax.dot(n); if (Math.min(tz0, tz1) > band + r1 || Math.max(tz0, tz1) < -band - r1) continue;
+    for (let cy = 0; cy < R; cy++){
+      const vy = -(cy + 0.5) * px + F / 2;
+      for (let cx = 0; cx < R; cx++){
+        const vx = (cx + 0.5) * px - F / 2;
+        const qx = e1.x * vx + e2.x * vy - T.x, qy = e1.y * vx + e2.y * vy - T.y, qz = e1.z * vx + e2.z * vy - T.z;
+        const s = qx * ax.x + qy * ax.y + qz * ax.z; if (s < 0 || s > FL) continue;
+        const rx = qx - s * ax.x, ry = qy - s * ax.y, rz = qz - s * ax.z, rr = r0 + (r1 - r0) * s / FL;
+        if (rx * rx + ry * ry + rz * rz <= rr * rr) dst[cy * R + cx] += K;
+      }
+    }
+  }
+}
 function tpmCaMap(cells, B, f, F, R, psf){
   if (typeof AP_UNI === "undefined" || !AP_UNI.caNow || AP_UNI.caNow.value < -1e8) return null;
   const now = AP_UNI.caNow.value, tr = CA.tr, td = CA.td, nrm = caShapeNorm(), px = F / R, band = Math.max(1.5, (isFinite(psf.z) ? psf.z : 10) / 2 + 1);
@@ -12100,6 +12173,7 @@ function tpmCompute(z){
      particles the scene shows -- in the perivascular spaces along the arteries, and spread into the tissue -- each a
      small fluorescent cloud, imaged through the PSF like everything else, in the green channel as drawn in the scene */
   if (ok && !beads && typeof CSFT !== "undefined" && CSFT.on) tpmCsfSplat(G, B, f, F, R, psf);
+  TPM.dyeNote = ""; if (ok && !beads) try { tpmDyeAdd(G, Rd, B, f, F, R, psf, cells); } catch (e){ console.warn("[vr] dye in the scan:", e); }
   if (ok && !beads){ const W = tpmCaMap(cells.filter(tpmExpressing), B, f, F, R, psf);
     if (W) for (let i = 0; i < R * R; i++) if (G[i] > 0.01) G[i] *= 1 + 4 * W[i]; }
   /* WHAT WENT INTO THIS PICTURE, shown under it (2026-11-19, Søren, in the headset: "Still no signal at all") -- how
@@ -12212,6 +12286,12 @@ function tpmDamageStep(dt){
   const P0 = scanning || TPM.park ? tpmObjP(TPM.depth) : 0;
   const Tss = P0 * M.heat;                                                  // °C over the brain's own
   TPM.temp += (Tss - TPM.temp) * (1 - Math.exp(-dt / 8));
+  /* THE LASER WARMS THE BRAIN (2026-11-20, Søren: "Yes, build those"): the warming under the window is added to the
+     brain temperature the rest of the model uses -- blood flow (+8.8 %/°C), oxygen use (Q10 2.8), conduction (Q10 1.5)
+     and the patch clamp's spikes -- in steps of 0.25 °C, so the flow is not solved again every frame. The whole box
+     sits under the window, and the heat spreads over millimetres (Podgorski & Ranganathan 2016), so it is taken as
+     even over the box (MODEL). */
+  try { if (Math.abs(TPM.temp - PHYS.dT) > 0.25 || (TPM.temp < 0.05 && PHYS.dT)){ PHYS.dT = TPM.temp < 0.05 ? 0 : Math.round(TPM.temp * 10) / 10; physApply(true); } } catch (e){}
   TPM.warn = "";
   if (TPM.temp > 4.5){ TPM.heatDose += dt * (TPM.temp - 4.5) / 60; TPM.warn = "🌡 The brain under the window is " + TPM.temp.toFixed(1) + " °C warmer — heat damage builds up above ~4–5 °C (keep 2P under ~250 mW)"; }
   else if (TPM.temp > 2.5) TPM.warn = "🌡 Warming the brain by " + TPM.temp.toFixed(1) + " °C";
@@ -12383,8 +12463,22 @@ function tpmObjective(){
   const grp = new THREE.Group();
   const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 64), new THREE.MeshStandardMaterial({ color: "#c9ccd3", metalness: 0.65, roughness: 0.32, transparent: true, opacity: 0.9 }));
   grp.add(body);
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(rFront - 150, 48), new THREE.MeshStandardMaterial({ color: "#8fc8ff", metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
-  lens.rotation.x = Math.PI / 2; lens.position.y = 1; grp.add(lens);
+  /* THE FRONT LENS (2026-11-20, Søren: "the objectives don't have lenses ... I know they are flat lenses, as seen from
+     the outside"): a flat glass disc in the tip, its dark rim around it -- it was a faint circle lost under the water */
+  { const gl = new THREE.MeshStandardMaterial({ color: "#8fc8ff", metalness: 0.2, roughness: 0.04, transparent: true, opacity: 0.8, emissive: "#1d4a7a", emissiveIntensity: 0.45 });
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(rFront - 150, rFront - 150, 300, 48), gl); lens.position.y = 140; lens.renderOrder = 3; grp.add(lens);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(rFront - 100, 90, 8, 48), new THREE.MeshStandardMaterial({ color: "#2a2f37", metalness: 0.6, roughness: 0.4 })); rim.rotation.x = Math.PI / 2; rim.position.y = 20; grp.add(rim); }
+  /* θ AND THE NA, while the Objective tab is open: the axis, the edge of the cone the lens can catch from the focus
+     (the focus is WD under the tip), and a label */
+  if (TPM.tab === "obj"){
+    const yF = -WDu, re = rFront - 700, mat = new THREE.LineBasicMaterial({ color: "#ffe08a", depthTest: false, transparent: true });
+    const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, yF, 0), new THREE.Vector3(0, 300, 0), new THREE.Vector3(0, yF, 0), new THREE.Vector3(re, 0, 0), new THREE.Vector3(0, yF, 0), new THREE.Vector3(-re, 0, 0)]), mat);
+    lines.renderOrder = 9; grp.add(lines);
+    const arc = [], ra = Math.min(WDu * 0.45, 2500); for (let i = 0; i <= 24; i++){ const a = th * i / 24; arc.push(new THREE.Vector3(ra * Math.sin(a), yF + ra * Math.cos(a), 0)); }
+    const al = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arc), mat); al.renderOrder = 9; grp.add(al);
+    try { const n = tpmN(), lab = textSprite(["θ = " + (th * 180 / Math.PI).toFixed(0) + "°", "NA = " + n.toFixed(2) + " × sin θ = " + (n * Math.sin(th)).toFixed(2)], { fit: true, border: "#ffe08a" });
+      const h = Math.max(1200, Math.min(3500, WDu * 0.5)); lab.scale.set(h * lab.userData.aspect, h, 1); lab.position.set(re + h * lab.userData.aspect * 0.55 + 400, yF * 0.5, 0); lab.renderOrder = 10; grp.add(lab); } catch (e){}
+  }
   const band = new THREE.Mesh(new THREE.CylinderGeometry(rBody + 60, rBody + 60, 2600, 64, 1, true), new THREE.MeshStandardMaterial({ color: TPM_MAGCOL(o.mag), roughness: 0.5 }));
   band.position.y = Math.min(top - 9000, noseLen + 3000); grp.add(band);
   if (o.imm === "water"){ const ring = new THREE.Mesh(new THREE.CylinderGeometry(rBody + 70, rBody + 70, 900, 64, 1, true), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.6 })); ring.position.y = band.position.y - 2200; grp.add(ring); }
@@ -12564,7 +12658,7 @@ function tpm3dBuild(){
   if (!TPM.grp){ TPM.grp = new THREE.Group(); TPM.grp.name = "two-photon microscope"; }
   if (!TPM.grp.parent) content.add(TPM.grp);
   const B = tpmBasis(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.n.clone().negate());
-  const sig = [TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, tpmShutter(), TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn, TPM.sample]) + TPM.lam.ls : ""].join("|");
+  const sig = [TPM.tab === "obj", TPM.obj.name, TPM.obj.na, TPM.obj.mag, TPM.obj.wd, TPM.mode, Math.round(TPM.depth), TPM.light, TPM.laserOn, tpmShutter(), TPM.psfMag, TPM.fill, TPM.zoom, TPM.rigLabels, TPM.mode === "ls" ? JSON.stringify([TPM.ls.w0, TPM.ls.xw, TPM.ls.dual, TPM.ls.aslm, TPM.ls.clear, TPM.ls.E, TPM.laserOn, TPM.sample]) + TPM.lam.ls : ""].join("|");
   if (sig !== TPM.built){
     TPM.built = sig;
     for (const k of ["objMesh", "beamMesh"]) if (TPM[k]){ TPM.grp.remove(TPM[k]); TPM[k].traverse(o => { if (o.geometry) o.geometry.dispose(); }); TPM[k] = null; }
@@ -12915,7 +13009,7 @@ function tpmMonitor(P, g, x, y, s){
   tpmTxt(g, "PSF " + psf.xy.toFixed(2) + " × " + (isFinite(psf.z) ? psf.z.toFixed(1) : "∞ (no sectioning)") + " µm · ΔT " + (TPM.temp >= 0 ? "+" : "") + TPM.temp.toFixed(1) + " °C" + (fr && isFinite(fr.sbr) ? " · signal/background " + (fr.sbr > 99 ? ">99" : fr.sbr.toFixed(1)) : ""), x, yy + 74, 25, "#e9d5ff", s + 40); }
   const w2 = TPM.mode === "ls" ? (TPM.pmt[0].sat > 0.01 ? "⚠ The camera saturates — shorter exposure or less power" : "") : TPM.warn || (fr && fr.leak > 1 ? "⚠ Laser light is leaking into the PMTs (" + fr.leak.toFixed(0) + " photons/pixel) — check the dichroic and the blocking filter (Filters tab)" : "") || (tpmOpt().TL < 0.5 ? "⚠ The primary dichroic sends most of the laser away from the brain (" + Math.round(tpmOpt().TL * 100) + " % gets through)" : "");
   if (TPM.mode !== "ls" && TPM.diag){ const D = TPM.diag;
-    tpmTxt(g, "In this plane: " + D.cut + " of " + D.n + " loaded cell" + (D.n === 1 ? "" : "s") + " cut, " + D.lab + " with GCaMP, " + D.px + " px lit · slices: " + D.path + (D.ok ? "" : " · laser/rig off"), x, yy + 106, 20, "#8b949e", s + 40); }
+    tpmTxt(g, "In this plane: " + D.cut + " of " + D.n + " loaded cell" + (D.n === 1 ? "" : "s") + " cut, " + D.lab + " with GCaMP, " + D.px + " px lit · slices: " + D.path + (D.ok ? "" : " · laser/rig off") + (TPM.dyeNote ? " · " + TPM.dyeNote : ""), x, yy + 106, 20, "#8b949e", s + 40); }
   if (w2) tpmLines(g, w2, x, yy + 136, s + 40, 25, "#ffb070", 3);
   try { tpmMonitorHint(P, g, x, y, s); } catch (e){}
   /* FOCUS: the objective up or down (2026-11-19, Søren: "We need a way to move the objective up or down to scan."); on the
@@ -13018,7 +13112,7 @@ function tpmTabLaser(P, g, X, Y, W){
   }
   /* heating */
   const T = TPM.temp, tw = W - 20;
-  tpmTxt(g, "Brain temperature under the window: +" + T.toFixed(1) + " °C  (≈ " + (M.heat * 100).toFixed(1) + " °C per 100 mW at " + (M.lam * 1000).toFixed(0) + " nm)", X, Y + 345, 26, "#fff", W);
+  tpmTxt(g, "Brain under the window: " + (PHYS.T + T).toFixed(1) + " °C (+" + T.toFixed(1) + ") · flow ×" + physFlowG().toFixed(2) + ", O₂ use ×" + physMet().toFixed(2) + "  (≈ " + (M.heat * 100).toFixed(1) + " °C per 100 mW at " + (M.lam * 1000).toFixed(0) + " nm)", X, Y + 345, 26, "#fff", W);
   { const r = TPM_LAMR[TPM.mode]; tpmSlider(P, g, X + 680, Y + 405, W - 700, "Wavelength " + TPM.lam[TPM.mode] + " nm", TPM.lam[TPM.mode], r[0], r[1], v => { TPM.lam[TPM.mode] = Math.round(v); TPM.built = ""; }, { step: 5, key: "lam", col: M.col }); }
   g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(X, Y + 362, tw, 18); g.fillStyle = T > 4.5 ? "#ff6a50" : T > 2.5 ? "#ffb070" : "#7fe08a"; g.fillRect(X, Y + 362, tw * Math.min(1, T / 8), 18);
   /* the light: see it */
@@ -13061,9 +13155,42 @@ function tpmTabObj(P, g, X, Y, W){
   g.fillStyle = TPM_MAGCOL(o.mag); g.fillRect(ox - rBody * sc, tipY - (noseLen + 4300) * sc, 2 * rBody * sc, 2600 * sc);
   g.fillStyle = "rgba(255,60,60,0.35)"; g.beginPath(); g.moveTo(ox - (rFront - 700) * sc, tipY); g.lineTo(ox, oy); g.lineTo(ox + (rFront - 700) * sc, tipY); g.fill();
   g.fillStyle = "rgba(160,210,255,0.35)"; g.fillRect(ox - 260, oy - 210 * sc, 520, 150 * sc + 2);
-  g.strokeStyle = "#ffd6e0"; g.beginPath(); g.moveTo(ox - 300, oy - TPM.depth * sc); g.lineTo(ox + 300, oy - TPM.depth * sc); g.stroke();
+  g.strokeStyle = "#ffd6e0"; g.beginPath(); g.moveTo(ox - 150, oy - TPM.depth * sc); g.lineTo(ox + 150, oy - TPM.depth * sc); g.stroke();
   tpmTxt(g, "WD " + o.wd.toFixed(1) + " mm", ox + rFront * sc + 14, (tipY + oy) / 2, 24, "#fff");
   tpmTxt(g, "to scale (" + (Lp / 1000).toFixed(0) + " mm tall)", ox - 330, Y + 540, 22, "#e9d5ff");
+  /* THE NA, TAUGHT (2026-11-20, Søren: "we just need to have them to show that the NA depends on the angle that the
+     lens can capture the light. If we can make that a teaching thing the abbe equation and how the wavelength and
+     angle determines the NA, that could be cool"). The front lens is flat seen from outside; θ is half the angle of the
+     cone it can catch from the focus (drawn to scale: the lens's half-width over the working distance). NA = n·sin θ;
+     Abbe (1873): the finest detail resolved, d = λ / 2NA. */
+  { const n = tpmN(), M = tpmM(), na = o.na, thd = th * 180 / Math.PI;
+    g.fillStyle = "rgba(143,200,255,0.95)"; g.fillRect(ox - (rFront - 150) * sc, tipY - 4, 2 * (rFront - 150) * sc, 5);    // the flat front lens
+    const lx = X, rx = X + 700, ty = Y + 585, rw = Math.min(340, W - 700);
+    tpmTxt(g, "Numerical aperture", lx, ty, 28, "#ffe08a");
+    tpmTxt(g, "NA = n · sin θ", lx, ty + 40, 30, "#fff");
+    tpmTxt(g, "= " + n.toFixed(2) + " × sin " + thd.toFixed(0) + "° = " + (n * Math.sin(th)).toFixed(2), lx, ty + 78, 26, "#fff");
+    tpmTxt(g, "n = " + n.toFixed(2) + (o.imm === "air" ? " (air)" : " (water)"), lx, ty + 114, 24, "#e9d5ff");
+    /* a close-up of the tip: the angle is the real θ, the lengths are not */
+    { let hh = 150, hw = hh * Math.tan(th); if (hw > 140){ hw = 140; hh = hw / Math.tan(th); }
+      const cx = lx + 165, ly = ty + 190, fy = ly + hh;
+      tpmTxt(g, "close-up: the angle to scale", lx, ty + 150, 19, "#e9d5ff");
+      g.fillStyle = "rgba(255,60,60,0.28)"; g.beginPath(); g.moveTo(cx - hw, ly); g.lineTo(cx, fy); g.lineTo(cx + hw, ly); g.fill();
+      g.fillStyle = "rgba(201,204,211,0.9)"; g.fillRect(cx - hw - 22, ly - 18, 2 * hw + 44, 12);
+      g.fillStyle = "#8fc8ff"; g.fillRect(cx - hw, ly - 7, 2 * hw, 8);
+      tpmTxt(g, "front lens", cx - hw + 6, ly + 24, 19, "#8fc8ff");
+      g.strokeStyle = "#ffe08a"; g.lineWidth = 2; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(cx, fy); g.lineTo(cx, ly); g.stroke(); g.setLineDash([]);
+      g.beginPath(); g.moveTo(cx, fy); g.lineTo(cx + hw, ly); g.stroke();
+      g.beginPath(); g.arc(cx, fy, Math.min(60, hh * 0.55), -Math.PI / 2, -Math.PI / 2 + th); g.stroke(); g.lineWidth = 1;
+      tpmTxt(g, "θ", cx + 6 + Math.min(60, hh * 0.55) * Math.sin(th / 2) * 0.6, fy - Math.min(60, hh * 0.55) - 6, 24, "#ffe08a");
+      g.fillStyle = "#3dff6a"; g.beginPath(); g.arc(cx, fy, 5, 0, 7); g.fill(); tpmTxt(g, "focus", cx + 12, fy + 6, 19, "#b9ffc8"); }
+    tpmTxt(g, "Abbe's limit", rx, ty, 28, "#ffe08a");
+    tpmTxt(g, "d = λ / (2 NA)", rx, ty + 40, 30, "#fff");
+    const dEm = M.lamEm * 1000 / (2 * na), dEx = M.lam * 1000 / (2 * na);
+    tpmTxt(g, "emitted " + Math.round(M.lamEm * 1000) + " nm → " + Math.round(dEm) + " nm", rx, ty + 78, 24, "#b9ffc8", rw);
+    tpmTxt(g, (M.nph === 1 ? "excitation " : "laser ") + Math.round(M.lam * 1000) + " nm → " + Math.round(dEx) + " nm", rx, ty + 112, 24, "#ffb0c8", rw);
+    { const r = TPM_LAMR[TPM.mode]; tpmSlider(P, g, rx, ty + 158, rw, "λ " + TPM.lam[TPM.mode] + " nm", TPM.lam[TPM.mode], r[0], r[1], v => { TPM.lam[TPM.mode] = Math.round(v); TPM.built = ""; }, { step: 5, key: "olam", col: M.col }); }
+    tpmLines(g, "θ: half the cone of light the lens catches from the focus — a wider lens, a shorter working distance or water (n 1.33) instead of air: higher NA. d: how close two points can be and still be told apart." + (M.nph > 1 ? " 2P: only the bright centre of the focus excites (∝ I²), so ~√2 finer." : ""), rx, ty + 230, rw, 19, "#e9d5ff", 7);
+  }
 }
 /* the "By depth" tab: power and both gains in one place, a verdict on the picture, the table and its plot */
 function tpmChanStat(pm){
@@ -13594,6 +13721,7 @@ function tpmTabAna(P, g, X, Y, W){
 /* ── on and off; the PC's copy of the panel ── */
 function setTpm(on){
   TPM.on = !!on;
+  if (!TPM.on) try { if (PHYS.dT){ TPM.temp = 0; PHYS.dT = 0; physApply(true); } } catch (e){}      // (PHYS is declared further down)      // no laser, no warming
   /* opening it with cells loaded: the focus starts in the middle of the nearest labelled one, not at a fixed 150 µm */
   if (TPM.on && TPM.mode !== "ls") try { const rg = tpmCellRanges(), ex = rg.filter(r => r.expr), pool = ex.length ? ex : rg;
     if (pool.length && !pool.some(r => TPM.depth >= r.z0 && TPM.depth <= r.z1)){
@@ -21076,7 +21204,7 @@ const PATCH = { on: false, arm: false, cell: null, node: -1, tip: null, mode: "c
                 cp: 4, V: -70, w: 0, h: 1, ge: 0, gi: 0, refr: 0, spk: -1e9, vrec: -70, iin: 0, t: 0, prot: "hold", fam: 0, famN: 0,
                 hold: { cc: 0, vc: -70 }, amp: { cc: 200, vc: 20 }, sw: null, sweeps: [], spikes: 0, mdl: null, group: null, cv: null, card: null,
                 test: null, stats: null, syn: 0, spkSeen: 0, own: 0, ii: true, dye: "none", force: false, note: "", _at: 0,
-                dyeGlass: true, stage: "approach", seal: 0, tipOff: 0, dir: new THREE.Vector3(-0.8, -0.57, 0.18).normalize(), anim: null, breakT: 0 };
+                temp: "brain", phi: 1, dyeGlass: true, stage: "approach", seal: 0, tipOff: 0, dir: new THREE.Vector3(-0.8, -0.57, 0.18).normalize(), anim: null, breakT: 0 };
 const PUFF = { arm: false, pos: null, ag: "glu", c0: null, vol: 5, events: [], group: null, near: new Map(), vas: [], said: 0 };
 const DYE = { cells: new Map(), sr: new Map(), t: 0 };
 const DYES = {
@@ -21199,6 +21327,7 @@ function patchSweepStats(s){
   return { ih: avg(s.y, 0, Math.round(40 / d)) };
 }
 /* ── one step of the cell and the amplifier, h ms ── */
+function patchTemp(){ const v = PATCH.temp; return v === "brain" ? (typeof physTeff === "function" ? physTeff() : 37.7) : +v; }
 function patchStep(h){
   const P = PATCH, m = P.mdl, x = P.t - P.sw.t0;
   const pre = P.stage !== "whole" && P.stage !== "torn";
@@ -21214,19 +21343,24 @@ function patchStep(h){
   if (!pre){ const gsl = 1000 / patchRseal(P.seal); G += gsl; }          // the seal leaks to the bath (0 mV)
   let I = (P.csIn && !pre ? 0 : -P.w) + P.syn;                       // pA: adaptation (gone with Cs⁺ inside), and the network's synaptic input
   let Ich = 0; if (iso){ Ich = isoCurrent(h); I -= Ich; }             // the isolated channel's current (section 56c)
-  const since = P.t - P.spk, inSpk = since >= 0 && since < m.width;
+  /* TEMPERATURE (2026-11-20, Søren): the model's kinetics are for 37 °C; warmer or colder, its spike, its refractory
+     period, Na⁺ recovery and adaptation run faster or slower by phi = 3^((T − 37)/10) -- the Q10 of channel gating
+     (Hodgkin & Huxley 1952, J Physiol 117:500). Cortical spikes are indeed narrower at body temperature than in a room-
+     temperature slice (Yu, Hill & McCormick 2012, PLoS Comput Biol 8:e1002456). MODEL: the resting properties are kept. */
+  const phi = P.phi || 1, spW = m.width / phi;
+  const since = P.t - P.spk, inSpk = since >= 0 && since < spW;
   /* voltage clamp: the escape's Na⁺ current, inward, through the cell -- an "action current" */
-  if (!cc && m.spiking && !iso && since >= 0 && since < 2.5) I -= m.Ina * Math.max(0, Math.exp(-since / 0.6) - Math.exp(-since / 0.12)) / 0.535;
+  if (!cc && m.spiking && !iso && since >= 0 && since < 2.5) I -= m.Ina * Math.max(0, Math.exp(-since * phi / 0.6) - Math.exp(-since * phi / 0.12)) / 0.535;
   let gs = 0;
   if (!cc){ gs = 1000 / Math.max(0.3, P.rs * (1 - P.comp)); G += gs; GE += gs * cmd; } else I += cmd;
   const Vinf = (GE + I) / G, tau = m.C / G;
   P.V = Vinf + (P.V - Vinf) * Math.exp(-h / tau);
   /* Na⁺ inactivation: recovers below ~−50 mV, gone above ~−40 */
-  const hinf = 1 / (1 + Math.exp((P.V + 45) / 3)); P.h += (hinf - P.h) * (1 - Math.exp(-h / 3));
-  P.w += (m.a * (P.V - m.EL) - P.w) * (1 - Math.exp(-h / m.tw));
+  const hinf = 1 / (1 + Math.exp((P.V + 45) / 3)); P.h += (hinf - P.h) * (1 - Math.exp(-h * phi / 3));
+  P.w += (m.a * (P.V - m.EL) - P.w) * (1 - Math.exp(-h * phi / m.tw));
   if (P.refr > 0) P.refr -= h;
   if (m.spiking && !iso && !pf.ttx && !DRUG.ttx && P.refr <= 0 && ((P.V >= m.VT && P.h > 0.5) || P.force)){
-    P.force = false; P.spk = P.t; P.refr = m.ref; P.w += m.b; P.h *= 0.4; P.spikes++; if (P.sw) P.sw.spk++;
+    P.force = false; P.spk = P.t; P.refr = m.ref / phi; P.w += m.b; P.h *= 0.4; P.spikes++; if (P.sw) P.sw.spk++;
     if (cc) P.V = m.Vr;
     patchSpikeOut();
   }
@@ -21235,7 +21369,7 @@ function patchStep(h){
   if (pre){ rec = scActive() ? scCurrent(h) + (P.stage === "attached" ? patchSealCurrent(x, true) : 0) : patchSealCurrent(x); P.iin = rec; }
   else if (cc){
     let v = P.V;
-    if (inSpk){ const q = since / m.width, gk = Math.exp(-Math.pow((q - 0.3) / 0.16, 2)); v = P.V + (30 - P.V) * gk - 6 * Math.max(0, q - 0.5); }
+    if (inSpk){ const q = since / spW, gk = Math.exp(-Math.pow((q - 0.3) / 0.16, 2)); v = P.V + (30 - P.V) * gk - 6 * Math.max(0, q - 0.5); }
     const tgt = v + (P.bridge ? 0 : cmd * P.rs / 1000), tp = Math.max(0.005, P.rs * P.cp / 1000);   // mV; µs → ms
     P.vrec += (tgt - P.vrec) * (1 - Math.exp(-h / tp)); rec = P.vrec;
   } else {
@@ -21256,6 +21390,7 @@ function patchFrame(sdt){
   puffFrame(sdt);
   patchSealFrame();
   P.eCl = isoECl37(); P.csIn = isoSol().i.cation === "Cs";
+  P.phi = Math.pow(3, (patchTemp() - 37) / 10);
   /* the network: synaptic potentials arriving in the stimulation model, as a current; its own decision to fire */
   P.syn = 0;
   if (P.net && STIM.on && STIM.active && STIM.active.has(c)){
@@ -21882,6 +22017,9 @@ function patchUiInit(){
   $("puffBtn").addEventListener("click", () => setPuffArm(!PUFF.arm));
   $("pcMode").addEventListener("change", e => setPatchMode(e.target.value));
   $("pcRs").addEventListener("input", e => { PATCH.rs = +e.target.value; $("pcRsV").textContent = PATCH.rs + " MΩ"; });
+  $("pcTemp").addEventListener("change", e => { const P = PATCH; P.temp = e.target.value; const T = patchTemp(), f = Math.pow(3, (T - 37) / 10);
+    P.note = "Recording at " + T.toFixed(1) + " °C: channels " + (f >= 1 ? f.toFixed(2) + "× faster" : (1 / f).toFixed(2) + "× slower") + " than at 37 °C — spikes " + (f >= 1 ? "narrower" : "wider") + (P.mdl ? " (~" + (P.mdl.width / f).toFixed(2) + " ms instead of " + P.mdl.width.toFixed(2) + ")" : "") + ", refractory period " + (f >= 1 ? "shorter" : "longer") + ".";
+    if (typeof patchDrawAll === "function") patchDrawAll(); });
   $("pcComp").addEventListener("input", e => { PATCH.comp = +e.target.value / 100; $("pcCompV").textContent = e.target.value + " %"; });
   $("pcBridge").addEventListener("change", e => { PATCH.bridge = e.target.checked; });
   $("pcBg").addEventListener("change", e => { PATCH.bg = e.target.checked; });
@@ -24920,7 +25058,8 @@ grpFromLink();
      11:790821, no percentage): QUALITATIVE here, 1 / (1 + (ICP − 5)/10). */
 const WBC = { on: false, teach: false,      /* realistic by default (2026-10-23, Søren: "way too many white blood cells now. It should be realistic") */
              ad: false, ly6g: false, W: null, mesh: null, stall: new Map(), hist: new Set(), p: 0.15, pauses: 0 };
-const PHYS = { T: 37.7, T0: 37.7, icp: 5, icp0: 5 };
+const PHYS = { T: 37.7, T0: 37.7, icp: 5, icp0: 5, dT: 0 };      // dT: the microscope laser's warming under the window
+function physTeff(){ return PHYS.T + (PHYS.dT || 0); }
 /* SAMPLED LIKE THE RED CELLS (2026-10-24, Søren: "There are still way too many white blood cells ... compared with" the red
    ones). The count was the box's real number (blood volume / 1,800 red cells), but the red cells are drawn one for every
    STK.rbcEvery real ones (up to 20,000 drawn of ~10⁶ in the whole volume), so on screen there was one white cell per ~36
@@ -25040,15 +25179,18 @@ function wbcNote(){
 }
 /* ── temperature and ICP ── */
 const PHYS_Q10_CV = 1.5, PHYS_Q10_O2 = 2.8, PHYS_CBF_PER_C = 0.088;
-function physFlowG(){ return Math.max(0.3, 1 + PHYS_CBF_PER_C * (PHYS.T - PHYS.T0)); }
-function physMet(){ return Math.pow(PHYS_Q10_O2, (PHYS.T - PHYS.T0) / 10); }
+function physFlowG(){ return Math.max(0.3, 1 + PHYS_CBF_PER_C * (physTeff() - PHYS.T0)); }
+function physMet(){ return Math.pow(PHYS_Q10_O2, (physTeff() - PHYS.T0) / 10); }
 function physCsf(){ return PHYS.icp >= PHYS.icp0 ? 1 / (1 + (PHYS.icp - PHYS.icp0) / 10) : 1 + 0.16 * (PHYS.icp0 - PHYS.icp); }
 function setTemp(T){
   PHYS.T = Math.max(33, Math.min(42, +T || PHYS.T0));
-  STIM.speed = 500 * Math.pow(PHYS_Q10_CV, (PHYS.T - PHYS.T0) / 10);
   document.getElementById("physT").value = PHYS.T; document.getElementById("physTv").textContent = PHYS.T.toFixed(1) + " °C";
+  physApply();
+}
+function physApply(quiet){
+  STIM.speed = 500 * Math.pow(PHYS_Q10_CV, (physTeff() - PHYS.T0) / 10);
   if (STK.on){ STK.dirty = true; STK.gridDirty = true; }
-  physNote(); if (typeof MENU !== "undefined") MENU.dirty = true;
+  physNote(quiet); if (typeof MENU !== "undefined") MENU.dirty = true;
 }
 function setIcp(v){
   PHYS.icp = Math.max(0, Math.min(60, +v || 0));
@@ -25056,13 +25198,13 @@ function setIcp(v){
   if (STK.on) STK.dirty = true;
   physNote(); if (typeof MENU !== "undefined") MENU.dirty = true;
 }
-function physNote(){
-  const T = PHYS.T, cpp = STK.map - PHYS.icp, el = document.getElementById("physNote");
+function physNote(quiet){
+  const T = physTeff(), cpp = STK.map - PHYS.icp, el = document.getElementById("physNote");
   const warn = T >= 42.6 ? "⚠ Seizure range (mice: heat seizures from ~42.6 °C). " : T >= 39.5 ? "⚠ Above the physiological range (~39.5–40 °C): the blood–brain barrier starts to leak. " : T <= 34 ? "Hypothermia: slower conduction, much less oxygen use. " : "";
   const icpw = PHYS.icp >= 20 ? "⚠ Raised ICP: perfusion pressure " + cpp + " mmHg" + (cpp < 50 ? " — below where flow is protected" : "") + "; flow shifts to shunts (not modelled). " : "";
-  const t = warn + icpw + "Temperature " + T.toFixed(1) + " °C: conduction ×" + Math.pow(PHYS_Q10_CV, (T - PHYS.T0) / 10).toFixed(2) + ", O₂ use ×" + physMet().toFixed(2) + ", blood flow ×" + physFlowG().toFixed(2)
+  const t = warn + icpw + "Temperature " + T.toFixed(1) + " °C" + (PHYS.dT ? " (" + PHYS.T.toFixed(1) + " + " + PHYS.dT.toFixed(1) + " from the microscope laser)" : "") + ": conduction ×" + Math.pow(PHYS_Q10_CV, (T - PHYS.T0) / 10).toFixed(2) + ", O₂ use ×" + physMet().toFixed(2) + ", blood flow ×" + physFlowG().toFixed(2)
     + " · ICP " + PHYS.icp + " mmHg: perfusion pressure " + cpp + " mmHg (MAP " + STK.map + "), CSF tracer influx ×" + physCsf().toFixed(2) + (STK.on ? "" : " — turn on the blood flow to see the vessels respond") + ".";
-  if (el) el.textContent = t; ctxNote.textContent = t;
+  if (el) el.textContent = t; if (!quiet) ctxNote.textContent = t;
 }
 document.getElementById("physT").addEventListener("input", e => setTemp(e.target.value));
 document.getElementById("physI").addEventListener("input", e => setIcp(e.target.value));
@@ -26263,7 +26405,7 @@ document.getElementById("imgShift").addEventListener("click", () => imgSetting("
 document.getElementById("imgRebase").addEventListener("click", () => imgSetting("rebase"));
 imgUi();
 
-window.__vr = { tpmSnap, tpmApplySnap, CSFT, tpmStack3d, lsView, tpmSetMode, tpmStackTiff, tpmPower, caStartCell, CA, AP_UNI, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
+window.__vr = { DYE, pipetteMesh, PHYS, physTeff, physFlowG, patchTemp, PATCH, tpmSnap, tpmApplySnap, CSFT, tpmStack3d, lsView, tpmSetMode, tpmStackTiff, tpmPower, caStartCell, CA, AP_UNI, lsFov, simEff: () => [SIM.eff, SIM.speed, SIM.boost, SIM.paused], setSimSpeed, tpmViewRig, tpmParkStart, tpmParkStop, tpmImgPt, tpmLineScan, tpmMeasurePsf, setVasc: m => { VASC.mesh = m; }, TPM, setTpm, tpmCompute, TPP, tpmStackStart, tpmFrame, CELLS, THREE, content, winSkinH, tlTrimEnd, tlContentEnd, TLVR, TL, tlvrButton, tlvrToZero, tlvrDraw, tlvrShift, tlvrGroup, WIN, setWindow, winVesselsExport, winVesselsLoad, snapToAxis, MOUSE, setMouse, mouseFly, mousePeel, mouseFrame, stageMinScale, patchScope, isoIVFig, isoCaWarn, voiceMerge, setEmSeg, EM, fixMosaic, emSegOpts, menuTabList, menuAct, tlEnd, tlCt, tlFromCt, voiceTranscribe, WHISPER, tlAddTitle, takeStart, takeStop, VOICE, footPopItems, footPopAct, menuRelease, footPopFrame, menuFootIcons, SC, setSc, patchPullAway, ISO, GHKM, SOLP, setIso, isoRun, isoSetPip, isoSetBath, isoNernst, SUCK, setDyeOnly, patchTouch, patchBreakIn, patchSealFrame, patchRseal, suckStart, suckEnd, patchTipFig, PATCH, PUFF, DYE, DYES, PUFF_AG, PATCHP, patchAttach, patchFrame, setPatchMode, patchProt, patchProtBtn, puffPlace, puffNow, puffConc, setPatchDye, patchWithdraw, patchReadout, dyeCoupled, setPatchNet, lfpOutW, lfpBgOn, lfpSetBg, IMG, IMG_SC, setImg, imgSetting, imgSignal, imgGrid, imgFrame, imgSegs, imgHere, imgPanel, WBC, PHYS, setWbc, wbcBuild, wbcFrame, setTemp, setIcp, physFlowG, physMet, physCsf, stkBC, stkKTarget, get GROUPS(){ return GROUPS; }, grpParse, grpToVR, stimulateGroup, grpEncode, grpDecode, grpStore, grpEdit, grpWin, DOF, dofActive, dofRender, psdCompute, setPsd, welch, TS, segTouching, segPlaneIds, tpSave, cnDrive, CN, setConnectivity, setTripartite, addTouching, cnAdd, cnAddTop, cnCsv, caveRows, NUC, nucIndex, get SELECTED(){ return SELECTED; }, canvasNdc, fixMosaic, TRW, setTrace, trwAddRing, trwAddPoint, trwFinish, trwUndo, trwSave, trwAsk, trwSetZ, trwHandStart, trwHandEnd, trwFrame, trwBuild3D, menuRows, FIX, setFix, fixToggle, fixDraw, fixSave, fixAsk, fixMoveTo, DOME, domeRender, domeActive, setDomePreview, tlFrame, tlStateFx, tlWaiting, tlPrepVessels, tlApplyViewAt, tlCaptureView, slFrame, nvFrame, stkSphDraw, stkStallDraw, GAME, setGame, gameNext, gameAnswer, gamePickVerified, gamePickMicrons, DRUG, setDrug, drugFire, recGate, SPK, setSpkSound, setSpkHaptic, spkCollect, RIDE, setRide, rideFrame, VPART, setVpart, vpartApply, raOutside, filmCards, tlPrepCells, LOD, get CELL_BOX(){ return CELL_BOX; }, tlDuplicate, tlApplySynAt, setSynCleared, ORBIT, setOrbit, orbitPoint, CSFT, setCsf, csfFrame, csfInTissue, bloodSync, bpFrame, stkHct, stkBaseline, stkVisc, setRbcFlow, stkPO2At, stkO2, stkGridSolve, stkPockets, stkKTarget, stkFQE, stkWithRay, STK, setStroke, stkClotAt, stkUpdate, stkNet, stkGate, stkFrame, stkUndo, stkSetting, stkSolve, stkRecolour, stimulateAt, SIM, simStep, setSimSpeed, simRecommend, SIM_REC, CSD, setCsd, csdStart, csdFrame, csdTau, csdVes, LC, lcTick, neuronRates, nvDrives, pvsFrame, GZ, gizmoSnap, gizmoOrbit, PVS, buildPvs, pvsAttach, setPvsW, LFP, setLfp, lfpPlaceAt, lfpWeights, lfpCompute, slTick, slArteriole, SL, setSleep, slSetting, slNeurons, MC, mcTick, mcVessel, nucRootFor, nvShihNet, nvC, nvRecolour, nvShihTone, loadSkel, addActivityAttributes, setVesselColour, NV_TONE, cellMaterial, NV, NV_PRESET, nvNet, nvAttach, nvRoute, nvTick, nvFrame, setNv, nvSetting, nvUi, nvApplyUi, VASC, buildVessels, setVessels, RA, raInfer, raRecentSpikes, raDrawCellPlot, setRaSpikes, setRaCellPlots, plotCells, raFrame, raApplyUi, raUi, raMapDraw, raSeconds, raSpans, setRa, raAttach, raValue, raClipAt, raTlAt, raCsv, setRaScreen, setRaPlot, raSetClip, raSetting, raTogglePlay, raNeighbours, raPlotDraw, tlRecFit, EXTOX, excitoCheck, PLOT_SHOW, setPlotShow, caApAt, CA, CT, setCa, caReset, caStartCell, caStartAt, caSetting, caCsv, caTrace, findContacts, setContacts, contactsCsv, coupledBy, caKind, setCellGlass, glassOthers, glassClear, setGlassLevel, setStimHidden, inPlay, THREE, scene, stage, content, CELLS, select, renderer, camera, MENU, drawMenu, stepCell, toggleIsolate, setSize, horizontalAxis, showEM, moveEM, hideEM, setCut, CUT, EM, setMeasure, addMeasurePoint, MEAS, SBAR, setOrganelles, ORG, addNeighbours, setTraced, TRC, menuAct, controls, setWallSide: v => { WALL_SIDE = v; }, buildLayers, STIM, setStim, stimulateWithRay, fireCell, TL, setTimeline, tlPlay, tlStop, tlSeek, tlAdd, tlCaptureCam, tlCaptureView, tlRecord, tlUndo, tlCaptureElectrodes, exportTraces, tlCount, setSynCleared, VM, vmAt, setPlots, setElectrode, placeElectrode, deliver, cellGraph, resetActivity, AP_UNI, cellClass, setColourMode, drawSynapses, colourSynapses, SPRAY, setSpray, sprayAt, wipePaint, captureScene, applyScene, saveScene, STROKES, previewJpeg, openScene, SCENE, INPUT, inputFrame, isToolHand, hands, sticks, toggleMenu, floatMenu, V1COL, setV1Col, AREAS, setAreas, MEN, setMen, buildMen, loadMeninges, menUi, SKEL, setSkel, buildSkel, ATLAS, areaAt, cellAreas, addTracedCells, drawTraced, VEC, setVectors, buildVectors, RBOX, setRegionBoxes, trcFilters, PTS, buildPoints, REC, startRecording, stopRecording, flyTo, flyHit, FLY, KEYS, keysFrame, BLOCK, buildBlock, setPeel, LOOK, setBackground, setGrid, blockFromUI, removeBlock, blkSpecFromUI, tlApplyPeelAt, blkApply, SKL, skelSync, setSkeletons, SKL_AIS, sklAisSync, AIS_COL, setAisColour, aisLineOf, aisSkin, spikeNode, setCred: (c, exp) => { CRED = c; CRED_EXP = exp; } };   // for testing from the console
 if (SCENE_ID) openScene(SCENE_ID);
 else if (CELLS.length) loadAll().then(() => { if (CELLS.some(c => c.traceUsed && c.traceUsed.length)) setTraced(true); });
 /* &traced=1, or an empty collection in a dataset whose cells are tracings: bring in the traced cells
