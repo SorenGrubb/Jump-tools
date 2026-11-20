@@ -16899,7 +16899,7 @@ function tpmSnap(){
        there also?"): which tab was open, the stack's settings, and whether a stack was being taken (from where, and how
        far it had got) -- so the film takes the same stack again and the picture shows its planes as they come in */
     tab: TPM.tab, stack: { n: TPM.stack.n, dz: TPM.stack.dz, from: TPM.stack.from, show: TPM.stack.show, v3: TPM.stack.v3,
-      run: TPM.stack.run ? { z0: TPM.stack.run.z0, n: TPM.stack.run.n, back: TPM.stack.run.back } : null } };
+      run: TPM.stack.run ? { z0: TPM.stack.run.z0, n: TPM.stack.run.n, back: TPM.stack.run.back, i: TPM.stack.run.i } : null } };
 }
 function tpmApplySnap(t){
   if (t === undefined) return;
@@ -16921,7 +16921,9 @@ function tpmApplySnap(t){
       if (q.run && !S.run && TPM.rig){
         S.planes = []; TPM.xz = null; TPM.cur = null;
         S.run = { i: 0, n: q.run.n, z0: q.run.z0, back: q.run.back, gains: TPM.pmt.map(pm => pm.gain) };
-        S.run.i = Math.max(0, Math.min(q.run.n - 1, Math.round((t.depth - q.run.z0) / Math.max(0.1, q.dz))));
+        /* the plane it had got to, as recorded (2026-11-19, Søren: played back, a stack centred on the focus started half
+           way down -- the depth was the focus, not the first plane, at the moment the stack was started) */
+        S.run.i = Math.max(0, Math.min(q.run.n - 1, q.run.i != null ? q.run.i : Math.abs(t.depth - q.run.back) < 0.05 ? 0 : Math.round((t.depth - q.run.z0) / Math.max(0.1, q.dz))));
         tpmStack3d();
       } else if (!q.run && !S.run && (v3 !== S.v3 || show !== S.show)) tpmStack3d();
     }
