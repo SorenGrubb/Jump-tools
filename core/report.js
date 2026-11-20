@@ -301,8 +301,14 @@ function renderMergedReport(returnFn){
       +'</div>'
       +'<p class="hint" style="margin-top:2px">Paste "x, y, z" into the x field &mdash; it splits automatically.</p>'
       +'<div style="margin-top:6px">'+leafSearchHtml(pfx,"Identity — click a suggestion to select (optional; leave blank if unsure)")+'</div>'
-      +'<label style="display:block;font-size:11px;color:var(--mut);margin-top:8px">Certainty (optional)</label>'
-      +'<select class="merged-row-cert" style="width:100%"><option value="">not sure</option><option value="1">1 — not sure</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 — certain</option></select>'
+      /* THE SAME 1-5 BUTTONS AS A SINGLE CELL'S REPORT (2026-11-20, Søren: "When reporting a merged cell, you should
+         choose the certainty of every cell. Let it be button numbers from 1-5 instead, exactly like the certainty of
+         reporting a single cell") -- required for every nucleus given an identity; the value is kept in a hidden
+         input with the old class, so the submit reads it as before */
+      +'<label style="display:block;font-size:11px;color:var(--mut);margin-top:8px">How certain are you of this identification? <span class="cert-required">(required once an identity is chosen)</span></label>'
+      +'<input type="hidden" class="merged-row-cert" value="">'
+      +'<div class="cert-scale merged-row-certscale">'+[1,2,3,4,5].map(n=>'<button type="button" class="cert-opt" data-val="'+n+'">'+n+'</button>').join("")+'</div>'
+      +'<div class="cert-labels"><span>Not sure</span><span>Certain</span></div>'
       /* Root ID + additional root/nucleus IDs + centriole/cilium, added 2026-07-30 per Søren's
          request: since the nucleus DETECTOR merged these into one detection but the underlying
          cell SEGMENTATION is a separate process, each sub-nucleus almost certainly has its own
@@ -346,6 +352,10 @@ function renderMergedReport(returnFn){
     if(prefill&&prefill.pos){xEl.value=prefill.pos[0];yEl.value=prefill.pos[1];zEl.value=prefill.pos[2];}
     refreshRidPanel();
     row.__organWidget=buildMergedRowOrganelleWidget(row.querySelector(".merged-row-organ"));
+    row.querySelectorAll(".merged-row-certscale .cert-opt").forEach(b=>b.addEventListener("click",()=>{
+      row.querySelectorAll(".merged-row-certscale .cert-opt").forEach(x=>x.classList.remove("sel"));
+      b.classList.add("sel");row.querySelector(".merged-row-cert").value=b.dataset.val;
+    }));
     wireLeafSearch(pfx,slug=>{
       const input=document.getElementById(pfx+"Input");
       if(input)input.value=LEAF_NAMES[slug];
@@ -382,6 +392,8 @@ function renderMergedReport(returnFn){
       return{coord:x+","+y+","+z,identified:slug?canonSubmitName(LEAF_NAMES[slug]):"",certainty:row.querySelector(".merged-row-cert").value,subRootId,structures:structures||[]};
     });
     if(!allFilled){alert("Please fill in an approximate x/y/z center for every nucleus listed.");return;}
+    const noCert=subs.map((s,i)=>s.identified&&!s.certainty?i+1:0).filter(Boolean);
+    if(noCert.length){alert("Please choose how certain you are (1–5) for nucleus "+noCert.join(", ")+".");return;}
     if(organIncomplete){alert("Please fill in every coordinate field for each organelle/structure listed (or remove the incomplete row).");return;}
     const commentEl=document.getElementById("mergedComment");
     const comment=commentEl?commentEl.value.trim():"";
