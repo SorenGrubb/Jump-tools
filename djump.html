@@ -969,6 +969,7 @@ window.__ujumpActivateTab=UJ.stepthrough.activateTab;
 <option value="all">All unclassified cells (no MICrONS prediction on file, any verification/report status)</option>
 <option value="verified">Unclassified but verified cells (no MICrONS prediction, but verified by Grubb et al.)</option>
 <option value="reported">User-reported unclassified cells (no MICrONS prediction, not yet verified, but someone has reported an identification)</option>
+<option value="microns">Only MICrONS predictions — the ticked cell types as MICrONS predicted them (no verified, user-reported or unclassified cells)</option>
 <option value="untouched">Totally unclassified cells (no MICrONS prediction, not verified, no report on file — needs attention most)</option>
 </select>
 <p class="hint" id="filterAttnWarning" style="display:none;color:var(--warn);font-weight:600">This dropdown overrides the cell-type checkboxes above — with it set, you're filtering only by attention status (plus glia-limitans/layer/region below, if those are also set), and the checked cell type(s) above are being ignored.</p>
@@ -10943,7 +10944,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
   function updateAttentionUI(){
     const attnEl=document.getElementById("filterAttention");
     const warnEl=document.getElementById("filterAttnWarning");
-    const attnOn=!!(attnEl&&attnEl.value);
+    const attnOn=!!(attnEl&&attnEl.value&&attnEl.value!=="microns");   // "microns" uses the type checkboxes (2026-11-20)
     if(typeBox){typeBox.style.opacity=attnOn?"0.4":"";typeBox.style.pointerEvents=attnOn?"none":"";}
     if(warnEl)warnEl.style.display=(attnOn&&document.querySelectorAll(".ftype:checked").length)?"block":"none";
     // "Include unclassified cells" is a strict subset of the attention dropdown's "all" option
@@ -11182,11 +11183,16 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
   function runFilter(){
     buildAllIdentities();
     const types=activeTypeSet();
-    const attention=document.getElementById("filterAttention")?document.getElementById("filterAttention").value:"";
+    /* ONLY MICrONS PREDICTIONS (2026-11-20, Søren: "it would be nice to also have the option to only include MICrONS
+       predictions, so no verified cells or unclassified cells or user reported cells"): the ticked types, but only
+       cells whose identity is MICrONS's own call -- no own-verified cell, no merged-nucleus breakdown, no cell with a
+       community report on file (even one that agrees), and no unclassified cell */
+    const attnRaw=document.getElementById("filterAttention")?document.getElementById("filterAttention").value:"";
+    const micronsOnly=attnRaw==="microns", attention=micronsOnly?"":attnRaw;
     // See the checkbox's own doc comment near filterAttention in the HTML above -- only acted on
     // in the normal (non-attention) branch below, since the attention dropdown's "all" option
     // already is this population (and more, sliced by verified/reported/untouched).
-    const includeUnclassified=(!attention)&&(document.getElementById("filterIncludeUnclassified")?document.getElementById("filterIncludeUnclassified").checked:false);
+    const includeUnclassified=(!attention)&&!micronsOnly&&(document.getElementById("filterIncludeUnclassified")?document.getElementById("filterIncludeUnclassified").checked:false);
     const vesselSel=fineSel?fineSel.value:"";
     const vesselDistOn=document.getElementById("filterVesselDistOn")?document.getElementById("filterVesselDistOn").checked:false;
     const vesselDistInput=document.getElementById("filterVesselDist");
@@ -11497,6 +11503,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
     } else {
       for(const row of ALL_IDENTITIES){
         if(types.size&&!types.has(row.type))continue;
+        if(micronsOnly&&(row.source!=="micrONS"||row.space!=="N"||row.merged||mergedInfo(row.i)||(REPORTS_CACHE&&REPORTS_CACHE.ids.has(String(NID[row.i])))))continue;
         const m=evalRow(row);
         if(m)out.push(m);
       }
@@ -11520,7 +11527,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
          these specific cells. evalRow()'s own v1On check still gates every row here exactly as
          before (a non-V1 unclassified nucleus is looked up and rejected, not blindly included), so
          this only ever adds genuine V1 members, not unclassified cells in general. */
-      if(includeUnclassified||v1On){
+      if(!micronsOnly&&(includeUnclassified||v1On)){
         for(let i=0;i<N;i++){
           if(NT[i]!==0)continue;
           if(OWN_TYPE[i]!==255)continue; // already included above via ALL_IDENTITIES's own-override row
@@ -12740,7 +12747,7 @@ window.VD11_FIX={"OV_FINE_IDX":"","OV_FINE_VAL":"","ST_FINE_IDX":"","ST_FINE_VAL
   if(runBtn)runBtn.addEventListener("click",async()=>{
     runBtn.disabled=true;runBtn.textContent="Filtering…";
     const attnEl=document.getElementById("filterAttention");
-    if(attnEl&&(attnEl.value==="reported"||attnEl.value==="untouched")){
+    if(attnEl&&(attnEl.value==="reported"||attnEl.value==="untouched"||attnEl.value==="microns")){
       runBtn.textContent="Fetching report list…";
       const rep=await fetchAllReports();
       if(!rep)alert("Couldn't fetch the list of already-reported cells (REPORT_ENDPOINT missing or unreachable) — treating every unclassified cell as \"not reported\" for this filter.");
