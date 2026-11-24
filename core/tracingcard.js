@@ -6983,10 +6983,42 @@ async function padAiOutlineAt(e){
     /* the kinds come from seg.json (the notebook lists the ones it outlines well); nuclei have their own model */
     var known = null; try { known = UJ.organelleseg.kinds ? await UJ.organelleseg.kinds() : null; } catch (_e){}
     known = (known && known.length ? known : ["lysosome", "mitochondria"]).concat(["nucleus", "mitochondrion"]);
-    if (kNow && known.indexOf(kNow.toLowerCase()) < 0){
+    /* A TYPE NOBODY CHOSE FOR THIS STRUCTURE DOES NOT BLOCK IT (2026-11-24, Søren on his phone: "it won't let me
+       click on any organelle ... It says it when I click mitochondria"). A new structure inherits the type box --
+       there Smooth endoplasmic reticulum, left from the last one -- and every click on a mitochondrion was refused
+       for a type he never gave it. Only a type picked for THIS structure (its own row, or the box picked by hand
+       once it has an outline) refuses now; a structure with no outline of its own and an inherited type is
+       outlined, and the AI names it as it does any new structure. When it does refuse, one tap gives the
+       structure a type the AI knows and outlines the spot that was clicked. */
+    var kIdx = String(PAD ? (PAD.inst || 0) : 0), ownK = PAD_INST_KIND[kIdx];
+    var hasOwnRings = PAD ? PAD.rings.some(function(r){ return String(r.inst || 0) === kIdx; }) : false;
+    var chosenHere = !!(ownK && ownK.user) || (!tracingEachOwn() && TRACING_WHAT_USER && hasOwnRings);
+    if (kNow && known.indexOf(kNow.toLowerCase()) < 0 && chosenHere){
       var kName = kNow; try { kName = (tracingKindFor(PAD ? PAD.inst : 0).name || kNow); } catch (_e){}
       var list = known.filter(function(k){ return k !== "mitochondrion"; }).join(", ");
-      padAiOutSay("The AI outline does not know " + kName + " yet (it knows: " + list + ") \u2014 draw it by hand (\u270e or \u270d). Every traced one goes into the next training, and it is offered here once it outlines them well.", true); return;
+      padAiOutSay("This structure is " + kName + ", which the AI outline does not know yet (it knows: " + list + ") — draw it by hand (✎ or ✍), or make it one the AI knows:", true);
+      try {
+        var sayEl = document.getElementById("tracePadAiOutSay"), selW = document.getElementById("tracingWhat");
+        var again = { offsetX: e.offsetX, offsetY: e.offsetY, shiftKey: e.shiftKey };
+        [["mitochondria", "Mitochondria"], ["lysosome", "Lysosome"], ["__nucleus", "Nucleus"]].forEach(function(kv){
+          var has = kv[0] === "__nucleus" || (selW && [].some.call(selW.options, function(o){ return o.value === kv[0]; }));
+          if (!has || !sayEl) return;
+          var bt = document.createElement("button"); bt.type = "button"; bt.className = "idbtn";
+          bt.style.cssText = "width:auto;padding:3px 10px;margin:4px 6px 0 0;font-size:12px"; bt.textContent = kv[1];
+          bt.addEventListener("click", function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            PAD_INST_KIND[kIdx] = Object.assign({ value: kv[0], user: true }, tracingWhatOf(kv[0]));
+            var others = UJ.tracepad.instances(PAD).filter(function(x){ return String(x.inst || 0) !== kIdx; });
+            var each = document.getElementById("tracingEachOwn");
+            if (others.length && each && !each.checked) each.checked = true;      // the others keep their own types
+            else if (!others.length && selW){ selW.value = kv[0]; selW.dispatchEvent(new Event("change")); TRACING_WHAT_USER = true; }
+            try { tracingEachRender(true); padInstances(); } catch (_e){}
+            padAiOutlineAt(again);
+          });
+          sayEl.appendChild(document.createTextNode(" ")); sayEl.appendChild(bt);
+        });
+      } catch (_e){}
+      return;
     }
     var model = padAiModel();
     var o = await UJ.organelleseg.outline([t[0], t[1]], z, { model: model });
