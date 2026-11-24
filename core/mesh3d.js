@@ -513,6 +513,68 @@ UJ.mesh3d = (function(){
         uBgC = gl.getUniformLocation(bgProg, "bg"),
         uLift = gl.getUniformLocation(bgProg, "lift");
     var MAIN = upload(geo);
+    /* ── THE EM SECTION IN THE PICTURE ─────────────────────────────────────────────  2026-11-24
+       Søren: "Would be cool if you could toggle the current EM view from the tracing pad to show in
+       the 3D view." `o.planes` is a list of {corners: four [x,y,z] in absolute nm -- top-left,
+       top-right, bottom-right, bottom-left of the image -- image: a canvas, alpha}. Each is one
+       textured quad in the same frame as the meshes (shifted by geo.mid, as prepare() shifts
+       them), drawn after the solid meshes with depth on, so a tracing passing through the section
+       is cut by it exactly where it crosses. Its own small program: the mesh shader has no texture
+       coordinates and gains nothing by being given some. */
+    var PLANES = [], plProg = null, plA = -1, plT = -1, plMvp = null, plTex = null, plAlpha = null;
+    (o.planes || []).forEach(function(pl){
+      try {
+        if (!pl || !pl.image || !pl.corners || pl.corners.length !== 4) return;
+        if (!plProg){
+          plProg = gl.createProgram();
+          gl.attachShader(plProg, compile(gl, gl.VERTEX_SHADER,
+            "attribute vec3 p; attribute vec2 t; uniform mat4 mvp; varying vec2 vt;"
+            + "void main(){ vt = t; gl_Position = mvp * vec4(p, 1.0); }"));
+          gl.attachShader(plProg, compile(gl, gl.FRAGMENT_SHADER,
+            "precision mediump float; uniform sampler2D tex; uniform float alpha; varying vec2 vt;"
+            + "void main(){ gl_FragColor = vec4(texture2D(tex, vt).rgb, alpha); }"));
+          gl.linkProgram(plProg);
+          if (!gl.getProgramParameter(plProg, gl.LINK_STATUS)){ plProg = null; return; }
+          plA = gl.getAttribLocation(plProg, "p"); plT = gl.getAttribLocation(plProg, "t");
+          plMvp = gl.getUniformLocation(plProg, "mvp"); plTex = gl.getUniformLocation(plProg, "tex");
+          plAlpha = gl.getUniformLocation(plProg, "alpha");
+          gl.useProgram(prog);
+        }
+        var m = geo.mid || [0, 0, 0], P = [];
+        [0, 1, 2, 0, 2, 3].forEach(function(i){ var c = pl.corners[i]; P.push(c[0] - m[0], c[1] - m[1], c[2] - m[2]); });
+        var tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pl.image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        PLANES.push({ pb: buf(new Float32Array(P), gl.ARRAY_BUFFER),
+                      tb: buf(new Float32Array([0,0, 1,0, 1,1, 0,0, 1,1, 0,1]), gl.ARRAY_BUFFER),
+                      tex: tex, alpha: (pl.alpha === undefined ? 1 : pl.alpha) });
+      } catch (_e){}
+    });
+    function drawPlanes(MVP){
+      if (!PLANES.length || !plProg) return;
+      gl.useProgram(plProg);
+      gl.disableVertexAttribArray(aP); gl.disableVertexAttribArray(aN);
+      gl.enableVertexAttribArray(plA); gl.enableVertexAttribArray(plT);
+      gl.uniformMatrix4fv(plMvp, false, MVP);
+      gl.activeTexture(gl.TEXTURE0); gl.uniform1i(plTex, 0);
+      PLANES.forEach(function(q){
+        gl.bindBuffer(gl.ARRAY_BUFFER, q.pb); gl.vertexAttribPointer(plA, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, q.tb); gl.vertexAttribPointer(plT, 2, gl.FLOAT, false, 0, 0);
+        gl.bindTexture(gl.TEXTURE_2D, q.tex);
+        gl.uniform1f(plAlpha, q.alpha);
+        if (q.alpha < 1){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.disable(gl.BLEND);
+      });
+      gl.disableVertexAttribArray(plA); gl.disableVertexAttribArray(plT);
+      gl.useProgram(prog);
+      gl.enableVertexAttribArray(aP); gl.enableVertexAttribArray(aN);
+    }
     var GHOSTS = (o.ghosts || []).map(function(g){
       if (!g || !g.geo || g.geo.empty || !g.geo.idx || !g.geo.idx.length) return null;
       var d = upload(g.geo);
@@ -853,7 +915,8 @@ UJ.mesh3d = (function(){
       var base = tg ? mul(translate(-tg[0] * norm[0], -tg[1] * norm[5], -tg[2] * norm[10]), norm)
                     : norm;
       var mv = mul(translate(0, 0, -view.dist), mul(rotX(view.pitch), mul(rotY(view.yaw), base)));
-      gl.uniformMatrix4fv(uMvp, false, mul(perspective(FOV, w/h, 0.01, 100), mv));
+      var MVP = mul(perspective(FOV, w/h, 0.01, 100), mv);
+      gl.uniformMatrix4fv(uMvp, false, MVP);
       gl.uniformMatrix4fv(uMv, false, mv);
       gl.uniform3fv(uBg, b2);
       /* ── THE CUE IS FOR WHAT IS BEHIND, NOT FOR EVERYTHING ────────────────  2026-10-03
@@ -906,6 +969,7 @@ UJ.mesh3d = (function(){
       });
       gl.disable(gl.BLEND); gl.depthMask(true);
       opaque.forEach(function(it){ drawOne(it.d, it.tint || themeTint(), 1); });
+      drawPlanes(MVP);                      // the EM section, solid, before anything see-through
       if (clear.length){
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

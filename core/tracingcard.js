@@ -3821,7 +3821,27 @@ async function pad3DDraw(){
         if (nc) padVox = [nc.xVox, nc.yVox, nc.zVox];
       }
     } catch (_e){}
-    tracingM3D().show(host, geo, { lead: lead, ghosts: drawn, view: PAD3D_VIEW,
+    /* ── THE SECTION ON THE PAD, IN THE 3D VIEW ───────────────────────────────────  2026-11-24
+       Søren: "Would be cool if you could toggle the current EM view from the tracing pad to show in
+       the 3D view." The pad's captured base -- the EM, with the segmentation if it is on, without the
+       contours -- as one textured quad: its four corners are the pad's four corners through the
+       same toolAt() the clicks use, at the section's depth, in nm as the loft is. Only for the pad's
+       own preview: a pasted link has no section open. */
+    var planes = [];
+    try {
+      var emBox = document.getElementById("tracePadEm");
+      if (emBox && emBox.checked && pad3DTarget() !== "paste" && PAD && PAD_VIEW && PAD_BASE_READY && PAD_BASE){
+        var W = PAD_BASE.width, H = PAD_BASE.height, sc = Math.min(1, 1024 / Math.max(W, H));
+        var img = document.createElement("canvas");
+        img.width = Math.max(1, Math.round(W * sc)); img.height = Math.max(1, Math.round(H * sc));
+        img.getContext("2d").drawImage(PAD_BASE, 0, 0, img.width, img.height);
+        var zNm = PAD.z * res[2];
+        var corner = function(px, py){ var t = PAD_VIEW.toolAt(px, py); return [t[0] * res[0], t[1] * res[1], zNm]; };
+        planes.push({ corners: [corner(0, 0), corner(W, 0), corner(W, H), corner(0, H)], image: img, alpha: 1 });
+        lead += "<br><span class='hint'>The EM section on the pad is shown at its depth (section " + PAD.z + ").</span>";
+      }
+    } catch (_e){ planes = []; }
+    tracingM3D().show(host, geo, { lead: lead, ghosts: drawn, view: PAD3D_VIEW, planes: planes,
                                 tint: pad3DTint(lofts[subject].inst),
                                 label: padLoftName(lofts[subject]),
                                 saveName: (padLoftName(lofts[subject]) || "tracing")
@@ -8081,6 +8101,8 @@ async function padDraw(){
     await padSegOverlay();
     /* THE ONE MOMENT THE CANVAS IS KNOWN TO HOLD A FINISHED SECTION. See padCapture. */
     padCapture();
+    /* the 3D view follows the pad to the new section when it is showing it */
+    try { var emNow = document.getElementById("tracePadEm"); if (emNow && emNow.checked && pad3DWanted()) pad3DSoon(); } catch (_e){}
     padPaint();
     padRings();
     padAiRun();
@@ -8853,6 +8875,8 @@ function wirePad(){
   });
   const pg = document.getElementById("tracePadGhosts");
   if (pg) pg.addEventListener("change", function(){ PAD3D_AT = 0; pad3DDraw(); });
+  const pem = document.getElementById("tracePadEm");
+  if (pem) pem.addEventListener("change", function(){ PAD3D_AT = 0; pad3DDraw(); });
   /* A full redraw rather than a paint on top: the overlay has to be under the captured base (see
      padSegOverlay), and turning it OFF has to get the clean section back, which only a redraw can
      do. The EM chunks are cached, so this is a repaint, not a refetch. */
@@ -9735,8 +9759,8 @@ function tracingCardHtml(){
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
     "     start with those 2?\" (lysosomes, mitochondria). core/organelleseg.js; hidden until seg.json exists. -->",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on a lysosome or a mitochondrion draws its outline on this section, as ordinary contour points in the structure you are drawing. Shift+click a part it missed to add it. Hold alt to drag points or edit by hand without turning this off. Clicking inside an outline that is already there replaces it. Then Follow carries it through the next sections, one step (the step box) at a time, skipping sections that already have it and bridging one missing section, until the organelle ends.\"><input type=\"checkbox\" id=\"tracePadAiOut\"> AI outline (click an organelle)</label>",
-    "<button class=\"idbtn\" id=\"tracePadAiFollowBack\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline backwards, up to 10 steps, until the organelle ends\">&#9664; follow</button>",
-    "<button class=\"idbtn\" id=\"tracePadAiFollowOn\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline forwards, up to 10 steps, until the organelle ends\">follow &#9654;</button>",
+    "<button class=\"idbtn\" id=\"tracePadAiFollowBack\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline up to 10 steps the way z&#9650; steps, until the organelle ends\">&#9650; follow</button>",
+    "<button class=\"idbtn\" id=\"tracePadAiFollowOn\" style=\"flex:0 0 auto\" title=\"Carry the last AI outline up to 10 steps the way z&#9660; steps, until the organelle ends\">&#9660; follow</button>",
     "<span class=\"hint\" id=\"tracePadAiOutSay\" style=\"flex:1 1 100%\"></span>",
     "<!-- A DECODER THE BROWSER DOES NOT HAVE.  2026-10-03. Eyewire II\'s retina serves its finest",
     "     three levels as JPEG XL; Chrome cannot read them, so the pad opens at its 128 nm jpeg level",
@@ -9805,8 +9829,8 @@ function tracingCardHtml(){
     "<button type=\"button\" class=\"padcp\" data-cp=\"undo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Undo (Ctrl+Z)\" aria-label=\"undo\"><span>&#8630;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">undo</span></button>",
 "<button type=\"button\" class=\"padcp\" data-cp=\"redo\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Redo (Ctrl+Alt+Z)\" aria-label=\"redo\"><span>&#8631;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">redo</span></button>",
     "<div class=\"padcpsep\" style=\"grid-column:1/-1;height:1px;background:rgba(255,255,255,.25);margin:2px 0\" title=\"Follow and move\"></div>",
-    "<button type=\"button\" class=\"padcp\" data-cp=\"followback\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline backwards through the sections ([ key)\" aria-label=\"follow &#9664;\"><span>&#8647;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9664;</span></button>",
-    "<button type=\"button\" class=\"padcp\" data-cp=\"followon\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline forwards through the sections (] key)\" aria-label=\"follow &#9654;\"><span>&#8649;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9654;</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"followback\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline through the sections, the way z&#9650; steps ([ key)\" aria-label=\"follow &#9650;\"><span>&#8648;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9650;</span></button>",
+    "<button type=\"button\" class=\"padcp\" data-cp=\"followon\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Follow the last outline through the sections, the way z&#9660; steps (] key)\" aria-label=\"follow &#9660;\"><span>&#8650;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">follow &#9660;</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"zup\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Previous section (, key)\" aria-label=\"z &#8722;\"><span>&#11014;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">z &#8722;</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"zdown\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Next section (. key)\" aria-label=\"z +\"><span>&#11015;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">z +</span></button>",
     "<button type=\"button\" class=\"padcp\" data-cp=\"zoomin\" style=\"padding:0;width:40px;height:40px;font-size:18px;line-height:1;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px\" title=\"Zoom in (+ key)\" aria-label=\"zoom in\"><span>&#65291;</span><span class=\"padcpcap\" style=\"display:none;font-size:8.5px;line-height:1;white-space:nowrap\">zoom in</span></button>",
@@ -9886,6 +9910,7 @@ function tracingCardHtml(){
     "<div class=\"row\" style=\"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap\">",
     "<button class=\"idbtn\" id=\"tracePad3D\" style=\"flex:1 1 auto\" title=\"Lofts the contours you have drawn into a surface and draws it here. Not the export's surface -- that one is built by filling each section and running marching cubes, and it is smoother; this is the same silhouette, now.\">Show it in 3D</button>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Fetches the cell's own mesh for the root ID and the nucleus mesh for the nucleus ID, and draws both see-through around your tracing, so you can see where it sits. Megabytes for a whole neuron, which is why it is a choice.\"><input type=\"checkbox\" id=\"tracePadGhosts\" checked> with the cell and nucleus, see-through</label>",
+    "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"Puts the EM section you are looking at on the pad into the 3D view, at its depth and in its place, so you can see where the tracing passes through it. It follows the pad as you step through the sections.\"><input type=\"checkbox\" id=\"tracePadEm\"> with the EM section</label>",
     "<!-- SMOOTH IN Z.  2026-09-22. Søren: \"Can we also interpolate between polylines in z?\" Off by",
     "     default: on, the preview and the OBJ loft an interpolated set that CURVES between sections",
     "     rather than cutting straight across. It changes no volume and saves nothing.",
