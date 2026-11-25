@@ -7913,7 +7913,8 @@ function padCentList(){
     var head = "<b style=\"color:" + PAD_CENT_COL[q.k] + "\">#" + q.n + " " + PAD_CENT_NAME[q.k] + "</b> " + Math.round(q.p * 100) + "%"
       + " <span class=\"hint\">" + (dz === 0 ? "on this section" : "z" + (dz > 0 ? "+" : "") + dz) + "</span>";
     var tail;
-    if (q.ans) tail = "<span class=\"hint\">" + q.ans + "</span>";
+    if (q.ans) tail = "<span class=\"hint\">" + q.ans + "</span> "
+        + "<button class=\"idbtn\" data-cent=\"undo\" data-i=\"" + i + "\" title=\"Take this answer back (the training leaves it out), then answer again\">undo</button>";
     else if (PAD_CENT_TIP && PAD_CENT_TIP.i === i)
       tail = "<span class=\"hint\">now click the cilium’s tip on the pad (step sections to find its end)</span> "
         + "<button class=\"idbtn\" data-cent=\"notip\" data-i=\"" + i + "\" title=\"File the base alone, as a centriole\">no tip</button> "
@@ -7953,12 +7954,14 @@ function padCentSend(q, kind, verdict, B){
   var sent = (typeof postReport === "function") ? postReport(payload, "Thank you — saved.") : false;
   if (!sent){ padCentSay("Not saved — sign in with Google (top right), then click it again.", true); return false; }
   padCoinAfter(sent, padCentAt(q), { kind: kind, verdict: verdict, was: q.k });
+  q.filed = { kind: kind, A: q.t.slice() };
   return true;
 }
 function padCentAnswer(i, what){
   var q = PAD_CENT.list[i];
   if (!q) return;
   if (what === "go"){ padCentGo(i); return; }
+  if (what === "undo"){ padCentUndo(i); return; }
   if (what === "tipcancel"){ PAD_CENT_TIP = null; padCentList(); padCentSay(""); return; }
   if (what === "cilium_base"){
     PAD_CENT_TIP = { i: i };
@@ -7970,6 +7973,23 @@ function padCentAnswer(i, what){
   if (what === "notip"){ PAD_CENT_TIP = null; ok = padCentSend(q, "centriole", "ok"); if (ok) q.ans = "✓ base saved as a centriole"; }
   else if (what === "centrosome"){ ok = padCentSend(q, "centriole", q.k === "centrosome" ? "ok" : "kind"); if (ok) q.ans = "✓ centrosome"; }
   else if (what === "no"){ ok = padCentSend(q, "not_an_organelle", "no"); if (ok) q.ans = "✗ nothing"; }
+  padCentList(); padPaint();
+}
+/* UNDO (2026-11-25, Søren: a drag was filed as a cilium tip, "I can't correct it"). The same
+   "retract:<kind>" report at the same voxel the organelle corrections use: the training drops one
+   report of that kind there, and the find can be answered again. */
+function padCentUndo(i){
+  var q = PAD_CENT.list[i];
+  if (!q || !q.filed) return;
+  var payload = { type: "organelle_location", timestamp: new Date().toISOString(),
+    nucleusId: "", rootId: "", coord: "",
+    groupId: "centai_" + Date.now().toString(36), subIndex: 1, subCount: 1,
+    kind: "retract:" + q.filed.kind, pointA: q.filed.A.join(","), pointB: "", identified: "",
+    path: "centrosome-ai", source: "centrosome_ai", comment: "undoes an earlier answer at this voxel" };
+  var sent = (typeof postReport === "function") ? postReport(payload, "Undone \u2014 the training will leave that answer out.") : false;
+  if (!sent){ padCentSay("Not undone \u2014 sign in with Google (top right), then try again.", true); return; }
+  q.ans = ""; q.filed = null; q.tip = null;
+  padCentSay("Answer #" + q.n + " undone \u2014 answer it again.");
   padCentList(); padPaint();
 }
 function padCentTipAt(e){
@@ -9061,9 +9081,17 @@ function wirePad(){
       if (e.target !== cv || e.button !== 0) return;
       if (ev === "pointerdown") padAiPass = !!(e.altKey || (PAD_MAC ? e.metaKey : e.ctrlKey));
       if (padAiPass || e.altKey){ if (ev === "click" || ev === "dblclick") padAiPass = false; return; }
-      if (PAD_CENT_TIP){                         // a confirmed cilium base waits for its tip (2026-11-25)
+      /* A CONFIRMED CILIUM BASE WAITS FOR ITS TIP (2026-11-25). Only a plain click is the tip. Søren
+         moved the field with shift+drag while it waited and that drag was filed as the tip -- so a
+         press with shift, ctrl or cmd is left to the pad (moving the field, erasing), and a press
+         that moves more than 5 px before it lifts is a drag, not a tip. */
+      if (PAD_CENT_TIP && !e.shiftKey && !e.ctrlKey && !e.metaKey){
         e.stopImmediatePropagation(); e.preventDefault();
-        if (ev === "pointerup") padCentTipAt(e);
+        if (ev === "pointerdown") PAD_CENT_TIP.down = [e.offsetX, e.offsetY];
+        if (ev === "pointerup"){
+          var d0 = PAD_CENT_TIP.down; PAD_CENT_TIP.down = null;
+          if (d0 && Math.abs(e.offsetX - d0[0]) <= 5 && Math.abs(e.offsetY - d0[1]) <= 5) padCentTipAt(e);
+        }
         return;
       }
       if (PAD_TOOL === "delpt" || PAD_TOOL === "delring"){
