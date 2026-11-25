@@ -8047,8 +8047,10 @@ function padCentPaint(g){
      1. base and tip: from a confirmed find ("trace it"), or clicked here (base, then step sections and
         click the tip);
      2. the skeleton is drawn: bright where it runs within a section of this one, faint elsewhere, and a
-        yellow ring where it crosses this section. Off the cilium somewhere? Click the cilium there:
-        a PIN, and the path is found again through every pin;
+        yellow ring where it crosses this section. It is STRAIGHT from base to tip through your pins
+        (v3, 2026-11-25: the automatic followers swapped onto neighbouring axons -- see ciliumtrace.js).
+        "check ▶" steps 8 sections along it and centres on the ring; where the ring is off the
+        cilium, click the cilium: a PIN, and the line bends through it at once;
      3. ✓ accept outlines it on every section it crosses, as a new "cilium" structure of ordinary
         contours -- edit them like any other and save the tracing as usual.
    Only a plain click is taken (shift/ctrl/cmd and drags go to the pad), as for the finder's tip. */
@@ -8068,7 +8070,8 @@ function padCilBox(){
   var c = PAD_CIL, b = function(v, label, title){ return "<button class=\"idbtn\" data-cil=\"" + v + "\" title=\"" + (title || "") + "\">" + label + "</button>"; };
   var row = [];
   if (c.stage === "skel"){
-    row.push(b("gobase", "go to base"), b("gotip", "go to tip"));
+    row.push(b("gobase", "go to base"), b("back", "\u25c0 check", "Step " + PAD_CIL_STEP + " sections back along the skeleton, centred on it"),
+             b("next", "check \u25b6", "Step " + PAD_CIL_STEP + " sections on along the skeleton, centred on it"), b("gotip", "go to tip"));
     if (c.pins.length) row.push(b("unpin", "remove last pin (" + c.pins.length + ")", "Take back the last pin and find the path again"));
     row.push(b("accept", "✓ accept: outline it", "Outline the cilium on every section the skeleton crosses, as a new cilium structure you can edit and save"));
   }
@@ -8086,24 +8089,39 @@ function padCilStart(base, tip){
   else if (base) padCilSay("Step through the sections and click the cilium’s TIP (where it ends).");
   else padCilSay("Click the BASE of the cilium — where it leaves the mother centriole.");
 }
-async function padCilSkeleton(){
+var PAD_CIL_STEP = 8;
+function padCilSkeleton(){
   var c = PAD_CIL; if (!c) return;
-  c.stage = "busy"; padCilBox();
-  try {
-    var r = await UJ.ciliumtrace.skeleton(c.base, c.tip, c.pins, { say: function(m){ padCilSay(m); } });
-    if (PAD_CIL !== c) return;
-    c.nodes = r.nodes; c.lengthNm = r.lengthNm; c.stage = "skel";
-    var zs = r.nodes.map(function(n){ return n[2]; });
-    padCilSay("Skeleton: " + (r.lengthNm / 1000).toFixed(2) + " µm, sections " + Math.round(Math.min.apply(null, zs)) + "–" + Math.round(Math.max.apply(null, zs))
-      + ". Step through them: the yellow ring is where it crosses this section. Where it is off the cilium, click the cilium there to pin it"
-      + (c.pins.length ? " (" + c.pins.length + " pin" + (c.pins.length > 1 ? "s" : "") + " so far)" : "") + ". Then ✓ accept.");
-  } catch (e){
-    if (PAD_CIL !== c) return;
-    c.stage = c.nodes ? "skel" : "tip";
-    if (!c.nodes) c.tip = null;
-    padCilSay(String(e && e.message || e), true);
-  }
+  var r = UJ.ciliumtrace.straight(c.base, c.tip, c.pins);
+  c.nodes = r.nodes; c.lengthNm = r.lengthNm; c.stage = "skel";
+  var zs = r.nodes.map(function(n){ return n[2]; });
+  padCilSay("Skeleton " + (r.lengthNm / 1000).toFixed(2) + " \u00b5m, sections " + Math.round(Math.min.apply(null, zs)) + "\u2013" + Math.round(Math.max.apply(null, zs))
+    + ", straight from base to tip" + (c.pins.length ? " through your " + c.pins.length + " pin" + (c.pins.length > 1 ? "s" : "") : "")
+    + ". Press check \u25b6 to step along it: wherever the yellow ring is not on the cilium, click the cilium. Then \u2713 accept.");
   padCilBox(); padPaint();
+}
+/* where the skeleton crosses section z (the first crossing), or null */
+function padCilAt(z){
+  var N = PAD_CIL && PAD_CIL.nodes; if (!N) return null;
+  for (var i = 0; i < N.length - 1; i++){
+    var z0 = N[i][2], z1 = N[i + 1][2];
+    if ((z0 - z) * (z1 - z) > 0) continue;
+    var t = z1 === z0 ? 0 : (z - z0) / (z1 - z0);
+    return [N[i][0] + t * (N[i + 1][0] - N[i][0]), N[i][1] + t * (N[i + 1][1] - N[i][1]), z];
+  }
+  return null;
+}
+function padCilStep(dir){
+  var c = PAD_CIL; if (!c || !c.nodes) return;
+  var zb = Math.round(c.base[2]), zt = Math.round(c.tip[2]), lo = Math.min(zb, zt), hi = Math.max(zb, zt);
+  var toTip = zt >= zb ? 1 : -1;
+  var z = Math.max(lo, Math.min(hi, PAD.z + dir * toTip * PAD_CIL_STEP));
+  if (PAD.z < lo || PAD.z > hi) z = dir > 0 ? zb : zt;
+  var q = padCilAt(z) || (Math.abs(z - zb) < Math.abs(z - zt) ? c.base : c.tip);
+  PAD.pending = []; PAD.z = z; PAD_CENTRE = [Math.round(q[0]), Math.round(q[1]), z]; padDraw();
+  var left = Math.abs(zt - z);
+  padCilSay(left ? "Section " + z + ", " + left + " to the tip. Is the yellow ring on the cilium? If not, click the cilium. Then check \u25b6."
+                 : "At the tip. Step back with \u25c0 check if anything needs a pin, or \u2713 accept.");
 }
 function padCilClick(e){
   var c = PAD_CIL; if (!c || !PAD_VIEW) return;
@@ -8111,7 +8129,10 @@ function padCilClick(e){
   t = [Math.round(t[0]), Math.round(t[1]), PAD.z];
   if (c.stage === "base"){ c.base = t; c.stage = "tip"; padCilSay("Base set. Step through the sections and click the cilium’s TIP (where it ends)."); padPaint(); return; }
   if (c.stage === "tip"){ c.tip = t; padPaint(); padCilSkeleton(); return; }
-  if (c.stage === "skel"){ c.pins.push(t); padPaint(); padCilSkeleton(); }
+  if (c.stage === "skel"){
+    c.pins = c.pins.filter(function(p){ return Math.round(p[2]) !== t[2]; });     // one pin per section: the new one
+    c.pins.push(t); padCilSkeleton();
+  }
 }
 async function padCilAccept(){
   var c = PAD_CIL; if (!c || !c.nodes) return;
@@ -8149,6 +8170,8 @@ function padCilAction(v){
   if (v === "gobase") go(c.base);
   else if (v === "gotip") go(c.tip);
   else if (v === "unpin"){ c.pins.pop(); padCilSkeleton(); }
+  else if (v === "next") padCilStep(1);
+  else if (v === "back") padCilStep(-1);
   else if (v === "accept") padCilAccept();
   else if (v === "undoout"){
     padHistNote();
