@@ -7876,6 +7876,7 @@ function padCentSync(){
   if (b) b.style.display = padCentAvailable() ? "" : "none";
 }
 var PAD_CENT_NAME = { centrosome: "centrosome", cilium_base: "cilium base" };
+var PAD_CENT_ORG = { centrosome: "centriole", cilium_base: "cilium" };     // the finder's kinds as organelle reports
 var PAD_CENT_COL = { centrosome: "#ff8a4c", cilium_base: "#4cc3ff" };
 async function padCentRun(){
   if (!PAD || !PAD_VIEW){ padCentSay("Open a section on the pad first.", true); return; }
@@ -7949,11 +7950,14 @@ function padCentSend(q, kind, verdict, B){
     nucleusId: "", rootId: "", coord: "",
     groupId: "centai_" + Date.now().toString(36), subIndex: 1, subCount: 1,
     kind: kind, pointA: q.t[0] + "," + q.t[1] + "," + q.t[2], pointB: B ? B[0] + "," + B[1] + "," + B[2] : "", identified: "",
-    path: "centrosome-ai", source: "centrosome_ai", verdict: verdict, was: q.k,
+    /* path "ai-correction" (2026-11-25): the backend pays coins, checks with other people and undoes only
+       answers on that path (Coins.gs). "was" in the organelle names those checks compare with; source
+       and the comment still say it came from the centrosome finder. */
+    path: "ai-correction", source: "centrosome_ai", verdict: verdict, was: PAD_CENT_ORG[q.k],
     comment: "centrosome finder said " + PAD_CENT_NAME[q.k] + " " + Math.round(q.p * 100) + "% · model trained " + (m.created || "?") };
   var sent = (typeof postReport === "function") ? postReport(payload, "Thank you — saved.") : false;
   if (!sent){ padCentSay("Not saved — sign in with Google (top right), then click it again.", true); return false; }
-  padCoinAfter(sent, padCentAt(q), { kind: kind, verdict: verdict, was: q.k });
+  padCoinAfter(sent, padCentAt(q), { kind: kind, verdict: verdict, was: PAD_CENT_ORG[q.k] });
   q.filed = { kind: kind, A: q.t.slice() };
   return true;
 }
@@ -7985,7 +7989,7 @@ function padCentUndo(i){
     nucleusId: "", rootId: "", coord: "",
     groupId: "centai_" + Date.now().toString(36), subIndex: 1, subCount: 1,
     kind: "retract:" + q.filed.kind, pointA: q.filed.A.join(","), pointB: "", identified: "",
-    path: "centrosome-ai", source: "centrosome_ai", comment: "undoes an earlier answer at this voxel" };
+    path: "ai-correction", source: "centrosome_ai", comment: "undoes an earlier answer at this voxel" };
   var sent = (typeof postReport === "function") ? postReport(payload, "Undone \u2014 the training will leave that answer out.") : false;
   if (!sent){ padCentSay("Not undone \u2014 sign in with Google (top right), then try again.", true); return; }
   q.ans = ""; q.filed = null; q.tip = null;
