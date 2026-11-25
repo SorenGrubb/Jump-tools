@@ -4,15 +4,16 @@
    cilium after the base and tip have been reported. Then the user corrects the skeleton or accepts
    it and then it traces the outline of the cilium."*
 
-     SKELETON  base -> the person's pins -> tip, straight between them (v3; see straight() for why the
-               automatic followers were taken out). A pin is a click on the cilium on some section.
+     SKELETON  the person's clicks along the cilium, base -> points -> tip, straight between them (v3;
+               see straight() for why the automatic followers were taken out).
      OUTLINE   on every section the skeleton crosses, rays from the skeleton (all round where it
                crosses the section, sideways and round the ends where it lies in the section) find
                the cilium's edge -- the strongest dark-to-light step outward between 60 and 220 nm --
                smoothed across neighbouring rays. Ordinary contours: editable like any other.
 
    HOST CONTRACT
-     UJ.ciliumtrace.straight(base, tip, pins) -> { nodes:[[x,y,z] tool voxels, z may be fractional], lengthNm }
+     UJ.ciliumtrace.line([base, point, ..., tip]) -> { nodes:[[x,y,z] tool voxels, z fractional], lengthNm }, in that order
+     UJ.ciliumtrace.straight(base, tip, pins)   -> the same, with the pins sorted along base -> tip
      UJ.ciliumtrace.outline(nodes, { say }) -> Promise<[{ z, points:[[x,y] tool voxels] }]>
    It reads through UJ.emtiles.drawSection at 16 nm, like the pad's other AI tools. */
 var UJ = UJ || {};
@@ -98,6 +99,18 @@ UJ.ciliumtrace = (function(){
      neighbour. So the skeleton is what the person says: base -> pins -> tip, every pin a click on the
      cilium, and the pad steps along it to where it should be checked. A trained cilium model will make
      the first guess later. */
+  /* line(stops): straight segments through the stops IN THE ORDER GIVEN (the pad orders them: the
+     points as they were clicked along the cilium, a later correction where it lengthens the line least) */
+  function line(stops){
+    var P = stops.map(nmOf), out = [P[0]], L = 0;
+    for (var i = 1; i < P.length; i++){
+      var a = P[i - 1], b = P[i], d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), n = Math.max(1, Math.ceil(d / 80));
+      for (var j = 1; j <= n; j++){ var t = j / n; out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]); }
+      L += d;
+    }
+    var r = tres();
+    return { nodes: out.map(function(q){ return [q[0] / r[0], q[1] / r[1], q[2] / r[2]]; }), lengthNm: L };
+  }
   function straight(base, tip, pins){
     var bN = nmOf(base), tN = nmOf(tip), bt = [tN[0] - bN[0], tN[1] - bN[1], tN[2] - bN[2]], bt2 = Math.max(1, bt[0] * bt[0] + bt[1] * bt[1] + bt[2] * bt[2]);
     var along = function(p){ var q = nmOf(p); return ((q[0] - bN[0]) * bt[0] + (q[1] - bN[1]) * bt[1] + (q[2] - bN[2]) * bt[2]) / bt2; };
@@ -212,5 +225,5 @@ UJ.ciliumtrace = (function(){
     return rings;
   }
   function reset(){ BOX = null; }
-  return { straight: straight, outline: outline, reset: reset };
+  return { line: line, straight: straight, outline: outline, reset: reset };
 })();
