@@ -421,6 +421,14 @@ else:
       ));
     }
 
+    /* VESSEL VOLUME IN THIS BOX (2026-11-25): core/vascvolume.js writes the cell, so this notebook, the
+       page's region-box readout and the Excel "Vasculature" sheet count the same way. */
+    if (opts.vascVolume !== false && window.UJ && UJ.vascvolume && UJ.vascvolume.available()){
+      const vc = UJ.vascvolume.notebookCells({boxNM: box, label: opts.boxLabel || "box", csv: "vascular_volume.csv"});
+      cells.push(mdCell(vc[0].md));
+      cells.push(codeCell(vc[1].code));
+    }
+
     cells.push(mdCell((wantEM && wantSeg)
       ? `## Zip and download\n\n2026-08-29, Søren: "we only need the em_cutout_enhanced.tif and the overlay_em_segmentation.tif" -- with both EM and segmentation selected, the overlay makes the raw \`em_cutout.tif\`, \`segmentation_cutout.tif\`, and \`segmentation_label_lookup.csv\` redundant for most purposes, so only \`em_cutout_enhanced.tif\` and \`overlay_em_segmentation.tif\` (plus \`meshes/\` if selected) go in the zip. The raw files are still written to this Colab session's disk by the cells above -- if you want them too, grab them from the file browser in the left sidebar before this runtime disconnects, or just tick their box again... they were never NOT selected, this only changes what's zipped.`
       : `## Zip and download`
@@ -431,8 +439,8 @@ import zipfile
 from google.colab import files
 
 _zip_files = (${(wantEM && wantSeg)
-  ? `"em_cutout_enhanced.tif", "overlay_em_segmentation.tif"`
-  : `"em_cutout.tif", "em_cutout_enhanced.tif", "segmentation_cutout.tif", "segmentation_label_lookup.csv", "overlay_em_segmentation.tif"`})
+  ? `"em_cutout_enhanced.tif", "overlay_em_segmentation.tif", "vascular_volume.csv"`
+  : `"em_cutout.tif", "em_cutout_enhanced.tif", "segmentation_cutout.tif", "segmentation_label_lookup.csv", "overlay_em_segmentation.tif", "vascular_volume.csv"`})
 with zipfile.ZipFile("region_download.zip", "w") as zf:
     for fn in _zip_files:
         if os.path.exists(fn):

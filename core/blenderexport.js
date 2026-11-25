@@ -503,6 +503,20 @@ UJ.blender = (function(){
          against the TEST cells and the test box, and look perfectly plausible doing it. */
       throw new Error("blenderexport: expected 1 params cell, replaced " + replaced);
     }
+    /* VESSEL VOLUME IN THIS BOX (2026-11-25). Added here, not in NB_SOURCE, so regenerating the notebook
+       from make_colab_notebook.py cannot drop it: core/vascvolume.js writes the cell, the same count as
+       the page's region-box readout and the Excel "Vasculature" sheet. After the vessel mesh cell, and
+       independent of the Vasculature tick. The CSV lands in /content/out (so in the Blender zip) and is
+       also downloaded on its own. */
+    if (opts.vascVolume !== false && opts.boxNM && window.UJ && UJ.vascvolume && UJ.vascvolume.available()){
+      const vc = UJ.vascvolume.notebookCells({boxNM: opts.boxNM, label: opts.boxLabel || "box",
+                                              csv: "/content/out/vascular_volume.csv", download: true});
+      let at = nb.cells.findIndex(c => c.metadata && c.metadata.ujump === "vasc");
+      if (at < 0) at = Math.max(0, nb.cells.length - 2);
+      nb.cells.splice(at + 1, 0,
+        {cell_type: "markdown", metadata: {}, source: srcLines(vc[0].md)},
+        {cell_type: "code", execution_count: null, metadata: {ujump: "vascvol"}, outputs: [], source: srcLines(vc[1].code)});
+    }
     nb.metadata = Object.assign({}, nb.metadata, {
       colab: {name: filenameFor(opts), provenance: []}
     });

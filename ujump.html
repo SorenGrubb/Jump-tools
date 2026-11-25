@@ -646,6 +646,9 @@ function ujVrPointsSay(el, msg, bad){
 <script>UJ.centrosomeml.configure({ base: "models/centrosome/minnie65/" });</script>
 <!-- TRACE A CILIUM, 2026-11-25 -- core/ciliumtrace.js: base + tip -> skeleton (pinned by hand where wrong) -> outlines. No model. -->
 <script src="core/ciliumtrace.js"></script>
+<!-- VESSEL VOLUME IN A BOX, 2026-11-25 -- core/vascvolume.js: Wan & Wei TriSAM vessel voxels inside each region box,
+     sorted by kind with data/vasc_net/v1. Region-box panel readout, the "Vasculature" sheet, and both notebooks. -->
+<script src="core/vascvolume.js"></script>
 <script>UJ.organelleseg.configure({ base: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>
 <script src="core/ontology.js"></script>
@@ -1912,6 +1915,7 @@ for at least one second</div>
 <div id="regionBoxes"></div>
 <button type="button" class="idbtn" id="regionAddBox" style="margin-top:8px;padding:6px 10px;font-size:13px;width:auto">+ Add another box</button>
 <div id="regionViz"></div>
+<div style="margin-top:8px"><button type="button" class="idbtn" id="regionVascVol" style="padding:6px 10px;font-size:13px;width:auto" title="The blood-vessel volume inside each box, from Wan &amp; Wei's TriSAM vessel segmentation of minnie65 (256 x 256 x 1280 nm voxels), split by vessel kind with the traced vessel network. TriSAM's label follows the lumen, so this is luminal volume, without the vessel wall. The same numbers go into the &quot;Vasculature&quot; sheet of the Excel download and into the Colab notebooks for a box.">&#129656; Vessel volume in the box(es)</button> <span class="hint" id="regionVascVolSay"></span><div id="regionVascVolOut" style="font-size:12px"></div></div>
 </div>
 </details>
 <details class="rv-panel filter-section" id="filterSecViewer" style="margin-top:22px">
@@ -12895,6 +12899,30 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
     });
     return boxes;
   }
+  /* ── THE VASCULATURE SHEET ─────────────────────────────────────────────────────  2026-11-25
+     Søren: "if you download an excel sheet with the cells within that ROI it should have a sheet with
+     the total vascular volume and volumes of different vessel segments." Only with region boxes on:
+     one block per box -- the box total, each vessel kind, each traced vessel segment -- from
+     core/vascvolume.js, the same numbers as the panel's "Vessel volume" button and the notebooks.
+     A box that cannot be read is said, and the cells sheet is written anyway. */
+  async function addVascVolumeSheet(wb,result,say){
+    if(!result||!result.regionActive||!(window.UJ&&UJ.vascvolume)||!UJ.vascvolume.available())return "";
+    const boxes=getRegionBoxesNM();
+    if(!boxes.length)return "";
+    const res=[];let err="";
+    for(const b of boxes){
+      try{
+        const r=await UJ.vascvolume.measure(b,{say:m=>say("Box "+b.n+": "+m)});
+        res.push({label:"Box "+b.n+" ("+[b.x1,b.y1,b.z1].join(", ")+" → "+[b.x2,b.y2,b.z2].join(", ")+")",r});
+      }catch(e){ err+="Vessel volume for Box "+b.n+" could not be read ("+(e&&e.message||e)+"), so it is not in the Vasculature sheet. "; }
+    }
+    if(res.length){
+      const ws=XLSX.utils.aoa_to_sheet(UJ.vascvolume.sheetRows(res));
+      ws["!cols"]=[{wch:34},{wch:14},{wch:46},{wch:9},{wch:13},{wch:11},{wch:11},{wch:10},{wch:10},{wch:10},{wch:13},{wch:16},{wch:40}];
+      XLSX.utils.book_append_sheet(wb,ws,"Vasculature");
+    }
+    return err;
+  }
   /* ── SPATIAL GROUP: WHAT A CELL SITS BESIDE ─────────────────────────────────────────  2026-11-05
      Gary Morris: microglia beside a neuron's soma (del Río-Hortega's "neuronal satellites", 1919) are not
      freely roaming, and Hesham's and Rukaya's vessel groups (<5, 5-15, 15+ µm) may mix them. Wanted:
@@ -15225,6 +15253,12 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
          exactly what it downloaded before. See
          src/the_organelle_sheet_says_what_shape_and_how_far.py. */
       addTracedOrganelleSheet(wb,lastResult.matches,function(msg){dlBtn.textContent=msg;})
+        /* and the vessel volume of each region box (2026-11-25, addVascVolumeSheet) */
+        .then(function(note){
+          return addVascVolumeSheet(wb,lastResult,function(msg){dlBtn.textContent=msg;})
+            .catch(function(e){return "Vasculature sheet: "+(e&&e.message||e);})
+            .then(function(n2){return [note,n2].filter(Boolean).join(" ");});
+        })
         .then(function(note){
           XLSX.writeFile(wb,"microns_filtered_cells.xlsx");
           dlBtn.disabled=false;dlBtn.textContent=dlOrigText;
@@ -15336,6 +15370,8 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
   function drawRegionViz(){
     const c=document.getElementById("regionViz");
     if(!c)return;
+    const vvo=document.getElementById("regionVascVolOut");          // a readout for boxes that changed is gone
+    if(vvo&&vvo.innerHTML){vvo.innerHTML="";const vvs=document.getElementById("regionVascVolSay");if(vvs)vvs.textContent="";}
     const on=document.getElementById("filterRegionOn");
     if(!on||!on.checked){c.innerHTML="";return;}
     const rows=Array.from(document.querySelectorAll("#regionBoxes .rbox-row"));
@@ -15687,6 +15723,24 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
   addRegionBoxRow(); // seed with one empty box row so the panel isn't blank on load
   const regionAddBtn=document.getElementById("regionAddBox");
   if(regionAddBtn)regionAddBtn.addEventListener("click",addRegionBoxRow);
+  /* VESSEL VOLUME IN THE BOX(ES), 2026-11-25 -- core/vascvolume.js; see addVascVolumeSheet. */
+  const vvBtn=document.getElementById("regionVascVol");
+  if(vvBtn)vvBtn.addEventListener("click",async()=>{
+    const say=document.getElementById("regionVascVolSay"),out=document.getElementById("regionVascVolOut");
+    if(!(window.UJ&&UJ.vascvolume)){say.textContent="The vessel-volume module didn't load. Reload the page (ctrl-shift-R).";return;}
+    if(!UJ.vascvolume.available()){say.textContent="This dataset has no TriSAM vessel segmentation.";return;}
+    const boxes=getRegionBoxesNM();
+    if(!boxes.length){say.textContent="Tick \u201cLimit to region(s)\u201d and fill in both corners of a box first.";return;}
+    vvBtn.disabled=true;out.innerHTML="";
+    try{
+      for(const b of boxes){
+        const r=await UJ.vascvolume.measure(b,{say:m=>{say.textContent="Box "+b.n+": "+m;}});
+        out.insertAdjacentHTML("beforeend",UJ.vascvolume.html("Box "+b.n,r));
+      }
+      say.innerHTML='From <a href="https://doi.org/10.1109/JBHI.2025.3576643" target="_blank" rel="noopener">Wan &amp; Wei 2025</a> (TriSAM). The same numbers go into the \u201cVasculature\u201d sheet of the Excel download.';
+    }catch(e){ say.textContent="Could not read the vessel segmentation: "+(e&&e.message||e); }
+    finally{ vvBtn.disabled=false; }
+  });
   const regionOnEl=document.getElementById("filterRegionOn");
   if(regionOnEl)regionOnEl.addEventListener("change",()=>{drawRegionViz();updateRegionUI();});
 })();
