@@ -1,0 +1,115 @@
+{
+ "kind": "centrosome_finder",
+ "version": 1,
+ "dataset": "minnie65",
+ "created": "2026-11-25",
+ "input": {
+  "name": "em",
+  "nm": 16,
+  "zOffsets": [
+   -10,
+   -8,
+   -6,
+   -4,
+   -2,
+   0,
+   2,
+   4,
+   6,
+   8,
+   10
+  ],
+  "zNm": 40,
+  "raw": "0-255, the model normalises itself",
+  "multipleOf": 16,
+  "missingSection": "copy the nearest good section towards the centre"
+ },
+ "output": {
+  "name": "maps",
+  "stride": 4,
+  "heads": [
+   "centrosome",
+   "cilium_base"
+  ],
+  "cellCentre": 1.5,
+  "sigmoid": true
+ },
+ "peaks": {
+  "nmsNm": 600.0,
+  "hitNm": 600.0,
+  "zStepSections": 2,
+  "searchDzSections": 24
+ },
+ "thresholds": {
+  "centrosome": 0.75,
+  "cilium_base": 0.75
+ },
+ "eval": {
+  "centrosome": {
+   "threshold": 0.75,
+   "found": 0.693,
+   "median_error_nm": 113,
+   "extra_peaks_per_window": 0.21,
+   "peaks_at_the_other_kind": 0.0,
+   "windows": 101,
+   "found_by_source": {
+    "community": [
+     0.6,
+     5
+    ],
+    "own": [
+     0.698,
+     96
+    ]
+   }
+  },
+  "cilium_base": {
+   "threshold": 0.75,
+   "found": 0.716,
+   "median_error_nm": 119,
+   "extra_peaks_per_window": 0.19,
+   "peaks_at_the_other_kind": 0.01,
+   "windows": 67,
+   "found_by_source": {
+    "community": [
+     0.333,
+     3
+    ],
+    "own": [
+     0.734,
+     64
+    ]
+   }
+  }
+ },
+ "crops": {
+  "centrosome": {
+   "f1": 0.87123745819398,
+   "thr": 0.6,
+   "precision": 0.8555008210180624,
+   "recall": 0.8875638841567292,
+   "n": 587
+  },
+  "cilium_base": {
+   "f1": 0.8125,
+   "thr": 0.65,
+   "precision": 0.8666666666666667,
+   "recall": 0.7647058823529411,
+   "n": 374
+  }
+ },
+ "training": {
+  "marks": {
+   "centrosome": 13065,
+   "cilium_base": 4554
+  },
+  "trainCrops": 12935,
+  "sigmaXyNm": 200.0,
+  "sigmaZNm": 300.0,
+  "fingerprint": "889f8526ab"
+ },
+ "padThresholds": {
+  "centrosome": 0.7,
+  "cilium_base": 0.7
+ }
+}

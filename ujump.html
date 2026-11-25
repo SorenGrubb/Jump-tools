@@ -640,6 +640,10 @@ function ujVrPointsSay(el, msg, bad){
 <!-- AI OUTLINES, 2026-10-31 -- core/organelleseg.js; seg.onnx + seg.json beside the suggestion model,
      trained by organelle_outline_train.ipynb. No files, no tick. -->
 <script src="core/organelleseg.js"></script>
+<!-- FIND CENTRIOLES (AI), 2026-11-25 -- core/centrosomeml.js; models/centrosome/minnie65/ (model.onnx +
+     model.json), trained by centrosome_ml_train_v1.ipynb on 11 sections at once. No files, no button. -->
+<script src="core/centrosomeml.js"></script>
+<script>UJ.centrosomeml.configure({ base: "models/centrosome/minnie65/" });</script>
 <script>UJ.organelleseg.configure({ base: "models/organelles/minnie65/" });</script>
 <script src="core/tracingcard.js"></script>
 <script src="core/ontology.js"></script>

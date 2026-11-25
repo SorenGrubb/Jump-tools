@@ -7850,6 +7850,170 @@ function padAiFixSend(t, kind, verdict, was, p){
   padPaint();
   padAiSay(UJ.organelleml.summary());
 }
+/* ── FIND CENTRIOLES (AI) ────────────────────────────────────────────────────────  2026-11-25
+   Søren: the organelle model could not learn centrioles, because his marks sit BETWEEN the two
+   centrioles of a centrosome and the two lie at an angle; "Could we somehow make a different way of
+   analysing the planes above and below ...?" -- and for cilia, learn the base where it leaves the
+   mother centriole. core/centrosomeml.js runs a model that looks at 11 sections at once, over what
+   the pad shows and +-1 um around this section. Each find is listed and drawn on the pad (solid within
+   2 sections, dashed with its depth further away); you go to it and answer:
+     ✓ centrosome   -> an ordinary centriole report at the find (what you would have clicked yourself)
+     ✓ cilium base  -> then click the cilium's TIP (step sections to find its end): an ordinary cilium
+                       report base -> tip. "no tip" files the base as a centriole.
+     ✗ nothing      -> "not an organelle", kept for the next training round (it is exactly what the
+                       model has to unlearn).
+   Answers carry source "centrosome_ai" and what the model said, like the organelle corrections. */
+var PAD_CENT = { list: [], busy: false }, PAD_CENT_TIP = null;
+function padCentAvailable(){ return !!(window.UJ && UJ.centrosomeml && UJ.centrosomeml.available()); }
+function padCentSay(msg, bad){
+  var el = document.getElementById("tracePadCentSay");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = bad ? "#f85149" : "";
+}
+function padCentSync(){
+  var b = document.getElementById("tracePadCent");
+  if (b) b.style.display = padCentAvailable() ? "" : "none";
+}
+var PAD_CENT_NAME = { centrosome: "centrosome", cilium_base: "cilium base" };
+var PAD_CENT_COL = { centrosome: "#ff8a4c", cilium_base: "#4cc3ff" };
+async function padCentRun(){
+  if (!PAD || !PAD_VIEW){ padCentSay("Open a section on the pad first.", true); return; }
+  if (PAD_CENT.busy){ UJ.centrosomeml.cancel(); PAD_CENT.busy = false; padCentSay("Stopped."); padCentButton(); return; }
+  PAD_CENT.busy = true; PAD_CENT_TIP = null; padCentButton();
+  var view = PAD_VIEW, z = PAD.z;
+  try {
+    var f = await UJ.centrosomeml.find(view, z, { say: function(m){ padCentSay(m); } });
+    if (f == null) return;
+    PAD_CENT.list = f.map(function(q, i){ return { k: q.k, p: q.p, t: q.t, n: i + 1, ans: "" }; });
+    PAD_CENT.z = z;
+    padCentList(); padPaint();
+    var nc = f.filter(function(q){ return q.k === "centrosome"; }).length, nb = f.length - nc;
+    padCentSay(f.length
+      ? "Found " + nc + " centrosome" + (nc === 1 ? "" : "s") + " and " + nb + " cilium base" + (nb === 1 ? "" : "s")
+        + " within 1 µm of this section. Go to each and say whether it is right. (Suggestions: about 8 in 10 real ones are found.)"
+      : "Nothing found here within 1 µm of this section. (It finds about 8 in 10, so look yourself too.)");
+  } catch (e){
+    padCentSay(String(e && e.message || e), true);
+  } finally {
+    PAD_CENT.busy = false; padCentButton();
+  }
+}
+function padCentButton(){
+  var b = document.getElementById("tracePadCent");
+  if (b) b.innerHTML = PAD_CENT.busy ? "&#9632; stop" : "&#127919; find centrioles (AI)";
+}
+function padCentList(){
+  var host = document.getElementById("tracePadCentList");
+  if (!host) return;
+  var L = PAD_CENT.list;
+  host.style.display = L.length ? "" : "none";
+  host.innerHTML = L.map(function(q, i){
+    var dz = q.t[2] - (PAD ? PAD.z : q.t[2]);
+    var head = "<b style=\"color:" + PAD_CENT_COL[q.k] + "\">#" + q.n + " " + PAD_CENT_NAME[q.k] + "</b> " + Math.round(q.p * 100) + "%"
+      + " <span class=\"hint\">" + (dz === 0 ? "on this section" : "z" + (dz > 0 ? "+" : "") + dz) + "</span>";
+    var tail;
+    if (q.ans) tail = "<span class=\"hint\">" + q.ans + "</span>";
+    else if (PAD_CENT_TIP && PAD_CENT_TIP.i === i)
+      tail = "<span class=\"hint\">now click the cilium’s tip on the pad (step sections to find its end)</span> "
+        + "<button class=\"idbtn\" data-cent=\"notip\" data-i=\"" + i + "\" title=\"File the base alone, as a centriole\">no tip</button> "
+        + "<button class=\"idbtn\" data-cent=\"tipcancel\" data-i=\"" + i + "\">cancel</button>";
+    else tail = "<button class=\"idbtn\" data-cent=\"go\" data-i=\"" + i + "\" title=\"Centre the pad on it, on its section\">go</button> "
+        + "<button class=\"idbtn\" data-cent=\"centrosome\" data-i=\"" + i + "\" title=\"Yes: a centrosome (one or both centrioles). Saved as a centriole report.\">✓ centrosome</button> "
+        + "<button class=\"idbtn\" data-cent=\"cilium_base\" data-i=\"" + i + "\" title=\"Yes: where a cilium leaves its mother centriole. Then click the tip.\">✓ cilium base</button> "
+        + "<button class=\"idbtn\" data-cent=\"no\" data-i=\"" + i + "\" title=\"Nothing of the kind here. Kept for the next training round.\">✗ nothing</button>";
+    return "<div style=\"display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0\">" + head + " " + tail + "</div>";
+  }).join("");
+}
+function padCentGo(i){
+  var q = PAD_CENT.list[i];
+  if (!q || !PAD) return;
+  PAD.pending = [];
+  PAD.z = q.t[2];
+  PAD_CENTRE = [q.t[0], q.t[1], PAD.z];
+  padDraw();
+  setTimeout(padCentList, 0);
+}
+function padCentAt(q){
+  /* where the coin ring starts: the find on screen, or nowhere when it is off the pad */
+  var cv = document.getElementById("tracePad");
+  if (!cv || !PAD_VIEW) return null;
+  var s = PAD_VIEW.pxAt(q.t), r = cv.getBoundingClientRect();
+  if (s[0] < 0 || s[1] < 0 || s[0] > PAD_VIEW.w || s[1] > PAD_VIEW.h) return null;
+  return { x: r.left + s[0] * r.width / cv.width, y: r.top + s[1] * r.height / cv.height };
+}
+function padCentSend(q, kind, verdict, B){
+  var m = UJ.centrosomeml.meta() || {};
+  var payload = { type: "organelle_location", timestamp: new Date().toISOString(),
+    nucleusId: "", rootId: "", coord: "",
+    groupId: "centai_" + Date.now().toString(36), subIndex: 1, subCount: 1,
+    kind: kind, pointA: q.t[0] + "," + q.t[1] + "," + q.t[2], pointB: B ? B[0] + "," + B[1] + "," + B[2] : "", identified: "",
+    path: "centrosome-ai", source: "centrosome_ai", verdict: verdict, was: q.k,
+    comment: "centrosome finder said " + PAD_CENT_NAME[q.k] + " " + Math.round(q.p * 100) + "% · model trained " + (m.created || "?") };
+  var sent = (typeof postReport === "function") ? postReport(payload, "Thank you — saved.") : false;
+  if (!sent){ padCentSay("Not saved — sign in with Google (top right), then click it again.", true); return false; }
+  padCoinAfter(sent, padCentAt(q), { kind: kind, verdict: verdict, was: q.k });
+  return true;
+}
+function padCentAnswer(i, what){
+  var q = PAD_CENT.list[i];
+  if (!q) return;
+  if (what === "go"){ padCentGo(i); return; }
+  if (what === "tipcancel"){ PAD_CENT_TIP = null; padCentList(); padCentSay(""); return; }
+  if (what === "cilium_base"){
+    PAD_CENT_TIP = { i: i };
+    if (!PAD || PAD.z !== q.t[2]) padCentGo(i); else padCentList();
+    padCentSay("Cilium base #" + q.n + ": step through the sections and click where the cilium ends. Clicks do not draw until then.");
+    return;
+  }
+  var ok;
+  if (what === "notip"){ PAD_CENT_TIP = null; ok = padCentSend(q, "centriole", "ok"); if (ok) q.ans = "✓ base saved as a centriole"; }
+  else if (what === "centrosome"){ ok = padCentSend(q, "centriole", q.k === "centrosome" ? "ok" : "kind"); if (ok) q.ans = "✓ centrosome"; }
+  else if (what === "no"){ ok = padCentSend(q, "not_an_organelle", "no"); if (ok) q.ans = "✗ nothing"; }
+  padCentList(); padPaint();
+}
+function padCentTipAt(e){
+  var T = PAD_CENT_TIP, q = T && PAD_CENT.list[T.i];
+  if (!q || !PAD_VIEW){ PAD_CENT_TIP = null; return; }
+  var tip = PAD_VIEW.toolAt(e.offsetX, e.offsetY).slice(); tip[2] = PAD.z;
+  tip = [Math.round(tip[0]), Math.round(tip[1]), tip[2]];
+  if (padCentSend(q, "cilium", q.k === "cilium_base" ? "ok" : "kind", tip)){
+    q.ans = "✓ cilium, tip at z" + (tip[2] - q.t[2] >= 0 ? "+" : "") + (tip[2] - q.t[2]);
+    q.tip = tip;
+    PAD_CENT_TIP = null;
+    padCentSay("Cilium saved, base → tip.");
+  }
+  padCentList(); padPaint();
+}
+function padCentPaint(g){
+  if (!PAD_CENT.list.length || !PAD_VIEW || !PAD) return;
+  if (PAD_CENT.listZ !== PAD.z){ PAD_CENT.listZ = PAD.z; padCentList(); }      // the list's "z+4" follows the pad
+  g.save();
+  g.font = "600 11px system-ui, sans-serif"; g.textBaseline = "middle";
+  var labels = [];          // a centrosome and its own cilium base sit within ~300 nm: labels one under the other
+  PAD_CENT.list.forEach(function(q){
+    var s = PAD_VIEW.pxAt(q.t);
+    if (s[0] < -10 || s[1] < -10 || s[0] > PAD_VIEW.w + 10 || s[1] > PAD_VIEW.h + 10) return;
+    var dz = q.t[2] - PAD.z, near = Math.abs(dz) <= 2;
+    var col = q.ans ? "#ffffff" : PAD_CENT_COL[q.k];
+    g.globalAlpha = near ? 1 : 0.6;
+    g.beginPath(); g.arc(s[0], s[1], (near ? 11 : 8) + (q.k === "cilium_base" ? 4 : 0), 0, 6.2832);
+    g.setLineDash([]); g.lineWidth = 3.5; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
+    if (!near || q.ans) g.setLineDash([3, 2]);
+    g.lineWidth = 2; g.strokeStyle = col; g.stroke(); g.setLineDash([]);
+    var lbl = (q.ans ? q.ans : "#" + q.n + " " + PAD_CENT_NAME[q.k] + " " + Math.round(q.p * 100) + "%") + (near ? "" : " (z" + (dz > 0 ? "+" : "") + dz + ")");
+    var ly = s[1];
+    while (labels.some(function(l){ return Math.abs(l[1] - ly) < 13 && Math.abs(l[0] - s[0]) < 160; })) ly += 13;
+    labels.push([s[0], ly]);
+    g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.8)"; g.strokeText(lbl, s[0] + 18, ly);
+    g.fillStyle = col; g.fillText(lbl, s[0] + 18, ly);
+    if (q.tip && q.tip[2] === PAD.z){
+      var e = PAD_VIEW.pxAt(q.tip);
+      g.beginPath(); g.moveTo(s[0], s[1]); g.lineTo(e[0], e[1]); g.strokeStyle = "#ffffff"; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
+    }
+  });
+  g.restore();
+}
 async function padAiRun(){
   padAiFixClose();                 // a form about the last section has nothing to say about this one
   if (!padAiOn() || !PAD_VIEW) return;
@@ -8187,6 +8351,7 @@ function padPaint(){
   const px = function(t){ return PAD_VIEW.pxAt(t); };
   /* The model's marks UNDER the contours: what you draw is the answer, what it guessed is a hint. */
   if (typeof padAiOn === "function" && padAiOn()) UJ.organelleml.paint(g, PAD_VIEW, PAD.z);
+  if (typeof padCentPaint === "function") padCentPaint(g);                  // centrosome finds (2026-11-25)
   /* Contours already closed on THIS section, then the one being drawn.
 
      ONE PATH PER STRUCTURE, FILLED EVEN-ODD, since 2026-09-19 (Søren: *"If I draw one contour
@@ -8896,6 +9061,11 @@ function wirePad(){
       if (e.target !== cv || e.button !== 0) return;
       if (ev === "pointerdown") padAiPass = !!(e.altKey || (PAD_MAC ? e.metaKey : e.ctrlKey));
       if (padAiPass || e.altKey){ if (ev === "click" || ev === "dblclick") padAiPass = false; return; }
+      if (PAD_CENT_TIP){                         // a confirmed cilium base waits for its tip (2026-11-25)
+        e.stopImmediatePropagation(); e.preventDefault();
+        if (ev === "pointerup") padCentTipAt(e);
+        return;
+      }
       if (PAD_TOOL === "delpt" || PAD_TOOL === "delring"){
         e.stopImmediatePropagation(); e.preventDefault();
         if (ev === "pointerup") padCpContext(e, PAD_TOOL === "delring");
@@ -9044,6 +9214,17 @@ function wirePad(){
       padAiSay("Correcting: click a mark to say what it is, or click an organelle the model missed. "
         + "Clicks do not draw until you turn this off.");
     } else padAiSay(UJ.organelleml.summary());
+  });
+  const pcb = document.getElementById("tracePadCent");
+  if (pcb){
+    pcb.addEventListener("click", function(){ padCentRun(); });
+    padCentSync();
+    if (window.UJ && UJ.centrosomeml) UJ.centrosomeml.whenAvailable().then(padCentSync);
+  }
+  const pcl = document.getElementById("tracePadCentList");
+  if (pcl) pcl.addEventListener("click", function(e){
+    const b = e.target.closest && e.target.closest("[data-cent]");
+    if (b) padCentAnswer(Number(b.getAttribute("data-i")), b.getAttribute("data-cent"));
   });
   const pai = document.getElementById("tracePadAi");
   if (pai){
@@ -9754,6 +9935,11 @@ function tracingCardHtml(){
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"The suggestions look at this section AND the sections about 80 nm above and below, and average what the model sees on the three: a mark the neighbouring sections agree with keeps its score, a one-section flicker loses half of it. Three runs instead of one. (2026-11-06)\"><input type=\"checkbox\" id=\"tracePadAi3d\"> use the sections above and below</label>",
     "<label style=\"font-size:12px;display:flex;align-items:center;gap:6px;flex:0 0 auto\" title=\"While this is on, a click on the pad does not draw: click one of the model's marks to say whether it is right, what it really is, or that there is nothing there -- or click an organelle it missed and name it. Each answer is saved (signed in) as an organelle report and used the next time the model is trained. Turn it off to trace or pan again.\"><input type=\"checkbox\" id=\"tracePadAiFix\"> correct it (click a mark, or a miss)</label>",
     "<button class=\"idbtn\" id=\"tracePadVerify\" style=\"flex:0 0 auto\" title=\"Other people's corrections of the AI and new finds wait for somebody else to confirm them before they earn points. For people who know this tissue well; you answer blind. 1 point for every 5 answers.\">&#128270; Check others' finds</button>",
+    "<!-- FIND CENTRIOLES (AI).  2026-11-25. core/centrosomeml.js: a model that looks at 11 sections at once finds",
+    "     centrosomes and cilium bases within 1 um of this section; you confirm or reject each. Hidden without a model. -->",
+    "<button class=\"idbtn\" id=\"tracePadCent\" style=\"display:none;flex:0 0 auto\" title=\"Searches what the pad shows, from 1 \u00b5m below this section to 1 \u00b5m above, for centrosomes (the pair of centrioles) and for the base of primary cilia, with a model that looks at 11 sections at once. It runs in your browser (about 14 MB, once). On tissue it never saw it found about 8 in 10, about 120 nm from where an expert put the mark, with fewer than one wrong find per 4 \u00b5m window. Go to each find and say what it is; your answers are saved as ordinary reports and teach the next model.\">&#127919; find centrioles (AI)</button>",
+    "<span class=\"hint\" id=\"tracePadCentSay\" style=\"flex:1 1 100%\"></span>",
+    "<div id=\"tracePadCentList\" style=\"flex:1 1 100%;display:none;font-size:12px\"></div>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
