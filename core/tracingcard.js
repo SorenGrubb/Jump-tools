@@ -7863,7 +7863,7 @@ function padAiFixSend(t, kind, verdict, was, p){
      ✗ nothing      -> "not an organelle", kept for the next training round (it is exactly what the
                        model has to unlearn).
    Answers carry source "centrosome_ai" and what the model said, like the organelle corrections. */
-var PAD_CENT = { list: [], busy: false }, PAD_CENT_TIP = null;
+var PAD_CENT = { list: [], busy: false }, PAD_CENT_TIP = null, PAD_CLICK_DOWN = null;
 function padCentAvailable(){ return !!(window.UJ && UJ.centrosomeml && UJ.centrosomeml.available()); }
 function padCentSay(msg, bad){
   var el = document.getElementById("tracePadCentSay");
@@ -7915,7 +7915,8 @@ function padCentList(){
       + " <span class=\"hint\">" + (dz === 0 ? "on this section" : "z" + (dz > 0 ? "+" : "") + dz) + "</span>";
     var tail;
     if (q.ans) tail = "<span class=\"hint\">" + q.ans + "</span> "
-        + "<button class=\"idbtn\" data-cent=\"undo\" data-i=\"" + i + "\" title=\"Take this answer back (the training leaves it out), then answer again\">undo</button>";
+        + "<button class=\"idbtn\" data-cent=\"undo\" data-i=\"" + i + "\" title=\"Take this answer back (the training leaves it out), then answer again\">undo</button>"
+        + (q.tip && padCilAvailable() ? " <button class=\"idbtn\" data-cent=\"trace\" data-i=\"" + i + "\" title=\"Skeleton from this base to the tip you clicked, then its outline\">&#12336; trace it</button>" : "");
     else if (PAD_CENT_TIP && PAD_CENT_TIP.i === i)
       tail = "<span class=\"hint\">now click the cilium’s tip on the pad (step sections to find its end)</span> "
         + "<button class=\"idbtn\" data-cent=\"notip\" data-i=\"" + i + "\" title=\"File the base alone, as a centriole\">no tip</button> "
@@ -7966,6 +7967,7 @@ function padCentAnswer(i, what){
   if (!q) return;
   if (what === "go"){ padCentGo(i); return; }
   if (what === "undo"){ padCentUndo(i); return; }
+  if (what === "trace"){ if (q.tip) padCilStart(q.t.slice(), q.tip.slice()); return; }
   if (what === "tipcancel"){ PAD_CENT_TIP = null; padCentList(); padCentSay(""); return; }
   if (what === "cilium_base"){
     PAD_CENT_TIP = { i: i };
@@ -8036,6 +8038,163 @@ function padCentPaint(g){
       g.beginPath(); g.moveTo(s[0], s[1]); g.lineTo(e[0], e[1]); g.strokeStyle = "#ffffff"; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
     }
   });
+  g.restore();
+}
+/* ── TRACE A CILIUM: BASE + TIP -> SKELETON -> OUTLINE ───────────────────────────────  2026-11-25
+   Søren: "Could be cool if it first builds a skeleton for the cilium after the base and tip have been
+   reported. Then the user corrects the skeleton or accepts it and then it traces the outline of the
+   cilium." core/ciliumtrace.js does the finding; this is the pad's half:
+     1. base and tip: from a confirmed find ("trace it"), or clicked here (base, then step sections and
+        click the tip);
+     2. the skeleton is drawn: bright where it runs within a section of this one, faint elsewhere, and a
+        yellow ring where it crosses this section. Off the cilium somewhere? Click the cilium there:
+        a PIN, and the path is found again through every pin;
+     3. ✓ accept outlines it on every section it crosses, as a new "cilium" structure of ordinary
+        contours -- edit them like any other and save the tracing as usual.
+   Only a plain click is taken (shift/ctrl/cmd and drags go to the pad), as for the finder's tip. */
+var PAD_CIL = null;
+function padCilAvailable(){ return !!(window.UJ && UJ.ciliumtrace); }
+function padCilWantsClick(){ return !!(PAD_CIL && (PAD_CIL.stage === "base" || PAD_CIL.stage === "tip" || PAD_CIL.stage === "skel")); }
+function padCilSay(msg, bad){
+  var el = document.getElementById("tracePadCilSay");
+  if (!el) return;
+  el.textContent = msg || ""; el.style.color = bad ? "#f85149" : "";
+}
+function padCilBox(){
+  var box = document.getElementById("tracePadCilBox");
+  if (!box) return;
+  if (!PAD_CIL){ box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "";
+  var c = PAD_CIL, b = function(v, label, title){ return "<button class=\"idbtn\" data-cil=\"" + v + "\" title=\"" + (title || "") + "\">" + label + "</button>"; };
+  var row = [];
+  if (c.stage === "skel"){
+    row.push(b("gobase", "go to base"), b("gotip", "go to tip"));
+    if (c.pins.length) row.push(b("unpin", "remove last pin (" + c.pins.length + ")", "Take back the last pin and find the path again"));
+    row.push(b("accept", "✓ accept: outline it", "Outline the cilium on every section the skeleton crosses, as a new cilium structure you can edit and save"));
+  }
+  if (c.stage === "outlined") row.push(b("undoout", "remove the outlines", "Take the outlines off the pad again and go back to the skeleton"));
+  row.push(b("cancel", c.stage === "outlined" ? "done" : "cancel"));
+  box.innerHTML = "<div style=\"display:flex;flex-wrap:wrap;gap:6px;align-items:center\">" + row.join(" ") + "</div>";
+}
+function padCilStart(base, tip){
+  if (!PAD || !PAD_VIEW){ padCilSay("Open a section on the pad first.", true); return; }
+  if (typeof PAD_CENT_TIP !== "undefined") PAD_CENT_TIP = null;
+  PAD_CIL = { stage: base ? (tip ? "busy" : "tip") : "base", base: base || null, tip: tip || null, pins: [], nodes: null, inst: null };
+  if (UJ.ciliumtrace.reset) UJ.ciliumtrace.reset();
+  padCilBox(); padPaint();
+  if (base && tip) padCilSkeleton();
+  else if (base) padCilSay("Step through the sections and click the cilium’s TIP (where it ends).");
+  else padCilSay("Click the BASE of the cilium — where it leaves the mother centriole.");
+}
+async function padCilSkeleton(){
+  var c = PAD_CIL; if (!c) return;
+  c.stage = "busy"; padCilBox();
+  try {
+    var r = await UJ.ciliumtrace.skeleton(c.base, c.tip, c.pins, { say: function(m){ padCilSay(m); } });
+    if (PAD_CIL !== c) return;
+    c.nodes = r.nodes; c.lengthNm = r.lengthNm; c.stage = "skel";
+    var zs = r.nodes.map(function(n){ return n[2]; });
+    padCilSay("Skeleton: " + (r.lengthNm / 1000).toFixed(2) + " µm, sections " + Math.round(Math.min.apply(null, zs)) + "–" + Math.round(Math.max.apply(null, zs))
+      + ". Step through them: the yellow ring is where it crosses this section. Where it is off the cilium, click the cilium there to pin it"
+      + (c.pins.length ? " (" + c.pins.length + " pin" + (c.pins.length > 1 ? "s" : "") + " so far)" : "") + ". Then ✓ accept.");
+  } catch (e){
+    if (PAD_CIL !== c) return;
+    c.stage = c.nodes ? "skel" : "tip";
+    if (!c.nodes) c.tip = null;
+    padCilSay(String(e && e.message || e), true);
+  }
+  padCilBox(); padPaint();
+}
+function padCilClick(e){
+  var c = PAD_CIL; if (!c || !PAD_VIEW) return;
+  var t = PAD_VIEW.toolAt(e.offsetX, e.offsetY);
+  t = [Math.round(t[0]), Math.round(t[1]), PAD.z];
+  if (c.stage === "base"){ c.base = t; c.stage = "tip"; padCilSay("Base set. Step through the sections and click the cilium’s TIP (where it ends)."); padPaint(); return; }
+  if (c.stage === "tip"){ c.tip = t; padPaint(); padCilSkeleton(); return; }
+  if (c.stage === "skel"){ c.pins.push(t); padPaint(); padCilSkeleton(); }
+}
+async function padCilAccept(){
+  var c = PAD_CIL; if (!c || !c.nodes) return;
+  c.stage = "busy"; padCilBox();
+  try {
+    var rings = await UJ.ciliumtrace.outline(c.nodes, { say: function(m){ padCilSay(m); } });
+    if (PAD_CIL !== c) return;
+    if (!rings.length) throw new Error("no section to outline it on");
+    padHistNote();
+    /* its own structure: the one being drawn if it is still empty, otherwise a new one */
+    var cur = PAD.inst || 0, used = PAD.rings.some(function(r){ return (r.inst || 0) === cur; });
+    var inst = used ? UJ.tracepad.newInstance(PAD) : cur;
+    var sel = document.getElementById("tracingWhat");
+    var has = sel && [].some.call(sel.options, function(o){ return o.value === "cilium"; });
+    PAD_INST_KIND[String(inst)] = has ? Object.assign({ value: "cilium", user: true }, tracingWhatOf("cilium"))
+                                      : Object.assign({ value: "__other", user: true }, tracingWhatOf("__other", "Primary cilium"));
+    if (used){ var each = document.getElementById("tracingEachOwn"); if (each && !each.checked) each.checked = true; }
+    else if (sel && has && !UJ.tracepad.instances(PAD).some(function(x){ return (x.inst || 0) !== inst; })){ sel.value = "cilium"; TRACING_WHAT_USER = true; }
+    rings.forEach(function(r){ PAD.rings.push({ z: r.z, inst: inst, points: r.points }); });
+    padHistNote();
+    try { tracingEachRender(true); } catch (_e){}
+    try { padInstances(); } catch (_e){}
+    padRings();
+    c.inst = inst; c.rings = rings; c.stage = "outlined";
+    padCilSay("Outlined on " + rings.length + " section" + (rings.length > 1 ? "s" : "") + " (" + (c.lengthNm / 1000).toFixed(2)
+      + " µm long), as a new cilium structure. Check the sections, edit any outline with the usual tools, and save the tracing as usual.");
+  } catch (e){
+    c.stage = "skel"; padCilSay(String(e && e.message || e), true);
+  }
+  padCilBox(); padPaint();
+}
+function padCilAction(v){
+  var c = PAD_CIL; if (!c) return;
+  var go = function(t){ if (!t) return; PAD.pending = []; PAD.z = Math.round(t[2]); PAD_CENTRE = [Math.round(t[0]), Math.round(t[1]), PAD.z]; padDraw(); };
+  if (v === "gobase") go(c.base);
+  else if (v === "gotip") go(c.tip);
+  else if (v === "unpin"){ c.pins.pop(); padCilSkeleton(); }
+  else if (v === "accept") padCilAccept();
+  else if (v === "undoout"){
+    padHistNote();
+    PAD.rings = PAD.rings.filter(function(r){ return !(r.inst === c.inst && c.rings.some(function(q){ return q.z === r.z && q.points === r.points; })); });
+    padHistNote(); padRings(); c.stage = "skel"; padCilSay("Outlines removed — the skeleton is back. Pin it, or accept again."); padCilBox(); padPaint();
+  }
+  else if (v === "cancel"){ PAD_CIL = null; padCilSay(""); padCilBox(); padPaint(); }
+}
+function padCilPaint(g){
+  var c = PAD_CIL; if (!c || !PAD_VIEW || !PAD) return;
+  var z = PAD.z, P = function(t){ return PAD_VIEW.pxAt(t); };
+  g.save();
+  g.font = "600 11px system-ui, sans-serif"; g.textBaseline = "middle";
+  var dot = function(t, col, label, r){
+    var s = P(t), dz = Math.round(t[2]) - z, near = Math.abs(dz) <= 1;
+    g.globalAlpha = near ? 1 : 0.55;
+    g.beginPath(); g.arc(s[0], s[1], r, 0, 6.2832); g.lineWidth = 3.5; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
+    if (!near) g.setLineDash([3, 2]); g.lineWidth = 2; g.strokeStyle = col; g.stroke(); g.setLineDash([]);
+    var l = label + (near ? "" : " (z" + (dz > 0 ? "+" : "") + dz + ")");
+    g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.8)"; g.strokeText(l, s[0] + r + 4, s[1]); g.fillStyle = col; g.fillText(l, s[0] + r + 4, s[1]);
+    g.globalAlpha = 1;
+  };
+  if (c.nodes && c.stage !== "outlined"){
+    var N = c.nodes;
+    /* the whole skeleton, faint */
+    g.beginPath(); N.forEach(function(n, i){ var s = P(n); if (i) g.lineTo(s[0], s[1]); else g.moveTo(s[0], s[1]); });
+    g.lineWidth = 1.5; g.strokeStyle = "rgba(76,195,255,.35)"; g.stroke();
+    /* within a section of this one, bright */
+    for (var i = 0; i < N.length - 1; i++){
+      if (Math.min(Math.abs(N[i][2] - z), Math.abs(N[i + 1][2] - z)) > 1.5) continue;
+      var a = P(N[i]), b2 = P(N[i + 1]);
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b2[0], b2[1]); g.lineWidth = 4; g.strokeStyle = "rgba(0,0,0,.6)"; g.stroke();
+      g.lineWidth = 2.5; g.strokeStyle = "#4cc3ff"; g.stroke();
+    }
+    /* where it crosses this section */
+    for (i = 0; i < N.length - 1; i++){
+      var z0 = N[i][2], z1 = N[i + 1][2];
+      if ((z0 - z) * (z1 - z) > 0 || z0 === z1) continue;
+      var t = (z - z0) / (z1 - z0), q = [N[i][0] + t * (N[i + 1][0] - N[i][0]), N[i][1] + t * (N[i + 1][1] - N[i][1]), z], s = P(q);
+      g.beginPath(); g.arc(s[0], s[1], 9, 0, 6.2832); g.lineWidth = 3.5; g.strokeStyle = "rgba(0,0,0,.7)"; g.stroke();
+      g.lineWidth = 2; g.strokeStyle = "#ffd33d"; g.stroke();
+    }
+  }
+  if (c.base) dot(c.base, "#3fb950", "base", 6);
+  if (c.tip) dot(c.tip, "#d2a8ff", "tip", 6);
+  c.pins.forEach(function(p, k){ dot(p, "#ffd33d", "pin " + (k + 1), 4); });
   g.restore();
 }
 async function padAiRun(){
@@ -8376,6 +8535,7 @@ function padPaint(){
   /* The model's marks UNDER the contours: what you draw is the answer, what it guessed is a hint. */
   if (typeof padAiOn === "function" && padAiOn()) UJ.organelleml.paint(g, PAD_VIEW, PAD.z);
   if (typeof padCentPaint === "function") padCentPaint(g);                  // centrosome finds (2026-11-25)
+  if (typeof padCilPaint === "function") padCilPaint(g);                    // a cilium being traced (2026-11-25)
   /* Contours already closed on THIS section, then the one being drawn.
 
      ONE PATH PER STRUCTURE, FILLED EVEN-ODD, since 2026-09-19 (Søren: *"If I draw one contour
@@ -9089,12 +9249,13 @@ function wirePad(){
          moved the field with shift+drag while it waited and that drag was filed as the tip -- so a
          press with shift, ctrl or cmd is left to the pad (moving the field, erasing), and a press
          that moves more than 5 px before it lifts is a drag, not a tip. */
-      if (PAD_CENT_TIP && !e.shiftKey && !e.ctrlKey && !e.metaKey){
+      /* ...and the same plain click places a cilium's base, tip or pin while one is being traced. */
+      if ((PAD_CENT_TIP || padCilWantsClick()) && !e.shiftKey && !e.ctrlKey && !e.metaKey){
         e.stopImmediatePropagation(); e.preventDefault();
-        if (ev === "pointerdown") PAD_CENT_TIP.down = [e.offsetX, e.offsetY];
+        if (ev === "pointerdown") PAD_CLICK_DOWN = [e.offsetX, e.offsetY];
         if (ev === "pointerup"){
-          var d0 = PAD_CENT_TIP.down; PAD_CENT_TIP.down = null;
-          if (d0 && Math.abs(e.offsetX - d0[0]) <= 5 && Math.abs(e.offsetY - d0[1]) <= 5) padCentTipAt(e);
+          var d0 = PAD_CLICK_DOWN; PAD_CLICK_DOWN = null;
+          if (d0 && Math.abs(e.offsetX - d0[0]) <= 5 && Math.abs(e.offsetY - d0[1]) <= 5){ if (PAD_CENT_TIP) padCentTipAt(e); else padCilClick(e); }
         }
         return;
       }
@@ -9253,6 +9414,16 @@ function wirePad(){
     padCentSync();
     if (window.UJ && UJ.centrosomeml) UJ.centrosomeml.whenAvailable().then(padCentSync);
   }
+  const pcil = document.getElementById("tracePadCil");
+  if (pcil){
+    pcil.style.display = padCilAvailable() ? "" : "none";
+    pcil.addEventListener("click", function(){ padCilStart(); });
+  }
+  const pcbox = document.getElementById("tracePadCilBox");
+  if (pcbox) pcbox.addEventListener("click", function(e){
+    const b = e.target.closest && e.target.closest("[data-cil]");
+    if (b) padCilAction(b.getAttribute("data-cil"));
+  });
   const pcl = document.getElementById("tracePadCentList");
   if (pcl) pcl.addEventListener("click", function(e){
     const b = e.target.closest && e.target.closest("[data-cent]");
@@ -9972,6 +10143,10 @@ function tracingCardHtml(){
     "<button class=\"idbtn\" id=\"tracePadCent\" style=\"display:none;flex:0 0 auto\" title=\"Searches what the pad shows, from 1 \u00b5m below this section to 1 \u00b5m above, for centrosomes (the pair of centrioles) and for the base of primary cilia, with a model that looks at 11 sections at once. It runs in your browser (about 14 MB, once). On tissue it never saw it found about 8 in 10, about 120 nm from where an expert put the mark, with fewer than one wrong find per 4 \u00b5m window. Go to each find and say what it is; your answers are saved as ordinary reports and teach the next model.\">&#127919; find centrioles (AI)</button>",
     "<span class=\"hint\" id=\"tracePadCentSay\" style=\"flex:1 1 100%\"></span>",
     "<div id=\"tracePadCentList\" style=\"flex:1 1 100%;display:none;font-size:12px\"></div>",
+    "<!-- TRACE A CILIUM.  2026-11-25. core/ciliumtrace.js: base + tip -> a skeleton you pin where it is wrong -> outlines. -->",
+    "<button class=\"idbtn\" id=\"tracePadCil\" style=\"display:none;flex:0 0 auto\" title=\"Click the base of a primary cilium, then (stepping sections) its tip: the path between them through the EM is found and drawn as a skeleton. Where it is off the cilium, click the cilium there to pin it; it is found again through the pins. Accept, and the cilium is outlined on every section it crosses as a new cilium structure of ordinary contours.\">&#12336; trace a cilium (AI)</button>",
+    "<span class=\"hint\" id=\"tracePadCilSay\" style=\"flex:1 1 100%\"></span>",
+    "<div id=\"tracePadCilBox\" style=\"flex:1 1 100%;display:none;font-size:12px\"></div>",
     "<span class=\"hint\" id=\"tracePadAiSay\" style=\"flex:1 1 100%\"></span>",
     "<span id=\"tracePadAiKinds\" style=\"flex:1 1 100%;display:none\"></span>",
     "<!-- AI OUTLINES.  2026-10-31. Søren: \"Could we add some machine learning for the organelle tracing and",
