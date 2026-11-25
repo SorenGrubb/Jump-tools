@@ -6,10 +6,9 @@
 
      SKELETON  the person's clicks along the cilium, base -> points -> tip, straight between them (v3;
                see straight() for why the automatic followers were taken out).
-     OUTLINE   on every section the skeleton crosses, rays from the skeleton (all round where it
-               crosses the section, sideways and round the ends where it lies in the section) find
-               the cilium's edge -- the strongest dark-to-light step outward between 60 and 220 nm --
-               smoothed across neighbouring rays. Ordinary contours: editable like any other.
+     OUTLINE   on every section the line crosses: its shape there (a circle where it crosses the
+               section, a capsule where it lies in it) at the cilium's measured radius, which is kept
+               to 80-150 nm (160-300 nm across). Ordinary contours: editable like any other.
 
    HOST CONTRACT
      UJ.ciliumtrace.line([base, point, ..., tip]) -> { nodes:[[x,y,z] tool voxels, z fractional], lengthNm }, in that order
@@ -136,33 +135,59 @@ UJ.ciliumtrace = (function(){
     var fx = x - x0, fy = y - y0, o = y0 * w + x0;
     return P[o] * (1 - fx) * (1 - fy) + P[o + 1] * fx * (1 - fy) + P[o + w] * (1 - fx) * fy + P[o + w + 1] * fx * fy;
   }
-  var R_MIN = 60, R_MAX = 220, R_DEF = 120;
+  /* THE CILIUM'S THICKNESS IS BOUNDED, ITS LENGTH IS NOT (2026-11-25). Søren on the first outlines:
+     "the outlining of the cilium is horrible. Can we put a restraint to how big the cilium can be? ...
+     However, this should not prohibit a cilium that is long along the length of the plane."
+     A primary cilium is about 200 nm wide (Mohieldin et al. 2015, Sci Rep 5:15982,
+     https://doi.org/10.1038/srep15982); with its membrane, ~200-300 nm in EM. So:
+       - its RADIUS is measured, not each ray's: the strongest dark -> light step outward between 60 and
+         150 nm, on rays across the cilium, and the median of those is the radius on that section;
+       - the radius is smoothed along the cilium (median over +-2 sections) and kept within 80-150 nm,
+         i.e. 160-300 nm across; 110 nm where no edge stands out;
+       - the outline is the cilium's SHAPE at that radius: the stretch of the line inside this section
+         (within half a section of it), widened by the radius on both sides and rounded at the ends -- a
+         circle where it crosses the section, a long capsule where it lies in it. Length is whatever the
+         line says. */
+  var R_MIN = 60, R_MAX = 150, R_LO = 80, R_HI = 150, R_DEF = 110;
   function edge(P, w, h, c, d){
-    /* the strongest dark -> light step outward, between R_MIN and R_MAX nm from c along d (px coords) */
-    var best = -1e9, bestR = R_DEF;
-    for (var rn = R_MIN; rn <= R_MAX; rn += 8){
+    var best = -1e9, bestR = NaN;
+    for (var rn = R_MIN; rn <= R_MAX; rn += 6){
       var r = rn / NM, q = 16 / NM;
       var a = sample(P, w, h, c[0] + d[0] * (r - q), c[1] + d[1] * (r - q)), b = sample(P, w, h, c[0] + d[0] * (r + q), c[1] + d[1] * (r + q));
       if (isNaN(a) || isNaN(b)) continue;
-      var s = b - a;
-      if (s > best){ best = s; bestR = rn; }
+      if (b - a > best){ best = b - a; bestR = rn; }
     }
-    return best > 4 ? bestR : R_DEF;
+    return best > 4 ? bestR : NaN;
   }
-  function smoothRadii(R, circular){
-    var n = R.length, out = R.slice();
-    for (var i = 0; i < n; i++){
-      var w = [];
-      for (var j = -2; j <= 2; j++){ var k = i + j; if (circular) k = (k + n) % n; else if (k < 0 || k >= n) continue; w.push(R[k]); }
-      w.sort(function(a, b){ return a - b; }); out[i] = w[w.length >> 1];
+  function median(v){ v = v.filter(function(x){ return !isNaN(x); }).sort(function(a, b){ return a - b; }); return v.length ? v[v.length >> 1] : NaN; }
+  function capsule(st, rpx){
+    /* st: the run's points (px), rpx: radius in px -> a closed outline round them */
+    var pts = [], i;
+    if (st.length < 2){
+      for (i = 0; i < 32; i++){ var an = i * Math.PI / 16; pts.push([st[0][0] + Math.cos(an) * rpx, st[0][1] + Math.sin(an) * rpx]); }
+      return pts;
     }
-    return out;
+    var T = st.map(function(p, m){
+      var a0 = st[Math.max(0, m - 1)], a1 = st[Math.min(st.length - 1, m + 1)], tx = a1[0] - a0[0], ty = a1[1] - a0[1], tl = Math.hypot(tx, ty) || 1;
+      return [tx / tl, ty / tl];
+    });
+    var arc = function(p, t){                       // from the left of t, round the front, to the right
+      var o = [], th = Math.atan2(t[1], t[0]);
+      for (var c = 1; c < 12; c++){ var an = th + Math.PI / 2 - c * Math.PI / 12; o.push([p[0] + Math.cos(an) * rpx, p[1] + Math.sin(an) * rpx]); }
+      return o;
+    };
+    st.forEach(function(p, m){ pts.push([p[0] - T[m][1] * rpx, p[1] + T[m][0] * rpx]); });
+    var n = st.length - 1;
+    pts = pts.concat(arc(st[n], T[n]));
+    for (i = n; i >= 0; i--) pts.push([st[i][0] + T[i][1] * rpx, st[i][1] - T[i][0] * rpx]);
+    pts = pts.concat(arc(st[0], [-T[0][0], -T[0][1]]));
+    return pts;
   }
   async function outline(nodes, opts){
     opts = opts || {};
     var say = opts.say || function(){};
     var r = tres(), B = await readBox([nodes[0], nodes[nodes.length - 1]].concat(nodes.filter(function(n, i){ return i % 10 === 5; })), say);
-    /* the skeleton every 10 nm, in 16 nm px and section units */
+    /* the line every 10 nm, in 16 nm px and section units */
     var S = [];
     for (var i = 0; i < nodes.length - 1; i++){
       var a = nmOf(nodes[i]), b = nmOf(nodes[i + 1]), d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), n = Math.max(1, Math.ceil(d / 10));
@@ -170,57 +195,43 @@ UJ.ciliumtrace = (function(){
     }
     var e = nmOf(nodes[nodes.length - 1]); S.push([e[0] / NM - B.x0, e[1] / NM - B.y0, e[2] / r[2]]);
     var zLo = Math.round(Math.min.apply(null, S.map(function(s){ return s[2]; }))), zHi = Math.round(Math.max.apply(null, S.map(function(s){ return s[2]; })));
-    var rings = [];
+    /* 1. per section: the runs of the line in it, and the radius measured across them */
+    var secs = [];
     for (var z = zLo; z <= zHi; z++){
       var k = z - B.z0; if (k < 0 || k >= B.nz || !B.secs[k]) continue;
-      /* runs of the skeleton inside this section (within half a section of it) */
       var runs = [], cur = null;
       S.forEach(function(s){
-        if (Math.abs(s[2] - z) <= 0.5){ if (!cur){ cur = []; runs.push(cur); } cur.push(s); } else cur = null;
+        if (Math.abs(s[2] - z) <= 0.5){ if (!cur){ cur = []; runs.push(cur); } cur.push([s[0], s[1]]); } else cur = null;
       });
       if (!runs.length) continue;
-      var P = planeBlur(B, k);
-      runs.forEach(function(run){
-        var pts = [], xy = run.map(function(s){ return [s[0], s[1]]; });
-        var len = 0; for (var q = 1; q < xy.length; q++) len += Math.hypot(xy[q][0] - xy[q - 1][0], xy[q][1] - xy[q - 1][1]);
-        if (len * NM < 60){
-          /* crossing the section: rays all round */
-          var c = [0, 0]; xy.forEach(function(p){ c[0] += p[0]; c[1] += p[1]; }); c[0] /= xy.length; c[1] /= xy.length;
-          var R = [];
-          for (var aI = 0; aI < 32; aI++){ var ang = aI * Math.PI / 16; R.push(edge(P, B.w, B.h, c, [Math.cos(ang), Math.sin(ang)])); }
-          R = smoothRadii(R, true);
-          for (aI = 0; aI < 32; aI++){ ang = aI * Math.PI / 16; pts.push([c[0] + Math.cos(ang) * R[aI] / NM, c[1] + Math.sin(ang) * R[aI] / NM]); }
-        } else {
-          /* lying in the section: both sides along it, and round both ends */
-          var st = []; var accL = 0; st.push(xy[0]);
-          for (q = 1; q < xy.length; q++){ accL += Math.hypot(xy[q][0] - xy[q - 1][0], xy[q][1] - xy[q - 1][1]); if (accL * NM >= 48){ st.push(xy[q]); accL = 0; } }
-          if (st[st.length - 1] !== xy[xy.length - 1]) st.push(xy[xy.length - 1]);
-          var T = st.map(function(p, m){
+      var P = planeBlur(B, k), meas = [];
+      runs = runs.map(function(xy){
+        var st = [xy[0]], acc = 0;
+        for (var q = 1; q < xy.length; q++){ acc += Math.hypot(xy[q][0] - xy[q - 1][0], xy[q][1] - xy[q - 1][1]); if (acc * NM >= 48){ st.push(xy[q]); acc = 0; } }
+        var last = xy[xy.length - 1];
+        if (Math.hypot(last[0] - st[st.length - 1][0], last[1] - st[st.length - 1][1]) * NM > 15) st.push(last);
+        if (st.length === 1){                       // crossing: rays all round
+          for (var aI = 0; aI < 24; aI++){ var an = aI * Math.PI / 12; meas.push(edge(P, B.w, B.h, st[0], [Math.cos(an), Math.sin(an)])); }
+        } else {                                    // lying in the section: rays across it
+          for (var m = 0; m < st.length; m++){
             var a0 = st[Math.max(0, m - 1)], a1 = st[Math.min(st.length - 1, m + 1)], tx = a1[0] - a0[0], ty = a1[1] - a0[1], tl = Math.hypot(tx, ty) || 1;
-            return [tx / tl, ty / tl];
-          });
-          var L = st.map(function(p, m){ return edge(P, B.w, B.h, p, [-T[m][1], T[m][0]]); });
-          var Rr = st.map(function(p, m){ return edge(P, B.w, B.h, p, [T[m][1], -T[m][0]]); });
-          L = smoothRadii(L, false); Rr = smoothRadii(Rr, false);
-          var cap = function(p, t, sgn){
-            var out = [];
-            for (var cI = 1; cI < 8; cI++){
-              var ang = Math.atan2(t[1], t[0]) + sgn * (Math.PI / 2 - cI * Math.PI / 8);
-              var dd = [Math.cos(ang), Math.sin(ang)], rr = edge(P, B.w, B.h, p, dd);
-              out.push([p[0] + dd[0] * rr / NM, p[1] + dd[1] * rr / NM]);
-            }
-            return out;
-          };
-          st.forEach(function(p, m){ pts.push([p[0] - T[m][1] * L[m] / NM, p[1] + T[m][0] * L[m] / NM]); });
-          var nE = st.length - 1;
-          pts = pts.concat(cap(st[nE], T[nE], 1));
-          for (var m = nE; m >= 0; m--) pts.push([st[m][0] + T[m][1] * Rr[m] / NM, st[m][1] - T[m][0] * Rr[m] / NM]);
-          var t0 = [-T[0][0], -T[0][1]];
-          pts = pts.concat(cap(st[0], t0, 1));
+            meas.push(edge(P, B.w, B.h, st[m], [-ty / tl, tx / tl]), edge(P, B.w, B.h, st[m], [ty / tl, -tx / tl]));
+          }
         }
-        rings.push({ z: z, points: pts.map(function(p){ return [Math.round((p[0] + B.x0) * NM / r[0]), Math.round((p[1] + B.y0) * NM / r[1])]; }) });
+        return st;
       });
+      secs.push({ z: z, runs: runs, r: median(meas) });
     }
+    /* 2. the radius along the cilium: median over +-2 sections, kept to 80-150 nm */
+    var rings = [];
+    secs.forEach(function(sc, i){
+      var rr = median(secs.slice(Math.max(0, i - 2), i + 3).map(function(x){ return x.r; }));
+      rr = isNaN(rr) ? R_DEF : Math.max(R_LO, Math.min(R_HI, rr));
+      sc.runs.forEach(function(st){
+        var pts = capsule(st, rr / NM);
+        rings.push({ z: sc.z, rNm: Math.round(rr), points: pts.map(function(p){ return [Math.round((p[0] + B.x0) * NM / r[0]), Math.round((p[1] + B.y0) * NM / r[1])]; }) });
+      });
+    });
     say(rings.length + " outlines.");
     return rings;
   }
