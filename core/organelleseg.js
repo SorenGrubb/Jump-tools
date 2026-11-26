@@ -698,31 +698,111 @@ UJ.organelleseg = (function(){
     if (!(af > 0.5 * ap && af < 2 * ap)) return plain();
     return { z: z, points: pts, filled: true, w: Math.round(w * 100) / 100, skill: Math.round(ctx.skill * 100) / 100, agree: Math.round(agree * 100) / 100 };
   }
-  /* rings: [{ z, points }] of ONE structure (the largest on each section is used). Fills every
-     section between two of them that are more than one section apart and at most opts.maxGap
-     (default 25) apart. opts: { model, avoid(z) -> polygons, onEach(k, z), probAt(xy, z) -> a
-     probability picture as outline(..., {probOnly:true}) gives (for testing: a stand-in AI) }. */
+  /* rings: [{ z, points }] of ONE structure. Fills every section between two of them that are more
+     than one section apart and at most opts.maxGap (default 25) apart. opts: { model, avoid(z) ->
+     polygons, onEach(k, z), probAt(xy, z) -> a probability picture as outline(..., {probOnly:true})
+     gives (for testing: a stand-in AI) }.
+
+     ── EVERY OUTLINE ON A SECTION, EACH WITH ITS OWN CONTINUATION ─────────────────  2026-11-26
+     Søren: "when the organelle has a u-shape that goes forward through the slices and then backwards
+     it only follows one of them and sometimes places the tracing in between the 2 parts of the
+     organelle." This used to take only the LARGEST ring on each section, so with both arms of a U on
+     one section the blend could run from one arm below to the OTHER arm above, and land between them.
+     Now every ring on the two sections is kept, and each is paired with its continuation on the
+     other section (pairRings): its nearest ring there, or a ring for which it is the nearest, when
+     they overlap or lie within twice their summed radii. Each pair is filled on its own. So:
+       two arms below, two above  -> each arm filled along itself;
+       two arms below, one above  -> the bend: both arms run into it, and where the two filled
+                                     outlines overlap on a section they are joined into one;
+       a ring with no continuation -> nothing is invented for it (that part ends between the two).
+     With one ring on each section it is exactly what it was. */
+  function pairRings(SA, SB){
+    if (SA.length === 1 && SB.length === 1) return [[0, 0]];
+    var tr = toolRes();
+    var info = function(P){ var c = centroid(P); return { c: c, r: Math.sqrt(area(P) * tr[0] * tr[1] / Math.PI) }; };
+    var IA = SA.map(info), IB = SB.map(info);
+    var d = function(i, j){
+      if (inside(IA[i].c, SB[j]) || inside(IB[j].c, SA[i])) return 0;
+      return Math.hypot((IA[i].c[0] - IB[j].c[0]) * tr[0], (IA[i].c[1] - IB[j].c[1]) * tr[1]) / Math.max(1, IA[i].r + IB[j].r);
+    };
+    var LIM = 2, pairs = [], seen = {};
+    var add = function(i, j){ if (j < 0 || i < 0 || d(i, j) > LIM || seen[i + "," + j]) return; seen[i + "," + j] = 1; pairs.push([i, j]); };
+    var nearest = function(n, f){ var b = -1, bd = Infinity; for (var k = 0; k < n; k++){ var v = f(k); if (v < bd){ bd = v; b = k; } } return b; };
+    SA.forEach(function(_a, i){ add(i, nearest(SB.length, function(j){ return d(i, j); })); });
+    SB.forEach(function(_b, j){ add(nearest(SA.length, function(i){ return d(i, j); }), j); });
+    return pairs;
+  }
+  /* the part of polygon P nearer to `me` than to any of `others` (points): P cut by the bisectors */
+  function partNearest(P, me, others){
+    if (!others.length) return P;
+    var L = 1e6, cut = others.map(function(o){
+      var mx = (me[0] + o[0]) / 2, my = (me[1] + o[1]) / 2, ux = o[0] - me[0], uy = o[1] - me[1], n = Math.hypot(ux, uy) || 1;
+      ux /= n; uy /= n; var px = -uy, py = ux;
+      return [[mx + px * L, my + py * L], [mx + px * L + ux * L, my + py * L + uy * L], [mx - px * L + ux * L, my - py * L + uy * L], [mx - px * L, my - py * L]];
+    });
+    var bb = [Infinity, Infinity, -Infinity, -Infinity];
+    P.forEach(function(q){ bb[0] = Math.min(bb[0], q[0]); bb[1] = Math.min(bb[1], q[1]); bb[2] = Math.max(bb[2], q[0]); bb[3] = Math.max(bb[3], q[1]); });
+    var cell = Math.max(0.5, Math.max(bb[2] - bb[0], bb[3] - bb[1]) / 300);
+    var pieces = union([P], cell, cut).filter(function(Q){ return Q.length >= 3; });
+    if (!pieces.length) return P;
+    return pieces.reduce(function(x, y){ return area(y) > area(x) ? y : x; });
+  }
   async function fill(rings, opts){
     opts = opts || {};
     var byZ = {};
-    rings.forEach(function(r){ var z = Math.round(r.z); if (!byZ[z] || Math.abs(area(r.points)) > Math.abs(area(byZ[z]))) byZ[z] = r.points; });
+    rings.forEach(function(r){ var z = Math.round(r.z); if (r.points && r.points.length >= 3) (byZ[z] = byZ[z] || []).push(r.points); });
     var zs = Object.keys(byZ).map(Number).sort(function(a, b){ return a - b; });
     var maxGap = opts.maxGap || 25, got = [], skills = {};
-    var skillAt = async function(z){
-      if (!(z in skills)){ try { skills[z] = await skillOn(byZ[z], z, opts.model, opts.probAt); } catch (_e){ skills[z] = null; } }
-      return skills[z];
+    var skillAt = async function(z, k){
+      var key = z + "#" + k;
+      if (!(key in skills)){ try { skills[key] = await skillOn(byZ[z][k], z, opts.model, opts.probAt); } catch (_e){ skills[key] = null; } }
+      return skills[key];
     };
     for (var i = 0; i + 1 < zs.length; i++){
       var zA = zs[i], zB = zs[i + 1];
       if (zB - zA < 2 || zB - zA > maxGap) continue;
-      var sA = await skillAt(zA), sB = await skillAt(zB);
-      var known = [sA, sB].filter(function(v){ return v != null; });
-      var ctx = { model: opts.model, probAt: opts.probAt, skill: known.length ? known.reduce(function(a, b){ return a + b; }, 0) / known.length : 0 };
-      for (var z = zA + 1; z < zB; z++){
-        var r = await fillOne(byZ[zA], zA, byZ[zB], zB, z, ctx);
-        if (opts.avoid){ var cl = clip({ points: r.points }, opts.avoid(z), centroid(r.points)); if (cl) r.points = cl.points; }
-        got.push(r);
-        if (opts.onEach) try { opts.onEach(got.length, z); } catch (_e){}
+      var pairs = pairRings(byZ[zA], byZ[zB]);
+      var perZ = {};                                     // z -> the filled rings of this gap
+      for (var pi = 0; pi < pairs.length; pi++){
+        var a = pairs[pi][0], b = pairs[pi][1];
+        /* two arms running into one bend: each blends into ITS part of the bend (the part nearer it),
+           not into the whole of it -- so they meet at the bend, not halfway there */
+        var RA = byZ[zA][a], RB = byZ[zB][b];
+        var partA = pairs.filter(function(q){ return q[1] === b; }).map(function(q){ return q[0]; });
+        var partB = pairs.filter(function(q){ return q[0] === a; }).map(function(q){ return q[1]; });
+        if (partA.length > 1) RB = partNearest(RB, centroid(RA), partA.filter(function(k){ return k !== a; }).map(function(k){ return centroid(byZ[zA][k]); }));
+        if (partB.length > 1) RA = partNearest(RA, centroid(RB), partB.filter(function(k){ return k !== b; }).map(function(k){ return centroid(byZ[zB][k]); }));
+        var sA = await skillAt(zA, a), sB = await skillAt(zB, b);
+        var known = [sA, sB].filter(function(v){ return v != null; });
+        var ctx = { model: opts.model, probAt: opts.probAt, skill: known.length ? known.reduce(function(x, y){ return x + y; }, 0) / known.length : 0 };
+        for (var z = zA + 1; z < zB; z++){
+          var r = await fillOne(RA, zA, RB, zB, z, ctx);
+          if (pairs.length > 1) r.pair = pi;
+          (perZ[z] = perZ[z] || []).push(r);
+          if (opts.onEach) try { opts.onEach(got.length + Object.keys(perZ).reduce(function(s1, k){ return s1 + perZ[k].length; }, 0), z); } catch (_e){}
+        }
+      }
+      for (var z2 = zA + 1; z2 < zB; z2++){
+        var L = perZ[z2] || [];
+        /* two arms running into one bend overlap on the sections next to it: one outline there */
+        for (var x = 0; x < L.length; x++) for (var y = x + 1; y < L.length; y++){
+          if (!L[x] || !L[y]) continue;
+          var Px = L[x].points, Py = L[y].points;
+          var ov = Px.some(function(q){ return inside(q, Py); }) || Py.some(function(q){ return inside(q, Px); });
+          if (!ov) continue;
+          var bb = [Infinity, Infinity, -Infinity, -Infinity];
+          Px.concat(Py).forEach(function(q){ bb[0] = Math.min(bb[0], q[0]); bb[1] = Math.min(bb[1], q[1]); bb[2] = Math.max(bb[2], q[0]); bb[3] = Math.max(bb[3], q[1]); });
+          var u = union([Px, Py], Math.max(1, Math.max(bb[2] - bb[0], bb[3] - bb[1]) / 300)).filter(function(P){ return P.length >= 3; });
+          if (u.length !== 1) continue;
+          var keep = {}; for (var kk in L[x]) keep[kk] = L[x][kk];
+          keep.points = u[0]; keep.joined = true;
+          L[x] = keep; L[y] = null;
+        }
+        L.forEach(function(r2){
+          if (!r2) return;
+          if (opts.avoid){ var cl = clip({ points: r2.points }, opts.avoid(z2), centroid(r2.points)); if (cl) r2.points = cl.points; }
+          got.push(r2);
+        });
       }
     }
     return got;
@@ -738,9 +818,19 @@ UJ.organelleseg = (function(){
      merely lies close does not overlap the last outline, so it is not taken. Branches never overlap
      each other, a branch that runs into another one stops there (the two have joined), and there are
      at most opts.maxBranches (4) of them. Every new contour says which branch it is on. */
+  /* ── AND ROUND A U-BEND (2026-11-26) ──────────────────────────────────────────────────────────
+     Søren: "when the organelle has a u-shape that goes forward through the slices and then backwards
+     it only follows one of them." Following one arm, the organelle ends where it bends back. When a
+     branch ends, its last outline is checked for the other arm: on the section it came from, the
+     parts of that last outline that the arm it followed does not cover are clicked, and a piece found
+     there that lies under the bend (a quarter of it at least) and is not already traced is the
+     other arm. (Either the bend was too big to be taken as a step -- then it is the next section's
+     piece holding the last outline -- or it was taken, and the arms part a few sections back.) It is followed BACK, in the opposite direction, as a branch of its own (same
+     opts.maxBranches cap, never over another branch). A plain end -- the organelle tapering away --
+     has nothing beside the arm it came along, so nothing turns. got.turns counts the bends. */
   async function follow(points, z, dir, n, step, onEach, opts){
     opts = opts || {};
-    var tr = toolRes(), got = [], why = {};
+    var tr = toolRes(), got = [], why = {}, turns = 0;
     var ART = opts.artifactFrac == null ? 0.03 : opts.artifactFrac, MAXB = opts.maxBranches == null ? 4 : opts.maxBranches;
     var forks = 0;
     var fits = function(o, from, fromArea, zz, loose){
@@ -807,7 +897,7 @@ UJ.organelleseg = (function(){
       }
       return pick;
     };
-    var branches = [{ id: 0, prev: points, prevZ: z, gridZ: z, prevArea: area(points) * tr[0] * tr[1], k: 0, alive: true, from: null }];
+    var branches = [{ id: 0, prev: points, prevZ: z, gridZ: z, prevArea: area(points) * tr[0] * tr[1], k: 0, alive: true, from: null, dir: dir }];
     var take = function(B, o, zz){
       if (!o.existing){
         /* ran into another branch: the two have joined; this one stops */
@@ -830,13 +920,89 @@ UJ.organelleseg = (function(){
         if (found.some(function(P){ return shareIn(c.points, P) > 0.3; })) continue;
         if (shareIn(c.points, fromPts) < 0.25) continue;               // must be a part of what it came from
         found.push(c.points);
-        var nb = { id: branches.length, prev: fromPts, prevZ: B.prevZ, gridZ: B.gridZ, prevArea: fromArea, k: B.k, alive: true, from: B.id };
+        var nb = { id: branches.length, prev: fromPts, prevZ: B.prevZ, gridZ: B.gridZ, prevArea: fromArea, k: B.k, alive: true, from: B.id, dir: B.dir };
         branches.push(nb); forks++;
         if (!take(nb, c, zz)) continue;
         nb.prevZ = zz; nb.gridZ = B.gridZ;
       }
     };
+    /* a branch that has ended: is it at a U-bend, with the other arm beside the one it came along? Two
+       ways it can look:
+         1. the bend was too big to be taken as the next step (a U's bend, cut across, is the two arms
+            and what joins them): the next section has a piece that holds the last outline and is
+            much bigger -- that is the bend; the other arm is on the LAST outline's own section,
+            under the bend and beside the last outline;
+         2. the bend was taken, and the branch ended beyond it: walking back along the branch to the
+            first section where its own outline no longer covers the bend, the other arm is there,
+            under the bend and beside the branch's own outline. */
+    var coverOf = function(A, list){                 // share of A inside any of the polygons in list
+      var b = [Infinity, Infinity, -Infinity, -Infinity];
+      A.forEach(function(p){ b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+      var nIn = 0, nAB = 0, g = 14;
+      for (var i = 0; i < g; i++) for (var j = 0; j < g; j++){
+        var q = [b[0] + (i + 0.5) * (b[2] - b[0]) / g, b[1] + (j + 0.5) * (b[3] - b[1]) / g];
+        if (!inside(q, A)) continue; nIn++; if (list.some(function(P){ return inside(q, P); })) nAB++;
+      }
+      return nIn ? nAB / nIn : 0;
+    };
+    var thereAt = function(zz){
+      return (opts.existingAll ? (opts.existingAll(zz) || []) : []).concat(got.filter(function(g){ return g.z === zz; }).map(function(g){ return g.points; }))
+        .filter(function(P){ return P && P.length >= 3; });
+    };
+    var otherArm = async function(bend, zs, own, there){
+      var ownArea = Math.max.apply(null, own.map(function(P){ return area(P); })) * tr[0] * tr[1];
+      var seeds = seedsOutside(bend, own);
+      for (var s1 = 0; s1 < seeds.length; s1++){
+        if (there.some(function(P){ return inside(seeds[s1], P); })) continue;
+        var c = await look(zs, seeds[s1], -1);
+        if (!c || c.existing || c.artifact > ART || c.artifactLine) continue;
+        if (opts.artifactAt && opts.artifactAt(zs, c.points)) continue;
+        if (c.areaNm2 < ownArea / 8 || c.areaNm2 > ownArea * 3) continue;
+        if (shareIn(c.points, bend) < 0.25) continue;                   // under the bend
+        if (there.some(function(P){ return shareIn(c.points, P) > 0.3; })) continue;   // not something already traced
+        return c;
+      }
+      return null;
+    };
+    var turnAt = async function(B){
+      if (branches.length >= MAXB || B.turned) return;
+      B.turned = true;
+      var last = B.prev, lastA = B.prevArea;
+      if (!last || last.length < 3) return;
+      var arm = null, zs = null, bendTake = null;
+      /* 1. the bend lies ahead, too big to have been a step */
+      for (var d1 = 1; d1 <= step && !arm; d1++){
+        var zn = B.prevZ + B.dir * d1;
+        var bd = await look(zn, centroid(last), B.id);
+        if (!bd || bd.areaNm2 < lastA * 1.5 || shareIn(last, bd.points) < 0.6) continue;
+        if (bd.artifact > ART || bd.artifactLine) continue;
+        var th = thereAt(B.prevZ);
+        var own = th.filter(function(P){ return shareIn(P, last) > 0.5; });
+        if (!own.length) own = [last];
+        arm = await otherArm(bd.points, B.prevZ, own, th);
+        if (arm){ zs = B.prevZ; bendTake = { z: zn, o: bd }; }
+      }
+      /* 2. the bend is behind: the branch's last outline, followed back to where the arms are apart */
+      for (var kb = 1; kb <= 8 && !arm; kb++){
+        var zt = B.prevZ - B.dir * step * kb;
+        var th2 = thereAt(zt), own2 = th2.filter(function(P){ return shareIn(P, last) > 0.1; });
+        if (!own2.length) break;                                       // nothing came into it from here: not a U
+        if (coverOf(last, own2) >= 0.65) continue;                     // still the bend, or one arm only
+        arm = await otherArm(last, zt, own2, th2);
+        if (arm) zs = zt;
+        break;
+      }
+      if (!arm) return;
+      if (bendTake && !ours(bendTake.z, B.id).some(function(P){ return shareIn(bendTake.o.points, P) > 0.5; })){
+        got.push({ z: bendTake.z, points: bendTake.o.points, branch: B.id, bend: true });
+        B.prev = bendTake.o.points; B.prevZ = bendTake.z; B.prevArea = bendTake.o.areaNm2;
+      }
+      var nb = { id: branches.length, prev: arm.points, prevZ: zs, gridZ: zs, prevArea: arm.areaNm2, k: 0, alive: true, from: B.id, dir: -B.dir, turned: true };
+      branches.push(nb); turns++;
+      got.push({ z: zs, points: arm.points, branch: nb.id, turn: true });
+    };
     var stepOne = async function(B){
+      var dir = B.dir;
       var zz = B.gridZ + dir * step; B.gridZ = zz; B.k++;
       var from = B.prev, fromArea = B.prevArea, fromZ = B.prevZ;
       var o = have(zz, B.prev) || await look(zz, centroid(B.prev), B.id);
@@ -869,6 +1035,7 @@ UJ.organelleseg = (function(){
         }
       }
       B.alive = false;                             // 3. two failures in a row
+      await turnAt(B);                             // ... unless it is a U-bend: then the other arm, back
     };
     /* the branches advance together, one section at a time, so they see each other's contours */
     for (var guard = 0; guard < 400; guard++){
@@ -880,6 +1047,7 @@ UJ.organelleseg = (function(){
       }
     }
     got.forks = forks;
+    got.turns = turns;
     got.branches = branches.length;
     return got;
   }
@@ -888,5 +1056,5 @@ UJ.organelleseg = (function(){
            outline: outline, follow: follow, kinds: kinds, fill: fill, union: union, clip: clip,
            subtract: function(polys, minus, cell){ return union(polys, cell, minus); }, inside: inside, between: between,
            centroid: centroid, meta: function(){ return META; },
-           _trace: trace, _rdp: rdp, _clicked: clicked, _area: area };
+           _trace: trace, _rdp: rdp, _clicked: clicked, _area: area, _pairRings: pairRings };
 })();

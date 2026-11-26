@@ -7512,7 +7512,7 @@ async function padAiFollow(dir){
         var chainKind0 = (mineAll.filter(function(r){ return r.aiKind; })[0] || {}).aiKind;
         var filled = await UJ.organelleseg.fill(mineAll, {
           model: PAD_AI_MODEL[String(PAD.inst || 0)] || padAiModel(), avoid: padAiOthers,
-          onEach: function(k, z){ padAiOutSay("Filling\u2026 " + k + " of " + gaps + " (z " + z + ")"); } });
+          onEach: function(k, z){ padAiOutSay("Filling\u2026 " + k + " outline" + (k > 1 ? "s" : "") + " (z " + z + ")"); } });
         filled.forEach(function(g){
           PAD.rings.push({ z: g.z, inst: PAD.inst || 0, points: g.points, aiKind: chainKind0 || undefined,
                            filled: g.filled ? { w: g.w, skill: g.skill, agree: g.agree } : undefined,
@@ -7522,7 +7522,12 @@ async function padAiFollow(dir){
         var nAi = filled.filter(function(g){ return g.filled; }).length;
         var sk = filled.map(function(g){ return g.skill; }).filter(function(v){ return v != null; });
         var skAvg = sk.length ? sk.reduce(function(a, b){ return a + b; }, 0) / sk.length : null;
-        padAiOutSay("Filled " + filled.length + " section" + (filled.length > 1 ? "s" : "") + " between your outlines: "
+        var nJoin = filled.filter(function(g){ return g.joined; }).length, nPair = {};
+        filled.forEach(function(g){ if (g.pair != null) nPair[g.pair] = 1; });
+        padAiOutSay("Filled " + filled.length + " outline" + (filled.length > 1 ? "s" : "") + " between your outlines"
+          + (Object.keys(nPair).length > 1 ? " (" + Object.keys(nPair).length + " parts on the same sections, each filled along itself"
+              + (nJoin ? "; joined into one where they meet on " + nJoin + " section" + (nJoin > 1 ? "s" : "") : "") + ")" : "")
+          + ": "
           + nAi + " shaped by the AI as well, " + (filled.length - nAi) + " by your outlines alone"
           + (skAvg != null ? " (the AI matched your own outlines at " + Math.round(skAvg * 100) + "% overlap"
               + (skAvg < 0.5 ? ", too little to be given a say" : "") + ")" : "")
@@ -7581,6 +7586,7 @@ async function padAiFollow(dir){
         + (interp.length ? "; interpolated over a missing or damaged section at z " + interp.join(", ") : "")
         + (moved.length ? "; used the neighbouring section where the planned one failed (" + moved.join(", ") + ")" : "")
         + (got.forks ? "; it forked " + (got.forks === 1 ? "once" : got.forks + " times") + ", and all " + got.branches + " branches were followed" : "")
+        + (got.turns ? "; it bent back on itself (a U)" + (got.turns > 1 ? " " + got.turns + " times" : "") + ", and the other arm was followed back" : "")
         + ". Step through with , and . to check; follow again to go further."
       : "Nothing new: the next sections either already have this structure, or did not look like the same organelle. Step there and click it, or draw it.");
   } catch (err){
