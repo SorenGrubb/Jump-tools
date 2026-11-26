@@ -8442,6 +8442,48 @@ function padVolumeSync(){
   PAD_VOL_KEY = key;
   return want;
 }
+/* ── READING AHEAD IN THE DIRECTION YOU ARE GOING ────────────────────────────────  2026-11-26
+   Søren: "start loading the next chunk in the direction I am moving before I reach it ... just
+   loading in the background so it won't interrupt tracing." After every section the pad draws, the
+   direction of travel is read off where the pad was before: stepping through sections sets the z
+   direction (kept until you step the other way), a pan sets the x/y direction. The chunk block after
+   this one in z, and half a screen past the edge you panned towards, are then queued in the
+   background (core/segread.js, LOADING AHEAD) -- EM, and the segmentation when it is painted. A jump
+   (a "go" to somewhere else, more than 64 sections or two screens away) forgets the direction, and
+   until there is one both z neighbours are queued. Turning round puts the new direction first and
+   leaves the old one queued behind it. */
+var PAD_PF = { c: null, z: 0, xy: null, last: "" };
+function padPrefetch(mip, zoom, w, h){
+  try {
+    if (!PAD_VIEW || !PAD_CENTRE || !(UJ.emtiles && UJ.emtiles.prefetchAhead)) return;
+    const c = PAD_CENTRE.slice(), p = PAD_PF.c;
+    if (p){
+      const a = PAD_VIEW.toolAt(0, 0), b = PAD_VIEW.toolAt(PAD_VIEW.w, PAD_VIEW.h);
+      const sw = Math.abs(b[0] - a[0]) || 1, sh = Math.abs(b[1] - a[1]) || 1;
+      const dz = c[2] - p[2], dx = c[0] - p[0], dy = c[1] - p[1];
+      if (Math.abs(dz) > 64 || Math.abs(dx) > 2 * sw || Math.abs(dy) > 2 * sh){ PAD_PF.z = 0; PAD_PF.xy = null; PAD_PF.last = ""; }
+      else {
+        if (dz){ PAD_PF.z = dz > 0 ? 1 : -1; PAD_PF.last = "z"; }
+        /* a few voxels is a nudge, not a pan */
+        if (Math.abs(dx) > sw / 8 || Math.abs(dy) > sh / 8){
+          PAD_PF.xy = [Math.abs(dx) > sw / 8 ? Math.sign(dx) : 0, Math.abs(dy) > sh / 8 ? Math.sign(dy) : 0];
+          PAD_PF.last = "xy";
+        }
+      }
+    }
+    PAD_PF.c = c;
+    const panning = PAD_PF.last === "xy" && PAD_PF.xy;
+    const dir = { z: PAD_PF.z ? [PAD_PF.z] : [1, -1], x: panning ? PAD_PF.xy[0] : 0, y: panning ? PAD_PF.xy[1] : 0,
+                  first: PAD_PF.last === "xy" ? "xy" : "z" };
+    UJ.emtiles.prefetchAhead({ centre: c, mip: mip, zoom: zoom, w: w, h: h, slabOk: tracingSlabOk() }, dir).catch(function(){});
+    const box = document.getElementById("tracePadSeg");
+    if (box && box.checked && UJ.segpaint && UJ.segpaint.prefetchAhead && UJ.segpaint.configured()){
+      const cell = !!((document.getElementById("tracingRootId").value || "").trim());
+      const nuc = !!((document.getElementById("tracingNucId").value || "").trim());
+      if (cell || nuc) UJ.segpaint.prefetchAhead(PAD_VIEW, dir, { cell: cell, nuc: nuc }).catch(function(){});
+    }
+  } catch (_e){}
+}
 async function padDraw(){
   if (!PAD_CENTRE) return;
   const cv = document.getElementById("tracePad");
@@ -8504,6 +8546,8 @@ async function padDraw(){
     padRings();
     padAiRun();
     try { padCpPlace(); } catch (_e){}
+    /* and the next chunks in the direction you are going, in the background (2026-11-26) */
+    padPrefetch(mip, zoom, wide, cv.height);
     padSay(UJ.tracepad.count(PAD).rings + " contour(s) kept, "
       + (PAD.pending.length ? PAD.pending.length + " vertices on this one \u2014 click the ring to close it"
                             : "click each vertex round the cell")

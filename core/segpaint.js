@@ -176,7 +176,44 @@ UJ.segpaint = (function(){
      must be called BEFORE the pad captures its base, or the overlay would be wiped by the next
      contour repaint. One getImageData and one putImageData for both volumes together, because two
      round trips through the canvas for one picture is one too many. */
+  /* Painting counts as loading on screen: nothing is read ahead meanwhile (2026-11-26). */
   async function paint(canvas, view, o){
+    var sr = UJ.segread, fg = !!(sr && sr.foreground);
+    if (fg) sr.foreground(true);
+    try { return await paint0(canvas, view, o); }
+    finally { if (fg) sr.foreground(false); }
+  }
+  /* ── READ AHEAD OF THIS WINDOW ───────────────────────────────────────────────────  2026-11-26
+     The segmentation chunks next to the window the pad just drew (view), in the direction you are
+     moving -- the same geometry layer() reads with. o.cell / o.nuc: which of the two volumes are
+     being painted. */
+  async function prefetchAhead(view, dir, o){
+    if (!CFG || !view || !(UJ.segread && UJ.segread.prefetch)) return 0;
+    o = o || {};
+    var bases = [];
+    if (o.cell && (o.seg ? UJ.segread._httpBase(o.seg) : CFG.seg)) bases.push(o.seg ? UJ.segread._httpBase(o.seg) : CFG.seg);
+    if (o.nuc && CFG.nuc) bases.push(CFG.nuc);
+    var n = 0;
+    for (var b = 0; b < bases.length; b++){
+      var base = bases[b];
+      var info = await UJ.segread._getInfo(base);
+      var scale = pickScale(info, view.effNmPerPx);
+      var res = scale.resolution, ch = scale.chunk_sizes[0], off = scale.voxel_offset || [0, 0, 0];
+      var t0 = view.toolAt(0, 0);
+      var vsh = UJ.segread._offsetNm ? UJ.segread._offsetNm(base) : [0, 0, 0];
+      var nmX0 = t0[0] * CFG.res[0] + vsh[0], nmY0 = t0[1] * CFG.res[1] + vsh[1], nmZ = view.z * CFG.res[2] + vsh[2];
+      var perPx = view.effNmPerPx;
+      var sx0 = Math.floor(nmX0 / res[0]), sy0 = Math.floor(nmY0 / res[1]);
+      var sx1 = Math.ceil((nmX0 + view.w * perPx) / res[0]), sy1 = Math.ceil((nmY0 + view.h * perPx) / res[1]);
+      var sz = Math.floor(nmZ / res[2]);
+      var r = { cz: Math.floor((sz - off[2]) / ch[2]),
+                cx0: Math.floor((sx0 - off[0]) / ch[0]), cx1: Math.floor((sx1 - off[0]) / ch[0]),
+                cy0: Math.floor((sy0 - off[1]) / ch[1]), cy1: Math.floor((sy1 - off[1]) / ch[1]) };
+      n += UJ.segread.prefetch(base, scale, UJ.segread.aheadChunks(r, dir));
+    }
+    return n;
+  }
+  async function paint0(canvas, view, o){
     if (!CFG) throw new Error("segpaint.configure() first");
     o = o || {};
     var alpha = o.alpha == null ? 0.4 : o.alpha;
@@ -213,7 +250,7 @@ UJ.segpaint = (function(){
     return out;
   }
 
-  return { configure: configure, configured: configured, paint: paint,
+  return { configure: configure, configured: configured, paint: paint, prefetchAhead: prefetchAhead,
            idPair: idPair, pickScale: pickScale,
            CELL_COLOR: CELL_COLOR, NUC_COLOR: NUC_COLOR,
            /* for the check, which drives the real blend over a real canvas */

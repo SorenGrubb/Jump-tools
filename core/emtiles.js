@@ -336,7 +336,34 @@ UJ.emtiles = (function(){
      `centre` is a TOOL voxel; `w`/`h` are canvas pixels and one canvas pixel is one voxel of the
      chosen scale, so the mip IS the zoom. Returns the mapping the caller needs to turn a click
      back into a tool voxel -- there is no second place that knows it. */
+  /* While a section is being drawn, nothing is read ahead (2026-11-26, segread's LOADING AHEAD):
+     the section on screen comes first. */
   async function drawSection(canvas, opts){
+    var sr = UJ.segread, fg = !!(sr && sr.foreground);
+    if (fg) sr.foreground(true);
+    try { return await drawSection0(canvas, opts); }
+    finally { if (fg) sr.foreground(false); }
+  }
+  /* ── READ AHEAD OF THIS WINDOW ───────────────────────────────────────────────────  2026-11-26
+     The same window drawSection(opts) would draw, and the chunks next to it in the direction you are
+     moving (dir: see segread.aheadChunks), queued in the background. Nothing is drawn. */
+  async function prefetchAhead(opts, dir){
+    if (!CFG || !(UJ.segread && UJ.segread.prefetch)) return 0;
+    var got = await scaleAt(opts.mip == null ? 1 : opts.mip, opts.slabOk);
+    var scale = got.scale;
+    var zr = +opts.zoom || 1;
+    var zoom = zr >= 1 ? Math.max(1, Math.min(16, zr | 0)) : (1 / zr <= 2.5 ? 0.5 : 0.25);
+    var w = Math.max(16, opts.w | 0), h = Math.max(16, opts.h | 0);
+    var vw = Math.max(8, Math.ceil(w / zoom)), vh = Math.max(8, Math.ceil(h / zoom));
+    var c = toScale(scale, opts.centre);
+    var x0 = c[0] - (vw >> 1), y0 = c[1] - (vh >> 1), z = c[2];
+    var ch = scale.chunk_sizes[0], off = scale.voxel_offset || [0, 0, 0];
+    var r = { cz: Math.floor((z - off[2]) / ch[2]),
+              cx0: Math.floor((x0 - off[0]) / ch[0]), cx1: Math.floor((x0 + vw - 1 - off[0]) / ch[0]),
+              cy0: Math.floor((y0 - off[1]) / ch[1]), cy1: Math.floor((y0 + vh - 1 - off[1]) / ch[1]) };
+    return UJ.segread.prefetch(CFG.em, scale, UJ.segread.aheadChunks(r, dir));
+  }
+  async function drawSection0(canvas, opts){
     if (!CFG) throw new Error("emtiles.configure() first");
     /* 16 nm by default. Not the finest, and deliberately not the coarsest either: measured on the
        real scale list, a 560x460 window costs ~30 chunks at 8 or 16 nm and ~90 at 32, because the
@@ -560,7 +587,7 @@ UJ.emtiles = (function(){
 
   return { configure: configure, configured: configured,
            config: config, withConfig: withConfig,
-           unreadableEncodings: unreadableEncodings, drawSection: drawSection,
+           unreadableEncodings: unreadableEncodings, drawSection: drawSection, prefetchAhead: prefetchAhead,
            scaleAt: scaleAt, sectionScales: sectionScales, _toScale: toScale, _toTool: toTool,
            _decodeChunk: decodeChunk };
 })();

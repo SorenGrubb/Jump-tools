@@ -614,6 +614,95 @@ UJ.segread = (function(){
              others: Object.keys(others).map(Number) };
   }
 
+  /* ── LOADING AHEAD ───────────────────────────────────────────────────────────────  2026-11-26
+     Søren: "it is a bit annoying that the tracing is interrupted by loading. Can we perhaps start
+     loading the next chunk in the direction I am moving before I reach it? ... if I then reach the
+     edge before it is done loading it should just continue on that, and if I suddenly go in the other
+     direction it should start loading that way, but keep the first direction loading so it does not
+     have to do it twice if I decide to go that way again."
+
+     One queue of chunks to read ahead, for every volume (the EM and the segmentation both read
+     through chunkBuf). What it reads goes into chunkCache like any other read, so:
+       - reaching the edge while a chunk is still on its way: the draw asks chunkBuf for it, gets the
+         SAME promise (chunkCache holds it from the moment the read started) and waits for that read
+         rather than starting another;
+       - turning round: the new direction's chunks go to the FRONT of the queue and the old
+         direction's stay behind them, still queued -- nothing is dropped, nothing read twice;
+       - a chunk the queue never got to is read by the draw itself, as before.
+     It only reads while nothing on screen is loading (foreground() counts the draws), at most
+     PF.max at a time, so it never slows the section you are looking at. The queue is capped at
+     PF.cap chunks; past that the oldest wishes are dropped. */
+  var PF = { q: [], at: new Map(), done: new Set(), running: 0, fg: 0, max: 4, cap: 600, reads: 0 };
+  function pfKey(base, scale, c){ return base + "|" + scale.key + "|" + c[0] + "," + c[1] + "," + c[2]; }
+  function pfPump(){
+    while (PF.running < PF.max && !PF.fg && PF.q.length){
+      var it = PF.q.shift();
+      PF.at.delete(it.k);
+      if (PF.done.has(it.k)) continue;
+      PF.done.add(it.k);
+      PF.running++; PF.reads++;
+      (function(it2){                              // its own scope: the loop goes on before the read starts
+        var sc = it2.scale, ch = sc.chunk_sizes[0], off = sc.voxel_offset || [0, 0, 0];
+        var start = [0, 1, 2].map(function(i){ return off[i] + it2.c[i] * ch[i]; });
+        var end = [0, 1, 2].map(function(i){ return Math.min(start[i] + ch[i], off[i] + sc.size[i]); });
+        Promise.resolve().then(function(){
+          return chunkBuf(it2.base, sc, { c: it2.c, grid: it2.grid, start: start, end: end, local: [0, 0, 0], shape: ch });
+        }).catch(function(){ PF.done.delete(it2.k); })        // a failed read is not "done": the draw will try it
+          .then(function(){ PF.running--; pfPump(); });
+      })(it);
+    }
+  }
+  /* coords: chunk grid coordinates of `scale`, most wanted first. All of them go in front of what is
+     already queued, in this order. Returns how many were new to the queue. */
+  function prefetch(base, scale, coords){
+    if (!base || !scale || !coords || !coords.length) return 0;
+    var ch = scale.chunk_sizes[0];
+    var grid = [0, 1, 2].map(function(i){ return Math.ceil(scale.size[i] / ch[i]); });
+    var front = [], fresh = 0;
+    coords.forEach(function(c){
+      if (c[0] < 0 || c[1] < 0 || c[2] < 0 || c[0] >= grid[0] || c[1] >= grid[1] || c[2] >= grid[2]) return;
+      var k = pfKey(base, scale, c);
+      if (PF.done.has(k)) return;
+      var it = PF.at.get(k);
+      if (it){ var j = PF.q.indexOf(it); if (j >= 0) PF.q.splice(j, 1); }
+      else { it = { k: k, base: base, scale: scale, c: [c[0], c[1], c[2]], grid: grid }; PF.at.set(k, it); fresh++; }
+      front.push(it);
+    });
+    PF.q = front.concat(PF.q);
+    while (PF.q.length > PF.cap){ var gone = PF.q.pop(); PF.at.delete(gone.k); }
+    pfPump();
+    return fresh;
+  }
+  /* The chunks to read ahead of a window. r = { cx0, cx1, cy0, cy1, cz } is the window in chunk
+     coordinates; dir = { z: [1] | [-1] | [1, -1], x: -1|0|1, y: -1|0|1, first: "z" | "xy" }.
+     z: the whole window one chunk block further in each listed direction (a block is 32 sections at
+     8 and 16 nm, 64 at 32 nm). x / y: half a screen of chunks past the edge you are panning
+     towards -- one pan is half a screen -- on this block and on the next one in z. Each group is
+     ordered from the window's middle outwards, the order a draw reads them in. */
+  function aheadChunks(r, dir){
+    var mx = (r.cx0 + r.cx1) / 2, my = (r.cy0 + r.cy1) / 2;
+    var byMid = function(a, b){ return (Math.pow(a[0] - mx, 2) + Math.pow(a[1] - my, 2)) - (Math.pow(b[0] - mx, 2) + Math.pow(b[1] - my, 2)); };
+    var zs = [], xy = [], ix, iy, k;
+    (dir.z || []).forEach(function(d){
+      var g = [];
+      for (iy = r.cy0; iy <= r.cy1; iy++) for (ix = r.cx0; ix <= r.cx1; ix++) g.push([ix, iy, r.cz + d]);
+      zs = zs.concat(g.sort(byMid));
+    });
+    var nx = Math.max(1, Math.ceil((r.cx1 - r.cx0 + 1) / 2)), ny = Math.max(1, Math.ceil((r.cy1 - r.cy0 + 1) / 2));
+    var planes = [r.cz].concat((dir.z || []).length === 1 ? [r.cz + dir.z[0]] : []);
+    planes.forEach(function(cz){
+      var g = [];
+      if (dir.x) for (k = 1; k <= nx; k++) for (iy = r.cy0 - (dir.y ? ny : 0); iy <= r.cy1 + (dir.y ? ny : 0); iy++)
+        g.push([dir.x > 0 ? r.cx1 + k : r.cx0 - k, iy, cz]);
+      if (dir.y) for (k = 1; k <= ny; k++) for (ix = r.cx0; ix <= r.cx1; ix++)
+        g.push([ix, dir.y > 0 ? r.cy1 + k : r.cy0 - k, cz]);
+      xy = xy.concat(g.sort(byMid));
+    });
+    return dir.first === "xy" ? xy.concat(zs) : zs.concat(xy);
+  }
+  function foreground(on){ PF.fg = Math.max(0, PF.fg + (on ? 1 : -1)); if (!PF.fg) pfPump(); }
+  function prefetchState(){ return { queued: PF.q.length, running: PF.running, read: PF.reads, paused: PF.fg > 0 }; }
+
   /* A small pool rather than Promise.all: a paste of two hundred markers would otherwise open two
      hundred sockets, and the browser would queue them anyway -- badly, and with no progress to
      report while it did. onProgress is called after each item so a panel can count up. */
@@ -653,5 +742,7 @@ UJ.segread = (function(){
               or null for a chunk that was never written; `_getInfo` is the cached info fetch.
               Exported rather than copied: a second implementation of compressed Morton codes and
               delta-encoded minishard offsets is a second place for them to be subtly wrong. */
-           _getInfo: getInfo, _chunkBuf: chunkBuf };
+           _getInfo: getInfo, _chunkBuf: chunkBuf,
+           /* loading ahead, 2026-11-26 -- see LOADING AHEAD above */
+           prefetch: prefetch, aheadChunks: aheadChunks, foreground: foreground, prefetchState: prefetchState };
 })();
