@@ -2776,8 +2776,13 @@ function tracingKeep(){
      each with its own number. They are separate tracings from here on -- separate rows, separate
      files, separate volumes -- and the only thing this loop shares between them is the press. */
   const atFilled=tracingAtBeforeKeep();
-  const all=tracingCurrentAll();
-  if(!all.length)return;
+  /* every drawing deleted from the pad: nothing to add, only deletions -- TRACING_PENDING still holds
+     the contours the pad was opened with, and must not be sent again (2026-11-27) */
+  const padEmptied=!!(typeof PAD!=="undefined"&&PAD&&!(PAD.rings||[]).length&&PAD.removed&&PAD.removed.length);
+  const all=padEmptied?[]:tracingCurrentAll();
+  /* drawings deleted from the pad that came from the dataset go from the dataset too (2026-11-27) */
+  const removed=padRemovedTake(all);
+  if(!all.length){ padRemovedDelete(removed, true); return; }
   /* Filed against nothing: no nucleus, no root, no centre, and not a vessel (which takes none on
      purpose). Said, not refused -- the contours are still worth keeping, and opening it from the
      list with a centre typed in files the next version under the cell. */
@@ -2888,6 +2893,7 @@ function tracingKeep(){
   /* After the card's own sentence, because it appends to it (2026-09-27). */
   tracingNumberBareAfter(all);
   tracingFlushSoon();
+  padRemovedDelete(removed, false);
   /* ── AND THE TRACED-OUTLINE INDEX IS NOW OUT OF DATE ────────────────  2026-09-24
      Søren, of a macrophage he had just traced: "This macrophage does not show the whole cell trace
      when opening in Neuroglancer." core/tracedoutlines.js reads that index ONCE, at page load, and
@@ -4884,7 +4890,8 @@ function draftNow(){
            instColour: PAD_INST_COLOUR, instKind: PAD_INST_KIND,
            eachOwn: tracingEachOwn(),
            /* merges waiting for the save that acts on them (2026-11-27) */
-           merges: (PAD && PAD.merges) || [] };
+           merges: (PAD && PAD.merges) || [],
+           removed: (PAD && PAD.removed) || [] };
 }
 function draftSave(explicit){
   const d = draftNow();
@@ -5158,6 +5165,7 @@ function draftResumeFrom(d){
   PAD_EDIT_ID = d.editId || "";
   PAD_EDIT_IDS = (d.editIds && typeof d.editIds === "object") ? d.editIds : {};
   PAD.merges = Array.isArray(d.merges) ? d.merges : [];
+  PAD.removed = Array.isArray(d.removed) ? d.removed : [];
   const set = function(id, v){ const e = document.getElementById(id); if (e && v) e.value = v; };
   set("tracePadMip", d.mip); set("tracePadStep", d.step);
   set("tracingWhat", d.what); set("tracingName", d.name); set("tracingType", d.type);
@@ -6889,6 +6897,45 @@ async function padMergeDelete(sid, name, into){
   tracingSay(what + " was merged into “" + into + "” and has been deleted from the dataset"
     + (res.removed === false ? " (it was already gone)" : "") + ". A copy is kept in the history.");
 }
+/* ── DRAWINGS DELETED FROM THE PAD (2026-11-27) ─────────────────────────────────────────────
+   PAD.removed: the dataset tracings whose drawings were deleted with the chip's ×. Taken when the pad
+   is added to the dataset (the pad is emptied straight after), minus anything still being saved. */
+function padRemovedTake(all){
+  if (typeof PAD === "undefined" || !PAD || !PAD.removed || !PAD.removed.length) return [];
+  var keep = (all || []).map(function(t){ return t.id; });
+  var list = PAD.removed.filter(function(x){ return x.sid && keep.indexOf(x.sid) < 0; });
+  PAD.removed = [];
+  return list;
+}
+function tracingSayMore(msg, bad){
+  var el = document.getElementById("tracingStatus");
+  if (!el){ return; }
+  el.innerHTML += ' <span' + (bad ? ' style="color:var(--bad)"' : '') + '>' + escHtml(msg) + '</span>';
+}
+async function padRemovedDelete(list, alone){
+  if (!list || !list.length) return;
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  if (alone){ try { tracingPendingClear(); } catch (_e){} try { draftClear(); } catch (_e){} }
+  if (alone) tracingSay("Deleting " + list.length + " tracing" + (list.length === 1 ? "" : "s") + " you removed from the pad…");
+  if (!tracingMe()){ tracingSayMore("The tracing" + (list.length === 1 ? "" : "s") + " you removed from the pad "
+    + (list.length === 1 ? "is" : "are") + " still in the dataset: sign in with Google first.", true); return; }
+  await new Promise(function(res){ setTimeout(res, alone ? 0 : 1500); });
+  for (var i = 0; i < list.length; i++){
+    var x = list[i], what = x.name ? "“" + x.name + "”" : "a tracing";
+    var res = null;
+    try { res = await tracingPost({ type: "traced_structure_delete", credential: GOOGLE_CREDENTIAL, structureId: x.sid }); } catch (_e){ res = null; }
+    if (!res || !res.ok){
+      tracingSayMore(what + " (removed from the pad) could NOT be deleted from the dataset: " + ((res && res.error) || "no answer from the server"), true);
+      continue;
+    }
+    TRACING_SHARED = (TRACING_SHARED || []).filter(function(t){ return t.structureId !== x.sid; });
+    TRACINGS_KEPT = TRACINGS_KEPT.filter(function(t){ return t.id !== x.sid; });
+    tracingWrite(TRACINGS_KEPT);
+    tracingSayMore(what + " was deleted from the dataset" + (res.removed === false ? " (it was already gone)" : "") + ".");
+  }
+  try { tracingRenderList(); } catch (_e){}
+  try { tracingRenderShared(); } catch (_e2){}
+}
 /* the white rim round the hovered drawing, and the numbers */
 function padMergePaint(g, px){
   if (!PAD || !PAD_VIEW) return;
@@ -7057,8 +7104,8 @@ function padInstAsk(inst){
     + it.contours + ' contour' + (it.contours === 1 ? '' : 's') + ' on '
     + it.sections + ' section' + (it.sections === 1 ? '' : 's') + ' would go, and that cannot be '
     + 'undone.</span> '
-    + (shared ? '<span class="hint">It stays in the dataset either way \u2014 this only takes it '
-                + 'off the pad.</span> ' : '')
+    + (shared ? '<span class="hint">It came from the dataset: it is deleted from the dataset too when you next '
+                + 'add this pad to the dataset (if you made it, or are a moderator).</span> ' : '')
     + '<button type="button" class="hist-chip padgo" data-go="' + inst + '" '
     + 'style="color:var(--bad)">Delete it</button> '
     + '<button type="button" class="hist-chip padkeep" data-keep="' + inst + '">Keep it</button>';
@@ -7070,6 +7117,14 @@ function padInstAsk(inst){
   const go = box.querySelector(".padgo");
   if (go) go.addEventListener("click", function(){
     const gone = UJ.tracepad.deleteInstance(PAD, inst);
+    /* ── AND OUT OF THE DATASET, WHEN THE PAD IS ADDED (2026-11-27) ──────────────────────
+       Søren: "If I delete a tracing from the tracing pad and then press use these contours and add
+       to the dataset, the tracing is not deleted." Noted here, acted on by tracingKeep. */
+    if (shared){
+      var rowNm = ""; try { var rw = tracingSharedRow(shared); rowNm = (rw && rw.name) || ""; } catch (_e){}
+      PAD.removed = (PAD.removed || []).filter(function(x){ return x.sid !== shared; });
+      PAD.removed.push({ sid: shared, name: rowNm || what || "" });
+    }
     /* Its type, its colour and the dataset tracing it was opened from are keyed by its number, and
        a number that no longer names anything must not go on answering for one. */
     try { delete PAD_INST_KIND[String(inst)]; } catch (_e){}
@@ -7080,7 +7135,7 @@ function padInstAsk(inst){
     padPaint(); padRings();          // which redraws the strip, the volume, the draft and the 3D
     padSay("Drawing " + (inst + 1) + " deleted \u2014 " + gone + " contour"
       + (gone === 1 ? "" : "s") + " gone. Drawing " + (PAD.inst + 1) + " is the one you are on now."
-      + (shared ? " Its tracing in the dataset is untouched." : ""));
+      + (shared ? " Its tracing is deleted from the dataset when you add this pad to the dataset." : ""));
   });
 }
 
