@@ -1864,6 +1864,17 @@ function tracingCurrentAll(){
        bare id, so editing a shared tracing and adding it back is still a version of THAT tracing;
        every other one hangs off the pad's base rather than off that tracing's id (2026-09-19). */
     t.id=idOf(g);
+    /* WHAT WAS MERGED INTO IT ON THE PAD (2026-11-27), carried on the tracing itself: "Add to the
+       dataset" empties the pad straight after sending, so anything that asked the pad afterwards
+       found nothing -- which is why Søren's merged-in tracings stayed. Deleted once this is accepted
+       (padMergeCleanup); a merge that was undone (its drawing has contours again) is not carried. */
+    if(typeof PAD!=="undefined"&&PAD&&PAD.merges&&PAD.merges.length){
+      const gone=PAD.merges.filter(function(m){
+        return m.into===g.inst&&m.sidFrom&&m.sidFrom!==t.id&&!m.done
+          &&!PAD.rings.some(function(r){return (r.inst||0)===m.from;});
+      }).map(function(m){return {sid:m.sidFrom,name:m.name||""};});
+      if(gone.length)t.merged_away=gone;
+    }
     return t;
   });
 }
@@ -6841,20 +6852,42 @@ function padMergedIdFor(inst){
   }
   return "";
 }
-/* after tracing t was accepted: delete from the dataset every tracing that was merged into it */
+/* after tracing t was accepted: delete from the dataset every tracing that was merged into it. Reads
+   t.merged_away (set by tracingCurrentAll), not the pad, which is empty by then. */
 function padMergeCleanup(t){
   try {
-    if (!t || !t.id || !PAD || !PAD.merges || !PAD.merges.length) return;
-    PAD.merges.forEach(function(m){
-      if (m.done || !m.sidFrom || m.sidFrom === t.id) return;
-      if (PAD.rings.some(function(r){ return (r.inst || 0) === m.from; })) return;      // undone
-      var intoId = (PAD_EDIT_IDS[String(m.into)]) || padMergedIdFor(m.into);
-      if (intoId !== t.id) return;
-      m.done = true;
-      try { draftSoon(); } catch (_e){}
-      setTimeout(function(){ tracingDeleteShared(m.sidFrom, null); }, 1500);   // after the new version is in
+    if (!t || !t.merged_away || !t.merged_away.length) return;
+    var list = t.merged_away.slice();
+    t.merged_away = [];
+    try { tracingWrite(TRACINGS_KEPT); } catch (_e){}
+    if (typeof PAD !== "undefined" && PAD && PAD.merges)
+      PAD.merges.forEach(function(m){ if (list.some(function(x){ return x.sid === m.sidFrom; })) m.done = true; });
+    list.forEach(function(x, i){
+      setTimeout(function(){ padMergeDelete(x.sid, x.name, t.name); }, 2000 + i * 1500);   // after the new version is in
     });
   } catch (e){ try { console.warn("[tracing] merge clean-up", e); } catch (_e){} }
+}
+/* the merged-in tracing, out of the dataset -- the backend's "delete for everyone", which only its
+   maker or a moderator may use; anyone else is told, in words that say what to do */
+async function padMergeDelete(sid, name, into){
+  try { var row = tracingSharedRow(sid); if (row && row.name) name = row.name; } catch (_e){}
+  var what = name ? "“" + name + "”" : "the merged-in tracing";
+  if (typeof REPORT_ENDPOINT === "undefined" || !REPORT_ENDPOINT) return;
+  if (!tracingMe()){ tracingSay(what + " was merged into “" + into + "” but is still in the dataset: sign in with Google, then delete it from the list.", true); return; }
+  var res = null;
+  try { res = await tracingPost({ type: "traced_structure_delete", credential: GOOGLE_CREDENTIAL, structureId: sid }); } catch (_e){ res = null; }
+  if (!res || !res.ok){
+    tracingSay(what + " was merged into “" + into + "”, but it could NOT be deleted from the dataset: "
+      + ((res && res.error) || "no answer from the server") + " Until then it is listed twice.", true);
+    return;
+  }
+  TRACING_SHARED = (TRACING_SHARED || []).filter(function(t){ return t.structureId !== sid; });
+  TRACINGS_KEPT = TRACINGS_KEPT.filter(function(t){ return t.id !== sid; });
+  tracingWrite(TRACINGS_KEPT);
+  try { tracingRenderList(); } catch (_e){}
+  try { tracingRenderShared(); } catch (_e2){}
+  tracingSay(what + " was merged into “" + into + "” and has been deleted from the dataset"
+    + (res.removed === false ? " (it was already gone)" : "") + ". A copy is kept in the history.");
 }
 /* the white rim round the hovered drawing, and the numbers */
 function padMergePaint(g, px){
