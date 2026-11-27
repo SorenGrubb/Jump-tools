@@ -1758,7 +1758,7 @@ function tracingCurrentAll(){
     TRACING_BASE_ID = UJ.tracing.structureId(groups[0].w.name || "tracing");
   /* A WHOLE CELL OPENED ON THE PAD, 2026-09-21: each number knows the shared tracing it came from
      (PAD_EDIT_IDS, tracingOpenCellShared), and is a version of that one. */
-  const editOf=function(g){ return (typeof PAD_EDIT_IDS!=="undefined"&&PAD_EDIT_IDS[String(g.inst)])||""; };
+  const editOf=function(g){ return (typeof PAD_EDIT_IDS!=="undefined"&&PAD_EDIT_IDS[String(g.inst)])||(typeof padMergedIdFor==="function"?padMergedIdFor(g.inst):"")||""; };
   /* One expression for what a structure is called, used by the numbering below AND by the
      submission at the end. They were two copies of it, which is how they could have disagreed. */
   const idOf=function(g){ return editOf(g)||(g.inst?(TRACING_BASE_ID+"__i"+g.inst):TRACING_PENDING.id); };
@@ -3366,6 +3366,7 @@ function tracingPublish(t,quiet){
       if(!(d&&d.ok===false)){
         if(t.move_from){ delete t.move_from; }
         tracingCentreAfterYes(t);
+        if(typeof padMergeCleanup==="function")padMergeCleanup(t);     // what was merged into it goes (2026-11-27)
         return;
       }
       /* The signature is what says "this is already up there". A refusal means it is not, so it
@@ -3410,7 +3411,7 @@ function tracingPublish(t,quiet){
      old point. The outline stayed on the old cell and its centre went to the new one, so the new
      cell listed "logged, not outlined" and the old one an outline with no point. A promise waits
      for the answer; a page whose postReport answers plainly true keeps registering at once. */
-  if(!(ok&&typeof ok.then==="function"))tracingCentreAfterYes(t);
+  if(!(ok&&typeof ok.then==="function")){ tracingCentreAfterYes(t); if(typeof padMergeCleanup==="function")padMergeCleanup(t); }
   tracingWrite(TRACINGS_KEPT);
   return true;
 }
@@ -4870,7 +4871,9 @@ function draftNow(){
               would look restored and quietly be wrong about what each thing is. */
            inst: PAD.inst || 0,
            instColour: PAD_INST_COLOUR, instKind: PAD_INST_KIND,
-           eachOwn: tracingEachOwn() };
+           eachOwn: tracingEachOwn(),
+           /* merges waiting for the save that acts on them (2026-11-27) */
+           merges: (PAD && PAD.merges) || [] };
 }
 function draftSave(explicit){
   const d = draftNow();
@@ -5143,6 +5146,7 @@ function draftResumeFrom(d){
   PAD_VIEW = null; PAD_BASE_READY = false;
   PAD_EDIT_ID = d.editId || "";
   PAD_EDIT_IDS = (d.editIds && typeof d.editIds === "object") ? d.editIds : {};
+  PAD.merges = Array.isArray(d.merges) ? d.merges : [];
   const set = function(id, v){ const e = document.getElementById(id); if (e && v) e.value = v; };
   set("tracePadMip", d.mip); set("tracePadStep", d.step);
   set("tracingWhat", d.what); set("tracingName", d.name); set("tracingType", d.type);
@@ -6710,6 +6714,201 @@ function hexA(hex, a){
 /* One chip per structure on the pad, in its own colour, with the one being drawn marked. Clicking
    a chip goes back to that structure -- which is how you add a section to the second mitochondrion
    after starting a third. */
+/* ── MERGING TWO DRAWINGS, AND SEEING WHICH COLOUR IS WHICH ──────────────────────  2026-11-27
+   Søren: "Rukaya has submitted her mitochondria now, and they look patchy. She has started with one
+   tracing on a mitochondria, then switched to a new tracing, so now one mitochondria may have several
+   tracings. Can we somehow merge tracings that already exists? Another problem is finding out which
+   color tracing is merged with which other tracing. Can we make that identification easier?"
+
+   WHICH IS WHICH:
+     - pointing at a chip lights its drawing up on the pad (a white rim round each of its contours);
+     - "numbers on the pad" writes each drawing's number beside its contours, in its own colour, so a
+       colour on the pad can be read as a chip without hunting;
+     - while merging, the numbers are always shown.
+
+   MERGING: choose the drawing to keep (its chip), press "⇄ merge into N", then click any contour of
+   the other drawing on the pad -- or its chip. Every contour of that drawing joins drawing N; where
+   the two had contours on the same section that touch, they become one contour (holes stay holes).
+   Undo (Ctrl+Z) takes it back. Esc, or the button again, stops merging.
+
+   AND THE DATASET: nothing is written when you merge. When you then add drawing N to the dataset:
+     - drawing N's tracing gets a new version with all the contours;
+     - if the merged-in drawing came from the dataset too, its old tracing is deleted from the dataset
+       once drawing N has been accepted -- by the same "delete for everyone" the list offers, so only
+       the person who made it, or a moderator, can; anyone else is told it stays and why;
+     - if only the merged-in drawing came from the dataset, drawing N is saved as a version of THAT
+       tracing instead, so nothing needs deleting.
+   The merges are kept on the pad (PAD.merges) and in its draft, and an undone merge is never acted on:
+   a merge only counts while the merged-in drawing has no contours left on the pad. */
+var PAD_MERGE = null, PAD_HILITE = null, PAD_NUMS_ON = false;
+function padMergeNums(){ return !!PAD_NUMS_ON; }
+function padMergeStart(){
+  if (!PAD) return;
+  if (PAD_MERGE != null){ padMergeStop("Stopped merging."); return; }
+  var others = UJ.tracepad.instances(PAD).filter(function(x){ return x.contours && x.inst !== (PAD.inst || 0); });
+  if (!others.length){ padSay("There is no other drawing to merge into this one.", true); return; }
+  PAD_MERGE = PAD.inst || 0;
+  padInstances(); padPaint();
+  padSay("Merging into drawing " + (PAD_MERGE + 1) + ": click a contour of the drawing that belongs to it, on the pad (or its chip). "
+    + "Each drawing's number is written beside it. Esc or the button again to stop.");
+}
+function padMergeStop(msg){
+  PAD_MERGE = null;
+  padInstances(); padPaint();
+  if (msg) padSay(msg);
+}
+/* the drawing (inst) whose contour is under the pad pixel (x, y) on this section, other than `not` */
+function padMergeHit(x, y, not){
+  if (!PAD || !PAD_VIEW) return null;
+  var t = PAD_VIEW.toolAt(x, y);
+  var ins = function(pt, P){
+    var c = false;
+    for (var i = 0, j = P.length - 1; i < P.length; j = i++){
+      var a = P[i], b = P[j];
+      if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  };
+  var area = function(P){ var s2 = 0; for (var i = 0, j = P.length - 1; i < P.length; j = i++) s2 += P[j][0] * P[i][1] - P[i][0] * P[j][1]; return Math.abs(s2) / 2; };
+  var best = null, bestA = Infinity, near = null, nearD = 12;
+  PAD.rings.forEach(function(r){
+    if (r.z !== PAD.z || (r.inst || 0) === not || !r.points || r.points.length < 3) return;
+    if (ins([t[0], t[1]], r.points)){ var a = area(r.points); if (a < bestA){ bestA = a; best = r; } }
+    r.points.forEach(function(p){
+      var q = PAD_VIEW.pxAt([p[0], p[1], PAD.z]), d = Math.hypot(q[0] - x, q[1] - y);
+      if (d < nearD){ nearD = d; near = r; }
+    });
+  });
+  var hit = best || near;
+  return hit ? (hit.inst || 0) : null;
+}
+function padMergeInto(from, into){
+  if (!PAD || from === into) return;
+  var S = UJ.organelleseg;
+  var mine = PAD.rings.filter(function(r){ return (r.inst || 0) === from; });
+  if (!mine.length){ padSay("Drawing " + (from + 1) + " has no contours to merge.", true); return; }
+  padHistNote();
+  var zs = {};
+  mine.forEach(function(r){ r.inst = into; zs[r.z] = 1; });
+  /* where the two met on a section, touching contours become one; a contour inside another is a hole
+     and stays one */
+  var joined = 0;
+  if (S && S.union && S.inside) Object.keys(zs).forEach(function(zk){
+    var z = +zk, here = PAD.rings.filter(function(r){ return r.z === z && (r.inst || 0) === into; });
+    if (here.length < 2) return;
+    var within = function(P, Q){ return P.every(function(q){ return S.inside(q, Q); }); };
+    var holes = here.filter(function(r){ return here.some(function(o){ return o !== r && within(r.points, o.points); }); });
+    var solid = here.filter(function(r){ return holes.indexOf(r) < 0; });
+    if (solid.length < 2) return;
+    var bb = [Infinity, Infinity, -Infinity, -Infinity];
+    solid.forEach(function(r){ r.points.forEach(function(q){ bb[0] = Math.min(bb[0], q[0]); bb[1] = Math.min(bb[1], q[1]); bb[2] = Math.max(bb[2], q[0]); bb[3] = Math.max(bb[3], q[1]); }); });
+    var pieces = S.union(solid.map(function(r){ return r.points; }), Math.max(1, Math.max(bb[2] - bb[0], bb[3] - bb[1]) / 400))
+      .filter(function(P){ return P.length >= 3; });
+    if (!pieces.length || pieces.length >= solid.length) return;            // nothing touched: leave them as drawn
+    joined++;
+    var keep = PAD.rings.filter(function(r){ return solid.indexOf(r) < 0; });
+    pieces.forEach(function(P){ keep.push(Object.assign({}, solid[0], { points: P })); });
+    PAD.rings = keep;
+  });
+  /* what the dataset should do about it, worked out when it is saved (padMergedIdFor, padMergeCleanup) */
+  var sidFrom = (typeof PAD_EDIT_IDS !== "undefined" && PAD_EDIT_IDS[String(from)]) || "";
+  var nameFrom = "";
+  try { nameFrom = (typeof tracingKindFor === "function" && tracingKindFor(from).name) || ""; } catch (_e){}
+  PAD.merges = (PAD.merges || []).filter(function(m){ return m.from !== from; });
+  PAD.merges.push({ from: from, into: into, sidFrom: sidFrom, name: nameFrom, at: new Date().toISOString() });
+  var sidInto = (typeof PAD_EDIT_IDS !== "undefined" && PAD_EDIT_IDS[String(into)]) || "";
+  PAD_MERGE = null;
+  if ((PAD.inst || 0) !== into){ try { tracingStoreKindOf(PAD.inst); } catch (_e){} UJ.tracepad.setInstance(PAD, into); try { tracingShowKindOf(into); } catch (_e){} }
+  padInstances(); padPaint(); padRings();
+  try { draftSoon(); } catch (_e){}
+  padSay("Drawing " + (from + 1) + (nameFrom ? " “" + nameFrom + "”" : "") + " merged into drawing " + (into + 1) + ": "
+    + mine.length + " contour" + (mine.length === 1 ? "" : "s")
+    + (joined ? ", joined into one where they touched on " + joined + " section" + (joined === 1 ? "" : "s") : "") + ". "
+    + (sidFrom && sidInto ? "Add drawing " + (into + 1) + " to the dataset to save it; its old tracing is then deleted from the dataset (only its maker or a moderator can). "
+       : sidFrom ? "Add it to the dataset to save it: it becomes a new version of the merged-in tracing, so nothing is left over. "
+       : "Add it to the dataset to save it. ")
+    + "Ctrl+Z undoes the merge.");
+}
+/* a drawing with no dataset id of its own that a dataset tracing was merged into is saved as a version
+   of that one -- only while the merge stands (the merged-in drawing has no contours left) */
+function padMergedIdFor(inst){
+  if (!PAD || !PAD.merges) return "";
+  for (var i = 0; i < PAD.merges.length; i++){
+    var m = PAD.merges[i];
+    if (m.into !== inst || !m.sidFrom) continue;
+    if (PAD.rings.some(function(r){ return (r.inst || 0) === m.from; })) continue;
+    return m.sidFrom;
+  }
+  return "";
+}
+/* after tracing t was accepted: delete from the dataset every tracing that was merged into it */
+function padMergeCleanup(t){
+  try {
+    if (!t || !t.id || !PAD || !PAD.merges || !PAD.merges.length) return;
+    PAD.merges.forEach(function(m){
+      if (m.done || !m.sidFrom || m.sidFrom === t.id) return;
+      if (PAD.rings.some(function(r){ return (r.inst || 0) === m.from; })) return;      // undone
+      var intoId = (PAD_EDIT_IDS[String(m.into)]) || padMergedIdFor(m.into);
+      if (intoId !== t.id) return;
+      m.done = true;
+      try { draftSoon(); } catch (_e){}
+      setTimeout(function(){ tracingDeleteShared(m.sidFrom, null); }, 1500);   // after the new version is in
+    });
+  } catch (e){ try { console.warn("[tracing] merge clean-up", e); } catch (_e){} }
+}
+/* the white rim round the hovered drawing, and the numbers */
+function padMergePaint(g, px){
+  if (!PAD || !PAD_VIEW) return;
+  var show = PAD_MERGE != null || padMergeNums();
+  if (PAD_HILITE != null){
+    PAD.rings.forEach(function(r){
+      if (r.z !== PAD.z || (r.inst || 0) !== PAD_HILITE) return;
+      g.beginPath();
+      r.points.forEach(function(p, i){ var q = px([p[0], p[1], PAD.z]); if (i) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
+      g.closePath(); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineWidth = 5; g.stroke();
+      g.strokeStyle = padInstColour(r.inst || 0); g.lineWidth = 2; g.stroke();
+    });
+  }
+  if (!show && PAD_HILITE == null) return;
+  g.save();
+  g.font = "700 12px system-ui, sans-serif"; g.textBaseline = "middle"; g.textAlign = "center";
+  PAD.rings.forEach(function(r){
+    if (r.z !== PAD.z || !r.points || !r.points.length) return;
+    var k = r.inst || 0;
+    if (!show && k !== PAD_HILITE) return;
+    var top = null;
+    r.points.forEach(function(p){ var q = px([p[0], p[1], PAD.z]); if (!top || q[1] < top[1]) top = q; });
+    var lbl = String(k + 1) + (PAD_MERGE != null && k === PAD_MERGE ? " ← keep" : "");
+    var y = Math.max(8, top[1] - 9);
+    g.lineWidth = 3.5; g.strokeStyle = "rgba(0,0,0,.85)"; g.strokeText(lbl, top[0], y);
+    g.fillStyle = padInstColour(k); g.fillText(lbl, top[0], y);
+  });
+  g.restore();
+}
+/* the click that picks the drawing to merge in; everything else on the pad is left alone */
+var PAD_MERGE_DOWN = null;
+function padMergeEvent(e){
+  if (PAD_MERGE == null) return;
+  var cv = document.getElementById("tracePad");
+  if (!cv || e.target !== cv || e.shiftKey || e.altKey) return;            // shift still moves the field
+  e.stopImmediatePropagation(); e.preventDefault();
+  if (e.type === "pointerdown"){ PAD_MERGE_DOWN = { x: e.offsetX, y: e.offsetY, b: e.button }; return; }
+  if (e.type !== "pointerup") return;
+  var dn = PAD_MERGE_DOWN; PAD_MERGE_DOWN = null;
+  if (!dn || dn.b !== 0 || Math.abs(e.offsetX - dn.x) > 5 || Math.abs(e.offsetY - dn.y) > 5) return;
+  var inst = padMergeHit(e.offsetX, e.offsetY, PAD_MERGE);
+  if (inst == null){ padSay("No other drawing there — click inside or on the edge of the contour to merge into drawing " + (PAD_MERGE + 1) + ".", true); return; }
+  padMergeInto(inst, PAD_MERGE);
+}
+(function(){
+  if (window.__padMergeWired) return; window.__padMergeWired = true;
+  ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick"].forEach(function(ev){
+    document.addEventListener(ev, padMergeEvent, true);
+  });
+  document.addEventListener("keydown", function(e){
+    if (PAD_MERGE != null && e.key === "Escape"){ e.preventDefault(); padMergeStop("Stopped merging."); }
+  }, true);
+})();
 function padInstances(){
   const box = document.getElementById("tracePadInsts");
   if (!box || !PAD) return;
@@ -6739,9 +6938,32 @@ function padInstances(){
           ? ' <span class="padx" data-inst="' + it.inst + '" title="Delete this drawing"'
             + ' style="padding:0 2px;opacity:.75">\u00d7</span>'
           : '') + '</button>';
-  }).join("");
+  }).join("")
+    /* merging, and the numbers (2026-11-27) -- see MERGING TWO DRAWINGS above */
+    + (list.filter(function(x){ return x.contours; }).length > 1
+        ? ' <button type="button" class="hist-chip" id="tracePadMergeBtn" title="Merge another drawing into this one (the one marked): '
+          + 'press, then click a contour of the other drawing on the pad, or its chip. Ctrl+Z undoes it." style="'
+          + (PAD_MERGE != null ? 'outline:2px solid var(--accent);' : '') + '">'
+          + (PAD_MERGE != null ? '\u21c4 merging into ' + (PAD_MERGE + 1) + ' \u2014 click the other one (Esc stops)' : '\u21c4 merge into ' + ((PAD.inst || 0) + 1)) + '</button>'
+          + ' <label style="font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer" title="Write each drawing\'s number beside its contours on the pad, in its own colour">'
+          + '<input type="checkbox" id="tracePadNums"' + (PAD_NUMS_ON ? ' checked' : '') + '> numbers on the pad</label>'
+        : '');
+  (function(){
+    var mb = document.getElementById("tracePadMergeBtn");
+    if (mb) mb.addEventListener("click", function(){ padMergeStart(); });
+    var nb = document.getElementById("tracePadNums");
+    if (nb) nb.addEventListener("change", function(){ PAD_NUMS_ON = nb.checked; padPaint(); });
+  })();
   [].slice.call(box.querySelectorAll(".padinst")).forEach(function(b){
+    /* pointing at a chip lights its drawing up on the pad (2026-11-27) */
+    b.addEventListener("mouseenter", function(){ PAD_HILITE = +b.dataset.inst; padPaint(); });
+    b.addEventListener("mouseleave", function(){ if (PAD_HILITE === +b.dataset.inst){ PAD_HILITE = null; padPaint(); } });
     b.addEventListener("click", function(ev){
+      /* merging: a chip of another drawing is the one to merge in */
+      if (PAD_MERGE != null && !(ev.target && ev.target.closest && ev.target.closest(".padx"))){
+        if (+b.dataset.inst !== PAD_MERGE) padMergeInto(+b.dataset.inst, PAD_MERGE);
+        return;
+      }
       /* The × asks before it does anything (2026-09-23). Søren: "I should be able to delete one of
          the drawings, but give a warning first." */
       if (ev.target && ev.target.closest && ev.target.closest(".padx")){
@@ -8677,6 +8899,7 @@ function padPaint(){
       g.fillStyle = col; g.fill();
     });
   });
+  padMergePaint(g, px);               // which drawing is which (2026-11-27)
   /* The one under the pointer, larger, so it is obvious which one a drag would take. */
   if (PAD_HOVER && !PAD.pending.length){
     const h = UJ.tracepad.hitVertex(PAD, PAD_HOVER[0], PAD_HOVER[1], PAD_VIEW.pxPerToolVoxel);
