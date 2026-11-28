@@ -2598,6 +2598,25 @@ function dashWithRefs_(dataObj,refs){
   try{Object.defineProperty(dataObj,"__refs",{value:refs,enumerable:false,configurable:true,writable:true});}catch(_e){}
   return dataObj;
 }
+/* The server's parallel ref lists (a nucleus id, or "@x,y,z") onto a copy of the data, or onto the
+   object itself with inPlace. A list whose length does not match its values -- an older backend, or
+   none -- gives that type no refs, and its dots simply are not clickable. */
+function dashRefsFor_(dataObj,serverRefs,inPlace){
+  const out=inPlace?dataObj:Object.assign({},dataObj||{});
+  if(!dataObj||!serverRefs)return out;
+  const refs={};
+  Object.keys(dataObj).forEach(function(t){
+    const a=serverRefs[t];
+    if(!Array.isArray(a)||!Array.isArray(dataObj[t])||a.length!==dataObj[t].length)return;
+    refs[t]=a.map(function(x){
+      x=String(x||"");
+      if(!x)return null;
+      if(x.charAt(0)==="@")return {coord:x.slice(1)};
+      return {nuc:x};
+    });
+  });
+  return dashWithRefs_(out,refs);
+}
 function sampleSortedIdx_(a,k){
   const idx=a.map(function(_v,j){return j;});
   if(a.length<=k)return idx;
@@ -2916,9 +2935,10 @@ function renderLiveCoreCharts(live){
   // Cilium length / nucleus-to-centriole distance -- already live-merged server-side (any
   // Organelle-locations report not yet folded into the sheet is included by dashboardLive()
   // itself), so this is a direct render, no client-side merge step needed any more.
-  dotMedianChart("plotCiliaLength",live.primary_cilia.length_um_by_type,"Cilium length (µm)",
+  /* each value with its cell, where the server sends which (2026-11-28) -- see dashRefsFor_ */
+  dotMedianChart("plotCiliaLength",dashRefsFor_(live.primary_cilia.length_um_by_type,live.primary_cilia.length_um_refs_by_type),"Cilium length (µm)",
                  false,false,"measured cilia");
-  dotMedianChart("plotNucCentriole",live.nucleus_to_centriole_um,
+  dotMedianChart("plotNucCentriole",dashRefsFor_(live.nucleus_to_centriole_um,live.nucleus_to_centriole_refs),
                  "Nucleus-to-centriole distance (µm)",false,false,"logged centrioles");
 
   // Neighbor composition picker -- top 8 by occurrence, then re-ordered by category. Options are
@@ -3029,7 +3049,7 @@ let _lastVolumeRows=null;
    renderLiveCoreCharts/applyLiveData) rather than a static embed -- stashed here so
    renderVolumes() and the category picker's redraw (no network round-trip) can both read it
    without threading it through every call site. */
-let _liveNucleusVolumeByType={};
+let _liveNucleusVolumeByType={}, _liveNucleusVolumeRefs={};
 function renderVolumes(rows){
   if(rows)_lastVolumeRows=rows; // keep the latest real data; picker re-renders reuse it
   rows=_lastVolumeRows;
@@ -3174,6 +3194,7 @@ function renderNucleusVolumeChart(){
   Object.keys(_liveNucleusVolumeByType||{}).forEach(function(t){
     if(inSelectedVolumeCategory(t))byType[t]=_liveNucleusVolumeByType[t];
   });
+  dashRefsFor_(byType,_liveNucleusVolumeRefs,true);
   if(!Object.values(byType).some(a=>a&&a.length>=3)){
     area.innerHTML="<div class='placeholder'>No nucleus-volume data yet"+categoryPlaceholderSuffix()+".</div>";
     return;
@@ -3872,6 +3893,7 @@ function applyLiveData(d){
   _lastLiveBundle=d;
   const live=d.live||{ready:false};
   _liveNucleusVolumeByType=live.ready?(live.nucleus_volume_um3||{}):{};
+  _liveNucleusVolumeRefs=live.ready?(live.nucleus_volume_refs||{}):{};
   renderLiveCoreCharts(live);
   renderPredictedVerified(live);
   renderVolumes(d.computedVolumes||[]);
