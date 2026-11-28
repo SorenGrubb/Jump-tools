@@ -2667,7 +2667,7 @@ function dashDotsClickable_(divId,refsByTrace,types,yTitle){
       +"background:var(--panel,#161b22);color:var(--ink,#e6edf3);border:1px solid var(--line,#30363d);border-radius:8px;"
       +"padding:8px 10px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.5)";
     const v=+pt.y, val=isFinite(v)?(Math.abs(v)>=100?v.toFixed(0):v.toPrecision(3)):"";
-    const link=location.pathname+"?at="+c.at.join(",");
+    const link=location.pathname+"?at="+c.at.join(",")+"&tab=jump";      // the Jump tab, not the tab you came from
     box.innerHTML="<div style='margin-bottom:6px'><b>"+escHtml(types[pt.curveNumber]||"")+"</b>"
       +(c.label?" \u00b7 "+escHtml(c.label):"")+"<br>"+escHtml(String(yTitle||""))+": <b>"+escHtml(val)+"</b>"
       +"<br><span style='opacity:.75'>"+(c.nuc&&c.nuc!=="0"?"nucleus "+escHtml(c.nuc)+" \u00b7 ":"")+"at "+c.at.join(", ")+"</span></div>"
@@ -15890,6 +15890,11 @@ function fineSrcName(v){return v===1?"Søren's tracing":v===2?"Shih et al.":v===
           c.classList.toggle("on",c.dataset.u==="voxel");
         });
       }
+      /* ON THE JUMP TAB (2026-11-28). Søren: the stats page's "new tab" link opened the stats page
+         again -- the page brings back the tab you last had, and that was the stats tab you clicked
+         from. A coordinate in the address is a cell to look at, so its card is what is shown. */
+      var jt=document.querySelector('#mainTabs .tabbtn[data-tab="jump"]');
+      if(jt&&!jt.classList.contains("active"))jt.click();
       var panel=document.getElementById("coordPanel");
       if(panel)panel.open=true;
       document.getElementById("x").value=p[0];
