@@ -2582,6 +2582,87 @@ function dotMedianChart(divId,dataObj,yTitle,tight,useRank,noun){
     showlegend:false
   },tight?TIGHT_BOX_LAYOUT:{})),PLOTLY_CFG);
   noteDotsWaiting_(divId,w.waiting,noun);
+  dashDotsClickable_(divId,types.map(function(t){return (dataObj.__refs&&dataObj.__refs[t])||null;}),types,yTitle);
+}
+/* ── A DOT IS A CELL: CLICK IT TO OPEN ITS CARD ─────────────────────────────────  2026-11-28
+   Søren: "For the points in the graphs on the stats page, it would be cool if when you click them they
+   provide a link to the cell identity panel for that specific cell."
+   A chart's data can say which cell each value came from: dashWithRefs_(dataObj, {type: [ref]}) puts
+   a hidden, parallel list beside each type's values (non-enumerable, so every Object.keys() over the
+   data is unchanged). ref = {i} (a MICrONS nucleus row) or {nuc} (a nucleus id), plus an optional
+   label. dotMedianChart hands the lists to dashDotsClickable_, which answers a click (a tap on a
+   phone) on a dot with a small box: the cell, its value, "Open its card" (this page, Jump tab) and a
+   link that opens it in a new tab (?at=x,y,z). Charts whose data has no cell behind each value -- the
+   server's own aggregates -- are left exactly as they were. */
+function dashWithRefs_(dataObj,refs){
+  try{Object.defineProperty(dataObj,"__refs",{value:refs,enumerable:false,configurable:true,writable:true});}catch(_e){}
+  return dataObj;
+}
+function sampleSortedIdx_(a,k){
+  const idx=a.map(function(_v,j){return j;});
+  if(a.length<=k)return idx;
+  idx.sort(function(x,y){return a[x]-a[y];});
+  const o=[];
+  for(let j=0;j<k;j++)o.push(idx[Math.floor((j+0.5)*idx.length/k)]);
+  return o;
+}
+let _dashNidIdx=null;
+function dashCellOf_(ref){
+  if(!ref)return null;
+  let i=(ref.i!=null)?ref.i:null;
+  if(i==null&&ref.nuc){
+    if(!_dashNidIdx){_dashNidIdx=new Map();for(let j=0;j<NID.length;j++)if(!_dashNidIdx.has(NID[j]))_dashNidIdx.set(NID[j],j);}
+    const j=_dashNidIdx.get(Number(String(ref.nuc).replace(/^[^:]*:/,"")));
+    if(j!=null)i=j;
+  }
+  if(i!=null)return {at:[NX[i],NY[i],NZ[i]],nuc:String(NID[i]),label:ref.label||""};
+  if(ref.coord){const v=String(ref.coord).split(/[\s,;]+/).filter(Boolean).map(Number);
+    if(v.length===3&&v.every(isFinite))return {at:v.map(Math.round),nuc:String(ref.nuc||""),label:ref.label||""};}
+  return null;
+}
+function dashOpenCell_(at){
+  const tab=document.querySelector('#mainTabs .tabbtn[data-tab="jump"]');
+  if(tab)tab.click();
+  jumpToVoxel(at[0],at[1],at[2]);
+  try{window.scrollTo({top:0,behavior:"smooth"});}catch(_e){window.scrollTo(0,0);}
+}
+function dashDotsClickable_(divId,refsByTrace,types,yTitle){
+  const el=document.getElementById(divId);
+  if(!el||!el.on)return;
+  el.__cellRefs=refsByTrace;
+  if(!refsByTrace.some(Boolean))return;
+  el.style.cursor="pointer";
+  try{if(el.removeAllListeners)el.removeAllListeners("plotly_click");}catch(_e){}
+  el.on("plotly_click",function(ev){
+    const pt=ev&&ev.points&&ev.points[0];
+    if(!pt||typeof pt.pointNumber!=="number")return;           // the box itself, not a dot
+    const refs=(el.__cellRefs||[])[pt.curveNumber];
+    const c=dashCellOf_(refs&&refs[pt.pointNumber]);
+    if(!c)return;
+    const old=document.getElementById("dashDotPop");if(old)old.remove();
+    const box=document.createElement("div");
+    box.id="dashDotPop";
+    const e0=ev.event||{};
+    const x=Math.min((e0.clientX||100)+10,window.innerWidth-280),y=Math.min((e0.clientY||100)+10,window.innerHeight-130);
+    box.style.cssText="position:fixed;z-index:9999;left:"+Math.max(8,x)+"px;top:"+Math.max(8,y)+"px;max-width:270px;"
+      +"background:var(--panel,#161b22);color:var(--ink,#e6edf3);border:1px solid var(--line,#30363d);border-radius:8px;"
+      +"padding:8px 10px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.5)";
+    const v=+pt.y, val=isFinite(v)?(Math.abs(v)>=100?v.toFixed(0):v.toPrecision(3)):"";
+    const link=location.pathname+"?at="+c.at.join(",");
+    box.innerHTML="<div style='margin-bottom:6px'><b>"+escHtml(types[pt.curveNumber]||"")+"</b>"
+      +(c.label?" \u00b7 "+escHtml(c.label):"")+"<br>"+escHtml(String(yTitle||""))+": <b>"+escHtml(val)+"</b>"
+      +"<br><span style='opacity:.75'>"+(c.nuc&&c.nuc!=="0"?"nucleus "+escHtml(c.nuc)+" \u00b7 ":"")+"at "+c.at.join(", ")+"</span></div>"
+      +"<button type='button' class='idbtn' id='dashDotOpen' style='width:auto;padding:4px 8px;font-size:12px'>Open its identity card</button> "
+      +"<a href='"+escHtml(link)+"' target='_blank' rel='noopener' style='font-size:12px;color:var(--accent,#27e0b3)'>new tab \u2197</a>"
+      +"<span id='dashDotX' title='Close' style='position:absolute;right:7px;top:3px;cursor:pointer;opacity:.7'>\u00d7</span>";
+    document.body.appendChild(box);
+    document.getElementById("dashDotOpen").addEventListener("click",function(){box.remove();dashOpenCell_(c.at);});
+    document.getElementById("dashDotX").addEventListener("click",function(){box.remove();});
+    setTimeout(function(){
+      const off=function(e){if(!box.contains(e.target)){box.remove();document.removeEventListener("pointerdown",off,true);}};
+      document.addEventListener("pointerdown",off,true);
+    },0);
+  });
 }
 
 /* ujump.html shows an unresolved merged-nucleus-blob detection (MICrONS's automatic detector
@@ -2988,13 +3069,14 @@ function renderVolumes(rows){
   // valid percentages across all types (per-type n is often too small for a stable per-type
   // IQR) -- a standard descriptive-stats convention, not a paper-backed claim needing citation.
   if(paired.length){
-    const byType={};
+    const byType={},refsByType={};
     let droppedImpossible=0;
     paired.forEach(function(r){
       if(!(r.volumeUm3>0))return;
       const pct=100*r.nucVolumeUm3/r.volumeUm3;
       if(!(pct>0&&pct<=100)){droppedImpossible++;return;}
       (byType[r.cellType]=byType[r.cellType]||[]).push(pct);
+      (refsByType[r.cellType]=refsByType[r.cellType]||[]).push(r.i!=null?{i:r.i}:null);
     });
     const pooled=Object.values(byType).reduce((a,b)=>a.concat(b),[]).sort((a,b)=>a-b);
     let loFence=-Infinity,hiFence=Infinity;
@@ -3005,20 +3087,24 @@ function renderVolumes(rows){
       loFence=q1-1.5*iqr;hiFence=q3+1.5*iqr;
     }
     let droppedIqr=0;
-    const filteredByType={};
+    const filteredByType={},filteredRefs={};
     Object.keys(byType).forEach(function(t){
-      filteredByType[t]=byType[t].filter(function(v){
+      const keepIx=[];
+      byType[t].forEach(function(v,j){
         const keep=v>=loFence&&v<=hiFence;
-        if(!keep)droppedIqr++;
-        return keep;
+        if(!keep)droppedIqr++; else keepIx.push(j);
       });
+      filteredByType[t]=keepIx.map(j=>byType[t][j]);
+      filteredRefs[t]=keepIx.map(j=>refsByType[t][j]);
     });
 
     if(!Object.keys(filteredByType).length){
       area.innerHTML="<div class='placeholder'>No paired measurements in this category yet.</div>";
       return;
     }
-    Object.keys(filteredByType).forEach(function(t){filteredByType[t]=sampleSorted_(filteredByType[t],PRECOMP_MAX_DOTS);});
+    Object.keys(filteredByType).forEach(function(t){const ix=sampleSortedIdx_(filteredByType[t],PRECOMP_MAX_DOTS);
+      filteredByType[t]=ix.map(j=>filteredByType[t][j]);filteredRefs[t]=ix.map(j=>filteredRefs[t][j]);});
+    dashWithRefs_(filteredByType,filteredRefs);
     dotMedianChart(area.id,filteredByType,"Nucleus volume (% of whole-cell mesh volume)",true,true);
 
     const bits=["n="+paired.length+" pairs"];
@@ -3119,7 +3205,7 @@ function precomputedVolumeRows(){
     const v=cellVolume(r.i);if(v==null||!(v>0))continue;
     if(NCF[r.i]&3)continue;
     const t=typeof longName==="function"?longName(r.type):r.type;
-    out.push({cellType:t,volumeUm3:v,nucVolumeUm3:(typeof NV!=="undefined"&&NV[r.i]>0)?NV[r.i]:0});
+    out.push({cellType:t,volumeUm3:v,nucVolumeUm3:(typeof NV!=="undefined"&&NV[r.i]>0)?NV[r.i]:0,i:r.i});
   }
   _precompRows=out;return out;
 }
@@ -3131,13 +3217,17 @@ function sampleSorted_(a,k){
 }
 function precomputedByType_(valueOf){
   const rows=precomputedVolumeRows();if(!rows)return null;
-  const byType={},n={};
+  const byType={},n={},refs={};
   rows.forEach(function(r){
     if(isUnclassifiedType(r.cellType)||isMergedBlobType(r.cellType)||!inSelectedVolumeCategory(r.cellType))return;
     const v=valueOf(r);if(v==null)return;
     (byType[r.cellType]=byType[r.cellType]||[]).push(v);
+    (refs[r.cellType]=refs[r.cellType]||[]).push(r.i!=null?{i:r.i}:null);
   });
-  Object.keys(byType).forEach(function(t){n[t]=byType[t].length;byType[t]=sampleSorted_(byType[t],PRECOMP_MAX_DOTS);});
+  /* the same sample as sampleSorted_, by index, so each dot keeps its cell (2026-11-28) */
+  Object.keys(byType).forEach(function(t){n[t]=byType[t].length;const ix=sampleSortedIdx_(byType[t],PRECOMP_MAX_DOTS);
+    byType[t]=ix.map(j=>byType[t][j]);refs[t]=ix.map(j=>refs[t][j]);});
+  dashWithRefs_(byType,refs);
   return {byType,n};
 }
 function precompNote_(area,n,what){
@@ -3726,7 +3816,7 @@ async function loadOrganelleVolumes(force){
       let organ=(window.UJ&&UJ.organelleml&&UJ.organelleml.nameOf)?UJ.organelleml.nameOf(k):"";
       if(!organ||organ===k)organ=(window.UJ&&UJ.organelles&&UJ.organelles.labelOf)?UJ.organelles.labelOf(k):k;
       organ=String(organ||k).replace(/_/g," ");organ=organ.charAt(0).toUpperCase()+organ.slice(1);
-      rows.push({cellType:type,organ:organ,v:v});
+      rows.push({cellType:type,organ:organ,v:v,ref:{nuc:c.nuc,coord:t.cellCoord||"",label:t.name||organ}});
     });
     _organVolRows=rows;_organVolSkipped=skipped;_organVolLoading=null;
     return rows;
@@ -3752,12 +3842,14 @@ async function renderOrganelleVolumes(force){
   if(!rows.length){area.innerHTML="<div class='placeholder'>No organelle has been traced on an identified cell yet \u2014 trace one on the pad and it appears here.</div>";return;}
   organVolFillPick_(rows);
   const byOrgan=document.getElementById("organVolMode").value==="organ", sel=document.getElementById("organVolPick").value;
-  const groups={};
+  const groups={},grefs={};
   rows.forEach(function(r){
     if((byOrgan?r.organ:r.cellType)!==sel)return;
     const g=byOrgan?r.cellType:r.organ;
     (groups[g]=groups[g]||[]).push(r.v);
+    (grefs[g]=grefs[g]||[]).push(r.ref||null);
   });
+  dashWithRefs_(groups,grefs);
   area.innerHTML="";
   dotMedianChart(area.id,groups,(byOrgan?sel+" volume":"Organelle volume in "+sel)+" (\u00b5m\u00b3)",true,false,byOrgan?"cell type":"organelle");
   area.parentNode.querySelectorAll(".footnote.organvol").forEach(e=>e.remove());
